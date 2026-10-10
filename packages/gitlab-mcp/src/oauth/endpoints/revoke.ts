@@ -13,6 +13,7 @@ import { revokeGitLabToken } from '../gitlab-device-flow';
 import { withFreshGitLabToken } from '../gitlab-token-refresh';
 import { logInfo, logWarn, logError, truncateId } from '../../logger';
 import { OAuthErrorResponse } from '../types';
+import { singleValuedParams } from '../request-params';
 
 function sendError(res: Response, status: number, error: string, description: string): void {
   const response: OAuthErrorResponse = { error, error_description: description };
@@ -32,7 +33,12 @@ export async function revokeHandler(req: Request, res: Response): Promise<void> 
     return;
   }
 
-  const { token, client_id } = req.body as { token?: string; client_id?: string };
+  const params = singleValuedParams(req.body, ['token', 'token_type_hint', 'client_id']);
+  if (typeof params === 'string') {
+    sendError(res, 400, 'invalid_request', `${params} must not be repeated`);
+    return;
+  }
+  const { token, client_id } = params;
   if (!token) {
     sendError(res, 400, 'invalid_request', 'Missing token');
     return;

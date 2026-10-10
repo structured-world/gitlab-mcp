@@ -39,6 +39,8 @@ jest.mock('../../../../src/oauth/gitlab-device-flow', () => ({
   ),
   GitLabOAuthHttpError: jest.requireActual('../../../../src/oauth/gitlab-device-flow')
     .GitLabOAuthHttpError,
+  DeviceGrantRefusedError: jest.requireActual('../../../../src/oauth/gitlab-device-flow')
+    .DeviceGrantRefusedError,
 }));
 
 jest.mock('../../../../src/oauth/token-utils', () => ({
@@ -91,6 +93,7 @@ import {
   pollDeviceFlowStep,
   getGitLabUser,
   GitLabOAuthHttpError,
+  DeviceGrantRefusedError,
 } from '../../../../src/oauth/gitlab-device-flow';
 
 const mockPollDeviceFlowStep = pollDeviceFlowStep as jest.MockedFunction<typeof pollDeviceFlowStep>;
@@ -845,7 +848,9 @@ describe('OAuth Authorization Endpoint', () => {
         state: 'state',
       });
 
-      mockPollDeviceFlowStep.mockRejectedValue(new Error('Authorization denied by user'));
+      mockPollDeviceFlowStep.mockRejectedValue(
+        new DeviceGrantRefusedError('Authorization denied by user'),
+      );
 
       const req = createMockRequest({ flow_state: 'denied-flow' }) as Request;
       const res = createMockResponse() as Response;
@@ -857,6 +862,79 @@ describe('OAuth Authorization Endpoint', () => {
         status: 'failed',
         error: 'Authorization denied by user',
       });
+    });
+
+    // Only GitLab refusing the device grant ends a flow. A failure while completing it
+    // (a GitLab user lookup answering invalid_token, a storage error) keeps the flow and its
+    // single-use GitLab tokens for the next poll.
+    it('keeps an approved flow when completing it fails with a refusal-like message', async () => {
+      mockSessionStore.getDeviceFlow.mockResolvedValue({
+        deviceCode: 'device-code',
+        userCode: 'USER-CODE',
+        verificationUri: 'https://gitlab.example.com/oauth/authorize',
+        expiresAt: Date.now() + 600000,
+        interval: 5,
+        clientId: 'test-client',
+        codeChallenge: 'challenge',
+        codeChallengeMethod: 'S256',
+        state: 'state',
+      });
+      mockPollDeviceFlowStep.mockResolvedValue({
+        status: 'complete',
+        tokens: {
+          access_token: 'gitlab-access-token',
+          refresh_token: 'gitlab-refresh-token',
+          token_type: 'Bearer',
+          expires_in: 7200,
+          created_at: Date.now(),
+        },
+      });
+      mockGetGitLabUser.mockRejectedValue(new Error('GitLab 401: {"error":"invalid_token"}'));
+      const res = createMockResponse() as Response;
+
+      await pollHandler(createMockRequest({ flow_state: 'approved-flow' }) as Request, res);
+
+      expect(mockSessionStore.deleteDeviceFlow).not.toHaveBeenCalled();
+      expect(res.json).toHaveBeenCalledWith({ status: 'pending', interval: 5 });
+    });
+
+    // The reservation returns the stored flow: GitLab tokens another replica stored after
+    // this request first read the flow are used, instead of presenting the spent device code.
+    it('completes with the GitLab tokens of the claimed flow', async () => {
+      const flow = {
+        deviceCode: 'device-code',
+        userCode: 'USER-CODE',
+        verificationUri: 'https://gitlab.example.com/oauth/authorize',
+        expiresAt: Date.now() + 600000,
+        interval: 5,
+        clientId: 'test-client',
+        codeChallenge: 'challenge',
+        codeChallengeMethod: 'S256',
+        state: 'state',
+      };
+      mockSessionStore.getDeviceFlow.mockResolvedValue(flow);
+      mockSessionStore.claimDevicePoll.mockImplementationOnce(async (_state, _now, nextPollAt) => ({
+        ...flow,
+        nextPollAt,
+        gitlabTokens: {
+          access_token: 'stored-access-token',
+          refresh_token: 'stored-refresh-token',
+          token_type: 'Bearer',
+          expires_in: 7200,
+          created_at: Date.now(),
+        },
+      }));
+      mockGetGitLabUser.mockResolvedValue({ id: 12345, username: 'testuser' });
+
+      await pollHandler(
+        createMockRequest({ flow_state: 'stored-tokens' }) as Request,
+        createMockResponse() as Response,
+      );
+
+      expect(mockPollDeviceFlowStep).not.toHaveBeenCalled();
+      expect(mockSessionStore.createSession).toHaveBeenCalledWith(
+        expect.objectContaining({ gitlabAccessToken: 'stored-access-token' }),
+      );
     });
 
     it('should treat transient errors as pending', async () => {
@@ -1386,17 +1464,23 @@ describe('OAuth Authorization Endpoint', () => {
       expect(res.json).toHaveBeenCalledWith({ status: 'pending' });
     });
 
-    it('drops repeated query values from the instance chooser links', async () => {
+    // Each chooser link repeats the request: a repeated resource (RFC 8707 section 2) must
+    // reach the authorization with every value, or the default resource would be bound.
+    it('keeps repeated query values in the instance chooser links', async () => {
       mockSelectableOAuthApps.mockResolvedValueOnce([defaultApp, otherApp]);
       const res = createMockResponse() as Response;
-      const req = codeRequest({ ui_locales: ['en', 'de'] });
+      const resource = 'https://gitlab-mcp.example.com';
+      const req = codeRequest({ resource: [resource, resource], claims: { nested: 'x' } });
       delete (req.query as Record<string, unknown>).redirect_uri;
 
       await authorizeHandler(req, res);
 
       const html = (res.send as jest.Mock).mock.calls[0][0] as string;
-      expect(html).toContain('instance=');
-      expect(html).not.toContain('ui_locales=');
+      const href = /href="([^"]+)"/.exec(html)![1].replaceAll('&amp;', '&');
+      const link = new URL(href);
+      expect(link.searchParams.getAll('resource')).toEqual([resource, resource]);
+      expect(link.searchParams.has('claims')).toBe(false);
+      expect(link.searchParams.get('instance')).toBe(defaultApp.baseUrl);
     });
   });
 });

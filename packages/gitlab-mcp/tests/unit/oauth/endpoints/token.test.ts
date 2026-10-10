@@ -968,6 +968,17 @@ describe('OAuth Token Endpoint', () => {
         },
       );
 
+      // Clients repeat their original scope on refresh, often with values such as openid
+      // that /authorize ignored: they are ignored here too instead of failing every refresh.
+      it.each([
+        ['openid offline_access mcp:tools', 'mcp:tools'],
+        ['openid offline_access', 'mcp:tools mcp:resources'],
+      ])('ignores unknown values in a refresh scope "%s"', async (scope, granted) => {
+        const res = createMockResponse() as Response;
+        await tokenHandler(refresh({ scope }), res);
+        expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ scope: granted }));
+      });
+
       it('narrows the scope on request (RFC 6749 6)', async () => {
         const res = createMockResponse() as Response;
         await tokenHandler(refresh({ scope: 'mcp:tools' }), res);

@@ -22,7 +22,7 @@ GitLab MCP Server supports OAuth 2.1 authentication for use as a **Claude Custom
 
 ## Prerequisites
 
-1. **GitLab 17.1+** (Device Authorization Grant support)
+1. **GitLab 16.0+**; the Device Flow needs GitLab 17.3+ (17.2 with the `oauth2_device_grant_flow` feature flag)
 2. **HTTPS endpoint** for gitlab-mcp (required for OAuth)
 3. **GitLab OAuth Application** configured
 

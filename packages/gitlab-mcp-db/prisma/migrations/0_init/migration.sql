@@ -1,6 +1,6 @@
--- Baseline: the schema shipped before migrations were introduced, including the
--- gitlab_scopes / requested_gitlab_scopes columns. Existing databases already have it;
--- mark it applied with `prisma migrate resolve --applied 0_init` instead of running it.
+-- Baseline: the schema before migrations were introduced. A database created by a release
+-- is marked with `prisma migrate resolve --applied 0_init` instead of running it; the
+-- columns released schemas lack are added by the next migration.
 
 -- CreateSchema
 CREATE SCHEMA IF NOT EXISTS "public";

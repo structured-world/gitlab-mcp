@@ -124,10 +124,20 @@ while (queue.length > 0) {
   }
 }
 
+// Package root copied to each target path. A workspace-local copy (a conflicting version
+// the linker kept under the package) and the hoisted copy would map to the same path; the
+// copy would merge two versions' files, so that layout fails the build instead.
+const destinations = new Map();
 for (const root of seen) {
   // Keep the layout below the outermost node_modules so nested versions stay nested.
   const marker = `${sep}node_modules${sep}`;
+  if (!root.includes(marker)) throw new Error(`${root} is not inside a node_modules directory`);
   const relativePath = root.slice(root.indexOf(marker) + marker.length);
+  const previous = destinations.get(relativePath);
+  if (previous !== undefined && previous !== root) {
+    throw new Error(`${previous} and ${root} would both be copied to ${relativePath}`);
+  }
+  destinations.set(relativePath, root);
   const name = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).name;
   const partial = PARTIAL_PACKAGES.get(name);
   if (partial) {

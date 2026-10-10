@@ -20,7 +20,8 @@ import {
   generateUUID,
 } from '../token-utils';
 import { withFreshGitLabToken, GitLabGrantRevokedError } from '../gitlab-token-refresh';
-import { defaultResource, resourceParameter } from '../resource';
+import { MCP_SCOPES, defaultResource, resourceParameter } from '../resource';
+import { singleValuedParams } from '../request-params';
 import { logInfo, logWarn, logError, truncateId } from '../../logger';
 import { MCPTokenResponse, OAuthErrorResponse, OAuthSession } from '../types';
 import { getIpAddress } from '../../utils/request-logger';
@@ -43,16 +44,16 @@ export async function tokenHandler(req: Request, res: Response): Promise<void> {
 
   // Parameters are checked before anything is consumed: a malformed request must not
   // spend the code or refresh token a valid retry needs.
-  const body = (typeof req.body === 'object' && req.body !== null ? req.body : {}) as Record<
-    string,
-    unknown
-  >;
-  const params = tokenParams(body);
+  // `resource` may repeat (RFC 8707 section 2) and is read separately.
+  const params = singleValuedParams(req.body, TOKEN_PARAMS);
   if (typeof params === 'string') {
     sendError(req, res, 400, 'invalid_request', `${params} must not be repeated`);
     return;
   }
-  const resource = resourceParameter(config.issuer, body.resource);
+  const resource = resourceParameter(
+    config.issuer,
+    (req.body as { resource?: unknown } | undefined)?.resource,
+  );
   if (resource === null) {
     sendError(req, res, 400, 'invalid_target', 'resource must name one resource of this server');
     return;
@@ -94,22 +95,6 @@ const TOKEN_PARAMS = [
   'scope',
 ] as const;
 type TokenParams = Partial<Record<(typeof TOKEN_PARAMS)[number], string>>;
-
-/**
- * The single-valued parameters of a token request, or the name of one that is not a single
- * string. RFC 6749 section 3.2: request parameters must not be included more than once;
- * `resource` may repeat (RFC 8707 section 2) and is read separately.
- */
-function tokenParams(body: Record<string, unknown>): TokenParams | string {
-  const params: TokenParams = {};
-  for (const name of TOKEN_PARAMS) {
-    const value = body[name];
-    if (value === undefined) continue;
-    if (typeof value !== 'string') return name;
-    params[name] = value;
-  }
-  return params;
-}
 
 /**
  * Handle authorization code grant
@@ -274,9 +259,12 @@ async function handleRefreshToken(
     return;
   }
 
-  // RFC 6749 section 6: a refresh may narrow the scope, never widen it.
-  const tokenScopes = scope === undefined ? session.scopes : scope.split(' ').filter(Boolean);
-  if (tokenScopes.length === 0 || !tokenScopes.every((s) => session.scopes.includes(s))) {
+  // RFC 6749 section 6: a refresh may narrow the scope, never widen it. Values this server
+  // does not grant (openid, offline_access) are ignored as at /authorize, and a request of
+  // only such values keeps the original grant.
+  const requested = (scope ?? '').split(' ').filter((s) => MCP_SCOPES.includes(s));
+  const tokenScopes = requested.length === 0 ? session.scopes : [...new Set(requested)];
+  if (!tokenScopes.every((s) => session.scopes.includes(s))) {
     sendError(req, res, 400, 'invalid_scope', 'scope exceeds the original grant');
     return;
   }

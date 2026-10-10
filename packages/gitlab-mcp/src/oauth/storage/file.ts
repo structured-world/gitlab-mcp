@@ -413,23 +413,39 @@ export class FileStorageBackend implements SessionStorageBackend {
     return removed;
   }
 
+  /**
+   * Write a single-use transition through; when the write fails, undo it in memory before
+   * reporting the failure. The caller then never used the result, so the record (a code,
+   * a flow, the client's refresh token) must stay usable for its retry.
+   */
+  private async persistOrUndo(undo: () => Promise<unknown>): Promise<void> {
+    try {
+      await this.persistNow();
+    } catch (error: unknown) {
+      await undo();
+      throw error;
+    }
+  }
+
   // Single-use consumption and refresh rotation: written through before they are
   // reported, so a crash cannot make a spent code, flow or refresh token usable again.
   async consumeAuthCode(code: string): Promise<AuthorizationCode | undefined> {
     const record = await this.memory.consumeAuthCode(code);
-    if (record) await this.persistNow();
+    if (record) await this.persistOrUndo(() => this.memory.storeAuthCode(record));
     return record;
   }
 
   async consumeAuthCodeFlow(internalState: string): Promise<AuthCodeFlowState | undefined> {
     const record = await this.memory.consumeAuthCodeFlow(internalState);
-    if (record) await this.persistNow();
+    if (record) {
+      await this.persistOrUndo(() => this.memory.storeAuthCodeFlow(internalState, record));
+    }
     return record;
   }
 
   async consumeDeviceFlow(state: string): Promise<DeviceFlowState | undefined> {
     const record = await this.memory.consumeDeviceFlow(state);
-    if (record) await this.persistNow();
+    if (record) await this.persistOrUndo(() => this.memory.storeDeviceFlow(state, record));
     return record;
   }
 
@@ -463,8 +479,14 @@ export class FileStorageBackend implements SessionStorageBackend {
     expectedRefreshToken: string,
     updates: Partial<OAuthSession>,
   ): Promise<boolean> {
+    // The stored session is updated in place: copy the fields the rotation replaces first.
+    const current = await this.memory.getSession(sessionId);
+    const previous: Partial<OAuthSession> = {};
+    for (const key of Object.keys(updates) as Array<keyof OAuthSession>) {
+      Object.assign(previous, { [key]: current?.[key] });
+    }
     const rotated = await this.memory.rotateSession(sessionId, expectedRefreshToken, updates);
-    if (rotated) await this.persistNow();
+    if (rotated) await this.persistOrUndo(() => this.memory.updateSession(sessionId, previous));
     return rotated;
   }
 

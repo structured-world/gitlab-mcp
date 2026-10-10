@@ -26,6 +26,20 @@ export class GitLabOAuthHttpError extends Error {
   }
 }
 
+/**
+ * GitLab refused the device grant for good (RFC 8628 section 3.5: access_denied,
+ * expired_token; or another OAuth error a retry cannot fix). The flow cannot complete.
+ */
+export class DeviceGrantRefusedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'DeviceGrantRefusedError';
+  }
+}
+
+/** Token endpoint errors reporting a server-side condition rather than a refused grant. */
+const RETRYABLE_DEVICE_ERRORS = new Set(['server_error', 'temporarily_unavailable']);
+
 /** Throw a descriptive error if the GitLab OAuth response indicates failure */
 async function throwOnHttpError(response: Response, operation: string): Promise<void> {
   if (!response.ok) {
@@ -193,16 +207,20 @@ export async function pollDeviceFlowStep(
       return { status: 'slow_down' };
 
     case 'expired_token':
-      throw new Error('Device code expired. Please start a new authorization.');
+      throw new DeviceGrantRefusedError('Device code expired. Please start a new authorization.');
 
     case 'access_denied':
-      throw new Error('User denied the authorization request.');
+      throw new DeviceGrantRefusedError('User denied the authorization request.');
 
     case 'invalid_grant':
-      throw new Error('Invalid device code or grant.');
+      throw new DeviceGrantRefusedError('Invalid device code or grant.');
 
-    default:
-      throw new Error(`Device flow error: ${error.error_description ?? error.error}`);
+    default: {
+      const message = `Device flow error: ${error.error_description ?? error.error}`;
+      throw RETRYABLE_DEVICE_ERRORS.has(error.error)
+        ? new Error(message)
+        : new DeviceGrantRefusedError(message);
+    }
   }
 }
 

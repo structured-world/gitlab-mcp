@@ -5,8 +5,9 @@
 import { oauthAppFor, selectableOAuthApps } from '../../../src/oauth/instance-app';
 import { InstanceRegistry } from '../../../src/services/InstanceRegistry';
 import type { OAuthConfig } from '../../../src/oauth/config';
+import { GitLabInstanceConfigSchema } from '../../../src/config/instances-schema';
 
-/** The instance fields the resolver reads; schema defaults are irrelevant here. */
+/** The instance fields the resolver reads; validated as the loader does, defaults included. */
 interface InstanceFixture {
   url: string;
   label?: string;
@@ -25,7 +26,9 @@ const config = {
 } as OAuthConfig;
 
 function useInstances(instances: InstanceFixture[]): void {
-  const byUrl = new Map(instances.map((instance) => [instance.url, instance]));
+  const byUrl = new Map(
+    instances.map((instance) => [instance.url, GitLabInstanceConfigSchema.parse(instance)]),
+  );
   jest.spyOn(InstanceRegistry, 'getInstance').mockReturnValue({
     isInitialized: () => true,
     initialize: jest.fn(),

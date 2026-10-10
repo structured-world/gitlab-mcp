@@ -64,7 +64,7 @@ instances:
     oauth:
       clientId: "your_app_id"
       clientSecret: "your_secret"    # Optional for public apps
-      scopes: "api read_user"        # Optional, default: api read_user
+      scopes: "api read_user"        # Optional, default: defaults.oauth.scopes, then OAUTH_SCOPES
     rateLimit:
       maxConcurrent: 50              # Max parallel requests
       queueSize: 200                 # Max queued requests
@@ -141,7 +141,7 @@ Equivalent JSON format:
 |-------|------|----------|-------------|
 | `clientId` | string | Yes | GitLab OAuth Application ID |
 | `clientSecret` | string | No | Client secret (for confidential apps) |
-| `scopes` | string | No | OAuth scopes (default: `api read_user`) |
+| `scopes` | string | No | OAuth scopes (default: `defaults.oauth.scopes`, then `OAUTH_SCOPES`, which defaults to `api,read_user`) |
 
 ### RateLimit Object
 

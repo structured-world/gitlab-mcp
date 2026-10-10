@@ -59,10 +59,13 @@ export const InstanceOAuthConfigSchema = z
       .string()
       .optional()
       .describe('Environment variable holding the OAuth Secret, read when clientSecret is unset'),
+    // No default here: an omitted value falls back to defaults.oauth.scopes, then OAUTH_SCOPES.
     scopes: z
       .string()
-      .default('api read_user')
-      .describe('OAuth scopes to request (space-separated)'),
+      .optional()
+      .describe(
+        'OAuth scopes to request (space-separated); defaults to defaults.oauth.scopes, then OAUTH_SCOPES',
+      ),
   })
   .describe('OAuth configuration for this GitLab instance');
 
@@ -277,12 +280,9 @@ export function parseInstanceUrlString(urlString: string): GitLabInstanceConfig 
     insecureSkipVerify: false,
   };
 
-  // Add OAuth config if client ID provided
+  // Add OAuth config if client ID provided; the scopes come from OAUTH_SCOPES
   if (clientId) {
-    config.oauth = {
-      clientId,
-      scopes: 'api read_user',
-    };
+    config.oauth = { clientId };
 
     if (clientSecret) {
       config.oauth.clientSecret = clientSecret;

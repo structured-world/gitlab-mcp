@@ -129,7 +129,9 @@ describe('Instance Configuration Schemas', () => {
       expect(() => GitLabInstanceConfigSchema.parse(config)).toThrow();
     });
 
-    it('should use default OAuth scopes when not specified', () => {
+    // Omitted scopes stay unset, so defaults.oauth.scopes and then OAUTH_SCOPES apply; a
+    // schema default here made both unreachable.
+    it('leaves omitted OAuth scopes unset', () => {
       const config = {
         url: 'https://gitlab.com',
         oauth: {
@@ -138,7 +140,17 @@ describe('Instance Configuration Schemas', () => {
       };
 
       const result = GitLabInstanceConfigSchema.parse(config);
-      expect(result.oauth?.scopes).toBe('api read_user');
+      expect(result.oauth?.scopes).toBeUndefined();
+    });
+
+    it('applies defaults.oauth.scopes to a validated instance without scopes', () => {
+      const file = validateInstancesConfig({
+        instances: [{ url: 'https://gitlab.com', oauth: { clientId: 'app_123' } }],
+        defaults: { oauth: { scopes: 'read_api read_user' } },
+      });
+
+      const result = applyInstanceDefaults(file.instances[0], file.defaults);
+      expect(result.oauth?.scopes).toBe('read_api read_user');
     });
   });
 
@@ -200,6 +212,8 @@ describe('Instance Configuration Schemas', () => {
       expect(result.url).toBe('https://gitlab.com');
       expect(result.oauth?.clientId).toBe('app_123');
       expect(result.oauth?.clientSecret).toBeUndefined();
+      // The URL format carries no scopes: OAUTH_SCOPES applies.
+      expect(result.oauth?.scopes).toBeUndefined();
     });
 
     it('should parse URL with client ID and secret', () => {

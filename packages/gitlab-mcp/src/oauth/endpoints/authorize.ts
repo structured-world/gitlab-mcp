@@ -21,6 +21,7 @@ import {
   getGitLabUser,
   buildGitLabAuthUrl,
   GitLabOAuthHttpError,
+  DeviceGrantRefusedError,
 } from '../gitlab-device-flow';
 import {
   generateRandomString,
@@ -502,32 +503,34 @@ export async function pollHandler(req: Request, res: Response): Promise<void> {
   // interval later.
   const now = Date.now();
   const reservedUntil = now + Math.max(flow.interval * 1000, GITLAB_REQUEST_MAX_MS);
-  if (!(await sessionStore.claimDevicePoll(flow_state, now, reservedUntil))) {
+  // The reservation returns the stored flow: GitLab tokens or a slowed interval another
+  // replica stored since the read above are used and kept.
+  const claimed = await sessionStore.claimDevicePoll(flow_state, now, reservedUntil);
+  if (!claimed) {
     res.json({ status: 'pending', interval: flow.interval });
     return;
   }
 
   try {
-    const tokens = flow.gitlabTokens ?? (await pollGitLab(flow_state, flow, config, app, now));
+    const tokens =
+      claimed.gitlabTokens ?? (await pollGitLab(flow_state, claimed, config, app, now));
     if (!('access_token' in tokens)) {
       res.json({ status: 'pending', interval: tokens.interval });
       return;
     }
-    const response = await completeDeviceFlow(flow_state, flow, tokens, config, app);
-    res.json(response ?? { status: 'pending', interval: flow.interval });
+    const response = await completeDeviceFlow(flow_state, claimed, tokens, config, app);
+    res.json(response ?? { status: 'pending', interval: claimed.interval });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
-
-    // Check for terminal errors
-    if (message.includes('expired') || message.includes('denied') || message.includes('invalid')) {
+    // Only GitLab refusing the device grant ends the flow. Any other failure, including one
+    // while completing an approved flow, keeps it (and its GitLab tokens) for the next poll.
+    if (error instanceof DeviceGrantRefusedError) {
       await sessionStore.deleteDeviceFlow(flow_state);
-      res.json({ status: 'failed', error: message });
+      res.json({ status: 'failed', error: error.message });
     } else {
-      // Transient error - report as pending, and poll again one interval from now
-      // rather than when the reservation would run out
+      // Poll again one interval from now rather than when the reservation would run out
       logWarn('Device flow poll error', { err: error as Error });
-      await reschedulePoll(flow_state, flow.interval);
-      res.json({ status: 'pending', interval: flow.interval });
+      await reschedulePoll(flow_state, claimed.interval);
+      res.json({ status: 'pending', interval: claimed.interval });
     }
   }
 }
@@ -695,9 +698,14 @@ function getInstanceChooserHTML(
 ): string {
   const links = apps
     .map((app) => {
+      // Every string value is kept, repeated ones included (`resource` may repeat, RFC 8707
+      // section 2); nested values come from no OAuth parameter and are dropped. The request
+      // named no instance (one that names one is never shown this page).
       const params = new URLSearchParams();
       for (const [name, value] of Object.entries(query)) {
-        if (typeof value === 'string' && name !== 'instance') params.set(name, value);
+        for (const entry of Array.isArray(value) ? value : [value]) {
+          if (typeof entry === 'string') params.append(name, entry);
+        }
       }
       params.set('instance', app.baseUrl);
       const href = escapeHtml(`${issuer}/authorize?${params.toString()}`);

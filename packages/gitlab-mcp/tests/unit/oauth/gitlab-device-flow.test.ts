@@ -15,6 +15,7 @@ import {
   exchangeGitLabAuthCode,
   buildGitLabAuthUrl,
   revokeGitLabToken,
+  DeviceGrantRefusedError,
 } from '../../../src/oauth/gitlab-device-flow';
 import { OAuthConfig } from '../../../src/oauth/config';
 
@@ -148,6 +149,35 @@ describe('GitLab Device Flow Client', () => {
       });
       await expect(pollDeviceFlowStep('device-code-123', mockConfig)).rejects.toThrow('denied');
     });
+
+    // The caller ends the flow only on a refused grant; anything else is retried.
+    it.each(['access_denied', 'expired_token', 'invalid_grant', 'invalid_client'])(
+      'reports %s as a refused grant',
+      async (error) => {
+        mockFetch.mockResolvedValueOnce({
+          ok: false,
+          json: jest.fn().mockResolvedValue({ error }),
+        });
+        await expect(pollDeviceFlowStep('device-code-123', mockConfig)).rejects.toBeInstanceOf(
+          DeviceGrantRefusedError,
+        );
+      },
+    );
+
+    it.each(['server_error', 'temporarily_unavailable'])(
+      'reports %s as a temporary failure',
+      async (error) => {
+        mockFetch.mockResolvedValueOnce({
+          ok: false,
+          json: jest.fn().mockResolvedValue({ error }),
+        });
+        const failure = await pollDeviceFlowStep('device-code-123', mockConfig).catch(
+          (e: unknown) => e,
+        );
+        expect(failure).toBeInstanceOf(Error);
+        expect(failure).not.toBeInstanceOf(DeviceGrantRefusedError);
+      },
+    );
   });
 
   describe('pollDeviceFlowOnce', () => {

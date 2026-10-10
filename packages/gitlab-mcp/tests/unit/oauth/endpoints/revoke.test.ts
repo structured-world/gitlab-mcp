@@ -57,7 +57,7 @@ const session: OAuthSession = {
   updatedAt: Date.now(),
 };
 
-function revoke(body: Record<string, string>) {
+function revoke(body: Record<string, unknown>) {
   const res = {
     status: jest.fn().mockReturnThis(),
     json: jest.fn().mockReturnThis(),
@@ -89,6 +89,25 @@ describe('revokeHandler', () => {
     expect(mockStore.deleteSession).toHaveBeenCalledWith('session-1');
     expect(mockRevokeGitLab).toHaveBeenCalledWith('gl-access', config, app);
     expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  // RFC 6749 section 3.2: parameters must not repeat. A repeated token matched no session
+  // and was answered as revoked while the session stayed active.
+  it.each(['token', 'client_id'])('rejects a repeated %s before any lookup', async (name) => {
+    const { req, res } = revoke({
+      token: 'refresh-1',
+      client_id: 'client-1',
+      [name]: ['a', 'b'],
+    });
+
+    await revokeHandler(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({
+      error: 'invalid_request',
+      error_description: `${name} must not be repeated`,
+    });
+    expect(mockStore.getSessionByRefreshToken).not.toHaveBeenCalled();
   });
 
   it('answers 200 for an unknown or already revoked token (RFC 7009 2.2)', async () => {

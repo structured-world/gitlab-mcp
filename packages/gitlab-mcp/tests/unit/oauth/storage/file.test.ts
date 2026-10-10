@@ -310,6 +310,65 @@ describe('FileStorageBackend', () => {
       if (process.platform !== 'win32') expect(synced).toContain(tempDir);
     });
 
+    // A rotation that could not be written is reported as a failure: the client never got
+    // the new refresh token, so its old one must keep working for the retry.
+    it('keeps the old refresh token when the rotation cannot be written', async () => {
+      const { session } = await seeded();
+      const open = failNextWrite();
+      try {
+        await expect(
+          storage.rotateSession(session.id, session.mcpRefreshToken, {
+            mcpAccessToken: 'undisclosed-access',
+            mcpRefreshToken: 'undisclosed-refresh',
+          }),
+        ).rejects.toThrow('EACCES');
+      } finally {
+        open.mockRestore();
+      }
+
+      expect((await storage.getSessionByRefreshToken(session.mcpRefreshToken))?.id).toBe(
+        session.id,
+      );
+      expect(await storage.getSessionByRefreshToken('undisclosed-refresh')).toBeUndefined();
+      expect(await storage.getSessionByToken('undisclosed-access')).toBeUndefined();
+    });
+
+    // Same for a consumption: the caller saw a failure, so the code stays redeemable.
+    it('keeps a code whose consumption cannot be written', async () => {
+      const { code } = await seeded();
+      const open = failNextWrite();
+      try {
+        await expect(storage.consumeAuthCode(code.code)).rejects.toThrow('EACCES');
+      } finally {
+        open.mockRestore();
+      }
+
+      expect(await storage.consumeAuthCode(code.code)).toBeDefined();
+    });
+
+    // An approved flow whose consumption failed is completed by the retry.
+    it('keeps flows whose consumption cannot be written', async () => {
+      await seeded();
+      const authFlow = createTestAuthCodeFlow();
+      await storage.storeAuthCodeFlow(authFlow.internalState, authFlow);
+      await storage.storeDeviceFlow('device-state', createTestDeviceFlow());
+      let open = failNextWrite();
+      try {
+        await expect(storage.consumeAuthCodeFlow(authFlow.internalState)).rejects.toThrow('EACCES');
+      } finally {
+        open.mockRestore();
+      }
+      open = failNextWrite();
+      try {
+        await expect(storage.consumeDeviceFlow('device-state')).rejects.toThrow('EACCES');
+      } finally {
+        open.mockRestore();
+      }
+
+      expect(await storage.consumeAuthCodeFlow(authFlow.internalState)).toBeDefined();
+      expect(await storage.consumeDeviceFlow('device-state')).toBeDefined();
+    });
+
     it('writes again after a failed write', async () => {
       const { code } = await seeded();
       const open = failNextWrite();

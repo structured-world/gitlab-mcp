@@ -102,33 +102,48 @@ describe('LocalSettingsFile', () => {
 
   // Two writers see the same dead lock; one removes it and a third process takes a fresh
   // lock before the second writer acts. The fresh lock must survive, or two writers would
-  // be inside the read-compare-write at once.
-  it('does not remove a fresh lock taken after the dead one was seen', async () => {
-    fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    const lock = `${filePath}.lock`;
-    fs.writeFileSync(lock, '');
-    const longAgo = new Date(Date.now() - 60_000);
-    fs.utimesSync(lock, longAgo, longAgo);
-    const realStat = fs.promises.stat.bind(fs.promises);
-    jest.spyOn(fs.promises, 'stat').mockImplementationOnce(async (target) => {
-      const dead = await realStat(target);
-      // Another process replaced the dead lock with its own meanwhile.
-      fs.rmSync(lock);
-      fs.writeFileSync(lock, 'fresh');
-      return dead;
-    });
+  // be inside the read-compare-write at once. Linux file systems reuse the freed inode
+  // number at once, so the fresh lock can carry the dead one's inode.
+  it.each([false, true])(
+    'does not remove a fresh lock taken after the dead one was seen (inode reused: %s)',
+    async (inodeReused) => {
+      fs.mkdirSync(path.dirname(filePath), { recursive: true });
+      const lock = `${filePath}.lock`;
+      fs.writeFileSync(lock, '');
+      const longAgo = new Date(Date.now() - 60_000);
+      fs.utimesSync(lock, longAgo, longAgo);
+      const realStat = fs.promises.stat.bind(fs.promises);
+      let dead: fs.Stats | undefined;
+      jest
+        .spyOn(fs.promises, 'stat')
+        .mockImplementationOnce(async (target) => {
+          dead = await realStat(target);
+          // Another process replaced the dead lock with its own meanwhile.
+          fs.rmSync(lock);
+          fs.writeFileSync(lock, 'fresh');
+          return dead;
+        })
+        .mockImplementationOnce(async (target) => {
+          const taken = await realStat(target);
+          if (!inodeReused || !dead) return taken;
+          return Object.assign(Object.create(Object.getPrototypeOf(taken)), taken, {
+            ino: dead.ino,
+            dev: dead.dev,
+          });
+        });
 
-    try {
-      const write = new LocalSettingsFile(filePath).put('acct', { readOnly: true }, 0);
-      await new Promise((resolve) => setTimeout(resolve, 60));
+      try {
+        const write = new LocalSettingsFile(filePath).put('acct', { readOnly: true }, 0);
+        await new Promise((resolve) => setTimeout(resolve, 60));
 
-      expect(fs.readFileSync(lock, 'utf-8')).toBe('fresh');
-      fs.rmSync(lock);
-      expect(await write).toBeDefined();
-    } finally {
-      jest.restoreAllMocks();
-    }
-  });
+        expect(fs.readFileSync(lock, 'utf-8')).toBe('fresh');
+        fs.rmSync(lock);
+        expect(await write).toBeDefined();
+      } finally {
+        jest.restoreAllMocks();
+      }
+    },
+  );
 
   // Another writer claimed the dead lock first: the rename fails and the lock is tried again.
   it('tries again when another writer claimed the dead lock first', async () => {

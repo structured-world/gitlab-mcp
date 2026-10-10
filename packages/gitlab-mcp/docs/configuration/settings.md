@@ -51,7 +51,9 @@ cross-project merge request listing and a vulnerability listing name the scope's
 Results that cannot be filtered at GitLab (project listings and searches, including
 projects only shared with the scope's group, todos, merge requests under a group scope)
 are filtered to the scope, reading further GitLab pages until the requested page is full
-(up to 1000 rows per call). A global search or vulnerability listing is refused under a
+(up to 1000 rows per call; a page still short then comes back marked `partial`, with a hint
+to narrow the listing). Your own activity (`browse_events` with `action: "user"`) shows the
+scope project's events under a project scope and is refused under a group scope. A global search or vulnerability listing is refused under a
 scope of several projects or groups, and under a group scope without subgroups (GitLab's
 group results always include them); use one project or group instead. `manage_todos
 mark_all_done` marks only the scope's pending todos done and leaves the others pending. A

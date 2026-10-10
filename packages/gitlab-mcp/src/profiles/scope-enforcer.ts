@@ -362,26 +362,33 @@ function identifierOf(value: unknown): string | undefined {
  * @param args Tool arguments object
  * @returns Array of project paths found in arguments
  */
+/**
+ * Arguments that name a project. Destinations count too: a cross-project merge request or
+ * job token target.
+ */
+const PROJECT_FIELDS = [
+  'project_id',
+  'projectId',
+  'project',
+  'namespace',
+  'namespacePath',
+  'fullPath',
+  'target_project_id',
+];
+
+/** Of those, the ones that name a project or a group (labels, wiki, milestones of either). */
+const PROJECT_OR_GROUP_FIELDS: ReadonlySet<string> = new Set([
+  'namespace',
+  'namespacePath',
+  'fullPath',
+]);
+
 export function extractProjectsFromArgs(args: Record<string, unknown>): string[] {
   const projects: string[] = [];
-
-  // Common parameter names for project identification
-  // Destinations count too: a cross-project merge request or job token target.
-  const projectFields = [
-    'project_id',
-    'projectId',
-    'project',
-    'namespace',
-    'namespacePath',
-    'fullPath',
-    'target_project_id',
-  ];
-
-  for (const field of projectFields) {
+  for (const field of PROJECT_FIELDS) {
     const id = identifierOf(args[field]);
     if (id) projects.push(id);
   }
-
   return projects;
 }
 
@@ -429,10 +436,12 @@ export function extractGroupsFromArgs(args: Record<string, unknown>): string[] {
  * @throws ScopeViolationError if any project or group is outside scope
  */
 export function enforceArgsScope(enforcer: ScopeEnforcer, args: Record<string, unknown>): void {
-  // Check project paths
-  const projects = extractProjectsFromArgs(args);
-  for (const project of projects) {
-    enforcer.enforce(project);
+  // Check project paths; an argument that may name a group passes as an allowed group too
+  for (const field of PROJECT_FIELDS) {
+    const id = identifierOf(args[field]);
+    if (!id) continue;
+    if (PROJECT_OR_GROUP_FIELDS.has(field) && enforcer.isGroupAllowed(id)) continue;
+    enforcer.enforce(id);
   }
 
   // Check group paths

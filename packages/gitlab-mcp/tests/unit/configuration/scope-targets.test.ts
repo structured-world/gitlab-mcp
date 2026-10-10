@@ -59,6 +59,15 @@ describe('scopedArgs', () => {
     expect(scopedArgs('browse_vulnerabilities', { action: 'list' }, scope)).toEqual(expected);
   });
 
+  // The caller's own activity spans every project.
+  it('shows the activity of the scope project instead of all activity', () => {
+    expect(scopedArgs('browse_events', { action: 'user', sort: 'desc' }, project)).toEqual({
+      action: 'project',
+      project_id: 'team/app',
+      sort: 'desc',
+    });
+  });
+
   it('lists the merge requests of the scope project', () => {
     expect(
       scopedArgs('browse_merge_requests', { action: 'list', state: 'opened' }, project),
@@ -80,6 +89,8 @@ describe('scopedArgs', () => {
     ['manage_project', { action: 'create', name: 'app', namespace: 'team/sub' }, group],
     ['manage_project', { action: 'delete', project_id: 'team/app' }, group],
     ['manage_project', { action: 'create', name: 'app' }, project],
+    ['browse_events', { action: 'project', project_id: 'team/app' }, project],
+    ['browse_events', { action: 'user' }, group],
   ])('leaves %s %j under %j as it is', (tool, args, scope) => {
     expect(scopedArgs(tool, args, scope)).toBe(args);
   });
@@ -134,6 +145,13 @@ describe('targetlessRestriction', () => {
     ['manage_namespace', { action: 'create', name: 'Team', path: 'team2' }, group],
   ])('refuses %s %j under %j', (tool, args, scope) => {
     expect(targetlessRestriction(tool, args, scope)).toMatch(/outside the working scope/);
+  });
+
+  // Events carry only a numeric project id, which a group scope cannot be matched against.
+  it.each([group, several])('refuses the caller activity feed under %j', (scope) => {
+    expect(targetlessRestriction('browse_events', { action: 'user' }, scope)).toMatch(
+      /activity cannot be limited/,
+    );
   });
 
   it('refuses a vulnerability listing a scope of several targets cannot narrow', () => {

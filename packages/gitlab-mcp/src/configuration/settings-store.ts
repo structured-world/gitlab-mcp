@@ -148,9 +148,10 @@ export class LocalSettingsFile implements SettingsStore {
 
   /**
    * Removes a lock left by a dead process; true when the lock can be taken again at once.
-   * The lock is claimed by an atomic rename and its identity checked, because between the
-   * age check and the removal another process may have replaced the dead lock with a fresh
-   * one; that one is put back instead of removed.
+   * The lock is claimed by an atomic rename and checked again, because between the age check
+   * and the removal another process may have replaced the dead lock with a fresh one; that
+   * one is put back instead of removed. The claimed lock must still be old: an inode check
+   * alone cannot tell, as Linux reuses a freed inode number at once.
    */
   private async removeStaleLock(lockPath: string): Promise<boolean> {
     let seen: fs.Stats;
@@ -169,7 +170,8 @@ export class LocalSettingsFile implements SettingsStore {
       return true;
     }
     const taken = await fs.promises.stat(claimed);
-    if (taken.ino !== seen.ino || taken.dev !== seen.dev) {
+    const sameLock = taken.ino === seen.ino && taken.dev === seen.dev;
+    if (!sameLock || Date.now() - taken.mtimeMs < STALE_LOCK_MS) {
       // A fresh lock taken after the age check: hand it back to its holder. If the path was
       // taken again meanwhile, that newer lock stays and this one is dropped.
       await fs.promises.link(claimed, lockPath).catch(() => undefined);

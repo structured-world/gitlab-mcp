@@ -523,6 +523,21 @@ describe('enforceArgsScope', () => {
     expect(() => enforceArgsScope(new ScopeEnforcer(scope), args)).toThrow(ScopeViolationError);
   });
 
+  // A namespace argument names a project or a group (labels, wiki, milestones of either):
+  // the scope group itself is a valid namespace also when its subgroups are not included.
+  it.each([
+    [{ group: 'team', includeSubgroups: false }, { namespace: 'team' }, false],
+    [{ group: 'team', includeSubgroups: false }, { fullPath: 'team' }, false],
+    [{ group: 'team', includeSubgroups: false }, { namespace: 'team/app' }, false],
+    [{ group: 'team', includeSubgroups: false }, { namespace: 'other' }, true],
+    [{ project: 'team/app' }, { namespace: 'team' }, true],
+  ])('checks a namespace under %j by project or group: %j', (scope, args, refused) => {
+    const check = () => enforceArgsScope(new ScopeEnforcer(scope), args);
+
+    if (refused) expect(check).toThrow(ScopeViolationError);
+    else expect(check).not.toThrow();
+  });
+
   it('should allow a destination inside the scope', () => {
     const enforcer = new ScopeEnforcer({ group: 'team', includeSubgroups: true });
 

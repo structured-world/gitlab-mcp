@@ -21,6 +21,33 @@ const MAX_UPSTREAM_PAGES = 10;
 const DEFAULT_PAGE_SIZE = 20;
 /** Listing options a scope made of projects can apply to its projects itself. */
 const PROJECT_LIST_OPTIONS = new Set(['action', 'search', 'page', 'per_page', 'simple']);
+/** GitLab's simple project representation (BasicProjectDetails), returned unless simple=false. */
+const SIMPLE_PROJECT_FIELDS: ReadonlySet<string> = new Set([
+  'id',
+  'description',
+  'name',
+  'name_with_namespace',
+  'path',
+  'path_with_namespace',
+  'created_at',
+  'default_branch',
+  'tag_list',
+  'topics',
+  'ssh_url_to_repo',
+  'http_url_to_repo',
+  'web_url',
+  'readme_url',
+  'forks_count',
+  'license_url',
+  'license',
+  'avatar_url',
+  'star_count',
+  'last_activity_at',
+  'visibility',
+  'namespace',
+  'custom_attributes',
+  'repository_storage',
+]);
 const TODO_CONCURRENCY = 5;
 
 const numberOr = (value: unknown, fallback: number): number =>
@@ -55,7 +82,8 @@ export async function executeScoped(
 /**
  * The requested page of a listing filtered to the scope. GitLab paginates before the scope
  * filters, so its pages are read in turn until the scoped page is full or GitLab has no
- * more rows; at most MAX_UPSTREAM_PAGES pages are read for one call.
+ * more rows. At most MAX_UPSTREAM_PAGES pages are read for one call; a page still short
+ * then is returned as partial, so it is not taken for the end of the results.
  */
 async function fillScopedPage(
   run: RunTool,
@@ -67,14 +95,22 @@ async function fillScopedPage(
   const page = numberOr(args.page, 1);
   const wanted = page * perPage;
   const rows: unknown[] = [];
+  let exhausted = false;
   // Pages are read one after another: whether the next one is needed depends on this one.
   for (let upstream = 1; upstream <= MAX_UPSTREAM_PAGES && rows.length < wanted; upstream++) {
     const result = await run(tool, { ...args, page: upstream, per_page: UPSTREAM_PAGE_SIZE });
     if (!Array.isArray(result)) return result;
     rows.push(...(scopedResult(tool, args, result, enforcer) as unknown[]));
-    if (result.length < UPSTREAM_PAGE_SIZE) break;
+    exhausted = result.length < UPSTREAM_PAGE_SIZE;
+    if (exhausted) break;
   }
-  return rows.slice((page - 1) * perPage, wanted);
+  const items = rows.slice((page - 1) * perPage, wanted);
+  if (exhausted || rows.length >= wanted) return items;
+  return {
+    items,
+    partial: true,
+    message: `Read the first ${MAX_UPSTREAM_PAGES * UPSTREAM_PAGE_SIZE} rows GitLab returned and found ${rows.length} in the working scope; more may follow. Narrow the listing (for example with a search) to see the rest.`,
+  };
 }
 
 /**
@@ -110,7 +146,18 @@ async function listScopeProjects(
   });
   const perPage = numberOr(requested.per_page, DEFAULT_PAGE_SIZE);
   const page = numberOr(requested.page, 1);
-  return matching.slice((page - 1) * perPage, page * perPage);
+  const listed = matching.slice((page - 1) * perPage, page * perPage);
+  // A project is read in full; a listing answers with the simple representation unless
+  // simple=false, as GitLab does (its schema default is true).
+  return requested.simple === false ? listed : listed.map(simpleProject);
+}
+
+function simpleProject(project: unknown): unknown {
+  return Object.fromEntries(
+    Object.entries(project as Record<string, unknown>).filter(([key]) =>
+      SIMPLE_PROJECT_FIELDS.has(key),
+    ),
+  );
 }
 
 /**

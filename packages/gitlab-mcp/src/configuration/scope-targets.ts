@@ -35,6 +35,12 @@ export function targetlessRestriction(tool: string, args: Args, scope: ScopeConf
   if (tool === 'browse_search' && args.action === 'global') {
     return unnarrowable(scope, 'a global search cannot be limited', 'search within');
   }
+  // Events name their project only by numeric id, which a path scope cannot be matched
+  // against; a single project scope reads that project's events instead.
+  const target = singleTarget(scope);
+  if (tool === 'browse_events' && args.action === 'user' && !(target && 'project' in target)) {
+    return "your activity cannot be limited to a working scope of a group or several projects; list a project's events with action 'project'";
+  }
   return null;
 }
 
@@ -126,6 +132,11 @@ const NARROWERS: Record<string, (args: Args, target: Target, scope: ScopeConfig)
   browse_merge_requests: (args, target) =>
     args.action === 'list' && !hasValue(args.project_id) && 'project' in target
       ? { ...args, project_id: target.project }
+      : null,
+  // The caller's own activity spans every project; a project scope shows that project's.
+  browse_events: (args, target) =>
+    args.action === 'user' && 'project' in target
+      ? { ...args, action: 'project', project_id: target.project }
       : null,
   browse_vulnerabilities: (args, target) => {
     if (!isTargetlessList(args)) return null;

@@ -63,6 +63,51 @@ describe('executeScoped', () => {
     ).toMatchObject({ success: false, marked: 0, failed: [{ id: 1, error: 'rate limited' }] });
   });
 
+  // A project listing answers with GitLab's simple representation unless simple is false;
+  // the scope's projects are read one by one, which returns the full one.
+  it.each([
+    [{ action: 'list' }, ['id', 'name', 'path_with_namespace', 'namespace']],
+    [{ action: 'list', simple: true }, ['id', 'name', 'path_with_namespace', 'namespace']],
+    [
+      { action: 'list', simple: false },
+      ['id', 'name', 'path_with_namespace', 'namespace', 'permissions', 'statistics'],
+    ],
+  ])('lists the scope project %j with the fields %j', async (args, fields) => {
+    const run = jest.fn().mockResolvedValue({
+      id: 7,
+      name: 'App',
+      path_with_namespace: 'team/app',
+      namespace: { full_path: 'team' },
+      permissions: { project_access: null },
+      statistics: { commit_count: 3 },
+    });
+
+    const [project] = (await executeScoped(run, 'browse_projects', args, projectPolicy)) as Array<
+      Record<string, unknown>
+    >;
+
+    expect(Object.keys(project).sort()).toEqual([...fields].sort());
+  });
+
+  // Reading stops after a bounded number of GitLab pages; a page that could not be filled
+  // then says so instead of looking like the end of the results.
+  it('reports a page it could not fill within the rows it reads', async () => {
+    const outside = Array.from({ length: 100 }, (_, i) => ({ path_with_namespace: `other/p${i}` }));
+    const run = jest.fn(async (_tool: string, args: Record<string, unknown>) =>
+      args.page === 3 ? [...outside.slice(1), { path_with_namespace: 'team/app' }] : outside,
+    );
+
+    const result = await executeScoped(run, 'browse_projects', { action: 'search' }, groupPolicy);
+
+    expect(run).toHaveBeenCalledTimes(10);
+    expect(result).toEqual({
+      items: [{ path_with_namespace: 'team/app' }],
+      partial: true,
+      message:
+        'Read the first 1000 rows GitLab returned and found 1 in the working scope; more may follow. Narrow the listing (for example with a search) to see the rest.',
+    });
+  });
+
   it('fails a project scope listing on a failure that is not an Error', async () => {
     const run = jest.fn().mockRejectedValue('connection reset');
 

@@ -451,10 +451,8 @@ export class FileStorageBackend implements SessionStorageBackend {
     await this.persistNow();
   }
 
-  async pruneUnusedClients(registeredFrom: string, keep: number): Promise<number> {
-    const removed = await this.memory.pruneUnusedClients(registeredFrom, keep);
-    if (removed > 0) this.scheduleSave();
-    return removed;
+  async countClientsRegisteredSince(registeredFrom: string, since: number): Promise<number> {
+    return this.memory.countClientsRegisteredSince(registeredFrom, since);
   }
 
   // Single-use consumption and refresh rotation: written through before they are

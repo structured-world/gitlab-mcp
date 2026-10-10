@@ -452,8 +452,8 @@ describe('FileStorageBackend', () => {
       }
     });
 
-    // Pruned registrations are saved with the debounce; nothing is saved when none went.
-    it('saves pruned registrations', async () => {
+    // The hourly count of a source survives a restart: registrations are written through.
+    it('counts registrations of a source after a restart', async () => {
       await seeded();
       const client = (clientId: string, createdAt: number) => ({
         clientId,
@@ -467,13 +467,10 @@ describe('FileStorageBackend', () => {
       });
       await storage.storeClient(client('older', 1));
       await storage.storeClient(client('newer', 2));
-
-      expect(await storage.pruneUnusedClients('source-hash', 1)).toBe(1);
-      await storage.forceSave();
       const restarted = await reloadAfterCrash();
 
-      expect(await restarted.getClient('older')).toBeUndefined();
-      expect(await restarted.getClient('newer')).toBeDefined();
+      expect(await restarted.countClientsRegisteredSince('source-hash', 2)).toBe(1);
+      expect(await restarted.countClientsRegisteredSince('source-hash', 0)).toBe(2);
       await restarted.close();
     });
 

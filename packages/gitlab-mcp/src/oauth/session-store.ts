@@ -313,8 +313,8 @@ export class SessionStore {
   }
 
   /** Keep only the newest `keep` never-used registrations of one source. */
-  async pruneUnusedClients(registeredFrom: string, keep: number): Promise<number> {
-    return this.backend.pruneUnusedClients(registeredFrom, keep);
+  async countClientsRegisteredSince(registeredFrom: string, since: number): Promise<number> {
+    return this.backend.countClientsRegisteredSince(registeredFrom, since);
   }
 
   // ============================================================

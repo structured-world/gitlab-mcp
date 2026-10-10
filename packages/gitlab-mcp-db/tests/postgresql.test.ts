@@ -41,6 +41,7 @@ const createMockPrisma = () => ({
     findMany: jest.fn().mockResolvedValue([]),
     updateMany: jest.fn().mockResolvedValue({ count: 0 }),
     deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+    count: jest.fn().mockResolvedValue(0),
   },
   deviceFlowState: {
     upsert: jest.fn().mockResolvedValue({}),
@@ -896,27 +897,15 @@ describe('PostgreSQLStorageBackend', () => {
       });
     });
 
-    it('removes never-used registrations of a source beyond the newest kept', async () => {
-      mockPrisma.oAuthClient.findMany.mockResolvedValueOnce([{ clientId: 'old-1' }]);
-      mockPrisma.oAuthClient.deleteMany.mockResolvedValueOnce({ count: 1 });
+    // Registrations are limited per source and hour: counted, never deleted for the limit.
+    it('counts the registrations of a source since a time', async () => {
+      mockPrisma.oAuthClient.count.mockResolvedValueOnce(7);
 
-      expect(await backend.pruneUnusedClients('source-a', 100)).toBe(1);
+      expect(await backend.countClientsRegisteredSince('source-a', 1000)).toBe(7);
 
-      expect(mockPrisma.oAuthClient.findMany).toHaveBeenCalledWith({
-        where: { registeredFrom: 'source-a', expiresAt: { not: null } },
-        orderBy: [{ createdAt: 'desc' }, { clientId: 'desc' }],
-        skip: 100,
-        select: { clientId: true },
+      expect(mockPrisma.oAuthClient.count).toHaveBeenCalledWith({
+        where: { registeredFrom: 'source-a', createdAt: { gte: BigInt(1000) } },
       });
-      expect(mockPrisma.oAuthClient.deleteMany).toHaveBeenCalledWith({
-        where: { clientId: { in: ['old-1'] }, expiresAt: { not: null } },
-      });
-    });
-
-    it('removes nothing when a source is within its limit', async () => {
-      mockPrisma.oAuthClient.findMany.mockResolvedValueOnce([]);
-
-      expect(await backend.pruneUnusedClients('source-a', 100)).toBe(0);
       expect(mockPrisma.oAuthClient.deleteMany).not.toHaveBeenCalled();
     });
   });

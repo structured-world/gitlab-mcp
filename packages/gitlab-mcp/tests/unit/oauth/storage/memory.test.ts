@@ -310,8 +310,9 @@ describe('MemoryStorageBackend', () => {
     });
   });
 
-  // Anonymous registration must not grow storage without bound: never-used registrations
-  // are capped per source and expire; a client that completed an authorization stays.
+  // Anonymous registration must not grow storage without bound: registrations per source
+  // are limited per hour and never-used ones expire; a client that completed an
+  // authorization stays.
   describe('dynamic client registrations', () => {
     const client = (id: string, createdAt: number, from = 'source-a') => ({
       clientId: id,
@@ -324,18 +325,14 @@ describe('MemoryStorageBackend', () => {
       expiresAt: createdAt + 1000,
     });
 
-    it('keeps the newest unused registrations of a source and spares used ones', async () => {
-      for (let i = 1; i <= 4; i++) await storage.storeClient(client(`c${i}`, i));
-      await storage.storeClient(client('other', 0, 'source-b'));
-      await storage.markClientUsed('c1');
+    it('counts the registrations of a source since a time, used ones included', async () => {
+      for (let i = 1; i <= 4; i++) await storage.storeClient(client(`c${i}`, i * 10));
+      await storage.storeClient(client('other', 30, 'source-b'));
+      await storage.markClientUsed('c3');
 
-      expect(await storage.pruneUnusedClients('source-a', 2)).toBe(1);
-
-      expect(await storage.getClient('c1')).toBeDefined();
-      expect(await storage.getClient('c2')).toBeUndefined();
-      expect(await storage.getClient('c3')).toBeDefined();
-      expect(await storage.getClient('c4')).toBeDefined();
-      expect(await storage.getClient('other')).toBeDefined();
+      expect(await storage.countClientsRegisteredSince('source-a', 20)).toBe(3);
+      expect(await storage.countClientsRegisteredSince('source-a', 41)).toBe(0);
+      expect(await storage.countClientsRegisteredSince('source-b', 0)).toBe(1);
     });
 
     it('removes expired unused registrations on cleanup', async () => {

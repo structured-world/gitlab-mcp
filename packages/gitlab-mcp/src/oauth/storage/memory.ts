@@ -222,14 +222,12 @@ export class MemoryStorageBackend implements SessionStorageBackend {
     }
   }
 
-  async pruneUnusedClients(registeredFrom: string, keep: number): Promise<number> {
-    // Newest first; of registrations in the same millisecond the later stored is newer.
-    const unused = [...this.clients.values()]
-      .filter((c) => c.registeredFrom === registeredFrom && c.expiresAt !== undefined)
-      .reverse()
-      .sort((a, b) => b.createdAt - a.createdAt);
-    for (const client of unused.slice(keep)) this.clients.delete(client.clientId);
-    return Math.max(0, unused.length - keep);
+  async countClientsRegisteredSince(registeredFrom: string, since: number): Promise<number> {
+    let count = 0;
+    for (const client of this.clients.values()) {
+      if (client.registeredFrom === registeredFrom && client.createdAt >= since) count++;
+    }
+    return count;
   }
 
   // Single-use consumption: lookup and removal run without an await in between, so in

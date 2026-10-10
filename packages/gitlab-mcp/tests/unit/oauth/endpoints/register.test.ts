@@ -7,7 +7,7 @@ import {
   registerHandler,
   getRegisteredClient,
   isValidRedirectUri,
-  UNUSED_REGISTRATIONS_PER_SOURCE,
+  REGISTRATIONS_PER_SOURCE_PER_HOUR,
 } from '../../../../src/oauth/endpoints/register';
 import { sessionStore } from '../../../../src/oauth/session-store';
 import { loadOAuthConfig } from '../../../../src/oauth/config';
@@ -84,13 +84,34 @@ describe('OAuth Dynamic Client Registration', () => {
       ).toMatchObject({ registeredFrom: stored?.registeredFrom });
     });
 
-    it('keeps a bounded number of unused registrations per source', async () => {
+    // Over its hourly limit a source is refused rather than losing registrations: a client
+    // that registered earlier (possibly behind the same proxy or NAT, and still signing in)
+    // is never removed by someone else's registrations.
+    it('refuses registrations beyond the hourly limit of a source and keeps earlier ones', async () => {
       const first = await registerFrom('203.0.113.9');
-      const elsewhere = await registerFrom('203.0.113.10');
-      for (let i = 0; i < UNUSED_REGISTRATIONS_PER_SOURCE; i++) await registerFrom('203.0.113.9');
+      for (let i = 1; i < REGISTRATIONS_PER_SOURCE_PER_HOUR; i++) {
+        await registerFrom('203.0.113.9');
+      }
+      const json = jest.fn();
+      const status = jest.fn().mockReturnValue({ json });
+      const set = jest.fn();
 
-      expect(await sessionStore.getClient(first)).toBeUndefined();
-      expect(await sessionStore.getClient(elsewhere)).toBeDefined();
+      await registerHandler(
+        {
+          ip: '203.0.113.9',
+          body: { redirect_uris: ['https://example.com/callback'] },
+        } as unknown as Request,
+        { status, set } as unknown as Response,
+      );
+
+      expect(status).toHaveBeenCalledWith(429);
+      expect(set).toHaveBeenCalledWith('Retry-After', '3600');
+      expect(json).toHaveBeenCalledWith({
+        error: 'temporarily_unavailable',
+        error_description: 'Too many client registrations from this address; retry later',
+      });
+      expect(await sessionStore.getClient(first)).toBeDefined();
+      expect(await registerFrom('203.0.113.10')).toEqual(expect.any(String));
     });
 
     it('treats an expired unused registration as unknown', async () => {

@@ -14,10 +14,13 @@ import type { RegisteredOAuthClient } from '../types';
 
 /**
  * Registration is anonymous and durable (RFC 7591 section 3 allows an open endpoint), so
- * what one source can occupy is bounded: at most this many never-used registrations per
- * source, the oldest removed first; a client that completed an authorization is kept.
+ * what one source can occupy is bounded: at most this many registrations per source in
+ * any hour, and never-used ones expire. Over the limit new registrations are refused
+ * (RFC 6585 429); none is removed for it, because sources behind one proxy or NAT share
+ * an address and an earlier client may still be signing in.
  */
-export const UNUSED_REGISTRATIONS_PER_SOURCE = 100;
+export const REGISTRATIONS_PER_SOURCE_PER_HOUR = 100;
+const REGISTRATION_WINDOW_MS = 60 * 60 * 1000;
 /** A registration that never completes an authorization is removed after this long. */
 const UNUSED_REGISTRATION_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -107,6 +110,24 @@ export async function registerHandler(req: Request, res: Response): Promise<void
       }
     }
 
+    // Concurrent registrations of one source may each pass the count: the limit is a
+    // bound on storage, not an exact quota.
+    const createdAt = Date.now();
+    const registeredFrom = registrationSource(req, config.sessionSecret);
+    const recent = await sessionStore.countClientsRegisteredSince(
+      registeredFrom,
+      createdAt - REGISTRATION_WINDOW_MS,
+    );
+    if (recent >= REGISTRATIONS_PER_SOURCE_PER_HOUR) {
+      logWarn('Client registration refused: hourly limit of the source reached', { recent });
+      res.set('Retry-After', String(REGISTRATION_WINDOW_MS / 1000));
+      res.status(429).json({
+        error: 'temporarily_unavailable',
+        error_description: 'Too many client registrations from this address; retry later',
+      });
+      return;
+    }
+
     // Generate client credentials
     const client_id = randomUUID();
 
@@ -119,8 +140,6 @@ export async function registerHandler(req: Request, res: Response): Promise<void
 
     // Store client registration in the shared storage backend, so every replica and every
     // restart knows the client; the response is sent only once the registration is stored.
-    const createdAt = Date.now();
-    const registeredFrom = registrationSource(req, config.sessionSecret);
     await sessionStore.storeClient({
       clientId: client_id,
       clientSecret: client_secret,
@@ -133,14 +152,6 @@ export async function registerHandler(req: Request, res: Response): Promise<void
       registeredFrom,
       expiresAt: createdAt + UNUSED_REGISTRATION_TTL_MS,
     });
-    const pruned = await sessionStore.pruneUnusedClients(
-      registeredFrom,
-      UNUSED_REGISTRATIONS_PER_SOURCE,
-    );
-    if (pruned > 0) {
-      logWarn('Removed unused client registrations of a source over its limit', { pruned });
-    }
-
     logInfo('New OAuth client registered via DCR', {
       client_id,
       client_name,

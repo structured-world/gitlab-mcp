@@ -184,6 +184,7 @@ interface GenericPrismaClient {
     findMany(args: unknown): Promise<unknown>;
     updateMany(args: unknown): Promise<unknown>;
     deleteMany(args: unknown): Promise<unknown>;
+    count(args: unknown): Promise<number>;
   };
   deviceFlowState: {
     upsert(args: unknown): Promise<unknown>;
@@ -748,20 +749,11 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
     });
   }
 
-  async pruneUnusedClients(registeredFrom: string, keep: number): Promise<number> {
+  async countClientsRegisteredSince(registeredFrom: string, since: number): Promise<number> {
     const prisma = this.getPrisma();
-    const surplus = (await prisma.oAuthClient.findMany({
-      where: { registeredFrom, expiresAt: { not: null } },
-      orderBy: [{ createdAt: 'desc' }, { clientId: 'desc' }],
-      skip: keep,
-      select: { clientId: true },
-    })) as Array<{ clientId: string }>;
-    if (surplus.length === 0) return 0;
-    // A client used since the read keeps its registration.
-    const removed = (await prisma.oAuthClient.deleteMany({
-      where: { clientId: { in: surplus.map((c) => c.clientId) }, expiresAt: { not: null } },
-    })) as PrismaBatchPayload;
-    return removed.count;
+    return prisma.oAuthClient.count({
+      where: { registeredFrom, createdAt: { gte: BigInt(since) } },
+    });
   }
 
   async getClient(clientId: string): Promise<RegisteredOAuthClientType | undefined> {

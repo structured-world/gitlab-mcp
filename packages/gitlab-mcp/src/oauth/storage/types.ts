@@ -62,11 +62,8 @@ export interface SessionStorageBackend {
   getClient(clientId: string): Promise<RegisteredOAuthClient | undefined>;
   /** Record that the client completed an authorization: its registration no longer expires. */
   markClientUsed(clientId: string): Promise<void>;
-  /**
-   * Remove the oldest never-used registrations of `registeredFrom` beyond the newest
-   * `keep`; returns how many were removed. Used registrations are never removed.
-   */
-  pruneUnusedClients(registeredFrom: string, keep: number): Promise<number>;
+  /** How many clients `registeredFrom` registered at or after `since` (epoch ms), used or not. */
+  countClientsRegisteredSince(registeredFrom: string, since: number): Promise<number>;
 
   // Single-use consumption: of concurrent callers on any replica, exactly one receives
   // the record and the record is gone afterwards.

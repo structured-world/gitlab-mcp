@@ -79,9 +79,19 @@ describe('SessionManager', () => {
       manager.start();
       await manager.createSession('session-1', mockTransport);
 
+      // The native settings page is advertised with the tools that serve it, and the
+      // settings panel with the resources capability.
       expect(Server).toHaveBeenCalledWith(
         { name: 'test-package', version: '1.0.0' },
-        { capabilities: { tools: { listChanged: true } } },
+        {
+          capabilities: {
+            tools: { listChanged: true },
+            resources: {},
+            experimental: {
+              'openai/settings': { readTool: 'get_settings', updateTool: 'update_settings' },
+            },
+          },
+        },
       );
       expect(manager.activeSessionCount).toBe(1);
     });
@@ -242,6 +252,30 @@ describe('SessionManager', () => {
     it('should work with zero sessions', async () => {
       manager.start();
       await expect(manager.broadcastToolsListChanged()).resolves.toBeUndefined();
+    });
+  });
+
+  // A settings change re-lists tools only in the sessions it affects.
+  describe('notifyToolsListChanged', () => {
+    it('notifies the named sessions and no others', async () => {
+      manager.start();
+      const server1 = await manager.createSession('session-1', mockTransport);
+      const server2 = await manager.createSession('session-2', mockTransport);
+
+      await manager.notifyToolsListChanged(['session-1', 'closed-elsewhere']);
+
+      expect(server1.notification).toHaveBeenCalledWith({
+        method: 'notifications/tools/list_changed',
+      });
+      expect(server2.notification).not.toHaveBeenCalled();
+    });
+
+    it('does not fail when a session cannot be notified', async () => {
+      manager.start();
+      const server1 = await manager.createSession('session-1', mockTransport);
+      (server1.notification as jest.Mock).mockRejectedValueOnce(new Error('Disconnected'));
+
+      await expect(manager.notifyToolsListChanged(['session-1'])).resolves.toBeUndefined();
     });
   });
 

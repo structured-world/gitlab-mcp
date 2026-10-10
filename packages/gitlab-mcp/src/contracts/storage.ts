@@ -19,3 +19,4 @@ export type {
   RegisteredOAuthClient,
   GitLabTokenResponse,
 } from '../oauth/types';
+export type { AccountSettings, AccountSettingsRecord } from '../configuration/types';

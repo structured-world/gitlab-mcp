@@ -1,5 +1,6 @@
 import {
   detectNamespaceType,
+  findNamespaceType,
   resolveNamespaceForAPI,
   extractNamespaceFromPath,
 } from '../../../src/utils/namespace';
@@ -52,6 +53,33 @@ describe('Namespace Utils Coverage Tests', () => {
 
     it('should return undefined for empty string', () => {
       expect(extractNamespaceFromPath('')).toBeUndefined();
+    });
+  });
+
+  // Only a type GitLab confirms: a scope must never be saved from a guess.
+  describe('findNamespaceType', () => {
+    it('returns the type GitLab confirms', async () => {
+      mockEnhancedFetch
+        .mockResolvedValueOnce({ ok: false, status: 404 } as Response)
+        .mockResolvedValueOnce({ ok: true, status: 200 } as Response);
+
+      expect(await findNamespaceType('team')).toBe('project');
+    });
+
+    it.each(['team', 'team/app'])(
+      'returns null for %s when GitLab knows neither type',
+      async (path) => {
+        mockEnhancedFetch.mockResolvedValue({ ok: false, status: 404 } as Response);
+
+        expect(await findNamespaceType(path)).toBeNull();
+        expect(mockEnhancedFetch).toHaveBeenCalledTimes(2);
+      },
+    );
+
+    it('returns null when GitLab cannot be reached', async () => {
+      mockEnhancedFetch.mockRejectedValue(new Error('Network error'));
+
+      expect(await findNamespaceType('team/app')).toBeNull();
     });
   });
 

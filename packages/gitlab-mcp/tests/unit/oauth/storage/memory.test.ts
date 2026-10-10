@@ -951,4 +951,97 @@ describe('MemoryStorageBackend', () => {
       expect(sessions.length).toBe(10);
     });
   });
+
+  // Account settings are written compare-and-set: an edit made against an older version
+  // never overwrites a newer one, and of concurrent writes of one version exactly one wins.
+  describe('account settings', () => {
+    beforeEach(async () => {
+      storage = new MemoryStorageBackend({ silent: true });
+      await storage.initialize();
+    });
+
+    afterEach(async () => {
+      await storage.close();
+    });
+
+    it('has no settings for an unknown account', async () => {
+      expect(await storage.getAccountSettings('acct')).toBeUndefined();
+    });
+
+    it('stores the first settings at version 1 and returns them', async () => {
+      const stored = await storage.putAccountSettings('acct', { readOnly: true }, 0);
+
+      expect(stored).toEqual({
+        accountKey: 'acct',
+        settings: { readOnly: true },
+        version: 1,
+        updatedAt: expect.any(Number),
+      });
+      expect(await storage.getAccountSettings('acct')).toEqual(stored);
+    });
+
+    it('replaces the settings when the expected version is current', async () => {
+      await storage.putAccountSettings('acct', { readOnly: true }, 0);
+
+      const stored = await storage.putAccountSettings('acct', { preset: 'readonly' }, 1);
+
+      expect(stored?.version).toBe(2);
+      expect((await storage.getAccountSettings('acct'))?.settings).toEqual({
+        preset: 'readonly',
+      });
+    });
+
+    // The stored settings are at version 2 when the stale write arrives.
+    it.each([
+      ['an older version', 1],
+      ['a newer version', 5],
+      ['none stored when some are', 0],
+    ])('refuses a write against %s', async (_case, expected) => {
+      await storage.putAccountSettings('acct', { readOnly: true }, 0);
+      await storage.putAccountSettings('acct', { readOnly: false }, 1);
+
+      const refused = await storage.putAccountSettings('acct', { preset: 'pm' }, expected);
+
+      expect(refused).toBeUndefined();
+      expect((await storage.getAccountSettings('acct'))?.settings).toEqual({ readOnly: false });
+    });
+
+    it('lets exactly one of concurrent writes of one version win', async () => {
+      const results = await Promise.all([
+        storage.putAccountSettings('acct', { preset: 'a' }, 0),
+        storage.putAccountSettings('acct', { preset: 'b' }, 0),
+      ]);
+
+      expect(results.filter((r) => r !== undefined)).toHaveLength(1);
+    });
+
+    it('keeps the settings of each account apart', async () => {
+      await storage.putAccountSettings('one', { readOnly: true }, 0);
+      await storage.putAccountSettings('two', { preset: 'pm' }, 0);
+
+      expect((await storage.getAccountSettings('one'))?.settings).toEqual({ readOnly: true });
+      expect((await storage.getAccountSettings('two'))?.settings).toEqual({ preset: 'pm' });
+    });
+
+    // A caller mutating what it read or what it wrote must not change the stored record.
+    it('returns copies, not the stored record', async () => {
+      const stored = await storage.putAccountSettings('acct', { disabledToolGroups: ['wiki'] }, 0);
+      stored?.settings.disabledToolGroups?.push('mrs');
+      const read = await storage.getAccountSettings('acct');
+      read?.settings.disabledToolGroups?.push('labels');
+
+      expect((await storage.getAccountSettings('acct'))?.settings).toEqual({
+        disabledToolGroups: ['wiki'],
+      });
+    });
+
+    it('exports and imports the settings', async () => {
+      await storage.putAccountSettings('acct', { readOnly: true }, 0);
+      const restored = new MemoryStorageBackend({ silent: true });
+
+      restored.importData(storage.exportData());
+
+      expect((await restored.getAccountSettings('acct'))?.version).toBe(1);
+    });
+  });
 });

@@ -16,6 +16,7 @@ import {
   ManageTodosSchema,
 } from './schema';
 import { enhancedFetch } from '../../utils/fetch';
+import { getGitLabBaseUrl } from '../../utils/gitlab-base-url';
 import { normalizeProjectId } from '../../utils/projectIdentifier';
 import { fetchUsers, smartUserSearch, type UserSearchParams } from '../../utils/smart-user-search';
 import { cleanGidsFromObject } from '../../utils/idConversion';
@@ -143,7 +144,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
 
             queryParams.set('active', 'true');
 
-            const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects?${queryParams}`;
+            const apiUrl = `${getGitLabBaseUrl()}/api/v4/projects?${queryParams}`;
             const response = await enhancedFetch(apiUrl);
 
             if (!response.ok) {
@@ -224,19 +225,19 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
             let apiUrl: string;
             if (group_id) {
               if (active !== undefined) applyActiveFilter(active, '18.8');
-              apiUrl = `${process.env.GITLAB_API_URL}/api/v4/groups/${normalizeProjectId(group_id)}/projects?${queryParams}`;
+              apiUrl = `${getGitLabBaseUrl()}/api/v4/groups/${normalizeProjectId(group_id)}/projects?${queryParams}`;
             } else if (include_deleted) {
               // include_pending_delete returns soft-deleted projects; do NOT also send
               // active=true, which would filter them back out (admin only).
               queryParams.set('include_pending_delete', 'true');
-              apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects?${queryParams}`;
+              apiUrl = `${getGitLabBaseUrl()}/api/v4/projects?${queryParams}`;
             } else if (active !== undefined) {
               applyActiveFilter(active, '18.5');
-              apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects?${queryParams}`;
+              apiUrl = `${getGitLabBaseUrl()}/api/v4/projects?${queryParams}`;
             } else {
               // Default: list active projects (historical behaviour, unchanged).
               queryParams.set('active', 'true');
-              apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects?${queryParams}`;
+              apiUrl = `${getGitLabBaseUrl()}/api/v4/projects?${queryParams}`;
             }
 
             const response = await enhancedFetch(apiUrl);
@@ -256,7 +257,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
             if (statistics) queryParams.set('statistics', 'true');
             if (license) queryParams.set('license', 'true');
 
-            const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${normalizeProjectId(project_id)}?${queryParams}`;
+            const apiUrl = `${getGitLabBaseUrl()}/api/v4/projects/${normalizeProjectId(project_id)}?${queryParams}`;
             const response = await enhancedFetch(apiUrl);
 
             if (!response.ok) {
@@ -312,7 +313,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
             if (per_page) queryParams.set('per_page', String(per_page));
             if (page) queryParams.set('page', String(page));
 
-            const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/namespaces?${queryParams}`;
+            const apiUrl = `${getGitLabBaseUrl()}/api/v4/namespaces?${queryParams}`;
             const response = await enhancedFetch(apiUrl);
 
             if (!response.ok) {
@@ -326,7 +327,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
           case 'get': {
             const { namespace_id } = input;
 
-            const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/namespaces/${encodeURIComponent(namespace_id)}`;
+            const apiUrl = `${getGitLabBaseUrl()}/api/v4/namespaces/${encodeURIComponent(namespace_id)}`;
             const response = await enhancedFetch(apiUrl);
 
             if (!response.ok) {
@@ -340,7 +341,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
           case 'verify': {
             const { namespace_id } = input;
 
-            const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/namespaces/${encodeURIComponent(namespace_id)}`;
+            const apiUrl = `${getGitLabBaseUrl()}/api/v4/namespaces/${encodeURIComponent(namespace_id)}`;
             const response = await enhancedFetch(apiUrl);
 
             return {
@@ -404,7 +405,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
             if (per_page) queryParams.set('per_page', String(per_page));
             if (page) queryParams.set('page', String(page));
 
-            const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(project_id)}/repository/commits?${queryParams}`;
+            const apiUrl = `${getGitLabBaseUrl()}/api/v4/projects/${encodeURIComponent(project_id)}/repository/commits?${queryParams}`;
             const response = await enhancedFetch(apiUrl);
 
             if (!response.ok) {
@@ -420,7 +421,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
             const queryParams = new URLSearchParams();
             if (stats) queryParams.set('stats', 'true');
 
-            const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(project_id)}/repository/commits/${encodeURIComponent(sha)}?${queryParams}`;
+            const apiUrl = `${getGitLabBaseUrl()}/api/v4/projects/${encodeURIComponent(project_id)}/repository/commits/${encodeURIComponent(sha)}?${queryParams}`;
             const response = await enhancedFetch(apiUrl);
 
             if (!response.ok) {
@@ -440,7 +441,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
             if (per_page) queryParams.set('per_page', String(per_page));
             if (page) queryParams.set('page', String(page));
 
-            const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(project_id)}/repository/commits/${encodeURIComponent(sha)}/diff?${queryParams}`;
+            const apiUrl = `${getGitLabBaseUrl()}/api/v4/projects/${encodeURIComponent(project_id)}/repository/commits/${encodeURIComponent(sha)}/diff?${queryParams}`;
             const response = await enhancedFetch(apiUrl);
 
             if (!response.ok) {
@@ -502,7 +503,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
         switch (input.action) {
           case 'user': {
             const queryParams = buildQueryParams(input);
-            const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/events?${queryParams}`;
+            const apiUrl = `${getGitLabBaseUrl()}/api/v4/events?${queryParams}`;
             const response = await enhancedFetch(apiUrl);
 
             if (!response.ok) {
@@ -515,7 +516,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
           case 'project': {
             const { project_id } = input;
             const queryParams = buildQueryParams(input);
-            const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(project_id)}/events?${queryParams}`;
+            const apiUrl = `${getGitLabBaseUrl()}/api/v4/projects/${encodeURIComponent(project_id)}/events?${queryParams}`;
             const response = await enhancedFetch(apiUrl);
 
             if (!response.ok) {
@@ -581,7 +582,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
           case 'get': {
             const { user_id } = input;
 
-            const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/users/${encodeURIComponent(user_id)}`;
+            const apiUrl = `${getGitLabBaseUrl()}/api/v4/users/${encodeURIComponent(user_id)}`;
             const response = await enhancedFetch(apiUrl);
 
             if (!response.ok) {
@@ -627,7 +628,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
               }
             });
 
-            const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/todos?${queryParams}`;
+            const apiUrl = `${getGitLabBaseUrl()}/api/v4/todos?${queryParams}`;
             const response = await enhancedFetch(apiUrl);
 
             if (!response.ok) {
@@ -702,7 +703,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
             let namespaceId: string | undefined;
             let resolvedNamespace: { id: string; full_path: string } | null = null;
             if (namespace) {
-              const namespaceApiUrl = `${process.env.GITLAB_API_URL}/api/v4/namespaces/${encodeURIComponent(namespace)}`;
+              const namespaceApiUrl = `${getGitLabBaseUrl()}/api/v4/namespaces/${encodeURIComponent(namespace)}`;
               const namespaceResponse = await enhancedFetch(namespaceApiUrl);
 
               if (namespaceResponse.ok) {
@@ -721,7 +722,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
               ? resolvedNamespace.full_path
               : 'current-user';
             const projectPath = `${targetNamespacePath}/${name}`;
-            const checkProjectUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(projectPath)}`;
+            const checkProjectUrl = `${getGitLabBaseUrl()}/api/v4/projects/${encodeURIComponent(projectPath)}`;
             const checkResponse = await enhancedFetch(checkProjectUrl);
 
             if (checkResponse.ok) {
@@ -767,7 +768,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
                 String(only_allow_merge_if_all_discussions_are_resolved),
               );
 
-            const createApiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects`;
+            const createApiUrl = `${getGitLabBaseUrl()}/api/v4/projects`;
             const createResponse = await enhancedFetch(createApiUrl, {
               method: 'POST',
               headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -799,7 +800,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
             if (fork_name) body.set('name', fork_name);
             if (fork_path) body.set('path', fork_path);
 
-            const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(project_id)}/fork`;
+            const apiUrl = `${getGitLabBaseUrl()}/api/v4/projects/${encodeURIComponent(project_id)}/fork`;
             const response = await enhancedFetch(apiUrl, {
               method: 'POST',
               headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -823,7 +824,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
               }
             });
 
-            const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${normalizeProjectId(project_id)}`;
+            const apiUrl = `${getGitLabBaseUrl()}/api/v4/projects/${normalizeProjectId(project_id)}`;
             const response = await enhancedFetch(apiUrl, {
               method: 'PUT',
               headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -840,7 +841,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
           case 'delete': {
             const { project_id } = input;
 
-            const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${normalizeProjectId(project_id)}`;
+            const apiUrl = `${getGitLabBaseUrl()}/api/v4/projects/${normalizeProjectId(project_id)}`;
             const response = await enhancedFetch(apiUrl, { method: 'DELETE' });
 
             if (!response.ok) {
@@ -853,7 +854,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
           case 'archive': {
             const { project_id } = input;
 
-            const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${normalizeProjectId(project_id)}/archive`;
+            const apiUrl = `${getGitLabBaseUrl()}/api/v4/projects/${normalizeProjectId(project_id)}/archive`;
             const response = await enhancedFetch(apiUrl, { method: 'POST' });
 
             if (!response.ok) {
@@ -866,7 +867,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
           case 'unarchive': {
             const { project_id } = input;
 
-            const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${normalizeProjectId(project_id)}/unarchive`;
+            const apiUrl = `${getGitLabBaseUrl()}/api/v4/projects/${normalizeProjectId(project_id)}/unarchive`;
             const response = await enhancedFetch(apiUrl, { method: 'POST' });
 
             if (!response.ok) {
@@ -882,7 +883,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
             const body = new URLSearchParams();
             body.set('namespace', namespace);
 
-            const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${normalizeProjectId(project_id)}/transfer`;
+            const apiUrl = `${getGitLabBaseUrl()}/api/v4/projects/${normalizeProjectId(project_id)}/transfer`;
             const response = await enhancedFetch(apiUrl, {
               method: 'PUT',
               headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -905,7 +906,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
               assertInstanceAtLeast('18.0', 'Project restore on GitLab Free');
             }
             return restoreEntity(
-              `${process.env.GITLAB_API_URL}/api/v4/projects/${normalizeProjectId(project_id)}/restore`,
+              `${getGitLabBaseUrl()}/api/v4/projects/${normalizeProjectId(project_id)}/restore`,
             );
           }
 
@@ -964,7 +965,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
             if (input.wiki_access_level !== undefined)
               body.set('wiki_access_level', input.wiki_access_level);
 
-            const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/groups`;
+            const apiUrl = `${getGitLabBaseUrl()}/api/v4/groups`;
             const response = await enhancedFetch(apiUrl, {
               method: 'POST',
               headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -988,7 +989,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
               }
             });
 
-            const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/groups/${normalizeProjectId(group_id)}`;
+            const apiUrl = `${getGitLabBaseUrl()}/api/v4/groups/${normalizeProjectId(group_id)}`;
             const response = await enhancedFetch(apiUrl, {
               method: 'PUT',
               headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -1005,7 +1006,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
           case 'delete': {
             const { group_id } = input;
 
-            const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/groups/${normalizeProjectId(group_id)}`;
+            const apiUrl = `${getGitLabBaseUrl()}/api/v4/groups/${normalizeProjectId(group_id)}`;
             const response = await enhancedFetch(apiUrl, { method: 'DELETE' });
 
             if (!response.ok) {
@@ -1025,7 +1026,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
             }
 
             return restoreEntity(
-              `${process.env.GITLAB_API_URL}/api/v4/groups/${normalizeProjectId(group_id)}/restore`,
+              `${getGitLabBaseUrl()}/api/v4/groups/${normalizeProjectId(group_id)}/restore`,
             );
           }
 
@@ -1056,7 +1057,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
 
         switch (input.action) {
           case 'mark_done': {
-            const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/todos/${input.id}/mark_as_done`;
+            const apiUrl = `${getGitLabBaseUrl()}/api/v4/todos/${input.id}/mark_as_done`;
             const response = await enhancedFetch(apiUrl, { method: 'POST' });
 
             if (!response.ok) {
@@ -1068,7 +1069,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
           }
 
           case 'mark_all_done': {
-            const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/todos/mark_all_as_done`;
+            const apiUrl = `${getGitLabBaseUrl()}/api/v4/todos/mark_all_as_done`;
             const response = await enhancedFetch(apiUrl, { method: 'POST' });
 
             if (!response.ok) {
@@ -1079,7 +1080,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
           }
 
           case 'restore': {
-            const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/todos/${input.id}/mark_as_pending`;
+            const apiUrl = `${getGitLabBaseUrl()}/api/v4/todos/${input.id}/mark_as_pending`;
             const response = await enhancedFetch(apiUrl, { method: 'POST' });
 
             if (!response.ok) {

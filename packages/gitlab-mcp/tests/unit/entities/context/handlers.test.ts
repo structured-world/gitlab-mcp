@@ -10,6 +10,7 @@ import { ContextManager } from '../../../../src/entities/context/context-manager
 // Mock dependencies
 jest.mock('../../../../src/utils/namespace', () => ({
   detectNamespaceType: jest.fn().mockResolvedValue('group'),
+  findNamespaceType: jest.fn().mockResolvedValue('group'),
 }));
 
 jest.mock('../../../../src/profiles/loader', () => ({
@@ -32,6 +33,15 @@ jest.mock('../../../../src/profiles/loader', () => ({
       auth: { type: 'pat', token_env: 'GITLAB_TOKEN' },
     }),
   })),
+}));
+
+// Account settings go to a file of this test run, never to the user's configuration.
+jest.mock('../../../../src/configuration/settings-store', () => ({
+  ...jest.requireActual('../../../../src/configuration/settings-store'),
+  localSettingsPath: () =>
+    jest
+      .requireActual('path')
+      .join(jest.requireActual('os').tmpdir(), `context-handlers-test-${process.pid}.json`),
 }));
 
 describe('handleManageContext', () => {
@@ -146,6 +156,24 @@ describe('handleManageContext', () => {
       expect(result).toHaveProperty('success', true);
 
       expect((result as any).scope.includeSubgroups).toBe(false);
+    });
+  });
+
+  describe('action: clear_scope', () => {
+    it('drops the scope and keeps the preset of the session', async () => {
+      await handleManageContext({ action: 'switch_preset', preset: 'readonly' });
+      await handleManageContext({
+        action: 'set_scope',
+        namespace: 'my-group',
+        includeSubgroups: true,
+      });
+
+      const result = await handleManageContext({ action: 'clear_scope' });
+
+      expect(result).toMatchObject({
+        success: true,
+        context: { presetName: 'readonly', scope: undefined },
+      });
     });
   });
 

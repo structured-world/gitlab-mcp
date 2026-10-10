@@ -16,7 +16,7 @@
  * without restarting the MCP server.
  */
 
-import { GITLAB_BASE_URL, GITLAB_READ_ONLY_MODE } from '../../config';
+import { GITLAB_READ_ONLY_MODE } from '../../config';
 import { logInfo, logDebug } from '../../logger';
 import { isOAuthEnabled } from '../../oauth/index.js';
 import { getGitLabApiUrlFromContext, getTokenContext } from '../../oauth/token-context';
@@ -25,6 +25,7 @@ import { getTokenCreationUrl, getScopeCapabilities } from '../../services/TokenS
 import { RegistryManager } from '../../registry-manager';
 import { sendToolsListChangedNotification } from '../../server';
 import { enhancedFetch } from '../../utils/fetch';
+import { getGitLabBaseUrl } from '../../utils/gitlab-base-url';
 import { getContextManager } from './context-manager';
 import {
   WhoamiResult,
@@ -40,7 +41,7 @@ import {
  * Get GitLab host from API URL
  */
 function getHost(): string {
-  const apiUrl = getGitLabApiUrlFromContext() ?? GITLAB_BASE_URL;
+  const apiUrl = getGitLabBaseUrl();
   try {
     const url = new URL(apiUrl);
     return url.hostname;
@@ -55,12 +56,9 @@ function getHost(): string {
  */
 async function fetchCurrentUser(): Promise<WhoamiUserInfo | null> {
   try {
-    const response = await enhancedFetch(
-      `${getGitLabApiUrlFromContext() ?? GITLAB_BASE_URL}/api/v4/user`,
-      {
-        retry: false,
-      },
-    );
+    const response = await enhancedFetch(`${getGitLabBaseUrl()}/api/v4/user`, {
+      retry: false,
+    });
 
     if (!response.ok) {
       logDebug('Failed to fetch current user', { status: response.status });
@@ -158,7 +156,7 @@ function buildServerInfo(): WhoamiServerInfo {
 
   return {
     host: getHost(),
-    apiUrl: getGitLabApiUrlFromContext() ?? GITLAB_BASE_URL,
+    apiUrl: getGitLabBaseUrl(),
     version,
     tier,
     edition,
@@ -198,9 +196,9 @@ function buildCapabilities(tokenInfo: WhoamiTokenInfo | null): WhoamiCapabilitie
 /**
  * Build current context info from ContextManager
  */
-function buildContextInfo(): WhoamiContextInfo {
+async function buildContextInfo(): Promise<WhoamiContextInfo> {
   const contextManager = getContextManager();
-  const context = contextManager.getContext();
+  const context = await contextManager.getContext();
 
   return {
     activePreset: context.presetName ?? null,
@@ -303,7 +301,7 @@ function generateRecommendations(
     recommendations.push({
       action: 'renew_token',
       message: 'Your token has expired. Create a new token to restore access.',
-      url: getTokenCreationUrl(GITLAB_BASE_URL, ['api', 'read_user']),
+      url: getTokenCreationUrl(serverInfo.apiUrl, ['api', 'read_user']),
       priority: 'high',
     });
   }
@@ -318,7 +316,7 @@ function generateRecommendations(
     recommendations.push({
       action: 'renew_token',
       message: `Your token expires in ${tokenInfo.daysUntilExpiry} day(s). Renew soon to avoid service interruption.`,
-      url: getTokenCreationUrl(GITLAB_BASE_URL, ['api', 'read_user']),
+      url: getTokenCreationUrl(serverInfo.apiUrl, ['api', 'read_user']),
       priority: 'medium',
     });
   }
@@ -330,7 +328,7 @@ function generateRecommendations(
     recommendations.push({
       action: 'create_new_token',
       message: "Create a token with 'api' scope for full GitLab functionality",
-      url: getTokenCreationUrl(GITLAB_BASE_URL, ['api', 'read_user']),
+      url: getTokenCreationUrl(serverInfo.apiUrl, ['api', 'read_user']),
       priority: 'high',
     });
   }
@@ -346,7 +344,7 @@ function generateRecommendations(
     recommendations.push({
       action: 'add_scope',
       message: "Add 'api' or 'read_api' scope to enable project, issue, and MR operations",
-      url: getTokenCreationUrl(GITLAB_BASE_URL, ['api', 'read_user']),
+      url: getTokenCreationUrl(serverInfo.apiUrl, ['api', 'read_user']),
       priority: 'high',
     });
   }
@@ -437,7 +435,7 @@ export async function executeWhoami(): Promise<WhoamiResult> {
 
   const serverInfo = buildServerInfo();
   const capabilities = buildCapabilities(tokenInfo);
-  const contextInfo = buildContextInfo();
+  const contextInfo = await buildContextInfo();
   const warnings = generateWarnings(tokenInfo, capabilities, effectiveIsAdmin);
 
   // Honest admin signal: role present but elevation inactive means admin tools

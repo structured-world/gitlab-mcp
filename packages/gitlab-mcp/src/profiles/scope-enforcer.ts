@@ -216,9 +216,10 @@ export class ScopeEnforcer {
    * @returns true if allowed, false if outside scope
    */
   isGroupAllowed(groupPath: string): boolean {
-    // If no group restrictions are defined, allow all groups
+    // Without group restrictions, any group only when nothing is restricted: a scope of
+    // projects reaches no group.
     if (!this.hasGroupRestrictions()) {
-      return true;
+      return !this.hasProjectRestrictions();
     }
 
     const normalized = normalizeProjectPath(groupPath);
@@ -330,6 +331,16 @@ export class ScopeEnforcer {
 }
 
 /**
+ * A project or group identifier as the tool will use it: tool schemas coerce a JSON
+ * number id to its string form, so a number is checked exactly like that string.
+ */
+function identifierOf(value: unknown): string | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  if (typeof value === 'string' && value.trim()) return value.trim();
+  return undefined;
+}
+
+/**
  * Extract project path from tool arguments
  *
  * Tools may specify project in different ways:
@@ -344,6 +355,7 @@ export function extractProjectsFromArgs(args: Record<string, unknown>): string[]
   const projects: string[] = [];
 
   // Common parameter names for project identification
+  // Destinations count too: a cross-project merge request or job token target.
   const projectFields = [
     'project_id',
     'projectId',
@@ -351,13 +363,12 @@ export function extractProjectsFromArgs(args: Record<string, unknown>): string[]
     'namespace',
     'namespacePath',
     'fullPath',
+    'target_project_id',
   ];
 
   for (const field of projectFields) {
-    const value = args[field];
-    if (typeof value === 'string' && value.trim()) {
-      projects.push(value.trim());
-    }
+    const id = identifierOf(args[field]);
+    if (id) projects.push(id);
   }
 
   return projects;
@@ -378,13 +389,20 @@ export function extractGroupsFromArgs(args: Record<string, unknown>): string[] {
   const groups: string[] = [];
 
   // Common parameter names for group identification
-  const groupFields = ['group_id', 'groupId', 'group'];
+  // Destinations count too: a fork's target namespace, a job token target group, and a
+  // namespace read by id or path.
+  const groupFields = [
+    'group_id',
+    'groupId',
+    'group',
+    'target_group_id',
+    'namespace_path',
+    'namespace_id',
+  ];
 
   for (const field of groupFields) {
-    const value = args[field];
-    if (typeof value === 'string' && value.trim()) {
-      groups.push(value.trim());
-    }
+    const id = identifierOf(args[field]);
+    if (id) groups.push(id);
   }
 
   return groups;

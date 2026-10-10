@@ -29,7 +29,9 @@ import {
   STORAGE_DATA_VERSION,
 } from './types';
 import { MemoryStorageBackend } from './memory';
+import type { AccountSettings, AccountSettingsRecord } from '../../configuration/types';
 import { logInfo, logDebug, logError, logWarn } from '../../logger';
+import { syncDirectory } from '../../utils/sync-directory';
 
 export interface FileStorageOptions {
   /** Path to the storage file */
@@ -42,20 +44,6 @@ export interface FileStorageOptions {
 
 function isPresent<T>(record: T | undefined): record is T {
   return record !== undefined;
-}
-
-/**
- * Flush a directory entry change (the rename) to disk. Windows cannot open a directory
- * for syncing; NTFS journals the rename itself.
- */
-async function syncDirectory(dir: string): Promise<void> {
-  if (process.platform === 'win32') return;
-  const handle = await fs.promises.open(dir, 'r');
-  try {
-    await handle.sync();
-  } finally {
-    await handle.close();
-  }
 }
 
 export class FileStorageBackend implements SessionStorageBackend {
@@ -168,6 +156,7 @@ export class FileStorageBackend implements SessionStorageBackend {
         authCodes: validAuthCodes,
         mcpSessionMappings: data.mcpSessionMappings,
         clients: data.clients,
+        accountSettings: data.accountSettings,
       });
 
       const stats = await this.memory.getStats();
@@ -243,7 +232,7 @@ export class FileStorageBackend implements SessionStorageBackend {
   private transition<T, Changed extends T>(
     change: () => Promise<T>,
     changed: (result: T) => result is Changed,
-    undo: (result: Changed) => Promise<unknown>,
+    undo: (result: Changed) => unknown,
   ): Promise<T> {
     this.cancelPendingSave();
     return this.enqueue(async () => {
@@ -276,6 +265,7 @@ export class FileStorageBackend implements SessionStorageBackend {
       authCodes: exportedData.authCodes,
       mcpSessionMappings: exportedData.mcpSessionMappings,
       clients: exportedData.clients,
+      accountSettings: exportedData.accountSettings,
     };
 
     // Atomic write: write to temp file, then rename. Both are flushed to disk, so a power
@@ -477,6 +467,29 @@ export class FileStorageBackend implements SessionStorageBackend {
 
   async countClientsRegisteredSince(registeredFrom: string, since: number): Promise<number> {
     return this.memory.countClientsRegisteredSince(registeredFrom, since);
+  }
+
+  // Account settings
+  async getAccountSettings(accountKey: string): Promise<AccountSettingsRecord | undefined> {
+    return this.memory.getAccountSettings(accountKey);
+  }
+
+  putAccountSettings(
+    accountKey: string,
+    settings: AccountSettings,
+    expectedVersion: number,
+  ): Promise<AccountSettingsRecord | undefined> {
+    // Written through and undone when the write fails: settings reported as not saved
+    // must not apply now or after a restart.
+    let previous: AccountSettingsRecord | undefined;
+    return this.transition(
+      async () => {
+        previous = await this.memory.getAccountSettings(accountKey);
+        return this.memory.putAccountSettings(accountKey, settings, expectedVersion);
+      },
+      isPresent,
+      () => this.memory.restoreAccountSettings(accountKey, previous),
+    );
   }
 
   // Single-use consumption and refresh rotation: written through before they are

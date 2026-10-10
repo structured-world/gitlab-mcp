@@ -3,6 +3,8 @@
  * DOES NOT load .env.test - unit tests should be isolated from environment
  */
 
+import './isolatedSettings';
+
 // Set timeout for unit tests
 jest.setTimeout(10000);
 

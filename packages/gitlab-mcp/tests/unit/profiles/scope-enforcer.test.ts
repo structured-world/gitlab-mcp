@@ -435,11 +435,17 @@ describe('extractProjectsFromArgs', () => {
     expect(projects).toContain('project2');
   });
 
-  it('should ignore non-string values', () => {
+  // Tool schemas coerce a numeric id to its string form, so the check sees the same id.
+  it('should extract a numeric project id as its string form', () => {
+    expect(extractProjectsFromArgs({ project_id: 12345 })).toEqual(['12345']);
+  });
+
+  it('should ignore values that are not identifiers', () => {
     const args = {
-      project_id: 12345,
+      project_id: Number.NaN,
       namespace: null,
       fullPath: undefined,
+      project: { nested: 'object' },
     };
     const projects = extractProjectsFromArgs(args);
     expect(projects).toHaveLength(0);
@@ -478,6 +484,49 @@ describe('enforceArgsScope', () => {
     };
 
     expect(() => enforceArgsScope(enforcer, args)).toThrow(ScopeViolationError);
+  });
+
+  // A scope of projects reaches no group: group operations (even on the project's own
+  // parent group, e.g. deleting it) are outside it.
+  it.each([{ project: 'myteam/backend' }, { projects: ['myteam/backend', 'other/api'] }])(
+    'should refuse any group under the project-only scope %j',
+    (scope) => {
+      const enforcer = new ScopeEnforcer(scope);
+
+      expect(enforcer.isGroupAllowed('unrelated')).toBe(false);
+      expect(enforcer.isGroupAllowed('myteam')).toBe(false);
+      expect(() => enforceArgsScope(enforcer, { action: 'delete', group_id: 'unrelated' })).toThrow(
+        ScopeViolationError,
+      );
+    },
+  );
+
+  // A destination (fork target, cross-project MR target, job token allowlist entry) is
+  // checked like the primary target: an allowed source must not reach an outside place.
+  it.each([
+    [{ project: 'team/app' }, { project_id: 'team/app', target_project_id: 'other/api' }],
+    [{ group: 'team' }, { project_id: 'team/app', namespace_path: 'other' }],
+    [{ group: 'team' }, { project_id: 'team/app', target_group_id: 'other' }],
+    [{ group: 'team' }, { action: 'get', namespace_id: 'other' }],
+  ])('should refuse an outside destination under %j in %j', (scope, args) => {
+    expect(() => enforceArgsScope(new ScopeEnforcer(scope), args)).toThrow(ScopeViolationError);
+  });
+
+  it('should allow a destination inside the scope', () => {
+    const enforcer = new ScopeEnforcer({ group: 'team', includeSubgroups: true });
+
+    expect(() =>
+      enforceArgsScope(enforcer, {
+        project_id: 'team/app',
+        namespace_path: 'team/sub',
+        target_project_id: 'team/api',
+        target_group_id: 'team/sub',
+      }),
+    ).not.toThrow();
+  });
+
+  it('should allow any group when the scope restricts nothing', () => {
+    expect(new ScopeEnforcer({}).isGroupAllowed('anything')).toBe(true);
   });
 
   it('should pass when no project fields in args', () => {
@@ -544,12 +593,9 @@ describe('extractGroupsFromArgs', () => {
     expect(groups).toContain('group2');
   });
 
-  it('should ignore numeric group IDs (not supported)', () => {
-    // Note: extractGroupsFromArgs only handles string values
-    // Numeric IDs should be converted to strings by the caller if needed
-    const args = { group_id: 12345 };
-    const groups = extractGroupsFromArgs(args);
-    expect(groups).toHaveLength(0);
+  // A numeric group id is checked like its string form; ignoring it bypassed the scope.
+  it('should extract a numeric group id as its string form', () => {
+    expect(extractGroupsFromArgs({ group_id: 12345 })).toEqual(['12345']);
   });
 
   it('should ignore non-string values', () => {

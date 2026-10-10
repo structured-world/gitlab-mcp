@@ -15,11 +15,17 @@
 import { Request, Response, NextFunction } from 'express';
 import { loadOAuthConfig } from '../oauth/config';
 import { sessionStore } from '../oauth/session-store';
-import { verifyMCPToken, isTokenExpiringSoon, calculateTokenExpiry } from '../oauth/token-utils';
-import { refreshGitLabToken } from '../oauth/gitlab-device-flow';
+import { verifyMCPToken } from '../oauth/token-utils';
+import { withFreshGitLabToken, GitLabGrantRevokedError } from '../oauth/gitlab-token-refresh';
 import { getBaseUrl } from '../oauth/endpoints/metadata';
+import {
+  MCP_SCOPES,
+  isProtectedResource,
+  resourceForPath,
+  resourceMetadataUrl,
+} from '../oauth/resource';
 import { logWarn, logError, logDebug, truncateId } from '../logger';
-import { OAuthErrorResponse } from '../oauth/types';
+import { MCPTokenPayload, OAuthErrorResponse } from '../oauth/types';
 import { getMinimalRequestContext } from '../utils/request-logger';
 import { GITLAB_BASE_URL } from '../config';
 
@@ -75,9 +81,25 @@ export async function oauthAuthMiddleware(
     return;
   }
 
+  if (!isIssuedForThisServer(config.issuer, payload)) {
+    sendUnauthorized(req, res, 'invalid_token', 'Token was not issued for this server');
+    return;
+  }
+
   // Get session from token
   const sessionId = payload.sid;
-  const session = sessionStore.getSession(sessionId);
+  let session;
+  try {
+    session = await sessionStore.getSession(sessionId);
+  } catch (error: unknown) {
+    // Storage outage: the credentials cannot be verified, which is not a bad token.
+    logError('Failed to load OAuth session', { err: error as Error });
+    res.status(503).json({
+      error: 'temporarily_unavailable',
+      error_description: 'Session storage is unavailable',
+    });
+    return;
+  }
 
   if (!session) {
     sendUnauthorized(req, res, 'invalid_token', 'Session not found or expired');
@@ -91,39 +113,34 @@ export async function oauthAuthMiddleware(
     return;
   }
 
+  if (!hasGrantedScope(payload.scope, session.scopes)) {
+    sendInsufficientScope(req, res);
+    return;
+  }
+
   // Refresh GitLab token if it's expiring soon (5 minute buffer)
-  if (isTokenExpiringSoon(session.gitlabTokenExpiry)) {
-    try {
-      const newTokens = await refreshGitLabToken(session.gitlabRefreshToken, config);
-
-      sessionStore.updateSession(sessionId, {
-        gitlabAccessToken: newTokens.access_token,
-        gitlabRefreshToken: newTokens.refresh_token,
-        gitlabTokenExpiry: calculateTokenExpiry(newTokens.expires_in),
-        // RFC 6749 section 6: omitted scope retains the original grant.
-        // https://www.rfc-editor.org/rfc/rfc6749#section-6
-        ...(newTokens.scope !== undefined && {
-          gitlabScopes: newTokens.scope.split(/\s+/).filter(Boolean),
-        }),
-      });
-
-      logDebug('GitLab token refreshed during request', {
-        sessionId: truncateId(sessionId),
-      });
-    } catch (error: unknown) {
-      logError('Failed to refresh GitLab token during request', { err: error as Error });
+  let updatedSession;
+  try {
+    updatedSession = await withFreshGitLabToken(session, config);
+  } catch (error: unknown) {
+    logError('Failed to refresh GitLab token during request', { err: error as Error });
+    if (error instanceof GitLabGrantRevokedError) {
       sendUnauthorized(
         req,
         res,
         'invalid_token',
         'GitLab token refresh failed. Please re-authenticate.',
       );
-      return;
+    } else {
+      // A GitLab outage is not a bad token: the account stays linked, the client retries.
+      res.status(503).json({
+        error: 'temporarily_unavailable',
+        error_description: 'GitLab is temporarily unavailable',
+      });
     }
+    return;
   }
 
-  // Get potentially updated session
-  const updatedSession = sessionStore.getSession(sessionId);
   if (!updatedSession) {
     sendUnauthorized(req, res, 'invalid_token', 'Session lost during token refresh');
     return;
@@ -146,6 +163,9 @@ export async function oauthAuthMiddleware(
   // Multi-instance support: use session's API URL or fallback to global config
   res.locals.gitlabApiUrl = updatedSession.gitlabApiUrl ?? GITLAB_BASE_URL;
   res.locals.instanceLabel = updatedSession.instanceLabel;
+  res.locals.mcpResource = resourceForPath(config.issuer, req.path);
+  // Tool dispatch requires mcp:tools among them.
+  res.locals.mcpScopes = tokenScopes(payload.scope);
 
   logDebug('OAuth session validated, passing to route handler', {
     sessionId: truncateId(updatedSession.id),
@@ -203,14 +223,22 @@ export async function optionalOAuthMiddleware(
 
   // Try to validate token
   const payload = verifyMCPToken(token, config.sessionSecret);
-  if (!payload) {
+  if (!payload || !isIssuedForThisServer(config.issuer, payload)) {
     // Invalid token, but this is optional auth, so continue
     next();
     return;
   }
 
-  const session = sessionStore.getSession(payload.sid);
-  if (session?.mcpAccessToken !== token) {
+  let session;
+  try {
+    session = await sessionStore.getSession(payload.sid);
+  } catch (error: unknown) {
+    // Optional auth: an unreadable session store means no authenticated context.
+    logError('Failed to load OAuth session', { err: error as Error });
+    next();
+    return;
+  }
+  if (session?.mcpAccessToken !== token || !hasGrantedScope(payload.scope, session.scopes)) {
     next();
     return;
   }
@@ -224,8 +252,55 @@ export async function optionalOAuthMiddleware(
   // Multi-instance support: use session's API URL or fallback to global config
   res.locals.gitlabApiUrl = session.gitlabApiUrl ?? GITLAB_BASE_URL;
   res.locals.instanceLabel = session.instanceLabel;
+  res.locals.mcpResource = resourceForPath(config.issuer, req.path);
+  res.locals.mcpScopes = tokenScopes(payload.scope);
 
   next();
+}
+
+/**
+ * `iss` is our issuer and `aud` one of our resources (RFC 9068 section 4). Either resource
+ * is accepted on either path on purpose: the root and `/mcp` are the same server with the
+ * same tools and grants, so audience binding guards against tokens of other resource
+ * servers, not between these two. Clients also legitimately cross them: ChatGPT requests
+ * tokens for the root resource and calls `/mcp`.
+ */
+function isIssuedForThisServer(issuer: string, payload: MCPTokenPayload): boolean {
+  return payload.iss === issuer && isProtectedResource(issuer, payload.aud);
+}
+
+/**
+ * The token carries at least one MCP scope and nothing beyond the session's grant, so a
+ * token minted before a narrower grant cannot outlive it.
+ */
+function tokenScopes(tokenScope: string): string[] {
+  return tokenScope.split(' ').filter(Boolean);
+}
+
+function hasGrantedScope(tokenScope: string, grantedScopes: string[]): boolean {
+  const scopes = tokenScopes(tokenScope);
+  return (
+    scopes.some((scope) => MCP_SCOPES.includes(scope)) &&
+    scopes.every((scope) => grantedScopes.includes(scope))
+  );
+}
+
+/** RFC 6750 section 3.1: a valid token without the needed scope gets 403. */
+function sendInsufficientScope(req: Request, res: Response): void {
+  logWarn('Authentication rejected', {
+    event: 'auth_rejected',
+    ...getMinimalRequestContext(req),
+    reason: 'insufficient_scope',
+  });
+  res.setHeader(
+    'WWW-Authenticate',
+    `Bearer realm="gitlab-mcp", error="insufficient_scope", scope="${MCP_SCOPES.join(' ')}"`,
+  );
+  const response: OAuthErrorResponse = {
+    error: 'insufficient_scope',
+    error_description: 'Token lacks the scope this server requires',
+  };
+  res.status(403).json(response);
 }
 
 /**
@@ -250,14 +325,22 @@ function sendUnauthorized(req: Request, res: Response, error: string, descriptio
     error_description: description,
   };
 
-  // Get base URL for resource_metadata parameter (MCP OAuth 2.1 spec)
-  const baseUrl = getBaseUrl(req);
+  // resource_metadata points at the metadata of the endpoint that was called (RFC 9728
+  // section 5.1), built from the configured issuer rather than request headers.
+  const config = loadOAuthConfig();
+  const metadataUrl = config
+    ? resourceMetadataUrl(resourceForPath(config.issuer, req.path))
+    : `${getBaseUrl(req)}/.well-known/oauth-protected-resource`;
 
   // Set WWW-Authenticate header with resource_metadata parameter
-  // Points to Protected Resource Metadata document per MCP spec
+  // Points to Protected Resource Metadata document per MCP spec. A rejected token also
+  // names the error (RFC 6750 section 3); a request without credentials does not
+  // (RFC 6750 section 3.1).
+  const tokenError =
+    error === 'invalid_token' ? `, error="invalid_token", error_description="${description}"` : '';
   res.setHeader(
     'WWW-Authenticate',
-    `Bearer realm="gitlab-mcp", resource_metadata="${baseUrl}/.well-known/oauth-protected-resource"`,
+    `Bearer realm="gitlab-mcp", resource_metadata="${metadataUrl}"${tokenError}`,
   );
   res.status(401).json(response);
 }

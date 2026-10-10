@@ -273,6 +273,139 @@ describe('simultaneous MCP client contracts', () => {
     expect(await client.callTool({ name: 'browse_contract' })).toEqual(envelope);
   });
 
+  it('declares the OAuth scheme on every tool that does not declare its own', async () => {
+    // Hosts decide from the descriptor that a call needs the linked account.
+    const client = await connect('codex', '2025-11-25');
+    const catalog = await asAccount(['api'], 'https://new.example.com', () => client.listTools());
+    expect(catalog.tools.length).toBeGreaterThan(0);
+    for (const tool of catalog.tools) {
+      expect(tool._meta?.securitySchemes).toEqual([{ type: 'oauth2', scopes: ['mcp:tools'] }]);
+    }
+  });
+
+  it('publishes the account profile tool and returns a schema-valid profile', async () => {
+    // The host reads the connection's account from the tool marked openai/profile.
+    const profile = await import('../../src/entities/context/profile');
+    const resolve = jest.spyOn(profile, 'getAccountProfile').mockResolvedValue({
+      id: profile.accountProfileId('https://new.example.com', 1),
+      name: 'Fixture User',
+      nickname: 'fixture @ new.example.com',
+    });
+    try {
+      const client = await connect('codex', '2025-11-25');
+      const catalog = await asAccount(['read_api'], 'https://new.example.com', () =>
+        client.listTools(),
+      );
+      const tool = catalog.tools.find((item) => item.name === 'get_profile');
+      expect(tool?._meta?.['openai/profile']).toBe(true);
+      expect(tool?.inputSchema).toEqual({
+        type: 'object',
+        properties: {},
+        additionalProperties: false,
+      });
+      expect(tool?.outputSchema?.required).toEqual(['id']);
+      expect(tool?.outputSchema?.additionalProperties).toBe(false);
+      expect(tool?.annotations?.readOnlyHint).toBe(true);
+
+      const result = await asAccount(['read_api'], 'https://new.example.com', () =>
+        client.callTool({ name: 'get_profile', arguments: {} }),
+      );
+      expect(result.isError).toBeUndefined();
+      expect(result.structuredContent).toEqual(await resolve.mock.results[0].value);
+      expect(result.content).toEqual([
+        { type: 'text', text: JSON.stringify(result.structuredContent) },
+      ]);
+    } finally {
+      resolve.mockRestore();
+    }
+  });
+
+  it('asks the host to reconnect when GitLab rejects the account (401)', async () => {
+    // The challenge reaches the client through production dispatch and the SDK.
+    coreToolRegistry.set('browse_contract', {
+      name: 'browse_contract',
+      description: 'Rejected credentials fixture',
+      inputSchema: { type: 'object' },
+      handler: async () => {
+        throw new Error('GitLab API error: 401 Unauthorized - invalid_token');
+      },
+    });
+    RegistryManager.getInstance().refreshCache();
+    const oauthConfig = await import('../../src/oauth/config');
+    const config = jest
+      .spyOn(oauthConfig, 'loadOAuthConfig')
+      .mockReturnValue({ issuer: 'https://mcp.example.com' } as ReturnType<
+        typeof oauthConfig.loadOAuthConfig
+      >);
+    try {
+      const client = await connect('codex', '2025-11-25');
+      const result = await asAccount(['api'], 'https://new.example.com', () =>
+        client.callTool({ name: 'browse_contract', arguments: {} }),
+      );
+      expect(result.isError).toBe(true);
+      const challenges = result._meta?.['mcp/www_authenticate'] as string[];
+      expect(challenges[0]).toContain('error="invalid_token"');
+      expect(challenges[0]).toContain('error_description=');
+    } finally {
+      config.mockRestore();
+    }
+  });
+
+  // A token granted only mcp:resources reached every tool, including mutating ones, because
+  // the request middleware accepts any MCP scope; tool calls need mcp:tools.
+  it.each([
+    { mcpScopes: ['mcp:resources'], allowed: false },
+    { mcpScopes: ['mcp:tools'], allowed: true },
+    { mcpScopes: ['mcp:tools', 'mcp:resources'], allowed: true },
+  ])('requires mcp:tools to call a tool: $mcpScopes', async ({ mcpScopes, allowed }) => {
+    const handler = jest.fn().mockResolvedValue({ ok: true });
+    coreToolRegistry.set('browse_contract', {
+      name: 'browse_contract',
+      description: 'Scope fixture',
+      inputSchema: { type: 'object' },
+      handler,
+    });
+    RegistryManager.getInstance().refreshCache();
+    const oauthConfig = await import('../../src/oauth/config');
+    const config = jest
+      .spyOn(oauthConfig, 'loadOAuthConfig')
+      .mockReturnValue({ issuer: 'https://mcp.example.com' } as ReturnType<
+        typeof oauthConfig.loadOAuthConfig
+      >);
+    try {
+      const client = await connect('codex', '2025-11-25');
+      const result = await runWithTokenContext(
+        {
+          gitlabToken: 'fixture-only',
+          gitlabUserId: 1,
+          gitlabUsername: 'fixture',
+          sessionId: 'fixture',
+          gitlabScopes: ['api'],
+          apiUrl: 'https://new.example.com',
+          resource: 'https://mcp.example.com/mcp',
+          mcpScopes,
+        },
+        () => client.callTool({ name: 'browse_contract', arguments: {} }),
+      );
+
+      if (allowed) {
+        expect(handler).toHaveBeenCalled();
+        expect(result.isError).toBeFalsy();
+      } else {
+        expect(handler).not.toHaveBeenCalled();
+        expect(result.isError).toBe(true);
+        // RFC 6750 section 3.1: the challenge names the scope the call needs.
+        expect(result._meta?.['mcp/www_authenticate']).toEqual([
+          'Bearer resource_metadata="https://mcp.example.com/.well-known/oauth-protected-resource/mcp", ' +
+            'error="insufficient_scope", scope="mcp:tools", ' +
+            'error_description="This access token does not allow tool calls; reconnect to grant mcp:tools"',
+        ]);
+      }
+    } finally {
+      config.mockRestore();
+    }
+  });
+
   it('delivers non-text content and authorization challenges through the SDK unchanged', async () => {
     // Exercise production dispatch, serialization and SDK validation rather than a result mock.
     const success = {

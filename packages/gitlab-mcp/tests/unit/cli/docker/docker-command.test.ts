@@ -620,16 +620,37 @@ describe('docker-command', () => {
         composeInstalled: true,
       });
       mockP.text.mockResolvedValueOnce('3333');
+      mockP.text.mockResolvedValueOnce('https://mcp.example.com'); // public URL
       mockP.confirm.mockResolvedValueOnce(true); // enable OAuth
       mockP.confirm.mockResolvedValueOnce(false); // don't start now
       mockP.isCancel.mockReturnValue(false);
 
       await initDocker();
 
-      expect(mockInitDockerConfig).toHaveBeenCalled();
-      expect(mockP.log.warn).toHaveBeenCalledWith(
-        expect.stringContaining('Session secret will be stored in docker-compose.yml'),
+      // The public URL becomes OAUTH_ISSUER instead of a silent localhost value.
+      expect(mockInitDockerConfig).toHaveBeenCalledWith(
+        expect.objectContaining({ oauthEnabled: true, oauthIssuer: 'https://mcp.example.com' }),
       );
+      expect(mockP.log.warn).toHaveBeenCalledWith(
+        expect.stringContaining('Session secret will be stored in the .env file'),
+      );
+    });
+
+    it('should cancel when the public URL prompt is cancelled', async () => {
+      mockGetDockerStatus.mockReturnValue({
+        dockerInstalled: true,
+        dockerRunning: true,
+        composeInstalled: true,
+      });
+      mockP.text.mockResolvedValueOnce('3333');
+      mockP.text.mockResolvedValueOnce(p.CANCEL_SYMBOL); // public URL
+      mockP.confirm.mockResolvedValueOnce(true); // enable OAuth
+      mockP.isCancel.mockImplementation((val) => val === p.CANCEL_SYMBOL);
+
+      await initDocker();
+
+      expect(mockP.cancel).toHaveBeenCalledWith('Setup cancelled');
+      expect(mockInitDockerConfig).not.toHaveBeenCalled();
     });
 
     it('should start container after init if requested', async () => {

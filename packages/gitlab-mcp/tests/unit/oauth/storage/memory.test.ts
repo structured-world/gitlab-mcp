@@ -310,7 +310,111 @@ describe('MemoryStorageBackend', () => {
     });
   });
 
+  // Anonymous registration must not grow storage without bound: registrations per source
+  // are limited per hour and never-used ones expire; a client that completed an
+  // authorization stays.
+  describe('dynamic client registrations', () => {
+    const client = (id: string, createdAt: number, from = 'source-a') => ({
+      clientId: id,
+      redirectUris: ['https://client.example.com/callback'],
+      tokenEndpointAuthMethod: 'none',
+      grantTypes: ['authorization_code'],
+      responseTypes: ['code'],
+      createdAt,
+      registeredFrom: from,
+      expiresAt: createdAt + 1000,
+    });
+
+    it('counts the registrations of a source since a time, used ones included', async () => {
+      for (let i = 1; i <= 4; i++) await storage.storeClient(client(`c${i}`, i * 10));
+      await storage.storeClient(client('other', 30, 'source-b'));
+      await storage.markClientUsed('c3');
+
+      expect(await storage.countClientsRegisteredSince('source-a', 20)).toBe(3);
+      expect(await storage.countClientsRegisteredSince('source-a', 41)).toBe(0);
+      expect(await storage.countClientsRegisteredSince('source-b', 0)).toBe(1);
+    });
+
+    it('removes expired unused registrations on cleanup', async () => {
+      const now = Date.now();
+      await storage.storeClient(client('stale', now - 5000));
+      await storage.storeClient(client('fresh', now));
+      await storage.storeClient(client('used', now - 5000));
+      await storage.markClientUsed('used');
+
+      await storage.cleanup();
+
+      expect(await storage.getClient('stale')).toBeUndefined();
+      expect(await storage.getClient('fresh')).toBeDefined();
+      expect((await storage.getClient('used'))?.expiresAt).toBeUndefined();
+    });
+  });
+
+  // GitLab refresh tokens work once: only the lease holder may spend one.
+  describe('claimGitLabRefresh', () => {
+    it('grants one lease per refresh token until it expires or is released', async () => {
+      const session = createTestSession({ gitlabRefreshToken: 'grt' });
+      await storage.createSession(session);
+
+      expect(await storage.claimGitLabRefresh(session.id, 'grt', 1000, 31000)).toBe(true);
+      expect(await storage.claimGitLabRefresh(session.id, 'grt', 2000, 32000)).toBe(false);
+      expect(await storage.claimGitLabRefresh(session.id, 'grt', 31000, 61000)).toBe(true);
+
+      await storage.releaseGitLabRefresh(session.id, 61000);
+      expect(await storage.claimGitLabRefresh(session.id, 'grt', 31001, 61001)).toBe(true);
+    });
+
+    // A holder whose lease expired and was claimed again must not end the new holder's
+    // lease: a third caller would then spend the same single-use token.
+    it('ends only the lease the caller holds', async () => {
+      const session = createTestSession({ gitlabRefreshToken: 'grt' });
+      await storage.createSession(session);
+      expect(await storage.claimGitLabRefresh(session.id, 'grt', 1000, 31000)).toBe(true);
+      expect(await storage.claimGitLabRefresh(session.id, 'grt', 31000, 61000)).toBe(true);
+
+      await storage.releaseGitLabRefresh(session.id, 31000);
+
+      expect(await storage.claimGitLabRefresh(session.id, 'grt', 40000, 70000)).toBe(false);
+    });
+
+    it('refuses a token the session no longer holds and a missing session', async () => {
+      const session = createTestSession({ gitlabRefreshToken: 'grt' });
+      await storage.createSession(session);
+
+      expect(await storage.claimGitLabRefresh(session.id, 'spent', 1, 2)).toBe(false);
+      expect(await storage.claimGitLabRefresh('missing', 'grt', 1, 2)).toBe(false);
+    });
+  });
+
   describe('Device Flow Operations', () => {
+    // One poller per interval reaches GitLab: the reservation moves nextPollAt forward only
+    // when the current interval has elapsed.
+    describe('claimDevicePoll', () => {
+      it('reserves a due poll once and refuses the next caller in the same interval', async () => {
+        await storage.storeDeviceFlow('flow', createTestDeviceFlow({ nextPollAt: 1000 }));
+
+        const first = await storage.claimDevicePoll('flow', 1000, 6000);
+        const second = await storage.claimDevicePoll('flow', 1000, 6000);
+
+        expect(first?.nextPollAt).toBe(6000);
+        expect(second).toBeUndefined();
+        expect((await storage.getDeviceFlow('flow'))?.nextPollAt).toBe(6000);
+      });
+
+      it('refuses a poll before the interval and a missing flow', async () => {
+        await storage.storeDeviceFlow('flow', createTestDeviceFlow({ nextPollAt: 5000 }));
+
+        expect(await storage.claimDevicePoll('flow', 4999, 9999)).toBeUndefined();
+        expect(await storage.claimDevicePoll('missing', 4999, 9999)).toBeUndefined();
+      });
+
+      it('reserves a flow that has no schedule yet', async () => {
+        await storage.storeDeviceFlow('flow', createTestDeviceFlow());
+
+        expect((await storage.claimDevicePoll('flow', 1, 5001))?.nextPollAt).toBe(5001);
+      });
+    });
+
     describe('storeDeviceFlow', () => {
       it('should store device flow by state', async () => {
         const flow = createTestDeviceFlow();

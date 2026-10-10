@@ -35,6 +35,12 @@ jest.mock('../../../src/logger', () => ({
   truncateId: (id: string) => (id.length <= 10 ? id : id.substring(0, 4) + '..' + id.slice(-4)),
 }));
 
+// MCP sessions this process holds; a header naming another id is not a session.
+const knownSessions = new Set(['mcp-session-456']);
+jest.mock('../../../src/session-manager', () => ({
+  getSessionManager: () => ({ hasSession: (id: string) => knownSessions.has(id) }),
+}));
+
 // Helper to create mock request
 function createMockReq(overrides: Record<string, unknown> = {}): Request {
   return {
@@ -101,6 +107,51 @@ describe('Rate Limiter Middleware', () => {
 
       expect(mockNext).toHaveBeenCalled();
       expect(mockRes.status).not.toHaveBeenCalled();
+    });
+
+    // Any client can send an Mcp-Session-Id header; one that names no session of this
+    // process must not lift the per-IP limit (it would make /register unlimited).
+    it('limits a request whose Mcp-Session-Id names no session by IP', () => {
+      const middleware = rateLimiterMiddleware();
+      const mockReq = createMockReq({
+        ip: '10.9.9.9',
+        headers: { 'mcp-session-id': 'made-up' },
+      });
+      const mockRes = createMockRes();
+
+      middleware(mockReq, mockRes, mockNext);
+
+      expect(mockRes.set).toHaveBeenCalledWith('X-RateLimit-Limit', '100');
+      expect(getRateLimitStats().entries.map((e) => e.key)).toContain('ip:10.9.9.9');
+    });
+
+    // The SSE transport names its session in the query of POST /messages.
+    it('treats SSE messages of a session this process holds as authenticated', () => {
+      const middleware = rateLimiterMiddleware();
+      const mockReq = createMockReq({
+        ip: '10.9.9.10',
+        path: '/messages',
+        query: { sessionId: 'mcp-session-456' },
+      });
+      const mockRes = createMockRes();
+
+      middleware(mockReq, mockRes, mockNext);
+
+      expect(mockNext).toHaveBeenCalled();
+      expect(getRateLimitStats().entries.map((e) => e.key)).not.toContain('ip:10.9.9.10');
+    });
+
+    it('limits SSE messages naming no session by IP', () => {
+      const middleware = rateLimiterMiddleware();
+      const mockReq = createMockReq({
+        ip: '10.9.9.11',
+        path: '/messages',
+        query: { sessionId: 'made-up' },
+      });
+
+      middleware(mockReq, createMockRes(), mockNext);
+
+      expect(getRateLimitStats().entries.map((e) => e.key)).toContain('ip:10.9.9.11');
     });
 
     it('should apply IP-based rate limiting for anonymous requests', () => {
@@ -241,6 +292,31 @@ describe('Rate Limiter with Session Rate Limiting Enabled', () => {
     expect(mockNext).toHaveBeenCalled();
 
     freshStopCleanup();
+  });
+
+  // SSE names its session in the query of POST /messages, not in a header; each SSE
+  // session must count against its own quota, never one bucket shared by every client.
+  it('counts SSE messages against the session named in the query', async () => {
+    jest.doMock('../../../src/config', () => ({
+      RATE_LIMIT_IP_ENABLED: true,
+      RATE_LIMIT_IP_WINDOW_MS: 60000,
+      RATE_LIMIT_IP_MAX_REQUESTS: 100,
+      RATE_LIMIT_SESSION_ENABLED: true,
+      RATE_LIMIT_SESSION_WINDOW_MS: 60000,
+      RATE_LIMIT_SESSION_MAX_REQUESTS: 5,
+    }));
+    const fresh = await import('../../../src/middleware/rate-limiter');
+    const middleware = fresh.rateLimiterMiddleware();
+
+    middleware(
+      createMockReq({ path: '/messages', query: { sessionId: 'mcp-session-456' } }),
+      createMockRes(),
+      mockNext,
+    );
+
+    const keys = fresh.getRateLimitStats().entries.map((e) => e.key);
+    expect(keys).toEqual(['session:mcp-session-456']);
+    fresh.stopCleanup();
   });
 });
 

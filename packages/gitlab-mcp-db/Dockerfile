@@ -45,10 +45,10 @@ RUN yarn workspace @structured-world/gitlab-mcp build
 # Build the db package (runs prisma generate + tsc)
 RUN yarn workspace @structured-world/gitlab-mcp-db build
 
-# Keep only the db package's production dependencies (@prisma/client)
-RUN --mount=type=cache,target=/root/.yarn/berry/cache \
-    --mount=type=cache,target=/app/.yarn/cache \
-    yarn workspaces focus @structured-world/gitlab-mcp-db --production
+# Collect only what the backend and `prisma migrate` load (Prisma client runtime,
+# pg driver adapter, Prisma CLI with the native schema engine of this platform),
+# without Studio, `prisma dev` or the query compilers of other databases
+RUN node packages/gitlab-mcp-db/scripts/runtime-node-modules.mjs /app/db-runtime/node_modules
 
 # ============================================================================
 # RUNTIME STAGE - Core image + the db package as a resolvable node module
@@ -68,12 +68,22 @@ COPY --from=db-builder --chown=gitlab-mcp:gitlab-mcp /app/packages/gitlab-mcp-db
 COPY --from=db-builder --chown=gitlab-mcp:gitlab-mcp /app/packages/gitlab-mcp-db/package.json \
     /app/node_modules/@structured-world/gitlab-mcp-db/package.json
 
-# Prisma runtime client (the generated client lives inside the package's
-# generated/ dir, copied above; prisma 7 uses a custom output, not .prisma)
-COPY --from=db-builder --chown=gitlab-mcp:gitlab-mcp /app/node_modules/@prisma /app/node_modules/@prisma
+# Schema, migrations and Prisma config for `prisma migrate deploy` inside the image
+COPY --from=db-builder --chown=gitlab-mcp:gitlab-mcp /app/packages/gitlab-mcp-db/prisma \
+    /app/node_modules/@structured-world/gitlab-mcp-db/prisma
+COPY --from=db-builder --chown=gitlab-mcp:gitlab-mcp /app/packages/gitlab-mcp-db/prisma.config.ts \
+    /app/node_modules/@structured-world/gitlab-mcp-db/prisma.config.ts
+
+# Runtime dependencies go into the package's own node_modules, so they resolve
+# from the backend and the generated client without replacing any version the
+# core image already ships
+COPY --from=db-builder --chown=gitlab-mcp:gitlab-mcp /app/db-runtime/node_modules \
+    /app/node_modules/@structured-world/gitlab-mcp-db/node_modules
 
 # PostgreSQL storage is opt-in at runtime via OAUTH_STORAGE_TYPE=postgresql
 ENV OAUTH_STORAGE_TYPE=""
+# Migrations from the image make no update-check calls to Prisma's servers
+ENV CHECKPOINT_DISABLE=1
 
 # Drop back to the non-root app user
 USER gitlab-mcp

@@ -4,13 +4,30 @@
  */
 
 import { Request, Response } from 'express';
-import { metadataHandler, getBaseUrl } from '../../../../src/oauth/endpoints/metadata';
+import {
+  metadataHandler,
+  protectedResourceHandler,
+  getBaseUrl,
+} from '../../../../src/oauth/endpoints/metadata';
+import { loadOAuthConfig } from '../../../../src/oauth/config';
 
 // Mock config
 jest.mock('../../../../src/config', () => ({
   HOST: 'localhost',
   PORT: 3333,
 }));
+
+jest.mock('../../../../src/oauth/config', () => ({
+  loadOAuthConfig: jest.fn(),
+}));
+
+const mockLoadOAuthConfig = loadOAuthConfig as jest.MockedFunction<typeof loadOAuthConfig>;
+
+beforeEach(() => {
+  mockLoadOAuthConfig.mockReturnValue({
+    issuer: 'http://localhost:3333',
+  } as ReturnType<typeof loadOAuthConfig>);
+});
 
 describe('OAuth Metadata Endpoint', () => {
   // Helper to create mock request
@@ -157,7 +174,12 @@ describe('OAuth Metadata Endpoint', () => {
       metadataHandler(req, res);
 
       const metadata = (res.json as jest.Mock).mock.calls[0][0];
-      expect(metadata.token_endpoint_auth_methods_supported).toEqual(['none']);
+      // The methods /register accepts and /token authenticates.
+      expect(metadata.token_endpoint_auth_methods_supported).toEqual([
+        'none',
+        'client_secret_basic',
+        'client_secret_post',
+      ]);
     });
 
     it('should include supported scopes', () => {
@@ -170,6 +192,26 @@ describe('OAuth Metadata Endpoint', () => {
       expect(metadata.scopes_supported).toEqual(['mcp:tools', 'mcp:resources']);
     });
 
+    it('should advertise the revocation endpoint (RFC 8414 section 2, RFC 7009)', () => {
+      const res = createMockResponse() as Response;
+      metadataHandler(createMockRequest() as Request, res);
+      const metadata = (res.json as jest.Mock).mock.calls[0][0];
+      expect(metadata.revocation_endpoint).toBe('http://localhost:3333/revoke');
+      // /revoke authenticates clients as /token does (RFC 7009 section 2.1).
+      expect(metadata.revocation_endpoint_auth_methods_supported).toEqual([
+        'none',
+        'client_secret_basic',
+        'client_secret_post',
+      ]);
+    });
+
+    it('should advertise iss in authorization responses (RFC 9207 section 3)', () => {
+      const res = createMockResponse() as Response;
+      metadataHandler(createMockRequest() as Request, res);
+      const metadata = (res.json as jest.Mock).mock.calls[0][0];
+      expect(metadata.authorization_response_iss_parameter_supported).toBe(true);
+    });
+
     it('should include MCP version', () => {
       const req = createMockRequest() as Request;
       const res = createMockResponse() as Response;
@@ -180,11 +222,15 @@ describe('OAuth Metadata Endpoint', () => {
       expect(metadata.mcp_version).toBe('2025-03-26');
     });
 
-    it('should adapt to forwarded headers', () => {
+    it('should take the issuer from OAUTH_ISSUER and ignore forwarded headers', () => {
+      // A client-controlled Host header must not choose the issuer tokens are minted for.
+      mockLoadOAuthConfig.mockReturnValue({
+        issuer: 'https://mcp.example.com',
+      } as ReturnType<typeof loadOAuthConfig>);
       const req = createMockRequest({
         get: jest.fn((header: string): string | undefined => {
           if (header === 'x-forwarded-proto') return 'https';
-          if (header === 'x-forwarded-host') return 'mcp.example.com';
+          if (header === 'x-forwarded-host') return 'attacker.example';
           return undefined;
         }) as Request['get'],
       }) as Request;
@@ -196,6 +242,62 @@ describe('OAuth Metadata Endpoint', () => {
       expect(metadata.issuer).toBe('https://mcp.example.com');
       expect(metadata.authorization_endpoint).toBe('https://mcp.example.com/authorize');
       expect(metadata.token_endpoint).toBe('https://mcp.example.com/token');
+    });
+
+    it('should answer 500 when OAuth is not configured', () => {
+      mockLoadOAuthConfig.mockReturnValue(null);
+      const res = createMockResponse() as Response;
+      metadataHandler(createMockRequest() as Request, res);
+      expect(res.status).toHaveBeenCalledWith(500);
+    });
+  });
+
+  describe('protectedResourceHandler', () => {
+    it.each([
+      ['/.well-known/oauth-protected-resource', 'http://localhost:3333'],
+      ['/.well-known/oauth-protected-resource/mcp', 'http://localhost:3333/mcp'],
+    ])('serves %s with resource %s (RFC 9728 section 3.3)', (path, resource) => {
+      const res = createMockResponse() as Response;
+      protectedResourceHandler(createMockRequest({ path } as Partial<Request>) as Request, res);
+      const metadata = (res.json as jest.Mock).mock.calls[0][0];
+      expect(metadata.resource).toBe(resource);
+      expect(metadata.authorization_servers).toEqual(['http://localhost:3333']);
+    });
+
+    // An issuer with a path serves its documents at path-inserted URLs (RFC 9728 3.1).
+    it.each([
+      ['/.well-known/oauth-protected-resource/gitlab', 'https://mcp.example.com/gitlab'],
+      ['/.well-known/oauth-protected-resource/gitlab/mcp', 'https://mcp.example.com/gitlab/mcp'],
+    ])('serves %s of an issuer with a path as %s', (path, resource) => {
+      mockLoadOAuthConfig.mockReturnValue({
+        issuer: 'https://mcp.example.com/gitlab',
+      } as ReturnType<typeof loadOAuthConfig>);
+      const res = createMockResponse() as Response;
+      protectedResourceHandler(createMockRequest({ path } as Partial<Request>) as Request, res);
+      expect((res.json as jest.Mock).mock.calls[0][0].resource).toBe(resource);
+    });
+
+    // The root forms stay mounted for a path issuer too and describe its two resources.
+    it.each([
+      ['/.well-known/oauth-protected-resource', 'https://mcp.example.com/gitlab'],
+      ['/.well-known/oauth-protected-resource/mcp', 'https://mcp.example.com/gitlab/mcp'],
+    ])('serves the root form %s of an issuer with a path as %s', (path, resource) => {
+      mockLoadOAuthConfig.mockReturnValue({
+        issuer: 'https://mcp.example.com/gitlab',
+      } as ReturnType<typeof loadOAuthConfig>);
+      const res = createMockResponse() as Response;
+      protectedResourceHandler(createMockRequest({ path } as Partial<Request>) as Request, res);
+      expect((res.json as jest.Mock).mock.calls[0][0].resource).toBe(resource);
+    });
+
+    it('answers 500 when OAuth is not configured', () => {
+      mockLoadOAuthConfig.mockReturnValue(null);
+      const res = createMockResponse() as Response;
+      protectedResourceHandler(
+        createMockRequest({ path: '/x' } as Partial<Request>) as Request,
+        res,
+      );
+      expect(res.status).toHaveBeenCalledWith(500);
     });
   });
 

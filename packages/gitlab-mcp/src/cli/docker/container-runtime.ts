@@ -52,31 +52,76 @@ function parseVersion(output: string): string | undefined {
   return match?.[1];
 }
 
+interface ComposeDetection {
+  cmd: string[];
+  provider?: 'docker-compose' | 'podman-compose';
+  version?: string;
+}
+
+/** Implementation and version from a compose version banner. */
+function describeCompose(cmd: string[], output: string | undefined): ComposeDetection {
+  if (!output) return { cmd };
+  return {
+    cmd,
+    // `podman compose` delegates to docker-compose or podman-compose; the banner names it.
+    provider: /podman-compose/i.test(output) ? 'podman-compose' : 'docker-compose',
+    version: parseVersion(output),
+  };
+}
+
 /**
  * Detect the compose command for a given runtime.
  * Priority for docker: docker compose → docker-compose
  * Priority for podman: podman compose → podman-compose → docker-compose (fallback)
  */
-function detectComposeCmd(runtime: ContainerRuntime): string[] | null {
+function detectComposeCmd(runtime: ContainerRuntime): ComposeDetection | null {
   const runtimeCmd = runtime;
 
   // Try "<runtime> compose version" (compose v2 plugin)
   if (commandSucceeds(runtimeCmd, ['compose', 'version'])) {
-    return [runtimeCmd, 'compose'];
+    const cmd = [runtimeCmd, 'compose'];
+    return describeCompose(cmd, commandOutput(runtimeCmd, ['compose', 'version']));
   }
 
   // Try "<runtime>-compose --version" (standalone compose)
   const standaloneCompose = `${runtimeCmd}-compose`;
   if (commandSucceeds(standaloneCompose, ['--version'])) {
-    return [standaloneCompose];
+    return describeCompose([standaloneCompose], commandOutput(standaloneCompose, ['--version']));
   }
 
   // Cross-runtime fallback: try docker-compose as last resort
   if (commandSucceeds('docker-compose', ['--version'])) {
-    return ['docker-compose'];
+    return describeCompose(['docker-compose'], commandOutput('docker-compose', ['--version']));
   }
 
   return null;
+}
+
+/** Whether version `actual` is at least `minimum`; both are `major.minor.patch`. */
+function versionAtLeast(actual: string, minimum: string): boolean {
+  const a = actual.split('.').map(Number);
+  const m = minimum.split('.').map(Number);
+  for (let i = 0; i < m.length; i++) {
+    if (a[i] !== m[i]) return a[i] > m[i];
+  }
+  return true;
+}
+
+/**
+ * Why the detected compose cannot run deployments that start the server after a
+ * one-shot migration (`depends_on` with `condition: service_completed_successfully`),
+ * or undefined when it can. podman-compose implements the condition from 1.6.0. Docker
+ * Compose has it from 1.29.0, but the v1 line reached end of life in July 2023 and gets no
+ * fixes, so Docker deployments require Compose v2.
+ */
+export function completionDependencyError(info: ContainerRuntimeInfo): string | undefined {
+  const required = 'Docker Compose v2 or podman-compose 1.6.0 or later';
+  if (!info.composeCmd || !info.composeVersion) {
+    return `Could not determine the compose version; PostgreSQL deployments need ${required}.`;
+  }
+  const minimum = info.composeProvider === 'podman-compose' ? '1.6.0' : '2.0.0';
+  if (versionAtLeast(info.composeVersion, minimum)) return undefined;
+  return `${info.composeProvider} ${info.composeVersion} cannot order the database migration before the server; install ${required}.`;
 }
 
 /**
@@ -92,14 +137,16 @@ export function detectContainerRuntime(): ContainerRuntimeInfo {
     if (versionOutput) {
       // Runtime binary exists, check if daemon is accessible
       const runtimeAvailable = commandSucceeds(runtime, ['info']);
-      const composeCmd = detectComposeCmd(runtime);
+      const compose = detectComposeCmd(runtime);
       const runtimeVersion = parseVersion(versionOutput);
 
       return {
         runtime,
         runtimeCmd: runtime,
         runtimeAvailable,
-        composeCmd,
+        composeCmd: compose?.cmd ?? null,
+        ...(compose?.provider && { composeProvider: compose.provider }),
+        ...(compose?.version && { composeVersion: compose.version }),
         runtimeVersion,
       };
     }

@@ -201,6 +201,20 @@ describe('SessionManager', () => {
     });
   });
 
+  // The rate limiter trusts an MCP session id only when this process holds the session.
+  describe('hasSession', () => {
+    it('reports only sessions this process holds', async () => {
+      manager.start();
+      await manager.createSession('session-1', mockTransport);
+
+      expect(manager.hasSession('session-1')).toBe(true);
+      expect(manager.hasSession('made-up')).toBe(false);
+
+      await manager.removeSession('session-1');
+      expect(manager.hasSession('session-1')).toBe(false);
+    });
+  });
+
   describe('broadcastToolsListChanged', () => {
     it('should send notification to all active sessions', async () => {
       manager.start();

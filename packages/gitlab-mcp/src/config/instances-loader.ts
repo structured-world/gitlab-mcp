@@ -114,7 +114,7 @@ async function loadConfigFile(filePath: string): Promise<InstancesConfigFile> {
  * - Single URL: "https://gitlab.com"
  * - Bash array: "(https://gitlab.com https://git.corp.io)"
  * - JSON array: '["https://gitlab.com", "https://git.corp.io"]'
- * - JSON object: '{"instances": [...]}'
+ * - JSON object: '{"instances": [...], "defaults": {...}}', the file format, defaults applied
  */
 function parseInstancesEnvVar(value: string): GitLabInstanceConfig[] {
   const trimmed = value.trim();
@@ -123,7 +123,7 @@ function parseInstancesEnvVar(value: string): GitLabInstanceConfig[] {
   if (trimmed.startsWith('{')) {
     const parsed: unknown = JSON.parse(trimmed);
     const config = validateInstancesConfig(parsed);
-    return config.instances;
+    return config.instances.map((inst) => applyInstanceDefaults(inst, config.defaults));
   }
 
   // Check for JSON array format
@@ -155,6 +155,25 @@ function parseInstancesEnvVar(value: string): GitLabInstanceConfig[] {
 }
 
 /**
+ * The instance with its OAuth secret read from the variable `clientSecretEnv` names, so a
+ * configuration can name the secret without containing it. An unset variable leaves a
+ * public application.
+ */
+function withSecretFromEnv(instance: GitLabInstanceConfig): GitLabInstanceConfig {
+  const oauth = instance.oauth;
+  if (!oauth?.clientSecretEnv || oauth.clientSecret) return instance;
+  const clientSecret = process.env[oauth.clientSecretEnv];
+  if (!clientSecret) {
+    logWarn('OAuth secret variable of an instance is not set', {
+      instance: instance.url,
+      variable: oauth.clientSecretEnv,
+    });
+    return instance;
+  }
+  return { ...instance, oauth: { ...oauth, clientSecret } };
+}
+
+/**
  * Load instances configuration from all sources
  */
 export async function loadInstancesConfig(): Promise<LoadedInstancesConfig> {
@@ -170,7 +189,7 @@ export async function loadInstancesConfig(): Promise<LoadedInstancesConfig> {
 
       // Apply defaults to all instances
       const instances = config.instances.map((inst) =>
-        applyInstanceDefaults(inst, config.defaults),
+        withSecretFromEnv(applyInstanceDefaults(inst, config.defaults)),
       );
 
       logInfo('Loaded GitLab instances from configuration file', {
@@ -197,7 +216,7 @@ export async function loadInstancesConfig(): Promise<LoadedInstancesConfig> {
   if (instancesEnv) {
     try {
       logDebug('Loading instances from GITLAB_INSTANCES env var');
-      const instances = parseInstancesEnvVar(instancesEnv);
+      const instances = parseInstancesEnvVar(instancesEnv).map(withSecretFromEnv);
 
       logInfo('Loaded GitLab instances from environment variable', {
         count: instances.length,

@@ -6,6 +6,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { config } from 'dotenv';
+import './isolatedSettings';
 
 // Check if .env.test exists and load it
 const envTestPath = path.resolve(__dirname, '../../.env.test');

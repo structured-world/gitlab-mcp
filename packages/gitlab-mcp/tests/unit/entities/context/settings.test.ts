@@ -36,7 +36,9 @@ jest.mock('../../../../src/entities/context/context-manager', () => ({
 
 const mockDetect = jest.fn();
 jest.mock('../../../../src/utils/namespace', () => ({
-  detectNamespaceType: (path: string) => mockDetect(path),
+  // The guessing lookup answers even for a path GitLab does not know, as the real one does.
+  detectNamespaceType: async (path: string) => (path.includes('/') ? 'project' : 'group'),
+  findNamespaceType: (path: string) => mockDetect(path),
 }));
 
 import { ConfigurationService } from '../../../../src/configuration/service';
@@ -274,22 +276,18 @@ describe('native settings', () => {
       expect(saved()).toBeUndefined();
     });
 
-    it('refuses a path GitLab does not know and saves nothing', async () => {
-      mockDetect.mockRejectedValue(new Error('404 Not Found'));
+    // A typo, or GitLab not answering, must not be saved as a guessed project or group.
+    it.each(['typo', 'team/typo'])(
+      'refuses %s when GitLab confirms no project or group, and saves nothing',
+      async (path) => {
+        mockDetect.mockResolvedValue(null);
 
-      await expect(update({ scope: 'typo', readOnly: true })).rejects.toThrow(
-        "No project or group 'typo' was found: 404 Not Found",
-      );
-      expect(saved()).toBeUndefined();
-    });
-
-    it('reports a lookup failure that is not an Error', async () => {
-      mockDetect.mockRejectedValue('lookup aborted');
-
-      await expect(update({ scope: 'team' })).rejects.toThrow(
-        "No project or group 'team' was found: lookup aborted",
-      );
-    });
+        await expect(update({ scope: path, readOnly: true })).rejects.toThrow(
+          `No project or group '${path}' was found on GitLab, or GitLab could not be reached`,
+        );
+        expect(saved()).toBeUndefined();
+      },
+    );
 
     it('refuses to turn off read-only mode the operator set', async () => {
       mockReadOnlyMode = true;

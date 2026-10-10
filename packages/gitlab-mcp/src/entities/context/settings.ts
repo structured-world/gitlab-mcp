@@ -17,7 +17,7 @@ import {
 } from '../../configuration';
 import { TOOL_GROUPS, type ToolGroup } from '../../configuration/groups';
 import type { AccountSettingsPatch } from '../../configuration/service';
-import { detectNamespaceType } from '../../utils/namespace';
+import { findNamespaceType } from '../../utils/namespace';
 import { getContextManager } from './context-manager';
 
 export const SETTINGS_READ_TOOL = 'get_settings';
@@ -267,13 +267,12 @@ async function scopeSetting(
   includeSubgroups: boolean,
 ): Promise<AccountSettingsPatch['scope']> {
   if (path === '') return null;
-  // The path is checked against GitLab, so a typo is reported instead of saved.
-  let type: 'project' | 'group';
-  try {
-    type = await detectNamespaceType(path);
-  } catch (error: unknown) {
-    const reason = error instanceof Error ? error.message : String(error);
-    throw new ConfigurationError(`No project or group '${path}' was found: ${reason}`);
+  // The path is checked against GitLab, so a typo is reported instead of saved as a guess.
+  const type = await findNamespaceType(path);
+  if (!type) {
+    throw new ConfigurationError(
+      `No project or group '${path}' was found on GitLab, or GitLab could not be reached`,
+    );
   }
   return { type, path, includeSubgroups: type === 'group' && includeSubgroups };
 }

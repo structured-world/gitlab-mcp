@@ -10,6 +10,7 @@ import { ContextManager } from '../../../../src/entities/context/context-manager
 // Mock dependencies
 jest.mock('../../../../src/utils/namespace', () => ({
   detectNamespaceType: jest.fn().mockResolvedValue('group'),
+  findNamespaceType: jest.fn().mockResolvedValue('group'),
 }));
 
 jest.mock('../../../../src/profiles/loader', () => ({

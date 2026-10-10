@@ -5,7 +5,7 @@
  * and scope enforcement functionality.
  */
 
-import { IntegrationTestHelper } from '../helpers/registry-helper';
+import { IntegrationTestHelper, findTestProjectPath } from '../helpers/registry-helper';
 import { ContextManager } from '../../../src/entities/context/context-manager';
 import { ManageContextSchema } from '../../../src/entities/context/schema';
 
@@ -198,8 +198,9 @@ describe('manage_context Integration Tests', () => {
     });
 
     it('should auto-detect project namespace', async () => {
-      // Use a test project that exists in the test environment
-      const testProject = 'test/backend/project1';
+      // A project that exists: set_scope accepts only paths GitLab confirms.
+      const testProject = await findTestProjectPath(helper);
+      if (!testProject) throw new Error('No project under the test group to scope to');
 
       const result = (await helper.executeTool('manage_context', {
         action: 'set_scope',

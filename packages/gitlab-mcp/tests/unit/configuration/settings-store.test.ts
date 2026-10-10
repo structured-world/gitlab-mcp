@@ -7,7 +7,13 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { LocalSettingsFile } from '../../../src/configuration/settings-store';
+import { LocalSettingsFile, localSettingsPath } from '../../../src/configuration/settings-store';
+
+// The test setup keeps every test away from the user's own settings file.
+it('points tests at a temporary settings file, not the home directory', () => {
+  expect(localSettingsPath().startsWith(os.tmpdir())).toBe(true);
+  expect(localSettingsPath().startsWith(os.homedir())).toBe(false);
+});
 
 describe('LocalSettingsFile', () => {
   let dir: string;

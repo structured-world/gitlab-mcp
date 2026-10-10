@@ -38,32 +38,30 @@ export function isLikelyProjectPath(namespacePath: string): boolean {
 }
 
 /**
- * Detect namespace type by attempting to fetch from GitLab API
- * Tries both project and group endpoints to determine which one exists
+ * Whether GitLab knows the path as a project or a group, or null when it confirms neither
+ * (the path does not exist, or GitLab could not be reached). The likelier type is asked first.
+ */
+export async function findNamespaceType(
+  namespacePath: string,
+): Promise<'project' | 'group' | null> {
+  const order: Array<'project' | 'group'> = isLikelyProjectPath(namespacePath)
+    ? ['project', 'group']
+    : ['group', 'project'];
+  for (const type of order) {
+    if (await verifyNamespaceType(namespacePath, type)) return type;
+  }
+  return null;
+}
+
+/**
+ * Detect namespace type by attempting to fetch from GitLab API, falling back to the path
+ * shape when GitLab confirms neither type
  */
 export async function detectNamespaceType(namespacePath: string): Promise<'project' | 'group'> {
-  // First try heuristic for common cases
-  if (isLikelyProjectPath(namespacePath)) {
-    // Try project first, fallback to group if needed
-    const isProject = await verifyNamespaceType(namespacePath, 'project');
-    if (isProject) return 'project';
-
-    const isGroup = await verifyNamespaceType(namespacePath, 'group');
-    if (isGroup) return 'group';
-
-    // Default fallback for paths with slash
-    return 'project';
-  } else {
-    // Try group first, fallback to project if needed
-    const isGroup = await verifyNamespaceType(namespacePath, 'group');
-    if (isGroup) return 'group';
-
-    const isProject = await verifyNamespaceType(namespacePath, 'project');
-    if (isProject) return 'project';
-
-    // Default fallback for paths without slash
-    return 'group';
-  }
+  return (
+    (await findNamespaceType(namespacePath)) ??
+    (isLikelyProjectPath(namespacePath) ? 'project' : 'group')
+  );
 }
 
 /**

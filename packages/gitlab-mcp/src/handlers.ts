@@ -47,6 +47,7 @@ import {
   type EffectivePolicy,
 } from './configuration/policy';
 import { scopedArgs, scopedResult } from './configuration/scope-targets';
+import type { ScopeEnforcer } from './profiles/scope-enforcer';
 
 interface JsonSchemaProperty {
   type?: string;
@@ -508,14 +509,52 @@ async function executeInScope(
   instanceUrl: string | undefined,
   requestScopes: readonly string[] | undefined,
 ): Promise<unknown> {
-  const args = policy.scope ? scopedArgs(toolName, requested, policy.scope) : requested;
-  const executed =
+  const run = (tool: string, toolArgs: Record<string, unknown>): Promise<unknown> =>
     requestScopes === undefined
-      ? await registryManager.executeTool(toolName, args, instanceUrl)
-      : await registryManager.executeTool(toolName, args, instanceUrl, requestScopes);
+      ? registryManager.executeTool(tool, toolArgs, instanceUrl)
+      : registryManager.executeTool(tool, toolArgs, instanceUrl, requestScopes);
+  if (policy.scopeEnforcer && toolName === 'manage_todos' && requested.action === 'mark_all_done') {
+    return markScopeTodosDone(run, policy.scopeEnforcer);
+  }
+  const args = policy.scope ? scopedArgs(toolName, requested, policy.scope) : requested;
+  const executed = await run(toolName, args);
   return policy.scopeEnforcer
     ? scopedResult(toolName, args, executed, policy.scopeEnforcer)
     : executed;
+}
+
+const TODO_PAGE_SIZE = 100;
+
+/**
+ * mark_all_done for a scoped chat: GitLab's own would also clear todos outside the scope,
+ * so the scope's pending todos are marked done one by one.
+ */
+async function markScopeTodosDone(
+  run: (tool: string, args: Record<string, unknown>) => Promise<unknown>,
+  enforcer: ScopeEnforcer,
+): Promise<unknown> {
+  // Collected before marking: a todo marked done leaves the pending pages being read.
+  const ids: unknown[] = [];
+  for (let page = 1; ; page++) {
+    const todos = await run('browse_todos', {
+      action: 'list',
+      state: 'pending',
+      per_page: TODO_PAGE_SIZE,
+      page,
+    });
+    if (!Array.isArray(todos)) break;
+    const inScope = scopedResult('browse_todos', { action: 'list' }, todos, enforcer) as Array<{
+      id?: unknown;
+    }>;
+    for (const todo of inScope) ids.push(todo.id);
+    if (todos.length < TODO_PAGE_SIZE) break;
+  }
+  await Promise.all(ids.map((id) => run('manage_todos', { action: 'mark_done', id })));
+  return {
+    success: true,
+    marked: ids.length,
+    message: `Marked ${ids.length} todos of the working scope as done; todos outside it were left pending`,
+  };
 }
 
 function recordCallContext(scopePath: string | undefined, readOnly: boolean): void {

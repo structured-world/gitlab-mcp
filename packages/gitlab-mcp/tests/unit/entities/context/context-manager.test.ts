@@ -20,7 +20,9 @@ jest.mock('../../../../src/config', () => ({
 }));
 
 jest.mock('../../../../src/utils/namespace', () => ({
-  detectNamespaceType: jest.fn(),
+  // The guessing lookup answers even for a path GitLab does not know, as the real one does.
+  detectNamespaceType: async (path: string) => (path.includes('/') ? 'project' : 'group'),
+  findNamespaceType: jest.fn(),
 }));
 
 jest.mock('../../../../src/server', () => ({
@@ -109,15 +111,13 @@ import {
   ContextManager,
   getContextManager,
 } from '../../../../src/entities/context/context-manager';
-import { detectNamespaceType } from '../../../../src/utils/namespace';
+import { findNamespaceType } from '../../../../src/utils/namespace';
 import { sendToolsListChangedNotification } from '../../../../src/server';
 import { ConfigurationService } from '../../../../src/configuration/service';
 import { resolveCaller, runWithCaller, type Caller } from '../../../../src/configuration/caller';
 import type { AccountSettingsRecord, AccountSettings } from '../../../../src/configuration/types';
 
-const mockDetectNamespaceType = detectNamespaceType as jest.MockedFunction<
-  typeof detectNamespaceType
->;
+const mockDetectNamespaceType = findNamespaceType as jest.MockedFunction<typeof findNamespaceType>;
 const mockSendToolsListChangedNotification =
   sendToolsListChangedNotification as jest.MockedFunction<typeof sendToolsListChangedNotification>;
 
@@ -389,12 +389,15 @@ describe('ContextManager', () => {
       },
     );
 
-    it('reports a namespace that cannot be resolved', async () => {
-      mockDetectNamespaceType.mockRejectedValue(new Error('API error'));
+    // A typo, or GitLab not answering, must not become a guessed scope for the chat.
+    it('refuses a namespace GitLab does not confirm and keeps the session scope', async () => {
+      mockDetectNamespaceType.mockResolvedValue(null);
+      const manager = getContextManager();
 
-      await expect(getContextManager().setScope('missing')).rejects.toThrow(
-        "Failed to set scope for 'missing': API error",
+      await expect(runWithCaller(alice1, () => manager.setScope('team/typo'))).rejects.toThrow(
+        "Failed to set scope for 'team/typo': No project or group 'team/typo' was found on GitLab, or GitLab could not be reached",
       );
+      expect((await runWithCaller(alice1, () => manager.getContext())).scope).toBeUndefined();
     });
   });
 

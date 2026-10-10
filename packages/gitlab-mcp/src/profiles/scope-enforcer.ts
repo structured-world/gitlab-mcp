@@ -355,6 +355,7 @@ export function extractProjectsFromArgs(args: Record<string, unknown>): string[]
   const projects: string[] = [];
 
   // Common parameter names for project identification
+  // Destinations count too: a cross-project merge request or job token target.
   const projectFields = [
     'project_id',
     'projectId',
@@ -362,6 +363,7 @@ export function extractProjectsFromArgs(args: Record<string, unknown>): string[]
     'namespace',
     'namespacePath',
     'fullPath',
+    'target_project_id',
   ];
 
   for (const field of projectFields) {
@@ -387,7 +389,16 @@ export function extractGroupsFromArgs(args: Record<string, unknown>): string[] {
   const groups: string[] = [];
 
   // Common parameter names for group identification
-  const groupFields = ['group_id', 'groupId', 'group'];
+  // Destinations count too: a fork's target namespace, a job token target group, and a
+  // namespace read by id or path.
+  const groupFields = [
+    'group_id',
+    'groupId',
+    'group',
+    'target_group_id',
+    'namespace_path',
+    'namespace_id',
+  ];
 
   for (const field of groupFields) {
     const id = identifierOf(args[field]);

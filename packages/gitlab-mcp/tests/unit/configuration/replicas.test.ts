@@ -12,7 +12,6 @@ import * as path from 'path';
 import type { SessionStorageBackend } from '../../../src/oauth/storage/types';
 import type { Caller } from '../../../src/configuration/caller';
 import type { ConfigurationService } from '../../../src/configuration/service';
-import { MemoryStorageBackend } from '../../../src/oauth/storage/memory';
 import { FileStorageBackend } from '../../../src/oauth/storage/file';
 
 interface Replica {
@@ -20,13 +19,18 @@ interface Replica {
   close(): Promise<void>;
 }
 
-async function startReplica(shared: SessionStorageBackend): Promise<Replica> {
+async function startReplica(shared: SessionStorageBackend, dir: string): Promise<Replica> {
   let replica: Replica | undefined;
   // Without it a later replica can get a storage mock instantiated for an earlier one.
   jest.resetModules();
   await jest.isolateModulesAsync(async () => {
     jest.doMock('../../../src/oauth/storage/factory', () => ({
       createStorageBackend: () => shared,
+    }));
+    // Never the user's own settings file, whatever store the replica picks.
+    jest.doMock('../../../src/configuration/settings-store', () => ({
+      ...jest.requireActual('../../../src/configuration/settings-store'),
+      localSettingsPath: () => path.join(dir, 'local-settings.json'),
     }));
     const { getConfigurationService } = await import('../../../src/configuration');
     const { sessionStore } = await import('../../../src/oauth/session-store');
@@ -75,10 +79,13 @@ describe('settings across replicas', () => {
     else process.env.OAUTH_STORAGE_TYPE = originalStorage;
   });
 
+  // One durable backend instance stands for the database every replica connects to.
+  const sharedStorage = () => new FileStorageBackend({ filePath: path.join(dir, 'shared.json') });
+
   it('applies account settings saved on one replica on another, for that account only', async () => {
-    const shared = new MemoryStorageBackend({ silent: true });
-    const first = await startReplica(shared);
-    const second = await startReplica(shared);
+    const shared = sharedStorage();
+    const first = await startReplica(shared, dir);
+    const second = await startReplica(shared, dir);
 
     await first.service.updateAccount(alice('chat-1'), { preset: 'readonly' });
 
@@ -90,9 +97,9 @@ describe('settings across replicas', () => {
   });
 
   it('keeps a chat override in its chat, on its replica', async () => {
-    const shared = new MemoryStorageBackend({ silent: true });
-    const first = await startReplica(shared);
-    const second = await startReplica(shared);
+    const shared = sharedStorage();
+    const first = await startReplica(shared, dir);
+    const second = await startReplica(shared, dir);
 
     await first.service.updateSession(alice('chat-1'), { readOnly: true });
 
@@ -105,9 +112,9 @@ describe('settings across replicas', () => {
 
   // Two replicas save different settings of one account at the same time: both are kept.
   it('keeps concurrent edits of different settings from two replicas', async () => {
-    const shared = new MemoryStorageBackend({ silent: true });
-    const first = await startReplica(shared);
-    const second = await startReplica(shared);
+    const shared = sharedStorage();
+    const first = await startReplica(shared, dir);
+    const second = await startReplica(shared, dir);
 
     await Promise.all([
       first.service.updateAccount(alice('chat-1'), { readOnly: true }),
@@ -123,14 +130,14 @@ describe('settings across replicas', () => {
 
   it('keeps account settings across a restart, and not chat overrides', async () => {
     const filePath = path.join(dir, 'sessions.json');
-    const before = await startReplica(new FileStorageBackend({ filePath }));
+    const before = await startReplica(new FileStorageBackend({ filePath }), dir);
     await before.service.updateAccount(alice('chat-1'), {
       scope: { type: 'group', path: 'team', includeSubgroups: true },
     });
     await before.service.updateSession(alice('chat-1'), { readOnly: true });
     await before.close();
 
-    const after = await startReplica(new FileStorageBackend({ filePath }));
+    const after = await startReplica(new FileStorageBackend({ filePath }), dir);
     const resolved = await after.service.resolve(alice('chat-1'));
 
     expect(resolved.account.scope).toEqual({ type: 'group', path: 'team', includeSubgroups: true });

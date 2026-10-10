@@ -13,7 +13,9 @@ jest.mock('../../../src/oauth/config', () => ({
   isOAuthEnabled: () => mockOAuth,
 }));
 
+let mockBackendType = 'postgresql';
 const mockSessionStore = {
+  getBackendType: () => mockBackendType,
   initialize: jest.fn(async () => undefined),
   getAccountSettings: jest.fn(async () => undefined),
   putAccountSettings: jest.fn(async (accountKey: string, settings: object) => ({
@@ -63,6 +65,7 @@ describe('getConfigurationService', () => {
     jest.clearAllMocks();
     resetConfigurationService();
     mockOAuth = false;
+    mockBackendType = 'postgresql';
     delete process.env.OAUTH_STORAGE_TYPE;
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'configuration-index-test-'));
     mockSettingsPath = path.join(dir, 'settings.json');
@@ -109,6 +112,19 @@ describe('getConfigurationService', () => {
       0,
     );
     expect(fs.existsSync(mockSettingsPath)).toBe(false);
+  });
+
+  // Sessions held in memory (the OAuth default) are gone after a restart; saved settings
+  // must not be, so they go to the settings file instead.
+  it('keeps OAuth settings in the settings file when sessions are held in memory', async () => {
+    mockOAuth = true;
+    mockBackendType = 'memory';
+
+    await getConfigurationService().updateAccount(alice, { readOnly: true });
+
+    const file = JSON.parse(fs.readFileSync(mockSettingsPath, 'utf-8'));
+    expect(file.accounts[alice.accountKey].settings).toEqual({ readOnly: true });
+    expect(mockSessionStore.putAccountSettings).not.toHaveBeenCalled();
   });
 
   // A storage outage at the first request must not fail every later request until restart.

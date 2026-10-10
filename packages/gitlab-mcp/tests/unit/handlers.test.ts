@@ -3089,6 +3089,51 @@ describe('handlers', () => {
       ]);
     });
 
+    // Marking every todo done would also clear todos outside the scope: in a scoped chat
+    // only the scope's pending todos are marked, one by one, over every page.
+    it('marks only the pending todos of the working scope done', async () => {
+      await service().updateAccount(staticCaller(), {
+        scope: { type: 'group', path: 'team', includeSubgroups: true },
+      });
+      const pages: Record<number, Array<Record<string, unknown>>> = {
+        1: [
+          ...Array.from({ length: 99 }, (_, i) => ({
+            id: 100 + i,
+            project: { path_with_namespace: 'other/api' },
+          })),
+          { id: 1, project: { path_with_namespace: 'team/app' } },
+        ],
+        2: [
+          { id: 2, group: { full_path: 'team/sub' } },
+          { id: 3, project: { path_with_namespace: 'other/api' } },
+        ],
+      };
+      mockRegistryManager.executeTool.mockImplementation(
+        async (tool: string, args: Record<string, unknown>) => {
+          if (tool === 'browse_todos') return pages[args.page as number] ?? [];
+          return { id: args.id, state: 'done' };
+        },
+      );
+
+      const result = await callToolHandler(
+        { params: { name: 'manage_todos', arguments: { action: 'mark_all_done' } } },
+        { sessionId: 'sess-1' },
+      );
+
+      const calls = mockRegistryManager.executeTool.mock.calls.map(([tool, args]) => [tool, args]);
+      expect(calls).toEqual([
+        ['browse_todos', { action: 'list', state: 'pending', per_page: 100, page: 1 }],
+        ['browse_todos', { action: 'list', state: 'pending', per_page: 100, page: 2 }],
+        ['manage_todos', { action: 'mark_done', id: 1 }],
+        ['manage_todos', { action: 'mark_done', id: 2 }],
+      ]);
+      expect(JSON.parse(result.content?.[0].text ?? '')).toEqual({
+        success: true,
+        marked: 2,
+        message: 'Marked 2 todos of the working scope as done; todos outside it were left pending',
+      });
+    });
+
     it('refuses a global search a scope of several projects cannot narrow', async () => {
       await service().updateSession(staticCaller(), { preset: 'several' });
       mockPresets.several = { scope: { projects: ['team/app', 'other/api'] } };

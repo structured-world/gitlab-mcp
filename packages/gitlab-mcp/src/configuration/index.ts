@@ -16,12 +16,14 @@ export { resolveCaller, runWithCaller, currentCaller, type Caller } from './call
 let settingsStore: Promise<SettingsStore> | undefined;
 
 /**
- * OAuth deployments and those with a configured session storage keep settings with the
- * sessions, shared by every replica; a local server keeps them in the user's config dir.
+ * Settings live with the sessions when that storage is durable (file or PostgreSQL), shared
+ * by every replica using it. Otherwise (a local server, or sessions held in memory, the
+ * OAuth default) they live in the settings file, so saved settings survive a restart.
  */
 function storeOfDeployment(): Promise<SettingsStore> {
   settingsStore ??= (async (): Promise<SettingsStore> => {
-    if (isOAuthEnabled() || process.env.OAUTH_STORAGE_TYPE) {
+    const sessionsStored = isOAuthEnabled() || Boolean(process.env.OAUTH_STORAGE_TYPE);
+    if (sessionsStored && sessionStore.getBackendType() !== 'memory') {
       await sessionStore.initialize();
       return {
         get: (accountKey) => sessionStore.getAccountSettings(accountKey),

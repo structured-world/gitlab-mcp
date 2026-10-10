@@ -50,7 +50,8 @@ lists the scope's project, and results that cannot be filtered at GitLab (projec
 and searches, including projects only shared with the scope's group, todos, merge requests
 under a group scope) are filtered to the scope. A global search is refused under a scope of
 several projects or groups, and under a group scope without subgroups (GitLab's group
-search always includes them); search within one project or group instead.
+search always includes them); search within one project or group instead. `manage_todos
+mark_all_done` marks only the scope's pending todos done and leaves the others pending.
 
 ## Changing settings
 
@@ -109,8 +110,8 @@ recommendations, and `find_scope_targets` finds projects and groups to scope to.
 
 | Deployment | Account settings are kept in |
 |------------|------------------------------|
-| OAuth, or `OAUTH_STORAGE_TYPE` set | The session storage (memory, file or PostgreSQL), shared by every replica that uses it |
-| Local server with a static token | `~/.config/gitlab-mcp/settings.json`, shared by every local server process of the user |
+| OAuth with file or PostgreSQL session storage (`OAUTH_STORAGE_TYPE`) | The session storage, shared by every replica that uses it |
+| OAuth with sessions in memory (the default), or a local server with a static token | `~/.config/gitlab-mcp/settings.json` of the user running the server, shared by every server process of that user; settings survive a restart even though memory sessions do not |
 
 Writes are compare-and-set: two chats editing different settings at the same time both
 keep their change. Chat overrides are held by the server process that serves the chat.

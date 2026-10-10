@@ -11,7 +11,7 @@ import { GITLAB_BASE_URL, GITLAB_READ_ONLY_MODE } from '../../config';
 import { logInfo, logError } from '../../logger';
 import { ProfileLoader } from '../../profiles/loader';
 import { ProfileInfo, ScopeConfig } from '../../profiles/types';
-import { detectNamespaceType } from '../../utils/namespace';
+import { findNamespaceType } from '../../utils/namespace';
 import {
   currentCaller,
   getConfigurationService,
@@ -208,7 +208,13 @@ export class ContextManager {
   /** Limit the current session to a project or group, detecting which one it is. */
   async setScope(namespace: string, includeSubgroups: boolean = true): Promise<SetScopeResult> {
     try {
-      const type = await detectNamespaceType(namespace);
+      // Confirmed by GitLab, so a typo is reported instead of becoming a guessed scope.
+      const type = await findNamespaceType(namespace);
+      if (!type) {
+        throw new Error(
+          `No project or group '${namespace}' was found on GitLab, or GitLab could not be reached`,
+        );
+      }
       const scope = {
         type,
         path: namespace,

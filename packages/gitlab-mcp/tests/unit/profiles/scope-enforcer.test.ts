@@ -501,6 +501,30 @@ describe('enforceArgsScope', () => {
     },
   );
 
+  // A destination (fork target, cross-project MR target, job token allowlist entry) is
+  // checked like the primary target: an allowed source must not reach an outside place.
+  it.each([
+    [{ project: 'team/app' }, { project_id: 'team/app', target_project_id: 'other/api' }],
+    [{ group: 'team' }, { project_id: 'team/app', namespace_path: 'other' }],
+    [{ group: 'team' }, { project_id: 'team/app', target_group_id: 'other' }],
+    [{ group: 'team' }, { action: 'get', namespace_id: 'other' }],
+  ])('should refuse an outside destination under %j in %j', (scope, args) => {
+    expect(() => enforceArgsScope(new ScopeEnforcer(scope), args)).toThrow(ScopeViolationError);
+  });
+
+  it('should allow a destination inside the scope', () => {
+    const enforcer = new ScopeEnforcer({ group: 'team', includeSubgroups: true });
+
+    expect(() =>
+      enforceArgsScope(enforcer, {
+        project_id: 'team/app',
+        namespace_path: 'team/sub',
+        target_project_id: 'team/api',
+        target_group_id: 'team/sub',
+      }),
+    ).not.toThrow();
+  });
+
   it('should allow any group when the scope restricts nothing', () => {
     expect(new ScopeEnforcer({}).isGroupAllowed('anything')).toBe(true);
   });

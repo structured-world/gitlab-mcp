@@ -56,7 +56,8 @@ async function waitForDatabase(url: string, deps: MigrateDeps): Promise<Queryabl
 /**
  * Whether the OAuth tables exist without migration history, which is how releases before
  * migrations shipped left the database. Looks in the schema Prisma uses (`schema` URL
- * parameter, default `public`).
+ * parameter, default `public`). Released schemas lack some 0_init columns; the migration
+ * after 0_init adds whichever are missing, so baselining any released database is safe.
  */
 async function needsBaseline(client: Queryable, url: string): Promise<boolean> {
   const schema = new URL(url).searchParams.get('schema') ?? 'public';

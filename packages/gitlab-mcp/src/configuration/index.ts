@@ -20,7 +20,7 @@ let settingsStore: Promise<SettingsStore> | undefined;
  * sessions, shared by every replica; a local server keeps them in the user's config dir.
  */
 function storeOfDeployment(): Promise<SettingsStore> {
-  settingsStore ??= (async () => {
+  settingsStore ??= (async (): Promise<SettingsStore> => {
     if (isOAuthEnabled() || process.env.OAUTH_STORAGE_TYPE) {
       await sessionStore.initialize();
       return {
@@ -30,7 +30,11 @@ function storeOfDeployment(): Promise<SettingsStore> {
       };
     }
     return new LocalSettingsFile(localSettingsPath());
-  })();
+  })().catch((error: unknown) => {
+    // A failed open is retried by the next request instead of failing until restart.
+    settingsStore = undefined;
+    throw error;
+  });
   return settingsStore;
 }
 

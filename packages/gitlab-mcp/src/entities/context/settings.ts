@@ -231,8 +231,8 @@ export async function updateSettings(
     }
     patch.readOnly = set.readOnly;
   }
-  if ('scope' in set || 'scopeIncludeSubgroups' in set) {
-    const path = typeof set.scope === 'string' ? set.scope.trim() : String(page.values.scope);
+  if (typeof set.scope === 'string') {
+    const path = set.scope.trim();
     const includeSubgroups =
       typeof set.scopeIncludeSubgroups === 'boolean'
         ? set.scopeIncludeSubgroups
@@ -251,18 +251,17 @@ export async function updateSettings(
       }
       patch.scope = { type, path, includeSubgroups: type === 'group' && includeSubgroups };
     }
+  } else if (typeof set.scopeIncludeSubgroups === 'boolean') {
+    // A change of the saved scope, applied to it as saved at write time.
+    patch.scopeIncludeSubgroups = set.scopeIncludeSubgroups;
   }
   const groupChanges = Object.entries(set).filter(([name]) => name.startsWith(GROUP_PREFIX));
   if (groupChanges.length > 0) {
-    // From the saved settings, not the page: a group the operator hid keeps its choice.
-    const saved = (await getConfigurationService().resolve(caller())).account;
-    const disabled = new Set(saved.disabledToolGroups ?? []);
-    for (const [name, enabled] of groupChanges) {
-      const id = name.slice(GROUP_PREFIX.length);
-      if (enabled) disabled.delete(id);
-      else disabled.add(id);
-    }
-    patch.disabledToolGroups = disabled.size > 0 ? [...disabled].sort() : null;
+    // Each toggle is applied to the groups saved at write time: a concurrent toggle of
+    // another group, or a group the operator hid, keeps its choice.
+    patch.toolGroups = Object.fromEntries(
+      groupChanges.map(([name, enabled]) => [name.slice(GROUP_PREFIX.length), enabled === true]),
+    );
   }
 
   await getConfigurationService().updateAccount(caller(), patch);

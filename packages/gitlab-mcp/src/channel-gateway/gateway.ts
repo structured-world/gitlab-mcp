@@ -16,10 +16,13 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import {
   CallToolRequestSchema,
+  ListResourcesRequestSchema,
   ListToolsRequestSchema,
+  ReadResourceRequestSchema,
   type CallToolResult,
+  type ListResourcesResult,
   type ListToolsResult,
-  type ListToolsRequest,
+  type ReadResourceResult,
   McpError,
   ErrorCode,
 } from '@modelcontextprotocol/sdk/types.js';
@@ -68,6 +71,7 @@ export class ChannelGateway {
       {
         capabilities: {
           tools: {}, // re-exposes the downstream catalog
+          resources: {}, // and the ui:// resources its tools point at (settings panel)
           experimental: { 'claude/channel': {} }, // allowed to push channel events
         },
         instructions:
@@ -107,21 +111,49 @@ export class ChannelGateway {
       // The catalog read must honour the same reconnect/buffer policy as
       // CallTool: a ListTools that lands mid-reconnect should wait for the
       // link (bounded) and replay once, not throw against a dead client.
-      return (await forwardWithPolicy(
-        {
-          isRead: () => true, // listing the catalog is an idempotent read
-          isConnected: () => this.connected,
-          waitForConnection: () => this.waitForConnection(),
-          call: () => this.listDownstream(request.params),
-        },
-        'tools/list',
-        undefined,
+      return (await this.readDownstream('tools/list', (client) =>
+        client.listTools(request.params),
       )) as ListToolsResult;
     });
     this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const { name, arguments: args } = request.params;
       return (await this.interceptor.handleCall(name, args ?? {})) as CallToolResult;
     });
+    // Resource reads are idempotent like the catalog read: same bounded reconnect policy.
+    this.server.setRequestHandler(ListResourcesRequestSchema, async (request) => {
+      return (await this.readDownstream('resources/list', (client) =>
+        client.listResources(request.params),
+      )) as ListResourcesResult;
+    });
+    this.server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
+      return (await this.readDownstream('resources/read', (client) =>
+        client.readResource(request.params),
+      )) as ReadResourceResult;
+    });
+  }
+
+  /** An idempotent downstream read under the reconnect/buffer policy. */
+  private readDownstream(
+    name: string,
+    read: (client: Client) => Promise<unknown>,
+  ): Promise<unknown> {
+    return forwardWithPolicy(
+      {
+        isRead: () => true,
+        isConnected: () => this.connected,
+        waitForConnection: () => this.waitForConnection(),
+        call: async () => {
+          const client = this.client;
+          try {
+            return await read(client);
+          } catch (error) {
+            this.rethrowDownstreamError(client, error);
+          }
+        },
+      },
+      name,
+      undefined,
+    );
   }
 
   /** Establish the downstream session, retrying with exponential backoff. */
@@ -213,15 +245,6 @@ export class ChannelGateway {
     const client = this.client;
     try {
       return await client.callTool({ name, arguments: (args ?? {}) as Record<string, unknown> });
-    } catch (error) {
-      this.rethrowDownstreamError(client, error);
-    }
-  }
-
-  private async listDownstream(params: ListToolsRequest['params']): Promise<ListToolsResult> {
-    const client = this.client;
-    try {
-      return await client.listTools(params);
     } catch (error) {
       this.rethrowDownstreamError(client, error);
     }

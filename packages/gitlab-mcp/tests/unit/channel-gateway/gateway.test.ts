@@ -9,7 +9,9 @@
  */
 import {
   CallToolRequestSchema,
+  ListResourcesRequestSchema,
   ListToolsRequestSchema,
+  ReadResourceRequestSchema,
   McpError,
   ErrorCode,
 } from '@modelcontextprotocol/sdk/types.js';
@@ -18,6 +20,9 @@ import {
 const mockClientConnect = jest.fn<Promise<void>, [unknown]>();
 const mockClientListTools = jest.fn();
 const mockClientCallTool = jest.fn();
+const mockClientListResources = jest.fn();
+const mockClientReadResource = jest.fn();
+let mockServerOptions: { capabilities?: Record<string, unknown> } | undefined;
 const mockServerHandlers = new Map<unknown, (req: unknown) => Promise<unknown>>();
 const mockServerConnect = jest.fn();
 const mockServerNotification = jest.fn();
@@ -32,6 +37,8 @@ jest.mock('@modelcontextprotocol/sdk/client/index.js', () => ({
       connect: mockClientConnect,
       listTools: mockClientListTools,
       callTool: mockClientCallTool,
+      listResources: mockClientListResources,
+      readResource: mockClientReadResource,
       get transport() {
         return transport.closed ? undefined : transport;
       },
@@ -47,7 +54,8 @@ jest.mock('@modelcontextprotocol/sdk/client/stdio.js', () => ({
 }));
 
 jest.mock('@modelcontextprotocol/sdk/server/index.js', () => ({
-  Server: jest.fn().mockImplementation(() => ({
+  Server: jest.fn().mockImplementation((_info: unknown, options: typeof mockServerOptions) => ({
+    ...((mockServerOptions = options), {}),
     setRequestHandler: (schema: unknown, handler: (req: unknown) => Promise<unknown>) => {
       mockServerHandlers.set(schema, handler);
     },
@@ -112,6 +120,42 @@ describe('ChannelGateway', () => {
     const result = await mockServerHandlers.get(ListToolsRequestSchema)!({});
 
     expect(result).toEqual({ tools });
+  });
+
+  // A tool of the catalog points at a ui:// resource (the settings panel): the host must
+  // be able to list and read it through the gateway, or the panel never opens.
+  it('forwards resource listing and reading to the downstream', async () => {
+    const listing = { resources: [{ uri: 'ui://gitlab-mcp/panel.html', name: 'Panel' }] };
+    const content = {
+      contents: [{ uri: 'ui://gitlab-mcp/panel.html', mimeType: 'text/html', text: '<p>x</p>' }],
+    };
+    mockClientListResources.mockResolvedValue(listing);
+    mockClientReadResource.mockResolvedValue(content);
+    const gw = new ChannelGateway(baseConfig);
+    await gw.start();
+
+    expect(mockServerOptions?.capabilities).toHaveProperty('resources');
+    const listParams = { cursor: 'c1' };
+    expect(
+      await mockServerHandlers.get(ListResourcesRequestSchema)!({ params: listParams }),
+    ).toEqual(listing);
+    expect(mockClientListResources).toHaveBeenCalledWith(listParams);
+    const readParams = { uri: 'ui://gitlab-mcp/panel.html' };
+    expect(
+      await mockServerHandlers.get(ReadResourceRequestSchema)!({ params: readParams }),
+    ).toEqual(content);
+    expect(mockClientReadResource).toHaveBeenCalledWith(readParams);
+    await gw.stop();
+  });
+
+  it('routes resource reads through the reconnect policy', async () => {
+    // Never started -> downstream down; a resource read fails like any other read.
+    const gw = new ChannelGateway({ ...baseConfig, maxQueued: 0 });
+    expect(gw).toBeInstanceOf(ChannelGateway);
+    await expect(
+      mockServerHandlers.get(ReadResourceRequestSchema)!({ params: { uri: 'ui://x' } }),
+    ).rejects.toThrow(/buffer full/);
+    expect(mockClientReadResource).not.toHaveBeenCalled();
   });
 
   it('preserves catalog pagination and metadata in both directions', async () => {

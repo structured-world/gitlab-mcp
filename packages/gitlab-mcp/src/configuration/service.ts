@@ -7,7 +7,13 @@
 import type { Preset } from '../profiles/types';
 import type { Caller } from './caller';
 import { TOOL_GROUP_IDS } from './groups';
-import { buildPolicy, selectedPreset, type EffectivePolicy, type SessionOverrides } from './policy';
+import {
+  buildPolicy,
+  selectedPreset,
+  type EVERYWHERE,
+  type EffectivePolicy,
+  type SessionOverrides,
+} from './policy';
 import type { SettingsStore } from './settings-store';
 import {
   AccountSettingsSchema,
@@ -29,18 +35,26 @@ export interface PresetSource {
   load(name: string): Promise<Preset>;
 }
 
-/** Field values to set; `null` removes the field and the operator default applies again. */
+/**
+ * Field values to set; `null` removes the field and the operator default applies again.
+ * `toolGroups` and `scopeIncludeSubgroups` are changes to the settings as saved at write
+ * time, so they merge with concurrent edits of other groups or of the scope.
+ */
 export interface AccountSettingsPatch {
   preset?: string | null;
   readOnly?: boolean | null;
   disabledToolGroups?: string[] | null;
   scope?: WorkingScope | null;
+  /** Tool group id -> whether it is on. */
+  toolGroups?: Record<string, boolean>;
+  /** For a saved group scope: whether its subgroups are included. */
+  scopeIncludeSubgroups?: boolean;
 }
 
 export interface SessionOverridesPatch {
   preset?: string | null;
   readOnly?: boolean | null;
-  scope?: WorkingScope | null;
+  scope?: WorkingScope | typeof EVERYWHERE | null;
   profile?: string | null;
 }
 
@@ -57,6 +71,27 @@ export interface ResolvedConfiguration {
 
 /** Concurrent edits of different fields are merged; this bounds the retries. */
 const MAX_WRITE_ATTEMPTS = 5;
+
+/** The account patch applied to the settings saved now, its changes included. */
+function applyAccountPatch(
+  saved: AccountSettings,
+  { toolGroups, scopeIncludeSubgroups, ...fields }: AccountSettingsPatch,
+): AccountSettings {
+  const next = applyPatch(saved, fields);
+  if (toolGroups) {
+    const disabled = new Set(next.disabledToolGroups ?? []);
+    for (const [group, enabled] of Object.entries(toolGroups)) {
+      if (enabled) disabled.delete(group);
+      else disabled.add(group);
+    }
+    if (disabled.size > 0) next.disabledToolGroups = [...disabled].sort();
+    else delete next.disabledToolGroups;
+  }
+  if (scopeIncludeSubgroups !== undefined && next.scope?.type === 'group') {
+    next.scope = { ...next.scope, includeSubgroups: scopeIncludeSubgroups };
+  }
+  return next;
+}
 
 function applyPatch<T extends object>(base: T, patch: object): T {
   const next: Record<string, unknown> = { ...(base as Record<string, unknown>) };
@@ -118,7 +153,9 @@ export class ConfigurationService {
     const store = await this.store();
     for (let attempt = 0; attempt < MAX_WRITE_ATTEMPTS; attempt++) {
       const current = await store.get(caller.accountKey);
-      const next = AccountSettingsSchema.safeParse(applyPatch(current?.settings ?? {}, patch));
+      const next = AccountSettingsSchema.safeParse(
+        applyAccountPatch(current?.settings ?? {}, patch),
+      );
       if (!next.success) throw new ConfigurationError(next.error.issues[0].message);
       const stored = await store.put(caller.accountKey, next.data, current?.version ?? 0);
       if (stored) {
@@ -147,6 +184,27 @@ export class ConfigurationService {
     await this.notify([caller.sessionKey]);
   }
 
+  /**
+   * Move every session of an account to another account key, keeping their overrides
+   * except the scope. A static token's account is keyed by its instance, so a switch of
+   * instance re-keys every chat; their scopes named projects of the previous instance.
+   */
+  async moveSessions(fromAccountKey: string, toAccountKey: string): Promise<void> {
+    if (fromAccountKey === toAccountKey) return;
+    const sessions = [...(this.accountSessions.get(fromAccountKey) ?? [])];
+    this.accountSessions.delete(fromAccountKey);
+    const moved = this.accountSessions.get(toAccountKey) ?? new Set<string>();
+    for (const sessionKey of sessions) {
+      const old = `${fromAccountKey}\n${sessionKey}`;
+      const kept = applyPatch(this.overrides.get(old) ?? {}, { scope: null });
+      this.overrides.delete(old);
+      if (Object.keys(kept).length > 0) this.overrides.set(`${toAccountKey}\n${sessionKey}`, kept);
+      moved.add(sessionKey);
+    }
+    this.accountSessions.set(toAccountKey, moved);
+    await this.notify(sessions);
+  }
+
   /** Forget a closed session. */
   forgetSession(sessionKey: string): void {
     for (const [accountKey, sessions] of this.accountSessions) {
@@ -158,8 +216,11 @@ export class ConfigurationService {
 
   private async validate(patch: AccountSettingsPatch | SessionOverridesPatch): Promise<void> {
     if (typeof patch.preset === 'string') await this.loadPreset(patch.preset);
-    const groups = 'disabledToolGroups' in patch ? patch.disabledToolGroups : undefined;
-    const unknown = (groups ?? []).filter((group) => !TOOL_GROUP_IDS.has(group));
+    const groups = [
+      ...(('disabledToolGroups' in patch ? patch.disabledToolGroups : undefined) ?? []),
+      ...Object.keys(('toolGroups' in patch ? patch.toolGroups : undefined) ?? {}),
+    ];
+    const unknown = groups.filter((group) => !TOOL_GROUP_IDS.has(group));
     if (unknown.length > 0) {
       throw new ConfigurationError(`Unknown tool group: ${unknown.join(', ')}`);
     }

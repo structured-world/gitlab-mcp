@@ -330,6 +330,16 @@ export class ScopeEnforcer {
 }
 
 /**
+ * A project or group identifier as the tool will use it: tool schemas coerce a JSON
+ * number id to its string form, so a number is checked exactly like that string.
+ */
+function identifierOf(value: unknown): string | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  if (typeof value === 'string' && value.trim()) return value.trim();
+  return undefined;
+}
+
+/**
  * Extract project path from tool arguments
  *
  * Tools may specify project in different ways:
@@ -354,10 +364,8 @@ export function extractProjectsFromArgs(args: Record<string, unknown>): string[]
   ];
 
   for (const field of projectFields) {
-    const value = args[field];
-    if (typeof value === 'string' && value.trim()) {
-      projects.push(value.trim());
-    }
+    const id = identifierOf(args[field]);
+    if (id) projects.push(id);
   }
 
   return projects;
@@ -381,10 +389,8 @@ export function extractGroupsFromArgs(args: Record<string, unknown>): string[] {
   const groupFields = ['group_id', 'groupId', 'group'];
 
   for (const field of groupFields) {
-    const value = args[field];
-    if (typeof value === 'string' && value.trim()) {
-      groups.push(value.trim());
-    }
+    const id = identifierOf(args[field]);
+    if (id) groups.push(id);
   }
 
   return groups;

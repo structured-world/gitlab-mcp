@@ -40,14 +40,13 @@ import {
   runWithCaller,
   type Caller,
 } from './configuration';
-import { groupOfRegistry } from './configuration/groups';
 import {
   CONFIGURATION_TOOLS,
   callRestriction,
   toolRestriction,
   type EffectivePolicy,
-  type ToolFacts,
 } from './configuration/policy';
+import { scopedArgs, scopedResult } from './configuration/scope-targets';
 
 interface JsonSchemaProperty {
   type?: string;
@@ -456,18 +455,6 @@ function formatBootstrapFailure(ctx: BootstrapContext, initError: unknown): Call
   return withReauthChallenge(errorToolResult(connError), initError);
 }
 
-/** What the policy needs to know about a tool, from the registry it belongs to. */
-function toolFacts(
-  toolName: string,
-  registryManager: import('./registry-manager').RegistryManager,
-): ToolFacts {
-  return {
-    name: toolName,
-    group: groupOfRegistry(registryManager.getToolRegistryKey(toolName)),
-    readOnly: registryManager.isReadOnlyTool(toolName),
-  };
-}
-
 /**
  * The tool list narrowed by the caller's settings. When the settings cannot be read the
  * list stays as the registry built it: listing is only visibility, and every call is
@@ -486,7 +473,7 @@ async function withoutRestrictedTools<T extends { name: string }>(
     return tools;
   }
   return tools.filter(
-    (tool) => toolRestriction(policy, toolFacts(tool.name, registryManager)) === null,
+    (tool) => toolRestriction(policy, registryManager.getToolFacts(tool.name)) === null,
   );
 }
 
@@ -497,7 +484,7 @@ function settingsRejection(
   policy: EffectivePolicy,
   registryManager: import('./registry-manager').RegistryManager,
 ): CallToolResult | null {
-  const reason = callRestriction(policy, toolFacts(toolName, registryManager), args);
+  const reason = callRestriction(policy, registryManager.getToolFacts(toolName), args);
   if (reason === null) return null;
   const action = typeof args.action === 'string' ? args.action : undefined;
   const message =
@@ -1032,9 +1019,12 @@ export async function setupHandlers(server: Server): Promise<void> {
           });
         }
 
-        // Execute the tool using the registry manager (per-URL cache)
-        const args = request.params.arguments ?? {};
-        const result =
+        // Execute the tool using the registry manager (per-URL cache). A listing that
+        // names no target reads the working scope instead of everything the account sees.
+        const { policy } = configuration;
+        const requested = request.params.arguments ?? {};
+        const args = policy.scope ? scopedArgs(toolName, requested, policy.scope) : requested;
+        const executed =
           requestScopes === undefined
             ? await registryManager.executeTool(toolName, args, effectiveInstanceUrl)
             : await registryManager.executeTool(
@@ -1043,6 +1033,9 @@ export async function setupHandlers(server: Server): Promise<void> {
                 effectiveInstanceUrl,
                 requestScopes,
               );
+        const result = policy.scopeEnforcer
+          ? scopedResult(toolName, args, executed, policy.scopeEnforcer)
+          : executed;
 
         // Guard against TOCTOU cache miss: hasToolHandler returned true but a
         // concurrent refreshCache swapped the lookup table before executeTool ran.

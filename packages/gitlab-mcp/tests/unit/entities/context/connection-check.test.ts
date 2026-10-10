@@ -10,6 +10,21 @@ jest.mock('../../../../src/entities/context/whoami', () => ({
   executeWhoami: () => mockWhoami(),
 }));
 
+// Two tools the registry offers on the instance: one reads GitLab, one changes it.
+const mockAvailableToolNames = jest.fn(() => ['browse_wiki', 'manage_wiki']);
+jest.mock('../../../../src/registry-manager', () => ({
+  RegistryManager: {
+    getInstance: () => ({
+      getAvailableToolNames: mockAvailableToolNames,
+      getToolFacts: (name: string) => ({
+        name,
+        group: 'wiki',
+        readOnly: name.startsWith('browse_'),
+      }),
+    }),
+  },
+}));
+
 let mockService: unknown;
 jest.mock('../../../../src/configuration', () => ({
   ...jest.requireActual('../../../../src/configuration/caller'),
@@ -89,10 +104,25 @@ describe('checkConnection', () => {
       readOnly: true,
       preset: 'readonly',
       scope: 'team',
-      availableTools: 42,
+      // The read-only preset leaves only the reading tool of the two
+      availableTools: 1,
       warnings: ['Token expires in 3 days'],
       recommendations: ['Renew the token'],
     });
+  });
+
+  // The count is what this caller can call, not what the registry offers everyone.
+  it.each([
+    [{}, 2],
+    [{ readOnly: true }, 1],
+    [{ disabledToolGroups: ['wiki'] }, 0],
+  ])('counts the tools %j leaves available', async (settings, count) => {
+    save(settings);
+
+    const check = await runWithCaller(alice, () => checkConnection());
+
+    expect(check.availableTools).toBe(count);
+    expect(mockAvailableToolNames).toHaveBeenCalledWith(alice.instanceUrl);
   });
 
   it('reports a project scope and no preset', async () => {

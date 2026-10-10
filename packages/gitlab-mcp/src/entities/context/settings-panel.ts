@@ -375,11 +375,12 @@ const SCRIPT = `
   function workEverywhere() {
     setBusy(true);
     announce('Saving\\u2026');
-    callTool('manage_context', { action: 'reset' })
-      .then(function () { return callTool('update_settings', { set: { scope: '' } }); })
+    // Only this chat's scope changes; its preset, read-only mode and the default for new
+    // chats stay as they are.
+    callTool('manage_context', { action: 'clear_scope' })
       .then(reload)
       .then(function () {
-        announce(state.context.scope ? 'A preset still limits where this chat works.' : 'Working everywhere you have access.',
+        announce(state.context.scope ? 'A preset still limits where this chat works.' : 'This chat works everywhere you have access.',
           state.context.scope ? 'warning' : 'ok');
       })
       .catch(function (error) { announce(explain(error), 'error'); })
@@ -458,7 +459,7 @@ const BODY = `
       <button id="use-chat" class="primary" type="button">Use in this chat</button>
       <button id="save-default" type="button">Save for new chats</button>
       <button id="cancel" type="button">Cancel</button>
-      <button id="work-everywhere" type="button">Work everywhere</button>
+      <button id="work-everywhere" type="button">Work everywhere in this chat</button>
     </div>
   </section>
   <section aria-labelledby="access-title">

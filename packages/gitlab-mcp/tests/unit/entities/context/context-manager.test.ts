@@ -112,7 +112,7 @@ import {
 import { detectNamespaceType } from '../../../../src/utils/namespace';
 import { sendToolsListChangedNotification } from '../../../../src/server';
 import { ConfigurationService } from '../../../../src/configuration/service';
-import { runWithCaller, type Caller } from '../../../../src/configuration/caller';
+import { resolveCaller, runWithCaller, type Caller } from '../../../../src/configuration/caller';
 import type { AccountSettingsRecord, AccountSettings } from '../../../../src/configuration/types';
 
 const mockDetectNamespaceType = detectNamespaceType as jest.MockedFunction<
@@ -413,6 +413,30 @@ describe('ContextManager', () => {
     });
   });
 
+  describe('clearScope', () => {
+    // Only the scope goes: the chat's read-only mode and preset stay, and the account's
+    // default scope does not come back for this chat.
+    it("drops only the chat's scope, also the account default for this chat", async () => {
+      await service.updateAccount(alice1, {
+        scope: { type: 'group', path: 'team', includeSubgroups: true },
+      });
+      await service.updateSession(alice1, { readOnly: true, preset: 'developer' });
+      const manager = getContextManager();
+
+      const result = await runWithCaller(alice1, () => manager.clearScope());
+
+      expect(result).toMatchObject({
+        success: true,
+        message: 'This session now works everywhere the account has access',
+        context: { readOnly: true, presetName: 'developer', scope: undefined },
+      });
+      expect((await service.resolve(alice2)).policy.scope).toEqual({
+        group: 'team',
+        includeSubgroups: true,
+      });
+    });
+  });
+
   describe('scopes of presets', () => {
     it.each([
       [
@@ -493,6 +517,34 @@ describe('ContextManager', () => {
       expect(mockReinitialize).toHaveBeenCalledWith('https://success-gitlab.example.com');
       expect(mockSendToolsListChangedNotification).toHaveBeenCalled();
       expect((await runWithCaller(alice1, () => manager.getContext())).scope).toBeUndefined();
+    });
+
+    // A static token's account is keyed by its instance, so the switch changes the key of
+    // every chat on this server: their read-only mode and presets move with them, their
+    // scopes (projects of the previous instance) do not.
+    it('keeps the chat overrides of every session across the switch, without the scope', async () => {
+      const { InstanceRegistry } = await import('../../../../src/services/InstanceRegistry');
+      InstanceRegistry.getInstance().register({
+        url: 'https://next-gitlab.example.com',
+        label: 'Next GitLab',
+        insecureSkipVerify: false,
+      });
+      mockReinitialize.mockResolvedValue(undefined);
+      mockDetectNamespaceType.mockResolvedValue('group');
+      const manager = getContextManager();
+      const before = (session: string) => resolveCaller(session, 'https://gitlab.example.com');
+      const after = (session: string) => resolveCaller(session, 'https://next-gitlab.example.com');
+      await service.updateSession(before('chat-1'), { readOnly: true });
+      await runWithCaller(before('chat-1'), () => manager.setScope('my-group'));
+      await service.updateSession(before('chat-2'), { preset: 'readonly' });
+
+      await runWithCaller(before('chat-1'), () =>
+        manager.switchInstance('https://next-gitlab.example.com'),
+      );
+
+      expect((await service.resolve(after('chat-1'))).session).toEqual({ readOnly: true });
+      expect((await service.resolve(after('chat-2'))).session).toEqual({ preset: 'readonly' });
+      expect((await service.resolve(before('chat-1'))).session).toEqual({});
     });
 
     it('reports a failed reconnection', async () => {

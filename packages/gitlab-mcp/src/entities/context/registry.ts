@@ -50,7 +50,7 @@ export const contextToolRegistry: ToolRegistry = new Map<string, EnhancedToolDef
     {
       name: 'manage_context',
       description:
-        'View and manage runtime session configuration. Actions: show (current host/preset/scope/mode), list_presets (available tool configurations), list_profiles (OAuth users), whoami (token introspection with live refresh - detects permission changes and updates available tools), switch_preset (change active preset), switch_profile (change OAuth user), set_scope (restrict to namespace), reset (restore initial state). Use whoami to diagnose access issues and verify token permissions.',
+        'View and manage runtime session configuration. Actions: show (current host/preset/scope/mode), list_presets (available tool configurations), list_profiles (OAuth users), whoami (token introspection with live refresh - detects permission changes and updates available tools), switch_preset (change active preset), switch_profile (change OAuth user), set_scope (restrict to namespace), clear_scope (work everywhere in this session, keeping its preset and read-only mode), reset (restore initial state). Use whoami to diagnose access issues and verify token permissions.',
       inputSchema: z.toJSONSchema(ManageContextSchema),
       outputSchema: ToolSchema.shape.outputSchema.parse({
         ...z.toJSONSchema(ContextOutputSchema, { target: 'draft-7' }),

@@ -119,6 +119,19 @@ describe('LocalSettingsFile', () => {
     await expect(new LocalSettingsFile(filePath).get('acct')).rejects.toThrow(SyntaxError);
   });
 
+  // Without syncing the directory, a crash after the rename can bring the old file back.
+  it('syncs the directory after replacing the file', async () => {
+    if (process.platform === 'win32') return;
+    const open = jest.spyOn(fs.promises, 'open');
+    try {
+      await new LocalSettingsFile(filePath).put('acct', { readOnly: true }, 0);
+
+      expect(open).toHaveBeenCalledWith(path.dirname(filePath), 'r');
+    } finally {
+      open.mockRestore();
+    }
+  });
+
   it('reads a file without accounts as empty', async () => {
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
     fs.writeFileSync(filePath, JSON.stringify({ version: 1 }));

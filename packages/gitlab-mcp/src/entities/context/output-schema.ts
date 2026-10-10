@@ -139,6 +139,10 @@ const success = z.discriminatedUnion('action', [
     data: z.object({ success: z.boolean(), scope, message: z.string() }),
   }),
   z.object({
+    action: z.literal('clear_scope'),
+    data: z.object({ success: z.boolean(), message: z.string(), context }),
+  }),
+  z.object({
     action: z.literal('reset'),
     data: z.object({ success: z.boolean(), message: z.string(), context }),
   }),

@@ -435,11 +435,17 @@ describe('extractProjectsFromArgs', () => {
     expect(projects).toContain('project2');
   });
 
-  it('should ignore non-string values', () => {
+  // Tool schemas coerce a numeric id to its string form, so the check sees the same id.
+  it('should extract a numeric project id as its string form', () => {
+    expect(extractProjectsFromArgs({ project_id: 12345 })).toEqual(['12345']);
+  });
+
+  it('should ignore values that are not identifiers', () => {
     const args = {
-      project_id: 12345,
+      project_id: Number.NaN,
       namespace: null,
       fullPath: undefined,
+      project: { nested: 'object' },
     };
     const projects = extractProjectsFromArgs(args);
     expect(projects).toHaveLength(0);
@@ -544,12 +550,9 @@ describe('extractGroupsFromArgs', () => {
     expect(groups).toContain('group2');
   });
 
-  it('should ignore numeric group IDs (not supported)', () => {
-    // Note: extractGroupsFromArgs only handles string values
-    // Numeric IDs should be converted to strings by the caller if needed
-    const args = { group_id: 12345 };
-    const groups = extractGroupsFromArgs(args);
-    expect(groups).toHaveLength(0);
+  // A numeric group id is checked like its string form; ignoring it bypassed the scope.
+  it('should extract a numeric group id as its string form', () => {
+    expect(extractGroupsFromArgs({ group_id: 12345 })).toEqual(['12345']);
   });
 
   it('should ignore non-string values', () => {

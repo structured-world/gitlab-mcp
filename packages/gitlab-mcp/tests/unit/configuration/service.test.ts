@@ -147,6 +147,69 @@ describe('ConfigurationService', () => {
     expect(stored.version).toBe(2);
   });
 
+  // Two chats switch off different tool groups at once: both groups end up off.
+  it('merges a tool-group toggle with a concurrent toggle of another group', async () => {
+    store.beforePut = async () => {
+      await store.put('alice', { disabledToolGroups: ['mrs'] }, 0);
+    };
+
+    const stored = await service.updateAccount(caller('alice', 's1'), {
+      toolGroups: { wiki: false },
+    });
+
+    expect(stored.settings.disabledToolGroups).toEqual(['mrs', 'wiki']);
+  });
+
+  it('turns a tool group back on and clears the list when none is left off', async () => {
+    await service.updateAccount(caller('alice', 's1'), { toolGroups: { wiki: false } });
+
+    const stored = await service.updateAccount(caller('alice', 's1'), {
+      toolGroups: { wiki: true },
+    });
+
+    expect(stored.settings).toEqual({});
+  });
+
+  it('refuses an unknown tool group in a toggle without writing anything', async () => {
+    await expect(
+      service.updateAccount(caller('alice', 's1'), { toolGroups: { bogus: false } }),
+    ).rejects.toThrow('Unknown tool group: bogus');
+    expect(store.records.size).toBe(0);
+  });
+
+  // The subgroup choice applies to the group saved now, not the one the page showed.
+  it('applies a subgroup change to a scope changed concurrently', async () => {
+    await service.updateAccount(caller('alice', 's1'), {
+      scope: { type: 'group', path: 'team', includeSubgroups: true },
+    });
+    store.beforePut = async () => {
+      await store.put(
+        'alice',
+        { scope: { type: 'group', path: 'other', includeSubgroups: true } },
+        1,
+      );
+    };
+
+    const stored = await service.updateAccount(caller('alice', 's1'), {
+      scopeIncludeSubgroups: false,
+    });
+
+    expect(stored.settings.scope).toEqual({
+      type: 'group',
+      path: 'other',
+      includeSubgroups: false,
+    });
+  });
+
+  it('ignores a subgroup change when no group is saved', async () => {
+    const stored = await service.updateAccount(caller('alice', 's1'), {
+      readOnly: true,
+      scopeIncludeSubgroups: false,
+    });
+
+    expect(stored.settings).toEqual({ readOnly: true });
+  });
+
   it('reports settings that keep changing instead of looping forever', async () => {
     const put = store.put.bind(store);
     store.put = async () => undefined;
@@ -232,6 +295,49 @@ describe('ConfigurationService', () => {
 
     expect(notified.at(-1)).toEqual(['s2', 's3']);
     expect((await service.resolve(caller('alice', 's2'))).session).toEqual({ preset: 'readonly' });
+  });
+
+  it('forgets a session whose last override is cleared', async () => {
+    await service.updateSession(caller('alice', 's1'), { readOnly: true });
+
+    const next = await service.updateSession(caller('alice', 's1'), { readOnly: null });
+
+    expect(next).toEqual({});
+    expect((await service.resolve(caller('alice', 's1'))).session).toEqual({});
+  });
+
+  describe('moveSessions', () => {
+    // A tracked session without overrides moves too, so account changes still reach it.
+    it('moves every session of the account, overrides without the scope', async () => {
+      await service.updateSession(caller('old', 's1'), {
+        readOnly: true,
+        scope: { type: 'group', path: 'team', includeSubgroups: true },
+      });
+      await service.updateSession(caller('old', 's2'), {
+        scope: { type: 'group', path: 'team', includeSubgroups: true },
+      });
+      await service.resolve(caller('old', 's3'));
+      notified.length = 0;
+
+      await service.moveSessions('old', 'new');
+      await service.updateAccount(caller('new', 's9'), { readOnly: true });
+
+      expect((await service.resolve(caller('new', 's1'))).session).toEqual({ readOnly: true });
+      expect((await service.resolve(caller('new', 's2'))).session).toEqual({});
+      expect(notified[0]).toEqual(['s1', 's2', 's3']);
+      expect(notified[1]).toEqual(['s1', 's2', 's3', 's9']);
+    });
+
+    it('does nothing when the account key stays the same or has no sessions', async () => {
+      await service.updateSession(caller('same', 's1'), { readOnly: true });
+      notified.length = 0;
+
+      await service.moveSessions('same', 'same');
+      await service.moveSessions('unknown', 'other');
+
+      expect((await service.resolve(caller('same', 's1'))).session).toEqual({ readOnly: true });
+      expect(notified).toEqual([[]]);
+    });
   });
 
   // A patch field left undefined means "unchanged", unlike null which clears it.

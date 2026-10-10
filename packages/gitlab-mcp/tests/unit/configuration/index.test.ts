@@ -110,4 +110,17 @@ describe('getConfigurationService', () => {
     );
     expect(fs.existsSync(mockSettingsPath)).toBe(false);
   });
+
+  // A storage outage at the first request must not fail every later request until restart.
+  it('retries opening the shared storage after a failed first attempt', async () => {
+    mockOAuth = true;
+    mockSessionStore.initialize.mockRejectedValueOnce(new Error('database unavailable'));
+    const service = getConfigurationService();
+
+    await expect(service.resolve(alice)).rejects.toThrow('database unavailable');
+    const resolved = await service.resolve(alice);
+
+    expect(resolved.account).toEqual({});
+    expect(mockSessionStore.initialize).toHaveBeenCalledTimes(2);
+  });
 });

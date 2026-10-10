@@ -10,6 +10,7 @@ import * as path from 'path';
 import type { AccountSettings, AccountSettingsRecord } from './types';
 import { AccountSettingsSchema } from './types';
 import { logWarn } from '../logger';
+import { syncDirectory } from '../utils/sync-directory';
 
 export interface SettingsStore {
   get(accountKey: string): Promise<AccountSettingsRecord | undefined>;
@@ -98,6 +99,7 @@ export class LocalSettingsFile implements SettingsStore {
       await handle.close();
     }
     await fs.promises.rename(temp, this.filePath);
+    await syncDirectory(path.dirname(this.filePath));
   }
 
   private async withLock<T>(fn: () => Promise<T>): Promise<T> {

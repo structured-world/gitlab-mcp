@@ -115,6 +115,8 @@ import {
 } from './utils/schema-utils';
 import { resolveRelatedReferences, stripRelatedSection } from './utils/description-utils';
 import { normalizeInstanceUrl } from './utils/url';
+import { groupOfRegistry } from './configuration/groups';
+import type { ToolFacts } from './configuration/policy';
 import { getGitLabApiUrlFromContext, getTokenContext } from './oauth/token-context';
 
 const NONE_UNAVAILABLE: ReadonlyMap<string, string> = new Map();
@@ -407,6 +409,15 @@ class RegistryManager {
   public isReadOnlyTool(toolName: string): boolean {
     this.readOnlyToolSet ??= new Set(this.getReadOnlyTools());
     return this.readOnlyToolSet.has(toolName);
+  }
+
+  /** What the caller's settings need to know about a tool to allow or refuse it. */
+  public getToolFacts(toolName: string): ToolFacts {
+    return {
+      name: toolName,
+      group: groupOfRegistry(this.getToolRegistryKey(toolName)),
+      readOnly: this.isReadOnlyTool(toolName),
+    };
   }
 
   /** Keys of the registries this server loaded (feature flags off are absent). */

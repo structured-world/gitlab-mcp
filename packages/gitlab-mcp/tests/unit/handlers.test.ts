@@ -58,6 +58,14 @@ const mockRegistryManager = {
   getTool: jest.fn(),
   getToolRegistryKey: jest.fn().mockReturnValue(undefined),
   isReadOnlyTool: jest.fn().mockReturnValue(true),
+  // Built from the two mocks above, as the real registry builds it from its tables.
+  getToolFacts: (name: string) => ({
+    name,
+    group: jest
+      .requireActual('../../src/configuration/groups')
+      .groupOfRegistry(mockRegistryManager.getToolRegistryKey(name)),
+    readOnly: mockRegistryManager.isReadOnlyTool(name) as boolean,
+  }),
 };
 
 // A real configuration service over an in-memory store, so the caller's settings are
@@ -67,6 +75,8 @@ const mockSettings = new Map<
   { accountKey: string; settings: Record<string, unknown>; version: number; updatedAt: number }
 >();
 const mockSettingsRead = jest.fn();
+/** Presets the configuration service loads by name; empty preset when absent. */
+const mockPresets: Record<string, Record<string, unknown>> = {};
 let mockConfigurationService: unknown;
 jest.mock('../../src/configuration', () => ({
   ...jest.requireActual('../../src/configuration/caller'),
@@ -203,6 +213,7 @@ describe('handlers', () => {
     resetHandlersState();
 
     mockSettings.clear();
+    for (const name of Object.keys(mockPresets)) delete mockPresets[name];
     mockSettingsRead.mockImplementation(async (key: string) => mockSettings.get(key));
     mockRegistryManager.getToolRegistryKey.mockReturnValue(undefined);
     mockRegistryManager.isReadOnlyTool.mockReturnValue(true);
@@ -217,7 +228,7 @@ describe('handlers', () => {
           return record;
         },
       }),
-      { load: async () => ({}) },
+      { load: async (name: string) => mockPresets[name] ?? {} },
       async () => undefined,
     );
 
@@ -3043,6 +3054,54 @@ describe('handlers', () => {
       );
 
       expect(seen).toMatchObject({ sessionKey: 'sess-1', oauth: false });
+    });
+
+    // A listing that names no target reads everything the account sees; in a scoped
+    // chat it reads the scope instead, and what it cannot filter by is left out.
+    it('narrows a targetless listing to the working scope', async () => {
+      await service().updateAccount(staticCaller(), {
+        scope: { type: 'group', path: 'team', includeSubgroups: true },
+      });
+      mockRegistryManager.executeTool.mockResolvedValue([
+        { path_with_namespace: 'team/app' },
+        { path_with_namespace: 'other/api' },
+      ]);
+
+      await callToolHandler(
+        { params: { name: 'browse_projects', arguments: { action: 'list' } } },
+        { sessionId: 'sess-1' },
+      );
+      const search = await callToolHandler(
+        { params: { name: 'browse_projects', arguments: { action: 'search', q: 'app' } } },
+        { sessionId: 'sess-1' },
+      );
+
+      expect(mockRegistryManager.executeTool.mock.calls[0][1]).toEqual({
+        action: 'list',
+        group_id: 'team',
+        include_subgroups: true,
+      });
+      expect(JSON.parse(search.content?.[0].text ?? '')).toEqual([
+        { path_with_namespace: 'team/app' },
+      ]);
+    });
+
+    it('refuses a global search a scope of several projects cannot narrow', async () => {
+      await service().updateSession(staticCaller(), { preset: 'several' });
+      mockPresets.several = { scope: { projects: ['team/app', 'other/api'] } };
+
+      const result = await callToolHandler(
+        {
+          params: {
+            name: 'browse_search',
+            arguments: { action: 'global', scope: 'issues', search: 'x' },
+          },
+        },
+        { sessionId: 'sess-1' },
+      );
+
+      expect(result.content?.[0].text).toMatch(/search within one of them/);
+      expect(mockRegistryManager.executeTool).not.toHaveBeenCalled();
     });
   });
 });

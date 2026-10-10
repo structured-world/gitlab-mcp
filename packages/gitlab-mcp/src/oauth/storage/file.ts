@@ -31,6 +31,7 @@ import {
 import { MemoryStorageBackend } from './memory';
 import type { AccountSettings, AccountSettingsRecord } from '../../configuration/types';
 import { logInfo, logDebug, logError, logWarn } from '../../logger';
+import { syncDirectory } from '../../utils/sync-directory';
 
 export interface FileStorageOptions {
   /** Path to the storage file */
@@ -43,20 +44,6 @@ export interface FileStorageOptions {
 
 function isPresent<T>(record: T | undefined): record is T {
   return record !== undefined;
-}
-
-/**
- * Flush a directory entry change (the rename) to disk. Windows cannot open a directory
- * for syncing; NTFS journals the rename itself.
- */
-async function syncDirectory(dir: string): Promise<void> {
-  if (process.platform === 'win32') return;
-  const handle = await fs.promises.open(dir, 'r');
-  try {
-    await handle.sync();
-  } finally {
-    await handle.close();
-  }
 }
 
 export class FileStorageBackend implements SessionStorageBackend {

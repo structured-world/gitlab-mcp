@@ -19,6 +19,7 @@ import {
   type Caller,
 } from '../../configuration';
 import type { ResolvedConfiguration } from '../../configuration';
+import { EVERYWHERE } from '../../configuration/policy';
 import {
   PresetInfo,
   ResetResult,
@@ -115,7 +116,12 @@ export class ContextManager {
       readOnly: operator.readOnly || resolved.policy.readOnly,
       presetName: resolved.policy.presetName,
       profileName: resolved.session.profile,
-      scope: scope ? runtimeScopeOf(scope, resolved.session.scope !== undefined) : undefined,
+      scope: scope
+        ? runtimeScopeOf(
+            scope,
+            resolved.session.scope !== undefined && resolved.session.scope !== EVERYWHERE,
+          )
+        : undefined,
       initialContext: operator,
     };
   }
@@ -224,6 +230,20 @@ export class ContextManager {
     }
   }
 
+  /**
+   * Let the current session work everywhere the account has access: its own scope and the
+   * account's default scope no longer apply to it. Its other overrides stay.
+   */
+  async clearScope(): Promise<ResetResult> {
+    await getConfigurationService().updateSession(this.caller(), { scope: EVERYWHERE });
+    logInfo('Session scope cleared');
+    return {
+      success: true,
+      message: 'This session now works everywhere the account has access',
+      context: await this.getContext(),
+    };
+  }
+
   /** Drop the session's preset, scope and profile: the account settings apply again. */
   async reset(): Promise<ResetResult> {
     await getConfigurationService().resetSession(this.caller());
@@ -277,13 +297,17 @@ export class ContextManager {
 
     const connectionManager = ConnectionManager.getInstance();
     const previousUrl = connectionManager.getCurrentInstanceUrl() ?? GITLAB_BASE_URL;
+    const before = this.caller();
 
     try {
       clearNamespaceTierCache();
       await connectionManager.reinitialize(instanceUrl);
 
-      // The session's scope named projects of the previous instance.
-      await getConfigurationService().updateSession(this.caller(), { scope: null });
+      // The server's token now acts on the new instance, which is another account: every
+      // chat keeps its overrides there, without the scope that named the previous
+      // instance's projects.
+      const after = resolveCaller(before.sessionKey, instanceUrl);
+      await getConfigurationService().moveSessions(before.accountKey, after.accountKey);
 
       logInfo('Switched GitLab instance', {
         previous: previousUrl,

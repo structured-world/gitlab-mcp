@@ -6,6 +6,7 @@
 
 import { GITLAB_BASE_URL } from '../../config';
 import { currentCaller, getConfigurationService, resolveCaller } from '../../configuration';
+import { toolRestriction } from '../../configuration/policy';
 import { executeWhoami } from './whoami';
 
 export interface ConnectionCheck {
@@ -61,6 +62,14 @@ export async function checkConnection(): Promise<ConnectionCheck> {
     getConfigurationService().resolve(caller),
   ]);
   const scope = resolved.policy.scope;
+  // What this caller can call: the instance's tools narrowed by its own settings.
+  const { RegistryManager } = await import('../../registry-manager');
+  const registry = RegistryManager.getInstance();
+  const availableTools = registry
+    .getAvailableToolNames(caller.instanceUrl)
+    .filter(
+      (name) => toolRestriction(resolved.policy, registry.getToolFacts(name)) === null,
+    ).length;
   const warnings = [...whoami.warnings];
   const recommendations = whoami.recommendations.map((r) => r.message);
   if (resolved.presetUnavailable) {
@@ -78,7 +87,7 @@ export async function checkConnection(): Promise<ConnectionCheck> {
     readOnly: whoami.server.readOnlyMode || resolved.policy.readOnly,
     preset: resolved.policy.presetName ?? null,
     scope: scope?.project ?? scope?.group ?? scope?.namespace ?? null,
-    availableTools: whoami.capabilities.availableToolCount,
+    availableTools,
     warnings,
     recommendations,
   };

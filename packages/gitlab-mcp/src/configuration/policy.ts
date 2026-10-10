@@ -7,12 +7,16 @@
 import type { Preset, ScopeConfig } from '../profiles/types';
 import { enforceArgsScope, ScopeEnforcer, ScopeViolationError } from '../profiles/scope-enforcer';
 import type { AccountSettings, WorkingScope } from './types';
+import { targetlessRestriction } from './scope-targets';
+
+/** A session's choice to work without the account's default scope. */
+export const EVERYWHERE = 'everywhere';
 
 /** Overrides of the current MCP session; they replace the account's choice for it. */
 export interface SessionOverrides {
   preset?: string;
   readOnly?: boolean;
-  scope?: WorkingScope;
+  scope?: WorkingScope | typeof EVERYWHERE;
   /** Local profile chosen with manage_context switch_profile (OAuth mode). */
   profile?: string;
 }
@@ -81,8 +85,10 @@ export function buildPolicy(
     actions.add(entry.slice(separator + 1));
     deniedActions.set(tool, actions);
   }
+  // A preset's own scope belongs to the preset and still applies when the chat works
+  // everywhere; only the account's default scope is dropped.
   const working = session.scope ?? account.scope;
-  const scope = working ? scopeConfigOf(working) : preset?.scope;
+  const scope = working && working !== EVERYWHERE ? scopeConfigOf(working) : preset?.scope;
   return {
     presetName: selectedPreset(account, session),
     readOnly: (session.readOnly ?? account.readOnly ?? false) || preset?.read_only === true,
@@ -142,6 +148,10 @@ export function callRestriction(
       if (error instanceof ScopeViolationError) return error.message;
       throw error;
     }
+  }
+  if (policy.scope) {
+    const targetless = targetlessRestriction(tool.name, args, policy.scope);
+    if (targetless) return targetless;
   }
   return null;
 }

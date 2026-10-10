@@ -42,6 +42,14 @@ Restrictions are applied when a tool runs, not only to the tool list: a direct c
 tool the settings turn off, or to a project outside the working scope, is refused before
 anything reaches GitLab.
 
+A listing or search that names no project or group reads the working scope instead of
+everything the account can see: a global search becomes a search of the scope's group or
+project, a project listing lists the scope's group, a cross-project merge request listing
+lists the scope's project, and results that cannot be filtered at GitLab (project search,
+todos, merge requests under a group scope) are filtered to the scope. A group search always
+includes subgroups. Under a preset scope of several projects or groups a global search is
+refused; search within one of them.
+
 ## Changing settings
 
 ### Clients with a settings page
@@ -56,7 +64,9 @@ Clients that support MCP Apps show the connection panel when the `open_settings_
 tool runs. In the panel you can:
 
 - search your projects and groups and choose where to work, for this chat
-  (**Use in this chat**) or as the default for new chats (**Save for new chats**);
+  (**Use in this chat**) or as the default for new chats (**Save for new chats**), or let
+  this chat work everywhere (**Work everywhere in this chat**; the default for new chats and
+  the chat's preset and read-only mode stay);
 - see what the current chat can do: preset, read-only mode and tool groups that are off;
 - check the connection: account, GitLab version and tier, available tools, and what to do
   about problems such as an expired sign-in.
@@ -79,12 +89,15 @@ panels, and the assistant itself, can use them:
 
 // manage_context: change only this chat
 { "action": "set_scope", "namespace": "my-group/my-project" }
+{ "action": "clear_scope" }
 { "action": "switch_preset", "preset": "readonly" }
 { "action": "reset" }
 ```
 
 `update_settings` validates every value before saving anything; an invalid value saves
-nothing. `manage_context reset` drops the chat's overrides, so the chat uses the account
+nothing. `manage_context clear_scope` lets the chat work everywhere the account has access,
+also when the account has a default scope; its preset and read-only mode stay.
+`manage_context reset` drops all of the chat's overrides, so the chat uses the account
 settings again.
 
 `check_connection` reports the account, the instance, the restrictions in effect and

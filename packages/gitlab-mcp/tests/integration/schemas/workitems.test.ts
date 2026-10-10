@@ -728,9 +728,12 @@ describe('Work Items Schema - GitLab 18.3 Integration', () => {
       }
 
       console.log('🏷️  Testing removeLabelIds (incremental remove)...');
-      const labelIdsOf = (item: any): string[] =>
-        (item.widgets?.find((w: any) => w.type === 'LABELS')?.labels?.nodes ?? []).map(
-          (label: any) => String(label.id),
+      type LabelWidgetItem = {
+        widgets?: Array<{ type: string; labels?: { nodes?: Array<{ id: string }> } }>;
+      };
+      const labelIdsOf = (item: LabelWidgetItem): string[] =>
+        (item.widgets?.find((widget) => widget.type === 'LABELS')?.labels?.nodes ?? []).map(
+          (label) => String(label.id),
         );
 
       // Start from a known label set: the earlier label tests skip without two labels, so
@@ -743,14 +746,14 @@ describe('Work Items Schema - GitLab 18.3 Integration', () => {
       const beforeRemove = (await helper.executeTool('browse_work_items', {
         action: 'get',
         id: testWorkItemId,
-      })) as any;
+      })) as LabelWidgetItem;
       expect(labelIdsOf(beforeRemove)).toContain(label1Id);
 
       const removeUpdate = (await helper.executeTool('manage_work_item', {
         action: 'update',
         id: testWorkItemId,
         removeLabelIds: [label1Id],
-      })) as any;
+      })) as LabelWidgetItem;
 
       // The removed label is gone and nothing else changed
       expect(labelIdsOf(removeUpdate)).not.toContain(label1Id);

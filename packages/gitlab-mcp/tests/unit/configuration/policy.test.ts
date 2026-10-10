@@ -126,6 +126,28 @@ describe('toolRestriction', () => {
   );
 });
 
+describe('working everywhere in one chat', () => {
+  // The chat drops the account's default scope; nothing else of the account changes.
+  it("drops the account's default scope for the chat", () => {
+    const policy = buildPolicy(
+      undefined,
+      { readOnly: true, scope: { type: 'group', path: 'team', includeSubgroups: true } },
+      { scope: 'everywhere' },
+    );
+
+    expect(policy.scope).toBeUndefined();
+    expect(policy.scopeEnforcer).toBeUndefined();
+    expect(policy.readOnly).toBe(true);
+  });
+
+  // A preset's own scope is part of the preset the chat chose; it still applies.
+  it("keeps the preset's scope", () => {
+    const policy = buildPolicy({ scope: { project: 'team/app' } }, {}, { scope: 'everywhere' });
+
+    expect(policy.scope).toEqual({ project: 'team/app' });
+  });
+});
+
 describe('callRestriction', () => {
   it('refuses an action the preset denies and allows the others', () => {
     const policy = buildPolicy(
@@ -165,6 +187,20 @@ describe('callRestriction', () => {
       /outside the allowed scope/,
     );
   });
+
+  // Tool schemas accept ids as JSON numbers too; a number must not slip past the scope.
+  it.each([[{ project_id: 42 }], [{ group_id: 7 }]])(
+    'refuses a numeric id %j outside the working scope',
+    (args) => {
+      const policy = buildPolicy(
+        undefined,
+        { scope: { type: 'group', path: 'team', includeSubgroups: true } },
+        {},
+      );
+
+      expect(callRestriction(policy, browse, args)).toMatch(/outside the allowed scope/);
+    },
+  );
 
   // Only a scope violation is a refusal; a failing check is a fault, not a reason to show.
   it('propagates an error of the scope check that is not a violation', () => {

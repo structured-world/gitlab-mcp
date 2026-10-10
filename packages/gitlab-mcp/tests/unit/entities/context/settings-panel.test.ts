@@ -64,9 +64,9 @@ function defaultTools(): Record<string, ToolHandler> {
         };
         return { action: 'set_scope', data: { success: true } };
       }
-      if (args.action === 'reset') {
+      if (args.action === 'clear_scope') {
         scope = undefined;
-        return { action: 'reset', data: { success: true } };
+        return { action: 'clear_scope', data: { success: true } };
       }
       return { action: 'show', data: { readOnly: false, presetName: undefined, scope } };
     },
@@ -385,6 +385,24 @@ describe('settings panel', () => {
 
     expect(saved).toEqual({ scope: 'team/app', scopeIncludeSubgroups: false });
     expect(panel.byId('notice').textContent).toBe('New chats will work in team/app.');
+  });
+
+  // Working everywhere changes this chat's scope only: no reset of its preset or read-only
+  // mode, and no change of the default for new chats.
+  it('clears only the scope of this chat when working everywhere', async () => {
+    const panel = startPanel();
+    await panel.idle();
+
+    panel.byId('work-everywhere').click();
+    await panel.idle();
+
+    const writes = panel.toolCalls.filter(
+      (c) =>
+        c.name === 'update_settings' ||
+        (c.name === 'manage_context' && c.arguments.action !== 'show'),
+    );
+    expect(writes).toEqual([{ name: 'manage_context', arguments: { action: 'clear_scope' } }]);
+    expect(panel.byId('notice').textContent).toBe('This chat works everywhere you have access.');
   });
 
   it('cancels a selection without saving', async () => {

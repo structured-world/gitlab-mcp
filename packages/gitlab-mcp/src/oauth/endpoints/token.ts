@@ -172,6 +172,13 @@ async function handleAuthorizationCode(
     userId: session.gitlabUserId,
   });
 
+  // The client completed an authorization: its registration no longer expires. Missing
+  // the mark only lets an unused-looking registration expire later, so it does not fail
+  // the token response.
+  await sessionStore.markClientUsed(session.clientId).catch((error: unknown) => {
+    logWarn('Failed to record client use', { err: error as Error });
+  });
+
   // Return token response
   const response: MCPTokenResponse = {
     access_token: accessToken,

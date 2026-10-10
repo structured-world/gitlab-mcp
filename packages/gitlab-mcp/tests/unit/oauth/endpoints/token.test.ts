@@ -20,6 +20,7 @@ jest.mock('../../../../src/oauth/session-store', () => ({
     getSessionByRefreshToken: jest.fn(),
     claimGitLabRefresh: jest.fn(),
     releaseGitLabRefresh: jest.fn(),
+    markClientUsed: jest.fn(),
   },
 }));
 
@@ -127,6 +128,7 @@ describe('OAuth Token Endpoint', () => {
     mockSessionStore.rotateSession.mockResolvedValue(true);
     mockSessionStore.claimGitLabRefresh.mockResolvedValue(true);
     mockSessionStore.releaseGitLabRefresh.mockResolvedValue(undefined);
+    mockSessionStore.markClientUsed.mockResolvedValue(undefined);
     mockOauthAppFor.mockResolvedValue(sessionApp);
   });
 
@@ -391,6 +393,8 @@ describe('OAuth Token Endpoint', () => {
         }),
       );
       expect(mockSessionStore.consumeAuthCode).toHaveBeenCalledWith('valid-code');
+      // A client that completed an authorization keeps its registration.
+      expect(mockSessionStore.markClientUsed).toHaveBeenCalledWith('test-client');
       // RFC 8707: the audience is the protected resource, not the client.
       expect(createJWT).toHaveBeenCalledWith(
         expect.objectContaining({

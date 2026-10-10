@@ -60,6 +60,13 @@ export interface SessionStorageBackend {
   // Registered OAuth clients (RFC 7591), shared by every replica
   storeClient(client: RegisteredOAuthClient): Promise<void>;
   getClient(clientId: string): Promise<RegisteredOAuthClient | undefined>;
+  /** Record that the client completed an authorization: its registration no longer expires. */
+  markClientUsed(clientId: string): Promise<void>;
+  /**
+   * Remove the oldest never-used registrations of `registeredFrom` beyond the newest
+   * `keep`; returns how many were removed. Used registrations are never removed.
+   */
+  pruneUnusedClients(registeredFrom: string, keep: number): Promise<number>;
 
   // Single-use consumption: of concurrent callers on any replica, exactly one receives
   // the record and the record is gone afterwards.
@@ -110,6 +117,7 @@ export interface SessionStorageBackend {
 
   // Lifecycle
   initialize(): Promise<void>;
+  /** Remove expired sessions, flows, codes and expired never-used client registrations. */
   cleanup(): Promise<void>;
   close(): Promise<void>;
 

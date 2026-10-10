@@ -310,6 +310,49 @@ describe('MemoryStorageBackend', () => {
     });
   });
 
+  // Anonymous registration must not grow storage without bound: never-used registrations
+  // are capped per source and expire; a client that completed an authorization stays.
+  describe('dynamic client registrations', () => {
+    const client = (id: string, createdAt: number, from = 'source-a') => ({
+      clientId: id,
+      redirectUris: ['https://client.example.com/callback'],
+      tokenEndpointAuthMethod: 'none',
+      grantTypes: ['authorization_code'],
+      responseTypes: ['code'],
+      createdAt,
+      registeredFrom: from,
+      expiresAt: createdAt + 1000,
+    });
+
+    it('keeps the newest unused registrations of a source and spares used ones', async () => {
+      for (let i = 1; i <= 4; i++) await storage.storeClient(client(`c${i}`, i));
+      await storage.storeClient(client('other', 0, 'source-b'));
+      await storage.markClientUsed('c1');
+
+      expect(await storage.pruneUnusedClients('source-a', 2)).toBe(1);
+
+      expect(await storage.getClient('c1')).toBeDefined();
+      expect(await storage.getClient('c2')).toBeUndefined();
+      expect(await storage.getClient('c3')).toBeDefined();
+      expect(await storage.getClient('c4')).toBeDefined();
+      expect(await storage.getClient('other')).toBeDefined();
+    });
+
+    it('removes expired unused registrations on cleanup', async () => {
+      const now = Date.now();
+      await storage.storeClient(client('stale', now - 5000));
+      await storage.storeClient(client('fresh', now));
+      await storage.storeClient(client('used', now - 5000));
+      await storage.markClientUsed('used');
+
+      await storage.cleanup();
+
+      expect(await storage.getClient('stale')).toBeUndefined();
+      expect(await storage.getClient('fresh')).toBeDefined();
+      expect((await storage.getClient('used'))?.expiresAt).toBeUndefined();
+    });
+  });
+
   // GitLab refresh tokens work once: only the lease holder may spend one.
   describe('claimGitLabRefresh', () => {
     it('grants one lease per refresh token until it expires or is released', async () => {

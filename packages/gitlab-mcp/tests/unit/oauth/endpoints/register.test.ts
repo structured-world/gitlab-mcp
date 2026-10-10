@@ -7,8 +7,13 @@ import {
   registerHandler,
   getRegisteredClient,
   isValidRedirectUri,
+  UNUSED_REGISTRATIONS_PER_SOURCE,
 } from '../../../../src/oauth/endpoints/register';
 import { sessionStore } from '../../../../src/oauth/session-store';
+
+jest.mock('../../../../src/oauth/config', () => ({
+  loadOAuthConfig: () => ({ sessionSecret: 'test-session-secret-at-least-32-chars!' }),
+}));
 
 // Mock logger (registrations go through the real session storage, which also logs)
 jest.mock('../../../../src/logger', () => ({
@@ -41,6 +46,46 @@ describe('OAuth Dynamic Client Registration', () => {
   });
 
   describe('registerHandler', () => {
+    async function registerFrom(ip: string): Promise<string> {
+      const json = jest.fn();
+      await registerHandler(
+        { ip, body: { redirect_uris: ['https://example.com/callback'] } } as unknown as Request,
+        { status: jest.fn().mockReturnValue({ json }) } as unknown as Response,
+      );
+      return (json.mock.calls[0][0] as { client_id: string }).client_id;
+    }
+
+    // Anonymous registrations are durable: each records a keyed hash of its source and
+    // expires unless the client completes an authorization.
+    it('records the source and an expiry of a registration', async () => {
+      const id = await registerFrom('198.51.100.7');
+
+      const stored = await sessionStore.getClient(id);
+      expect(stored?.registeredFrom).toMatch(/^[\w-]{16,}$/);
+      expect(stored?.registeredFrom).not.toContain('198.51.100.7');
+      expect(stored?.expiresAt).toBeGreaterThan(Date.now() + 23 * 3600_000);
+      expect(
+        await registerFrom('198.51.100.7').then((other) => sessionStore.getClient(other)),
+      ).toMatchObject({ registeredFrom: stored?.registeredFrom });
+    });
+
+    it('keeps a bounded number of unused registrations per source', async () => {
+      const first = await registerFrom('203.0.113.9');
+      const elsewhere = await registerFrom('203.0.113.10');
+      for (let i = 0; i < UNUSED_REGISTRATIONS_PER_SOURCE; i++) await registerFrom('203.0.113.9');
+
+      expect(await sessionStore.getClient(first)).toBeUndefined();
+      expect(await sessionStore.getClient(elsewhere)).toBeDefined();
+    });
+
+    it('treats an expired unused registration as unknown', async () => {
+      const id = await registerFrom('192.0.2.44');
+      const stored = await sessionStore.getClient(id);
+      await sessionStore.storeClient({ ...stored!, expiresAt: Date.now() - 1 });
+
+      expect(await getRegisteredClient(id)).toBeUndefined();
+    });
+
     it('should register a public client successfully', async () => {
       mockReq.body = {
         redirect_uris: ['https://example.com/callback'],

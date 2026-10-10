@@ -34,6 +34,14 @@ CREATE TABLE "oauth_clients" (
     "grant_types" TEXT[],
     "response_types" TEXT[],
     "created_at" BIGINT NOT NULL,
+    "registered_from" TEXT,
+    "expires_at" BIGINT,
 
     CONSTRAINT "oauth_clients_pkey" PRIMARY KEY ("client_id")
 );
+
+-- CreateIndex
+CREATE INDEX "idx_oauth_clients_registered_from" ON "oauth_clients"("registered_from");
+
+-- CreateIndex
+CREATE INDEX "idx_oauth_clients_expires_at" ON "oauth_clients"("expires_at");

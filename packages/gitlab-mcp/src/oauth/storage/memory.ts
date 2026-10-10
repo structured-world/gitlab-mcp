@@ -203,6 +203,23 @@ export class MemoryStorageBackend implements SessionStorageBackend {
     return this.clients.get(clientId);
   }
 
+  async markClientUsed(clientId: string): Promise<void> {
+    const client = this.clients.get(clientId);
+    if (client?.expiresAt !== undefined) {
+      this.clients.set(clientId, { ...client, expiresAt: undefined });
+    }
+  }
+
+  async pruneUnusedClients(registeredFrom: string, keep: number): Promise<number> {
+    // Newest first; of registrations in the same millisecond the later stored is newer.
+    const unused = [...this.clients.values()]
+      .filter((c) => c.registeredFrom === registeredFrom && c.expiresAt !== undefined)
+      .reverse()
+      .sort((a, b) => b.createdAt - a.createdAt);
+    for (const client of unused.slice(keep)) this.clients.delete(client.clientId);
+    return Math.max(0, unused.length - keep);
+  }
+
   // Single-use consumption: lookup and removal run without an await in between, so in
   // this process exactly one caller gets the record.
   async consumeAuthCode(code: string): Promise<AuthorizationCode | undefined> {
@@ -304,6 +321,11 @@ export class MemoryStorageBackend implements SessionStorageBackend {
         this.authCodes.delete(code);
         expiredAuthCodes++;
       }
+    }
+
+    // Registrations that never completed an authorization expire
+    for (const [id, client] of this.clients) {
+      if (client.expiresAt !== undefined && client.expiresAt < now) this.clients.delete(id);
     }
 
     if (

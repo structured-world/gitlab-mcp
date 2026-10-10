@@ -138,8 +138,14 @@ model OAuthClient {
   grantTypes              String[] @map("grant_types")
   responseTypes           String[] @map("response_types")
   createdAt               BigInt   @map("created_at")
+  // Keyed hash of the registering address; never-used registrations are capped per source
+  registeredFrom          String?  @map("registered_from")
+  // Removal time of a registration that never completed an authorization
+  expiresAt               BigInt?  @map("expires_at")
 
   @@map("oauth_clients")
+  @@index([registeredFrom], map: "idx_oauth_clients_registered_from")
+  @@index([expiresAt], map: "idx_oauth_clients_expires_at")
 }
 
 // MCP session to OAuth session mapping

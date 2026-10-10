@@ -6,10 +6,26 @@
  */
 
 import { Request, Response } from 'express';
-import { randomUUID } from 'crypto';
-import { logInfo, logError } from '../../logger';
+import { createHmac, randomUUID } from 'node:crypto';
+import { logInfo, logError, logWarn } from '../../logger';
+import { loadOAuthConfig } from '../config';
 import { sessionStore } from '../session-store';
 import type { RegisteredOAuthClient } from '../types';
+
+/**
+ * Registration is anonymous and durable (RFC 7591 section 3 allows an open endpoint), so
+ * what one source can occupy is bounded: at most this many never-used registrations per
+ * source, the oldest removed first; a client that completed an authorization is kept.
+ */
+export const UNUSED_REGISTRATIONS_PER_SOURCE = 100;
+/** A registration that never completes an authorization is removed after this long. */
+const UNUSED_REGISTRATION_TTL_MS = 24 * 60 * 60 * 1000;
+
+/** Keyed hash of the registering address: groups registrations without storing the IP. */
+function registrationSource(req: Request, secret: string): string {
+  const address = req.ip ?? req.socket?.remoteAddress ?? 'unknown';
+  return createHmac('sha256', secret).update(address).digest('base64url').slice(0, 22);
+}
 
 /** Client registration request body */
 interface ClientRegistrationRequest {
@@ -54,6 +70,11 @@ function toRegisteredClient(client: RegisteredOAuthClient): RegisteredClient {
  * Supports public clients (no client_secret) for Claude.ai.
  */
 export async function registerHandler(req: Request, res: Response): Promise<void> {
+  const config = loadOAuthConfig();
+  if (!config) {
+    res.status(500).json({ error: 'server_error', error_description: 'OAuth not configured' });
+    return;
+  }
   try {
     const body = req.body as ClientRegistrationRequest;
     const {
@@ -98,6 +119,8 @@ export async function registerHandler(req: Request, res: Response): Promise<void
 
     // Store client registration in the shared storage backend, so every replica and every
     // restart knows the client; the response is sent only once the registration is stored.
+    const createdAt = Date.now();
+    const registeredFrom = registrationSource(req, config.sessionSecret);
     await sessionStore.storeClient({
       clientId: client_id,
       clientSecret: client_secret,
@@ -106,8 +129,17 @@ export async function registerHandler(req: Request, res: Response): Promise<void
       tokenEndpointAuthMethod: token_endpoint_auth_method,
       grantTypes: grant_types,
       responseTypes: response_types,
-      createdAt: Date.now(),
+      createdAt,
+      registeredFrom,
+      expiresAt: createdAt + UNUSED_REGISTRATION_TTL_MS,
     });
+    const pruned = await sessionStore.pruneUnusedClients(
+      registeredFrom,
+      UNUSED_REGISTRATIONS_PER_SOURCE,
+    );
+    if (pruned > 0) {
+      logWarn('Removed unused client registrations of a source over its limit', { pruned });
+    }
 
     logInfo('New OAuth client registered via DCR', {
       client_id,
@@ -146,7 +178,11 @@ export async function registerHandler(req: Request, res: Response): Promise<void
  */
 export async function getRegisteredClient(clientId: string): Promise<RegisteredClient | undefined> {
   const client = await sessionStore.getClient(clientId);
-  return client ? toRegisteredClient(client) : undefined;
+  // An unused registration past its expiry is gone even before cleanup removes it.
+  if (!client || (client.expiresAt !== undefined && client.expiresAt < Date.now())) {
+    return undefined;
+  }
+  return toRegisteredClient(client);
 }
 
 /**

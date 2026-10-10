@@ -38,6 +38,9 @@ const createMockPrisma = () => ({
   oAuthClient: {
     create: jest.fn().mockResolvedValue({}),
     findUnique: jest.fn(),
+    findMany: jest.fn().mockResolvedValue([]),
+    updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+    deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
   },
   deviceFlowState: {
     upsert: jest.fn().mockResolvedValue({}),
@@ -863,6 +866,59 @@ describe('PostgreSQLStorageBackend', () => {
       mockPrisma.oAuthClient.findUnique.mockResolvedValueOnce(null);
       expect(await backend.getClient('unknown')).toBeUndefined();
     });
+
+    // Anonymous registrations are bounded: a source and an expiry are stored, a completed
+    // authorization clears the expiry, and only never-used ones beyond the limit go.
+    it('keeps the source and expiry of a registration', async () => {
+      const client = {
+        clientId: 'client-2',
+        redirectUris: ['https://client.example.com/callback'],
+        tokenEndpointAuthMethod: 'none',
+        grantTypes: ['authorization_code'],
+        responseTypes: ['code'],
+        createdAt: 1000,
+        registeredFrom: 'source-a',
+        expiresAt: 2000,
+      };
+      await backend.storeClient(client);
+      const data = mockPrisma.oAuthClient.create.mock.calls[0][0].data;
+      expect(data).toMatchObject({ registeredFrom: 'source-a', expiresAt: BigInt(2000) });
+      mockPrisma.oAuthClient.findUnique.mockResolvedValueOnce({ ...data, clientSecret: null });
+      expect(await backend.getClient('client-2')).toEqual(client);
+    });
+
+    it('clears the expiry of a client that completed an authorization', async () => {
+      await backend.markClientUsed('client-2');
+
+      expect(mockPrisma.oAuthClient.updateMany).toHaveBeenCalledWith({
+        where: { clientId: 'client-2' },
+        data: { expiresAt: null },
+      });
+    });
+
+    it('removes never-used registrations of a source beyond the newest kept', async () => {
+      mockPrisma.oAuthClient.findMany.mockResolvedValueOnce([{ clientId: 'old-1' }]);
+      mockPrisma.oAuthClient.deleteMany.mockResolvedValueOnce({ count: 1 });
+
+      expect(await backend.pruneUnusedClients('source-a', 100)).toBe(1);
+
+      expect(mockPrisma.oAuthClient.findMany).toHaveBeenCalledWith({
+        where: { registeredFrom: 'source-a', expiresAt: { not: null } },
+        orderBy: [{ createdAt: 'desc' }, { clientId: 'desc' }],
+        skip: 100,
+        select: { clientId: true },
+      });
+      expect(mockPrisma.oAuthClient.deleteMany).toHaveBeenCalledWith({
+        where: { clientId: { in: ['old-1'] }, expiresAt: { not: null } },
+      });
+    });
+
+    it('removes nothing when a source is within its limit', async () => {
+      mockPrisma.oAuthClient.findMany.mockResolvedValueOnce([]);
+
+      expect(await backend.pruneUnusedClients('source-a', 100)).toBe(0);
+      expect(mockPrisma.oAuthClient.deleteMany).not.toHaveBeenCalled();
+    });
   });
 
   it('runs cleanup and stats', async () => {
@@ -870,6 +926,10 @@ describe('PostgreSQLStorageBackend', () => {
 
     await backend.cleanup();
     expect(mockPrisma.$transaction).toHaveBeenCalled();
+    // Expired never-used client registrations go with the expired flows and codes.
+    expect(mockPrisma.oAuthClient.deleteMany).toHaveBeenCalledWith({
+      where: { expiresAt: { lt: expect.any(BigInt) } },
+    });
 
     mockPrisma.$transaction.mockRejectedValueOnce(new Error('fail'));
     await backend.cleanup();

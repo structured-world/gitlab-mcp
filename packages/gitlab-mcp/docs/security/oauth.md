@@ -207,6 +207,7 @@ The Device Flow needs GitLab 17.3 or later (17.2 with the `oauth2_device_grant_f
 ### Token binding
 
 - **Client and redirect:** the Authorization Code flow requires a client registered through `/register`, and `redirect_uri` must be one of its registered URIs; otherwise the request fails without a redirect. The Device Flow does not use a redirect and needs no registration.
+- **Registrations:** a registration that never completes an authorization expires after 24 hours, and at most 100 such registrations are kept per source address (the oldest goes first). A client that obtained tokens keeps its registration.
 - **Resource:** clients may send `resource` (RFC 8707) naming `<OAUTH_ISSUER>` or `<OAUTH_ISSUER>/mcp`; any other value fails with `invalid_target`. Access tokens carry that resource as `aud` (`<OAUTH_ISSUER>/mcp` when none was requested) and `OAUTH_ISSUER` as `iss`; both are checked on every request.
 - **Scope:** supported scopes are `mcp:tools` and `mcp:resources`; unknown values are ignored and no recognised value grants both. Tool calls require `mcp:tools`. A refresh may narrow the scope, never widen it.
 - **Transports:** every MCP transport requires the access token in OAuth mode, including the legacy SSE endpoints (`/sse`, `/messages`).

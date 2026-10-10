@@ -111,6 +111,8 @@ interface PrismaOAuthClientRow {
   grantTypes: string[];
   responseTypes: string[];
   createdAt: bigint;
+  registeredFrom?: string | null;
+  expiresAt?: bigint | null;
 }
 
 interface PrismaBatchPayload {
@@ -179,6 +181,9 @@ interface GenericPrismaClient {
   oAuthClient: {
     create(args: unknown): Promise<unknown>;
     findUnique(args: unknown): Promise<unknown>;
+    findMany(args: unknown): Promise<unknown>;
+    updateMany(args: unknown): Promise<unknown>;
+    deleteMany(args: unknown): Promise<unknown>;
   };
   deviceFlowState: {
     upsert(args: unknown): Promise<unknown>;
@@ -729,8 +734,34 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
         grantTypes: client.grantTypes,
         responseTypes: client.responseTypes,
         createdAt: BigInt(client.createdAt),
+        registeredFrom: client.registeredFrom ?? null,
+        expiresAt: client.expiresAt === undefined ? null : BigInt(client.expiresAt),
       },
     });
+  }
+
+  async markClientUsed(clientId: string): Promise<void> {
+    const prisma = this.getPrisma();
+    await prisma.oAuthClient.updateMany({
+      where: { clientId },
+      data: { expiresAt: null },
+    });
+  }
+
+  async pruneUnusedClients(registeredFrom: string, keep: number): Promise<number> {
+    const prisma = this.getPrisma();
+    const surplus = (await prisma.oAuthClient.findMany({
+      where: { registeredFrom, expiresAt: { not: null } },
+      orderBy: [{ createdAt: 'desc' }, { clientId: 'desc' }],
+      skip: keep,
+      select: { clientId: true },
+    })) as Array<{ clientId: string }>;
+    if (surplus.length === 0) return 0;
+    // A client used since the read keeps its registration.
+    const removed = (await prisma.oAuthClient.deleteMany({
+      where: { clientId: { in: surplus.map((c) => c.clientId) }, expiresAt: { not: null } },
+    })) as PrismaBatchPayload;
+    return removed.count;
   }
 
   async getClient(clientId: string): Promise<RegisteredOAuthClientType | undefined> {
@@ -748,6 +779,8 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
       grantTypes: row.grantTypes,
       responseTypes: row.responseTypes,
       createdAt: Number(row.createdAt),
+      registeredFrom: optional(row.registeredFrom),
+      expiresAt: row.expiresAt == null ? undefined : Number(row.expiresAt),
     };
   }
 
@@ -772,6 +805,10 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
           where: { expiresAt: { lt: now } },
         }),
         prisma.authorizationCode.deleteMany({
+          where: { expiresAt: { lt: now } },
+        }),
+        // Registrations that never completed an authorization; used ones have no expiry
+        prisma.oAuthClient.deleteMany({
           where: { expiresAt: { lt: now } },
         }),
       ])) as PrismaBatchPayload[];

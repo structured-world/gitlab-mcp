@@ -399,6 +399,17 @@ export class FileStorageBackend implements SessionStorageBackend {
     return this.memory.getClient(clientId);
   }
 
+  async markClientUsed(clientId: string): Promise<void> {
+    await this.memory.markClientUsed(clientId);
+    await this.persistNow();
+  }
+
+  async pruneUnusedClients(registeredFrom: string, keep: number): Promise<number> {
+    const removed = await this.memory.pruneUnusedClients(registeredFrom, keep);
+    if (removed > 0) this.scheduleSave();
+    return removed;
+  }
+
   // Single-use consumption and refresh rotation: written through before they are
   // reported, so a crash cannot make a spent code, flow or refresh token usable again.
   async consumeAuthCode(code: string): Promise<AuthorizationCode | undefined> {

@@ -307,6 +307,16 @@ export class SessionStore {
     return this.backend.getClient(clientId);
   }
 
+  /** Record that the client completed an authorization, so its registration stays. */
+  async markClientUsed(clientId: string): Promise<void> {
+    await this.backend.markClientUsed(clientId);
+  }
+
+  /** Keep only the newest `keep` never-used registrations of one source. */
+  async pruneUnusedClients(registeredFrom: string, keep: number): Promise<number> {
+    return this.backend.pruneUnusedClients(registeredFrom, keep);
+  }
+
   // ============================================================
   // MCP Session Mapping Operations
   // ============================================================

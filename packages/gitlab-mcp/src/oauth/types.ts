@@ -90,6 +90,13 @@ export interface RegisteredOAuthClient {
   responseTypes: string[];
   /** Registration timestamp (milliseconds since epoch) */
   createdAt: number;
+  /** Keyed hash of the address that registered the client (anonymous registrations) */
+  registeredFrom?: string;
+  /**
+   * When a registration that never completed an authorization is removed; unset once the
+   * client has been used, and for clients registered before registrations expired.
+   */
+  expiresAt?: number;
 }
 
 /**

@@ -95,6 +95,11 @@ export class SessionManager {
     return server;
   }
 
+  /** Whether this process holds the session. */
+  hasSession(sessionId: string): boolean {
+    return this.sessions.has(sessionId);
+  }
+
   /**
    * Mark session as active (extends timeout).
    */

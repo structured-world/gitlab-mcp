@@ -5,7 +5,9 @@
  * Suitable for single-instance deployments without external database.
  *
  * Features:
- * - Automatic save on changes (debounced)
+ * - Every OAuth record (client, session, flow, code) and every transition of one is
+ *   written through before it is reported; cleanup and MCP transport mappings are
+ *   saved debounced
  * - Periodic auto-save interval
  * - Atomic file writes (write to temp, then rename)
  * - Data version migration support
@@ -13,7 +15,13 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { OAuthSession, DeviceFlowState, AuthCodeFlowState, AuthorizationCode } from '../types';
+import {
+  OAuthSession,
+  DeviceFlowState,
+  AuthCodeFlowState,
+  AuthorizationCode,
+  RegisteredOAuthClient,
+} from '../types';
 import {
   SessionStorageBackend,
   SessionStorageStats,
@@ -32,6 +40,20 @@ export interface FileStorageOptions {
   saveDebounce?: number;
 }
 
+/**
+ * Flush a directory entry change (the rename) to disk. Windows cannot open a directory
+ * for syncing; NTFS journals the rename itself.
+ */
+async function syncDirectory(dir: string): Promise<void> {
+  if (process.platform === 'win32') return;
+  const handle = await fs.promises.open(dir, 'r');
+  try {
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+}
+
 export class FileStorageBackend implements SessionStorageBackend {
   readonly type = 'file' as const;
 
@@ -43,6 +65,8 @@ export class FileStorageBackend implements SessionStorageBackend {
   private saveDebounceId: ReturnType<typeof setTimeout> | null = null;
   private pendingSave = false;
   private initialized = false;
+  /** Tail of the serialized file writes */
+  private writeQueue: Promise<void> = Promise.resolve();
 
   constructor(options: FileStorageOptions) {
     // Use memory backend internally as cache, but suppress its logging
@@ -139,6 +163,7 @@ export class FileStorageBackend implements SessionStorageBackend {
         authCodeFlows: validAuthCodeFlows,
         authCodes: validAuthCodes,
         mcpSessionMappings: data.mcpSessionMappings,
+        clients: data.clients,
       });
 
       const stats = await this.memory.getStats();
@@ -158,39 +183,74 @@ export class FileStorageBackend implements SessionStorageBackend {
   }
 
   private async saveToFile(): Promise<void> {
-    if (!this.initialized) return;
-
     try {
-      const exportedData = this.memory.exportData();
-
-      const data: StorageData = {
-        version: STORAGE_DATA_VERSION,
-        exportedAt: Date.now(),
-        sessions: exportedData.sessions,
-        deviceFlows: exportedData.deviceFlows,
-        authCodeFlows: exportedData.authCodeFlows,
-        authCodes: exportedData.authCodes,
-        mcpSessionMappings: exportedData.mcpSessionMappings,
-      };
-
-      // Atomic write: write to temp file, then rename
-      const tempPath = `${this.filePath}.tmp`;
-      const content = JSON.stringify(data);
-
-      fs.writeFileSync(tempPath, content, 'utf-8');
-      fs.renameSync(tempPath, this.filePath);
-
-      logDebug('Saved sessions to file', {
-        sessions: data.sessions.length,
-        deviceFlows: data.deviceFlows.length,
-        authCodes: data.authCodes.length,
-      });
+      await this.writeSnapshot();
     } catch (error) {
       logError('Failed to save sessions to file', {
         err: error as Error,
         filePath: this.filePath,
       });
     }
+  }
+
+  /**
+   * Write the current state now, replacing any pending debounced save. Single-use
+   * transitions (consumed codes and flows, rotated refresh tokens, revoked sessions) are
+   * reported only after this succeeds, so a crash cannot bring them back.
+   */
+  private async persistNow(): Promise<void> {
+    if (this.saveDebounceId) {
+      clearTimeout(this.saveDebounceId);
+      this.saveDebounceId = null;
+    }
+    this.pendingSave = false;
+    await this.writeSnapshot();
+  }
+
+  /**
+   * Atomically replace the file with the current state; rejects when the write fails.
+   * The state is captured now and writes run one at a time in call order, so concurrent
+   * writes never share the temp file and the last call's state is what remains.
+   */
+  private writeSnapshot(): Promise<void> {
+    if (!this.initialized) return Promise.resolve();
+
+    const exportedData = this.memory.exportData();
+
+    const data: StorageData = {
+      version: STORAGE_DATA_VERSION,
+      exportedAt: Date.now(),
+      sessions: exportedData.sessions,
+      deviceFlows: exportedData.deviceFlows,
+      authCodeFlows: exportedData.authCodeFlows,
+      authCodes: exportedData.authCodes,
+      mcpSessionMappings: exportedData.mcpSessionMappings,
+      clients: exportedData.clients,
+    };
+
+    const content = JSON.stringify(data);
+    const write = this.writeQueue.then(async () => {
+      // Atomic write: write to temp file, then rename. Both are flushed to disk, so a
+      // power loss cannot bring back a spent code or a revoked session either.
+      const tempPath = `${this.filePath}.tmp`;
+      const file = await fs.promises.open(tempPath, 'w');
+      try {
+        await file.writeFile(content, 'utf-8');
+        await file.sync();
+      } finally {
+        await file.close();
+      }
+      await fs.promises.rename(tempPath, this.filePath);
+      await syncDirectory(path.dirname(this.filePath));
+      logDebug('Saved sessions to file', {
+        sessions: data.sessions.length,
+        deviceFlows: data.deviceFlows.length,
+        authCodes: data.authCodes.length,
+      });
+    });
+    // A failed write is reported to its caller; the next write still runs.
+    this.writeQueue = write.catch(() => undefined);
+    return write;
   }
 
   private scheduleSave(): void {
@@ -221,10 +281,13 @@ export class FileStorageBackend implements SessionStorageBackend {
     }
   }
 
-  // Session operations - delegate to memory with save scheduling
+  // Records handed to a client or to GitLab right after they are stored (client ids,
+  // codes and their sessions, flows GitLab calls back for, device flows holding tokens
+  // GitLab issued once) are written through, so a crash cannot lose what was handed out.
+  // Cleanup and MCP transport mappings stay debounced.
   async createSession(session: OAuthSession): Promise<void> {
     await this.memory.createSession(session);
-    this.scheduleSave();
+    await this.persistNow();
   }
 
   async getSession(sessionId: string): Promise<OAuthSession | undefined> {
@@ -241,13 +304,16 @@ export class FileStorageBackend implements SessionStorageBackend {
 
   async updateSession(sessionId: string, updates: Partial<OAuthSession>): Promise<boolean> {
     const result = await this.memory.updateSession(sessionId, updates);
-    if (result) this.scheduleSave();
+    // Written through: updates carry tokens just handed to clients or replacing spent
+    // GitLab refresh tokens, which a crash must not lose.
+    if (result) await this.persistNow();
     return result;
   }
 
   async deleteSession(sessionId: string): Promise<boolean> {
     const result = await this.memory.deleteSession(sessionId);
-    if (result) this.scheduleSave();
+    // A revoked session must not come back after a crash.
+    if (result) await this.persistNow();
     return result;
   }
 
@@ -258,7 +324,7 @@ export class FileStorageBackend implements SessionStorageBackend {
   // Device flow operations
   async storeDeviceFlow(state: string, flow: DeviceFlowState): Promise<void> {
     await this.memory.storeDeviceFlow(state, flow);
-    this.scheduleSave();
+    await this.persistNow();
   }
 
   async getDeviceFlow(state: string): Promise<DeviceFlowState | undefined> {
@@ -278,7 +344,7 @@ export class FileStorageBackend implements SessionStorageBackend {
   // Auth code flow operations
   async storeAuthCodeFlow(internalState: string, flow: AuthCodeFlowState): Promise<void> {
     await this.memory.storeAuthCodeFlow(internalState, flow);
-    this.scheduleSave();
+    await this.persistNow();
   }
 
   async getAuthCodeFlow(internalState: string): Promise<AuthCodeFlowState | undefined> {
@@ -294,7 +360,7 @@ export class FileStorageBackend implements SessionStorageBackend {
   // Authorization code operations
   async storeAuthCode(code: AuthorizationCode): Promise<void> {
     await this.memory.storeAuthCode(code);
-    this.scheduleSave();
+    await this.persistNow();
   }
 
   async getAuthCode(code: string): Promise<AuthorizationCode | undefined> {
@@ -321,6 +387,82 @@ export class FileStorageBackend implements SessionStorageBackend {
     const result = await this.memory.removeMcpSessionAssociation(mcpSessionId);
     if (result) this.scheduleSave();
     return result;
+  }
+
+  // Registered OAuth clients
+  async storeClient(client: RegisteredOAuthClient): Promise<void> {
+    await this.memory.storeClient(client);
+    await this.persistNow();
+  }
+
+  async getClient(clientId: string): Promise<RegisteredOAuthClient | undefined> {
+    return this.memory.getClient(clientId);
+  }
+
+  async markClientUsed(clientId: string): Promise<void> {
+    await this.memory.markClientUsed(clientId);
+    await this.persistNow();
+  }
+
+  async pruneUnusedClients(registeredFrom: string, keep: number): Promise<number> {
+    const removed = await this.memory.pruneUnusedClients(registeredFrom, keep);
+    if (removed > 0) this.scheduleSave();
+    return removed;
+  }
+
+  // Single-use consumption and refresh rotation: written through before they are
+  // reported, so a crash cannot make a spent code, flow or refresh token usable again.
+  async consumeAuthCode(code: string): Promise<AuthorizationCode | undefined> {
+    const record = await this.memory.consumeAuthCode(code);
+    if (record) await this.persistNow();
+    return record;
+  }
+
+  async consumeAuthCodeFlow(internalState: string): Promise<AuthCodeFlowState | undefined> {
+    const record = await this.memory.consumeAuthCodeFlow(internalState);
+    if (record) await this.persistNow();
+    return record;
+  }
+
+  async consumeDeviceFlow(state: string): Promise<DeviceFlowState | undefined> {
+    const record = await this.memory.consumeDeviceFlow(state);
+    if (record) await this.persistNow();
+    return record;
+  }
+
+  async claimDevicePoll(
+    state: string,
+    now: number,
+    nextPollAt: number,
+  ): Promise<DeviceFlowState | undefined> {
+    const claimed = await this.memory.claimDevicePoll(state, now, nextPollAt);
+    if (claimed) this.scheduleSave();
+    return claimed;
+  }
+
+  // GitLab refresh leases only coordinate requests of this process (the file backend has
+  // one writer) and are not persisted.
+  async claimGitLabRefresh(
+    sessionId: string,
+    expectedRefreshToken: string,
+    now: number,
+    leaseUntil: number,
+  ): Promise<boolean> {
+    return this.memory.claimGitLabRefresh(sessionId, expectedRefreshToken, now, leaseUntil);
+  }
+
+  async releaseGitLabRefresh(sessionId: string, leaseUntil: number): Promise<void> {
+    await this.memory.releaseGitLabRefresh(sessionId, leaseUntil);
+  }
+
+  async rotateSession(
+    sessionId: string,
+    expectedRefreshToken: string,
+    updates: Partial<OAuthSession>,
+  ): Promise<boolean> {
+    const rotated = await this.memory.rotateSession(sessionId, expectedRefreshToken, updates);
+    if (rotated) await this.persistNow();
+    return rotated;
   }
 
   // Cleanup

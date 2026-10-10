@@ -18,6 +18,12 @@ All-in-one production deployment with GitLab MCP, PostgreSQL, and optional HTTPS
 - Quick setup of OAuth-enabled multi-instance server
 - Self-contained deployments with easy backup
 
+## Requirements
+
+Docker Compose v2 or podman-compose 1.6.0 or later. The bundle runs database migrations
+as a one-shot service before the server (`depends_on` with
+`condition: service_completed_successfully`), which older Compose releases cannot order.
+
 ## Quick Start
 
 ### 1. Generate Configuration
@@ -37,16 +43,23 @@ docker compose up -d
 
 ### 3. Configure Clients
 
+Clients connect to `OAUTH_ISSUER` (from the `.env` file below) with `/mcp` appended. The
+discovery metadata names that URL as the resource, so a client using any other address
+rejects the server or receives tokens for a different resource.
+
 ```json
 {
   "mcpServers": {
     "gitlab": {
       "type": "streamable-http",
-      "url": "http://localhost:3333/mcp"
+      "url": "https://mcp.example.com/mcp"
     }
   }
 }
 ```
+
+For local testing set `OAUTH_ISSUER=http://localhost:3333` and connect to
+`http://localhost:3333/mcp`.
 
 ## docker-compose.yml
 
@@ -66,6 +79,8 @@ services:
       # OAuth mode (per-user auth) — not static-token mode. Register a GitLab
       # OAuth application and set OAUTH_CLIENT_ID; see the OAuth guide linked below.
       - OAUTH_ENABLED=true
+      # Public URL clients connect to; GitLab redirect URI is <OAUTH_ISSUER>/oauth/callback.
+      - OAUTH_ISSUER=${OAUTH_ISSUER}
       - OAUTH_CLIENT_ID=${OAUTH_CLIENT_ID}
       # Only needed for confidential OAuth apps; harmless (empty) for PKCE public apps.
       - OAUTH_CLIENT_SECRET=${OAUTH_CLIENT_SECRET}
@@ -74,8 +89,21 @@ services:
       - OAUTH_STORAGE_POSTGRESQL_URL=postgresql://gitlab_mcp:${POSTGRES_PASSWORD}@postgres:5432/gitlab_mcp
       - GITLAB_API_URL=${GITLAB_API_URL:-https://gitlab.com}
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  # Waits for the database to accept connections, applies pending migrations, then
+  # exits; the server starts only after it succeeds. A database created by a release
+  # before migrations shipped is baselined automatically.
+  migrate:
+    image: ghcr.io/structured-world/gitlab-mcp-db:latest
+    restart: "no"
+    working_dir: /app/node_modules/@structured-world/gitlab-mcp-db
+    entrypoint: ["node", "dist/src/migrate.js"]
+    environment:
+      - OAUTH_STORAGE_POSTGRESQL_URL=postgresql://gitlab_mcp:${POSTGRES_PASSWORD}@postgres:5432/gitlab_mcp
+    depends_on:
+      - postgres
 
   postgres:
     image: postgres:16-alpine
@@ -104,6 +132,7 @@ Create a `.env` file alongside docker-compose.yml:
 # Required
 POSTGRES_PASSWORD=your_secure_database_password
 SESSION_SECRET=your_64_char_hex_secret
+OAUTH_ISSUER=https://mcp.example.com
 OAUTH_CLIENT_ID=your_gitlab_oauth_app_id
 
 # Optional
@@ -137,7 +166,7 @@ docker compose down
 # View logs
 docker compose logs -f gitlab-mcp
 
-# Update to latest
+# Update to latest (the migrate service applies new migrations first)
 docker compose pull
 docker compose up -d
 

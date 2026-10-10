@@ -10,6 +10,7 @@ import { ManageContextSchema } from './schema';
 import { handleManageContext } from './handlers';
 import { ContextOutputSchema } from './output-schema';
 import { ToolSchema } from '@modelcontextprotocol/sdk/types.js';
+import { ACCOUNT_PROFILE_OUTPUT_SCHEMA, getAccountProfile } from './profile';
 
 /**
  * Context tools registry - 1 CQRS tool with 8 actions
@@ -50,6 +51,33 @@ export const contextToolRegistry: ToolRegistry = new Map<string, EnhancedToolDef
       },
     },
   ],
+  [
+    'get_profile',
+    {
+      name: 'get_profile',
+      title: 'GitLab account',
+      description:
+        'Identify the GitLab account this connection uses: a stable account id, display name, email when GitLab provides it, and the username with its instance.',
+      inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+      outputSchema: ACCOUNT_PROFILE_OUTPUT_SCHEMA,
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true,
+      },
+      // Marks the tool as the host's source of the connection's account profile.
+      _meta: { 'openai/profile': true },
+      resultFormat: 'mcp',
+      handler: async () => {
+        const profile = await getAccountProfile();
+        return {
+          content: [{ type: 'text', text: JSON.stringify(profile) }],
+          structuredContent: profile,
+        };
+      },
+    },
+  ],
 ]);
 
 /**
@@ -59,7 +87,7 @@ export const contextToolRegistry: ToolRegistry = new Map<string, EnhancedToolDef
  * not GitLab data.
  */
 export function getContextReadOnlyToolNames(): string[] {
-  return ['manage_context'];
+  return ['manage_context', 'get_profile'];
 }
 
 /**

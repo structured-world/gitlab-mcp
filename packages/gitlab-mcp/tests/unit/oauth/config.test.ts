@@ -25,6 +25,7 @@ describe('OAuth Configuration', () => {
     process.env = { ...originalEnv };
     // Clear all OAuth-related env vars
     delete process.env.OAUTH_ENABLED;
+    process.env.OAUTH_ISSUER = 'https://mcp.example.com';
     delete process.env.OAUTH_SESSION_SECRET;
     delete process.env.OAUTH_CLIENT_ID;
     delete process.env.OAUTH_CLIENT_SECRET;
@@ -81,8 +82,51 @@ describe('OAuth Configuration', () => {
 
       expect(config).not.toBeNull();
       expect(config?.enabled).toBe(true);
+      expect(config?.issuer).toBe('https://mcp.example.com');
       expect(config?.sessionSecret).toBe('a'.repeat(32));
       expect(config?.gitlabClientId).toBe('test-client-id');
+    });
+
+    // The issuer fixes iss/aud of every token; it must come from configuration.
+    it('should reject OAuth mode without OAUTH_ISSUER', async () => {
+      process.env.OAUTH_ENABLED = 'true';
+      process.env.OAUTH_SESSION_SECRET = 'a'.repeat(32);
+      process.env.OAUTH_CLIENT_ID = 'test-client-id';
+      delete process.env.OAUTH_ISSUER;
+
+      const { loadOAuthConfig } = await import('../../../src/oauth/config');
+      expect(() => loadOAuthConfig()).toThrow('issuer: OAUTH_ISSUER is required');
+    });
+
+    it.each([
+      ['http://mcp.example.com', 'must use https'],
+      ['https://mcp.example.com/?tenant=a', 'must not contain'],
+      ['https://mcp.example.com/#x', 'must not contain'],
+      ['https://user:pass@mcp.example.com', 'must not contain'],
+      ['not a url', 'absolute URL'],
+    ])('should reject issuer %s (RFC 8414 section 2)', async (issuer, message) => {
+      process.env.OAUTH_ENABLED = 'true';
+      process.env.OAUTH_SESSION_SECRET = 'a'.repeat(32);
+      process.env.OAUTH_CLIENT_ID = 'test-client-id';
+      process.env.OAUTH_ISSUER = issuer;
+
+      const { loadOAuthConfig } = await import('../../../src/oauth/config');
+      expect(() => loadOAuthConfig()).toThrow(message);
+    });
+
+    it.each([
+      ['https://mcp.example.com/', 'https://mcp.example.com'],
+      ['https://mcp.example.com/gitlab/', 'https://mcp.example.com/gitlab'],
+      ['http://localhost:3333', 'http://localhost:3333'],
+      ['http://127.0.0.1:3333/', 'http://127.0.0.1:3333'],
+    ])('should canonicalize issuer %s to %s', async (issuer, canonical) => {
+      process.env.OAUTH_ENABLED = 'true';
+      process.env.OAUTH_SESSION_SECRET = 'a'.repeat(32);
+      process.env.OAUTH_CLIENT_ID = 'test-client-id';
+      process.env.OAUTH_ISSUER = issuer;
+
+      const { loadOAuthConfig } = await import('../../../src/oauth/config');
+      expect(loadOAuthConfig()?.issuer).toBe(canonical);
     });
 
     it('should use default values for optional fields', async () => {

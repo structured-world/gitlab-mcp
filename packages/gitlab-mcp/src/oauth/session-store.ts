@@ -4,34 +4,34 @@
  * Unified interface for OAuth session storage with pluggable backends.
  * Supports in-memory, file-based, and PostgreSQL storage.
  *
+ * The backend is the single source of truth: every read goes to it and every write
+ * completes before the caller continues, so replicas sharing a backend see the same
+ * sessions, flows and codes, and a storage failure surfaces instead of being reported
+ * as a successful sign-in.
+ *
  * Configuration via environment variables:
  * - OAUTH_STORAGE_TYPE: "memory" | "file" | "postgresql" (default: "memory")
  * - OAUTH_STORAGE_FILE_PATH: Path for file storage
  * - OAUTH_STORAGE_POSTGRESQL_URL: PostgreSQL connection string
  */
 
-import { OAuthSession, DeviceFlowState, AuthorizationCode, AuthCodeFlowState } from './types';
+import {
+  OAuthSession,
+  DeviceFlowState,
+  AuthorizationCode,
+  AuthCodeFlowState,
+  RegisteredOAuthClient,
+} from './types';
 import { SessionStorageBackend, createStorageBackend } from './storage';
-import { logInfo, logWarn, logError, logDebug, truncateId } from '../logger';
+import { MemoryStorageBackend } from './storage/memory';
+import { logInfo, logError, logDebug } from '../logger';
 
 /**
  * Session store with pluggable storage backends
- *
- * Provides both sync (for backward compatibility) and async APIs.
- * The sync methods work with in-memory cache and sync to backend.
  */
 export class SessionStore {
   private backend: SessionStorageBackend;
   private initialized = false;
-
-  // In-memory cache for sync access (mirrors backend)
-  private sessions = new Map<string, OAuthSession>();
-  private deviceFlows = new Map<string, DeviceFlowState>();
-  private authCodeFlows = new Map<string, AuthCodeFlowState>();
-  private authCodes = new Map<string, AuthorizationCode>();
-  private tokenToSession = new Map<string, string>();
-  private refreshTokenToSession = new Map<string, string>();
-  private mcpSessionToOAuthSession = new Map<string, string>();
 
   private cleanupIntervalId: ReturnType<typeof setInterval> | null = null;
 
@@ -41,27 +41,11 @@ export class SessionStore {
 
   /**
    * Initialize the session store and backend
-   * Must be called before using async operations
    */
   async initialize(): Promise<void> {
     if (this.initialized) return;
 
     await this.backend.initialize();
-
-    // Load existing sessions into cache if backend supports it
-    if (this.backend.type !== 'memory') {
-      const sessions = await this.backend.getAllSessions();
-      for (const session of sessions) {
-        this.sessions.set(session.id, session);
-        if (session.mcpAccessToken) {
-          this.tokenToSession.set(session.mcpAccessToken, session.id);
-        }
-        if (session.mcpRefreshToken) {
-          this.refreshTokenToSession.set(session.mcpRefreshToken, session.id);
-        }
-      }
-      logInfo('Loaded sessions from storage backend', { loadedSessions: sessions.length });
-    }
 
     // Start cleanup interval
     this.startCleanupInterval();
@@ -78,124 +62,94 @@ export class SessionStore {
   }
 
   // ============================================================
-  // Session Operations (sync with async backend sync)
+  // Session Operations
   // ============================================================
 
   /**
    * Create a new session
    */
-  createSession(session: OAuthSession): void {
-    this.sessions.set(session.id, session);
-
-    if (session.mcpAccessToken) {
-      this.tokenToSession.set(session.mcpAccessToken, session.id);
-    }
-    if (session.mcpRefreshToken) {
-      this.refreshTokenToSession.set(session.mcpRefreshToken, session.id);
-    }
-
-    // Async sync to backend (fire and forget for sync API)
-    this.backend.createSession(session).catch((err) => {
-      logError('Failed to persist session to backend', { err, sessionId: session.id });
-    });
-
+  async createSession(session: OAuthSession): Promise<void> {
+    await this.backend.createSession(session);
     logDebug('Session created', { sessionId: session.id, userId: session.gitlabUserId });
   }
 
   /**
    * Get session by ID
    */
-  getSession(sessionId: string): OAuthSession | undefined {
-    return this.sessions.get(sessionId);
+  async getSession(sessionId: string): Promise<OAuthSession | undefined> {
+    return this.backend.getSession(sessionId);
   }
 
   /**
    * Get session by MCP access token
    */
-  getSessionByToken(token: string): OAuthSession | undefined {
-    const sessionId = this.tokenToSession.get(token);
-    return sessionId ? this.sessions.get(sessionId) : undefined;
+  async getSessionByToken(token: string): Promise<OAuthSession | undefined> {
+    return this.backend.getSessionByToken(token);
   }
 
   /**
    * Get session by MCP refresh token
    */
-  getSessionByRefreshToken(refreshToken: string): OAuthSession | undefined {
-    const sessionId = this.refreshTokenToSession.get(refreshToken);
-    return sessionId ? this.sessions.get(sessionId) : undefined;
+  async getSessionByRefreshToken(refreshToken: string): Promise<OAuthSession | undefined> {
+    return this.backend.getSessionByRefreshToken(refreshToken);
   }
 
   /**
    * Update an existing session
    */
-  updateSession(sessionId: string, updates: Partial<OAuthSession>): boolean {
-    const session = this.sessions.get(sessionId);
-    if (!session) {
-      logWarn('Attempted to update non-existent session', { sessionId });
-      return false;
-    }
+  async updateSession(sessionId: string, updates: Partial<OAuthSession>): Promise<boolean> {
+    return this.backend.updateSession(sessionId, updates);
+  }
 
-    // Update token indexes if tokens changed
-    if (updates.mcpAccessToken && updates.mcpAccessToken !== session.mcpAccessToken) {
-      this.tokenToSession.delete(session.mcpAccessToken);
-      this.tokenToSession.set(updates.mcpAccessToken, sessionId);
-    }
-    if (updates.mcpRefreshToken && updates.mcpRefreshToken !== session.mcpRefreshToken) {
-      this.refreshTokenToSession.delete(session.mcpRefreshToken);
-      this.refreshTokenToSession.set(updates.mcpRefreshToken, sessionId);
-    }
+  /**
+   * Apply updates only while the session still holds `expectedRefreshToken`; of concurrent
+   * refreshes on any replica exactly one succeeds.
+   */
+  async rotateSession(
+    sessionId: string,
+    expectedRefreshToken: string,
+    updates: Partial<OAuthSession>,
+  ): Promise<boolean> {
+    return this.backend.rotateSession(sessionId, expectedRefreshToken, updates);
+  }
 
-    // Apply updates
-    Object.assign(session, updates, { updatedAt: Date.now() });
+  /**
+   * Lease the session's single-use GitLab refresh token until `leaseUntil`; false while
+   * another replica holds an unexpired lease or the token already changed.
+   */
+  async claimGitLabRefresh(
+    sessionId: string,
+    expectedRefreshToken: string,
+    now: number,
+    leaseUntil: number,
+  ): Promise<boolean> {
+    return this.backend.claimGitLabRefresh(sessionId, expectedRefreshToken, now, leaseUntil);
+  }
 
-    // Async sync to backend
-    this.backend.updateSession(sessionId, updates).catch((err) => {
-      logError('Failed to update session in backend', { err, sessionId });
-    });
-
-    logDebug('Session updated', { sessionId });
-    return true;
+  /** End the caller's GitLab refresh lease, named by the `leaseUntil` it claimed. */
+  async releaseGitLabRefresh(sessionId: string, leaseUntil: number): Promise<void> {
+    await this.backend.releaseGitLabRefresh(sessionId, leaseUntil);
   }
 
   /**
    * Delete a session
    */
-  deleteSession(sessionId: string): boolean {
-    const session = this.sessions.get(sessionId);
-    if (!session) {
-      return false;
-    }
-
-    if (session.mcpAccessToken) {
-      this.tokenToSession.delete(session.mcpAccessToken);
-    }
-    if (session.mcpRefreshToken) {
-      this.refreshTokenToSession.delete(session.mcpRefreshToken);
-    }
-
-    this.sessions.delete(sessionId);
-
-    // Async sync to backend
-    this.backend.deleteSession(sessionId).catch((err) => {
-      logError('Failed to delete session from backend', { err, sessionId });
-    });
-
-    logDebug('Session deleted', { sessionId });
-    return true;
+  async deleteSession(sessionId: string): Promise<boolean> {
+    return this.backend.deleteSession(sessionId);
   }
 
   /**
-   * Get all sessions (for iteration)
+   * Get all sessions
    */
-  getAllSessions(): IterableIterator<OAuthSession> {
-    return this.sessions.values();
+  async getAllSessions(): Promise<OAuthSession[]> {
+    return this.backend.getAllSessions();
   }
 
   /**
    * Get session count
    */
-  getSessionCount(): number {
-    return this.sessions.size;
+  async getSessionCount(): Promise<number> {
+    return (await this.backend.getStats()).sessions;
   }
 
   // ============================================================
@@ -205,56 +159,55 @@ export class SessionStore {
   /**
    * Store a device flow state
    */
-  storeDeviceFlow(state: string, flow: DeviceFlowState): void {
-    this.deviceFlows.set(state, flow);
-
-    this.backend.storeDeviceFlow(state, flow).catch((err) => {
-      logError('Failed to persist device flow to backend', { err, state });
-    });
-
-    logDebug('Device flow stored', { state, userCode: flow.userCode });
+  async storeDeviceFlow(state: string, flow: DeviceFlowState): Promise<void> {
+    await this.backend.storeDeviceFlow(state, flow);
   }
 
   /**
    * Get device flow by state parameter
    */
-  getDeviceFlow(state: string): DeviceFlowState | undefined {
-    return this.deviceFlows.get(state);
+  async getDeviceFlow(state: string): Promise<DeviceFlowState | undefined> {
+    return this.backend.getDeviceFlow(state);
   }
 
   /**
    * Get device flow by device code
    */
-  getDeviceFlowByDeviceCode(deviceCode: string): DeviceFlowState | undefined {
-    for (const flow of this.deviceFlows.values()) {
-      if (flow.deviceCode === deviceCode) {
-        return flow;
-      }
-    }
-    return undefined;
+  async getDeviceFlowByDeviceCode(deviceCode: string): Promise<DeviceFlowState | undefined> {
+    return this.backend.getDeviceFlowByDeviceCode(deviceCode);
   }
 
   /**
    * Delete a device flow
    */
-  deleteDeviceFlow(state: string): boolean {
-    const deleted = this.deviceFlows.delete(state);
+  async deleteDeviceFlow(state: string): Promise<boolean> {
+    return this.backend.deleteDeviceFlow(state);
+  }
 
-    if (deleted) {
-      this.backend.deleteDeviceFlow(state).catch((err) => {
-        logError('Failed to delete device flow from backend', { err, state });
-      });
-      logDebug('Device flow deleted', { state });
-    }
+  /**
+   * Remove and return a device flow; exactly one concurrent caller receives it.
+   */
+  async consumeDeviceFlow(state: string): Promise<DeviceFlowState | undefined> {
+    return this.backend.consumeDeviceFlow(state);
+  }
 
-    return deleted;
+  /**
+   * Reserve the next GitLab poll of a device flow; of concurrent pollers on any replica
+   * one wins each interval, the others get undefined.
+   */
+  async claimDevicePoll(
+    state: string,
+    now: number,
+    nextPollAt: number,
+  ): Promise<DeviceFlowState | undefined> {
+    return this.backend.claimDevicePoll(state, now, nextPollAt);
   }
 
   /**
    * Get device flow count
    */
-  getDeviceFlowCount(): number {
-    return this.deviceFlows.size;
+  async getDeviceFlowCount(): Promise<number> {
+    return (await this.backend.getStats()).deviceFlows;
   }
 
   // ============================================================
@@ -264,50 +217,36 @@ export class SessionStore {
   /**
    * Store an authorization code flow state
    */
-  storeAuthCodeFlow(internalState: string, flow: AuthCodeFlowState): void {
-    this.authCodeFlows.set(internalState, flow);
-
-    this.backend.storeAuthCodeFlow(internalState, flow).catch((err) => {
-      logError('Failed to persist auth code flow', {
-        err,
-        internalState: truncateId(internalState),
-      });
-    });
-
-    logDebug('Auth code flow stored', { internalState: truncateId(internalState) });
+  async storeAuthCodeFlow(internalState: string, flow: AuthCodeFlowState): Promise<void> {
+    await this.backend.storeAuthCodeFlow(internalState, flow);
   }
 
   /**
    * Get authorization code flow by internal state
    */
-  getAuthCodeFlow(internalState: string): AuthCodeFlowState | undefined {
-    return this.authCodeFlows.get(internalState);
+  async getAuthCodeFlow(internalState: string): Promise<AuthCodeFlowState | undefined> {
+    return this.backend.getAuthCodeFlow(internalState);
   }
 
   /**
    * Delete an authorization code flow
    */
-  deleteAuthCodeFlow(internalState: string): boolean {
-    const deleted = this.authCodeFlows.delete(internalState);
+  async deleteAuthCodeFlow(internalState: string): Promise<boolean> {
+    return this.backend.deleteAuthCodeFlow(internalState);
+  }
 
-    if (deleted) {
-      this.backend.deleteAuthCodeFlow(internalState).catch((err) => {
-        logError('Failed to delete auth code flow', {
-          err,
-          internalState: truncateId(internalState),
-        });
-      });
-      logDebug('Auth code flow deleted', { internalState: truncateId(internalState) });
-    }
-
-    return deleted;
+  /**
+   * Remove and return an authorization code flow; exactly one concurrent caller receives it.
+   */
+  async consumeAuthCodeFlow(internalState: string): Promise<AuthCodeFlowState | undefined> {
+    return this.backend.consumeAuthCodeFlow(internalState);
   }
 
   /**
    * Get auth code flow count
    */
-  getAuthCodeFlowCount(): number {
-    return this.authCodeFlows.size;
+  async getAuthCodeFlowCount(): Promise<number> {
+    return (await this.backend.getStats()).authCodeFlows;
   }
 
   // ============================================================
@@ -317,44 +256,65 @@ export class SessionStore {
   /**
    * Store an authorization code
    */
-  storeAuthCode(code: AuthorizationCode): void {
-    this.authCodes.set(code.code, code);
-
-    this.backend.storeAuthCode(code).catch((err) => {
-      logError('Failed to persist auth code', { err, code: truncateId(code.code) });
-    });
-
-    logDebug('Auth code stored', { code: truncateId(code.code) });
+  async storeAuthCode(code: AuthorizationCode): Promise<void> {
+    await this.backend.storeAuthCode(code);
   }
 
   /**
    * Get authorization code
    */
-  getAuthCode(code: string): AuthorizationCode | undefined {
-    return this.authCodes.get(code);
+  async getAuthCode(code: string): Promise<AuthorizationCode | undefined> {
+    return this.backend.getAuthCode(code);
   }
 
   /**
-   * Delete authorization code (single-use)
+   * Delete authorization code
    */
-  deleteAuthCode(code: string): boolean {
-    const deleted = this.authCodes.delete(code);
+  async deleteAuthCode(code: string): Promise<boolean> {
+    return this.backend.deleteAuthCode(code);
+  }
 
-    if (deleted) {
-      this.backend.deleteAuthCode(code).catch((err) => {
-        logError('Failed to delete auth code', { err, code: truncateId(code) });
-      });
-      logDebug('Auth code deleted', { code: truncateId(code) });
-    }
-
-    return deleted;
+  /**
+   * Remove and return an authorization code (single use); exactly one concurrent caller
+   * receives it.
+   */
+  async consumeAuthCode(code: string): Promise<AuthorizationCode | undefined> {
+    return this.backend.consumeAuthCode(code);
   }
 
   /**
    * Get auth code count
    */
-  getAuthCodeCount(): number {
-    return this.authCodes.size;
+  async getAuthCodeCount(): Promise<number> {
+    return (await this.backend.getStats()).authCodes;
+  }
+
+  // ============================================================
+  // Registered OAuth Clients
+  // ============================================================
+
+  /**
+   * Store a client registered through Dynamic Client Registration
+   */
+  async storeClient(client: RegisteredOAuthClient): Promise<void> {
+    await this.backend.storeClient(client);
+  }
+
+  /**
+   * Get a registered client
+   */
+  async getClient(clientId: string): Promise<RegisteredOAuthClient | undefined> {
+    return this.backend.getClient(clientId);
+  }
+
+  /** Record that the client completed an authorization, so its registration stays. */
+  async markClientUsed(clientId: string): Promise<void> {
+    await this.backend.markClientUsed(clientId);
+  }
+
+  /** Keep only the newest `keep` never-used registrations of one source. */
+  async pruneUnusedClients(registeredFrom: string, keep: number): Promise<number> {
+    return this.backend.pruneUnusedClients(registeredFrom, keep);
   }
 
   // ============================================================
@@ -364,52 +324,30 @@ export class SessionStore {
   /**
    * Associate an MCP session ID with an OAuth session ID
    */
-  associateMcpSession(mcpSessionId: string, oauthSessionId: string): void {
-    this.mcpSessionToOAuthSession.set(mcpSessionId, oauthSessionId);
-
-    this.backend.associateMcpSession(mcpSessionId, oauthSessionId).catch((err) => {
-      logError('Failed to persist MCP session association', { err, mcpSessionId });
-    });
-
-    logDebug('MCP session associated with OAuth session', {
-      mcpSessionId,
-      oauthSessionId: truncateId(oauthSessionId),
-    });
+  async associateMcpSession(mcpSessionId: string, oauthSessionId: string): Promise<void> {
+    await this.backend.associateMcpSession(mcpSessionId, oauthSessionId);
   }
 
   /**
    * Get OAuth session by MCP session ID
    */
-  getSessionByMcpSessionId(mcpSessionId: string): OAuthSession | undefined {
-    const oauthSessionId = this.mcpSessionToOAuthSession.get(mcpSessionId);
-    if (!oauthSessionId) {
-      return undefined;
-    }
-    return this.sessions.get(oauthSessionId);
+  async getSessionByMcpSessionId(mcpSessionId: string): Promise<OAuthSession | undefined> {
+    return this.backend.getSessionByMcpSessionId(mcpSessionId);
   }
 
   /**
    * Get GitLab token by MCP session ID
    */
-  getGitLabTokenByMcpSessionId(mcpSessionId: string): string | undefined {
-    const session = this.getSessionByMcpSessionId(mcpSessionId);
+  async getGitLabTokenByMcpSessionId(mcpSessionId: string): Promise<string | undefined> {
+    const session = await this.getSessionByMcpSessionId(mcpSessionId);
     return session?.gitlabAccessToken;
   }
 
   /**
    * Remove MCP session association
    */
-  removeMcpSessionAssociation(mcpSessionId: string): boolean {
-    const deleted = this.mcpSessionToOAuthSession.delete(mcpSessionId);
-
-    if (deleted) {
-      this.backend.removeMcpSessionAssociation(mcpSessionId).catch((err) => {
-        logError('Failed to remove MCP session association from backend', { err, mcpSessionId });
-      });
-      logDebug('MCP session association removed', { mcpSessionId });
-    }
-
-    return deleted;
+  async removeMcpSessionAssociation(mcpSessionId: string): Promise<boolean> {
+    return this.backend.removeMcpSessionAssociation(mcpSessionId);
   }
 
   // ============================================================
@@ -419,60 +357,8 @@ export class SessionStore {
   /**
    * Clean up all expired entries
    */
-  cleanup(): void {
-    const now = Date.now();
-    let expiredSessions = 0;
-    let expiredDeviceFlows = 0;
-    let expiredAuthCodeFlows = 0;
-    let expiredAuthCodes = 0;
-
-    // Clean up expired sessions (7 days max age)
-    const maxAge = 7 * 24 * 60 * 60 * 1000;
-    for (const [id, session] of this.sessions) {
-      if (session.createdAt + maxAge < now) {
-        this.deleteSession(id);
-        expiredSessions++;
-      }
-    }
-
-    // Clean up expired device flows
-    for (const [state, flow] of this.deviceFlows) {
-      if (flow.expiresAt < now) {
-        this.deleteDeviceFlow(state);
-        expiredDeviceFlows++;
-      }
-    }
-
-    // Clean up expired auth code flows
-    for (const [state, flow] of this.authCodeFlows) {
-      if (flow.expiresAt < now) {
-        this.deleteAuthCodeFlow(state);
-        expiredAuthCodeFlows++;
-      }
-    }
-
-    // Clean up expired auth codes
-    for (const [code, auth] of this.authCodes) {
-      if (auth.expiresAt < now) {
-        this.deleteAuthCode(code);
-        expiredAuthCodes++;
-      }
-    }
-
-    if (
-      expiredSessions > 0 ||
-      expiredDeviceFlows > 0 ||
-      expiredAuthCodeFlows > 0 ||
-      expiredAuthCodes > 0
-    ) {
-      logDebug('Session store cleanup completed', {
-        expiredSessions,
-        expiredDeviceFlows,
-        expiredAuthCodeFlows,
-        expiredAuthCodes,
-        remainingSessions: this.sessions.size,
-      });
-    }
+  async cleanup(): Promise<void> {
+    await this.backend.cleanup();
   }
 
   /**
@@ -481,7 +367,7 @@ export class SessionStore {
   private startCleanupInterval(): void {
     this.cleanupIntervalId = setInterval(
       () => {
-        this.cleanup();
+        this.cleanup().catch((err: unknown) => logError('Session store cleanup failed', { err }));
       },
       5 * 60 * 1000,
     );
@@ -502,16 +388,14 @@ export class SessionStore {
   }
 
   /**
-   * Clear all data (for testing)
+   * Clear all data (for testing). Only the in-memory backend can be cleared; a shared
+   * database is never wiped from application code.
    */
   clear(): void {
-    this.sessions.clear();
-    this.deviceFlows.clear();
-    this.authCodeFlows.clear();
-    this.authCodes.clear();
-    this.tokenToSession.clear();
-    this.refreshTokenToSession.clear();
-    this.mcpSessionToOAuthSession.clear();
+    if (!(this.backend instanceof MemoryStorageBackend)) {
+      throw new TypeError('clear() is only supported for in-memory storage');
+    }
+    this.backend.importData({});
     logDebug('Session store cleared');
   }
 
@@ -527,24 +411,20 @@ export class SessionStore {
   /**
    * Get store statistics
    */
-  getStats(): {
+  async getStats(): Promise<{
     sessions: number;
     deviceFlows: number;
     authCodeFlows: number;
     authCodes: number;
-  } {
-    return {
-      sessions: this.sessions.size,
-      deviceFlows: this.deviceFlows.size,
-      authCodeFlows: this.authCodeFlows.size,
-      authCodes: this.authCodes.size,
-    };
+  }> {
+    const { sessions, deviceFlows, authCodeFlows, authCodes } = await this.backend.getStats();
+    return { sessions, deviceFlows, authCodeFlows, authCodes };
   }
 }
 
 /**
  * Singleton session store instance
  *
- * Note: Must call sessionStore.initialize() before using async features
+ * Note: Must call sessionStore.initialize() before use
  */
 export const sessionStore = new SessionStore();

@@ -18,6 +18,7 @@ import {
   getExpandedConfigDir,
 } from './docker-utils';
 import { GitLabInstance, DEFAULT_DOCKER_CONFIG } from './types';
+import { promptOAuthIssuer } from './oauth-issuer-prompt';
 
 /**
  * Docker subcommand type
@@ -173,6 +174,7 @@ export async function initDocker(): Promise<void> {
   }
 
   let oauthSessionSecret: string | undefined;
+  let oauthIssuer: string | undefined;
 
   if (enableOAuth) {
     p.note(
@@ -181,10 +183,17 @@ export async function initDocker(): Promise<void> {
       'OAuth Mode',
     );
 
+    const issuer = await promptOAuthIssuer(Number.parseInt(port, 10));
+    if (p.isCancel(issuer)) {
+      p.cancel('Setup cancelled');
+      return;
+    }
+    oauthIssuer = issuer;
+
     // Generate session secret
     oauthSessionSecret = randomBytes(32).toString('hex');
     p.log.warn(
-      'Session secret will be stored in docker-compose.yml. Keep this file secure and do NOT commit to version control.',
+      'Session secret will be stored in the .env file next to docker-compose.yml. Keep this file secure and do NOT commit to version control.',
     );
   }
 
@@ -194,6 +203,7 @@ export async function initDocker(): Promise<void> {
     port: parseInt(port, 10),
     oauthEnabled: enableOAuth,
     oauthSessionSecret,
+    oauthIssuer,
   };
 
   const spinner = p.spinner();
@@ -412,7 +422,7 @@ export async function dockerAddInstance(host?: string): Promise<void> {
 
     p.note(
       `Store your OAuth secret in environment variable: ${envName}\n` +
-        `Add to docker-compose.yml environment section or use .env file.`,
+        `Add ${envName}=<secret> to the .env file next to docker-compose.yml.`,
       'OAuth Secret',
     );
 

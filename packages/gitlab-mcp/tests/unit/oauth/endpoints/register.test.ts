@@ -7,12 +7,21 @@ import {
   registerHandler,
   getRegisteredClient,
   isValidRedirectUri,
+  UNUSED_REGISTRATIONS_PER_SOURCE,
 } from '../../../../src/oauth/endpoints/register';
+import { sessionStore } from '../../../../src/oauth/session-store';
 
-// Mock logger
+jest.mock('../../../../src/oauth/config', () => ({
+  loadOAuthConfig: () => ({ sessionSecret: 'test-session-secret-at-least-32-chars!' }),
+}));
+
+// Mock logger (registrations go through the real session storage, which also logs)
 jest.mock('../../../../src/logger', () => ({
   logInfo: jest.fn(),
   logError: jest.fn(),
+  logWarn: jest.fn(),
+  logDebug: jest.fn(),
+  truncateId: (id: string) => id,
 }));
 
 describe('OAuth Dynamic Client Registration', () => {
@@ -37,6 +46,46 @@ describe('OAuth Dynamic Client Registration', () => {
   });
 
   describe('registerHandler', () => {
+    async function registerFrom(ip: string): Promise<string> {
+      const json = jest.fn();
+      await registerHandler(
+        { ip, body: { redirect_uris: ['https://example.com/callback'] } } as unknown as Request,
+        { status: jest.fn().mockReturnValue({ json }) } as unknown as Response,
+      );
+      return (json.mock.calls[0][0] as { client_id: string }).client_id;
+    }
+
+    // Anonymous registrations are durable: each records a keyed hash of its source and
+    // expires unless the client completes an authorization.
+    it('records the source and an expiry of a registration', async () => {
+      const id = await registerFrom('198.51.100.7');
+
+      const stored = await sessionStore.getClient(id);
+      expect(stored?.registeredFrom).toMatch(/^[\w-]{16,}$/);
+      expect(stored?.registeredFrom).not.toContain('198.51.100.7');
+      expect(stored?.expiresAt).toBeGreaterThan(Date.now() + 23 * 3600_000);
+      expect(
+        await registerFrom('198.51.100.7').then((other) => sessionStore.getClient(other)),
+      ).toMatchObject({ registeredFrom: stored?.registeredFrom });
+    });
+
+    it('keeps a bounded number of unused registrations per source', async () => {
+      const first = await registerFrom('203.0.113.9');
+      const elsewhere = await registerFrom('203.0.113.10');
+      for (let i = 0; i < UNUSED_REGISTRATIONS_PER_SOURCE; i++) await registerFrom('203.0.113.9');
+
+      expect(await sessionStore.getClient(first)).toBeUndefined();
+      expect(await sessionStore.getClient(elsewhere)).toBeDefined();
+    });
+
+    it('treats an expired unused registration as unknown', async () => {
+      const id = await registerFrom('192.0.2.44');
+      const stored = await sessionStore.getClient(id);
+      await sessionStore.storeClient({ ...stored!, expiresAt: Date.now() - 1 });
+
+      expect(await getRegisteredClient(id)).toBeUndefined();
+    });
+
     it('should register a public client successfully', async () => {
       mockReq.body = {
         redirect_uris: ['https://example.com/callback'],
@@ -186,8 +235,8 @@ describe('OAuth Dynamic Client Registration', () => {
   });
 
   describe('getRegisteredClient', () => {
-    it('should return undefined for unregistered client', () => {
-      const client = getRegisteredClient('non-existent-client-id');
+    it('should return undefined for unregistered client', async () => {
+      const client = await getRegisteredClient('non-existent-client-id');
       expect(client).toBeUndefined();
     });
 
@@ -200,15 +249,37 @@ describe('OAuth Dynamic Client Registration', () => {
       await registerHandler(mockReq as Request, mockRes as Response);
       const registeredClientId = jsonFn.mock.calls[0][0].client_id;
 
-      const client = getRegisteredClient(registeredClientId);
+      const client = await getRegisteredClient(registeredClientId);
       expect(client).toBeDefined();
       expect(client?.client_name).toBe('Lookup Test Client');
+    });
+
+    it('should keep the registration in the shared session storage', async () => {
+      // Another replica or a restarted process resolves the client from the backend.
+      mockReq.body = { redirect_uris: ['https://example.com/callback'] };
+
+      await registerHandler(mockReq as Request, mockRes as Response);
+      const registeredClientId = jsonFn.mock.calls[0][0].client_id;
+
+      expect((await sessionStore.getClient(registeredClientId))?.redirectUris).toEqual([
+        'https://example.com/callback',
+      ]);
+    });
+
+    it('should fail the registration when it cannot be stored', async () => {
+      // Never hand out a client_id that no replica will recognise.
+      jest.spyOn(sessionStore, 'storeClient').mockRejectedValueOnce(new Error('database down'));
+      mockReq.body = { redirect_uris: ['https://example.com/callback'] };
+
+      await registerHandler(mockReq as Request, mockRes as Response);
+
+      expect(statusFn).toHaveBeenCalledWith(500);
     });
   });
 
   describe('isValidRedirectUri', () => {
-    it('should return true for unregistered client (backward compatibility)', () => {
-      const isValid = isValidRedirectUri('unknown-client', 'https://any-uri.com/callback');
+    it('should return true for unregistered client (backward compatibility)', async () => {
+      const isValid = await isValidRedirectUri('unknown-client', 'https://any-uri.com/callback');
       expect(isValid).toBe(true);
     });
 
@@ -220,7 +291,7 @@ describe('OAuth Dynamic Client Registration', () => {
       await registerHandler(mockReq as Request, mockRes as Response);
       const registeredClientId = jsonFn.mock.calls[0][0].client_id;
 
-      const isValid = isValidRedirectUri(registeredClientId, 'https://valid.com/callback');
+      const isValid = await isValidRedirectUri(registeredClientId, 'https://valid.com/callback');
       expect(isValid).toBe(true);
     });
 
@@ -232,7 +303,10 @@ describe('OAuth Dynamic Client Registration', () => {
       await registerHandler(mockReq as Request, mockRes as Response);
       const registeredClientId = jsonFn.mock.calls[0][0].client_id;
 
-      const isValid = isValidRedirectUri(registeredClientId, 'https://different.com/callback');
+      const isValid = await isValidRedirectUri(
+        registeredClientId,
+        'https://different.com/callback',
+      );
       expect(isValid).toBe(false);
     });
   });

@@ -31,11 +31,13 @@ import {
   GitLabInstance,
   ContainerRuntimeInfo,
   DEFAULT_DOCKER_CONFIG,
+  DEFAULT_DB_IMAGE,
 } from '../../../../src/cli/docker/types';
 import * as fs from 'fs';
 import * as childProcess from 'child_process';
 import YAML from 'yaml';
 import { homedir } from 'os';
+import { validateInstancesConfig } from '../../../../src/config/instances-schema';
 import { join } from 'path';
 
 // Mock modules
@@ -550,28 +552,76 @@ describe('docker-utils', () => {
       expect(parsed.services['gitlab-mcp'].environment).toContain(
         'OAUTH_SESSION_SECRET=${OAUTH_SESSION_SECRET}',
       );
-      expect(parsed.services['gitlab-mcp'].environment).toContain(
-        'DATABASE_URL=file:/data/sessions.db',
-      );
     });
 
-    it('should use custom databaseUrl for external-db', () => {
+    // Standalone OAuth keeps sessions in a file on the data volume: the server reads
+    // OAUTH_STORAGE_TYPE/OAUTH_STORAGE_FILE_PATH, a DATABASE_URL alone selects nothing
+    // and left sessions in memory, lost on every restart.
+    it('should store standalone OAuth sessions in a file on the data volume', () => {
       const config: DockerConfig = {
-        port: 3333,
+        ...DEFAULT_DOCKER_CONFIG,
+        deploymentType: 'standalone',
+        oauthEnabled: true,
+      };
+
+      const parsed = YAML.parse(generateDockerCompose(config));
+      const service = parsed.services['gitlab-mcp'];
+
+      expect(service.image).toBe(DEFAULT_DOCKER_CONFIG.image);
+      expect(service.environment).toContain('OAUTH_STORAGE_TYPE=file');
+      expect(service.environment).toContain('OAUTH_STORAGE_FILE_PATH=/data/oauth-sessions.json');
+      expect(service.volumes).toContain('gitlab-mcp-data:/data');
+      expect(service.environment.some((entry: string) => entry.startsWith('DATABASE_URL='))).toBe(
+        false,
+      );
+      expect(parsed.services.migrate).toBeUndefined();
+    });
+
+    // External PostgreSQL needs the db image (core has no PostgreSQL backend), the
+    // storage selection, migrations before start, and the URL kept in .env because it
+    // carries the database password.
+    it('should run external-db deployments on the db image with migrations', () => {
+      const config: DockerConfig = {
+        ...DEFAULT_DOCKER_CONFIG,
         deploymentType: 'external-db',
         oauthEnabled: true,
         databaseUrl: 'postgresql://user:pass@host:5432/db',
-        instances: [],
-        containerName: 'gitlab-mcp',
-        image: 'ghcr.io/structured-world/gitlab-mcp:latest',
       };
 
       const result = generateDockerCompose(config);
       const parsed = YAML.parse(result);
+      const service = parsed.services['gitlab-mcp'];
 
-      expect(parsed.services['gitlab-mcp'].environment).toContain(
-        'DATABASE_URL=postgresql://user:pass@host:5432/db',
+      expect(service.image).toBe(DEFAULT_DB_IMAGE);
+      expect(service.environment).toContain('OAUTH_STORAGE_TYPE=postgresql');
+      expect(service.environment).toContain(
+        'OAUTH_STORAGE_POSTGRESQL_URL=${OAUTH_STORAGE_POSTGRESQL_URL}',
       );
+      expect(result).not.toContain('user:pass');
+      expect(service.depends_on).toEqual({
+        migrate: { condition: 'service_completed_successfully' },
+      });
+
+      expect(parsed.services.migrate).toEqual({
+        image: DEFAULT_DB_IMAGE,
+        restart: 'no',
+        working_dir: '/app/node_modules/@structured-world/gitlab-mcp-db',
+        entrypoint: ['node', 'dist/src/migrate.js'],
+        environment: ['OAUTH_STORAGE_POSTGRESQL_URL=${OAUTH_STORAGE_POSTGRESQL_URL}'],
+      });
+      expect(parsed.services.postgres).toBeUndefined();
+    });
+
+    // Without a URL the compose file would reference an empty variable and migrations
+    // would fail at start; refuse before any file is written.
+    it('refuses an external-db OAuth deployment without a database URL', () => {
+      expect(() =>
+        generateDockerCompose({
+          ...DEFAULT_DOCKER_CONFIG,
+          deploymentType: 'external-db',
+          oauthEnabled: true,
+        }),
+      ).toThrow('An external-db deployment with OAuth needs the PostgreSQL connection URL');
     });
 
     it('should add postgres service for compose-bundle deployment', () => {
@@ -592,14 +642,31 @@ describe('docker-utils', () => {
       expect(parsed.services.postgres.image).toBe('postgres:16-alpine');
       expect(parsed.services.postgres.container_name).toBe('gitlab-mcp-db');
       expect(parsed.services.postgres.environment).toContain('POSTGRES_DB=gitlab_mcp');
+      // Migrations wait for a database that accepts connections
+      expect(parsed.services.postgres.healthcheck.test).toEqual([
+        'CMD-SHELL',
+        'pg_isready -U gitlab_mcp',
+      ]);
 
-      // gitlab-mcp depends on postgres
-      expect(parsed.services['gitlab-mcp'].depends_on).toEqual(['postgres']);
-
-      // DATABASE_URL points to bundled postgres
+      // The server runs on the db image, selects PostgreSQL storage, and points it at
+      // the bundled database
+      const bundledUrl = 'postgresql://gitlab_mcp:${POSTGRES_PASSWORD}@postgres:5432/gitlab_mcp';
+      expect(parsed.services['gitlab-mcp'].image).toBe(DEFAULT_DB_IMAGE);
+      expect(parsed.services['gitlab-mcp'].environment).toContain('OAUTH_STORAGE_TYPE=postgresql');
       expect(parsed.services['gitlab-mcp'].environment).toContain(
-        'DATABASE_URL=postgresql://gitlab_mcp:${POSTGRES_PASSWORD}@postgres:5432/gitlab_mcp',
+        `OAUTH_STORAGE_POSTGRESQL_URL=${bundledUrl}`,
       );
+
+      // Order: postgres started -> migrations applied (they wait for the database to
+      // accept connections themselves) -> server. No health condition: podman-compose
+      // 1.6.0 on Podman 4.9.3 hangs on service_healthy.
+      expect(parsed.services.migrate.environment).toEqual([
+        `OAUTH_STORAGE_POSTGRESQL_URL=${bundledUrl}`,
+      ]);
+      expect(parsed.services.migrate.depends_on).toEqual(['postgres']);
+      expect(parsed.services['gitlab-mcp'].depends_on).toEqual({
+        migrate: { condition: 'service_completed_successfully' },
+      });
 
       // postgres-data volume added
       expect(parsed.volumes['postgres-data']).toBeDefined();
@@ -620,6 +687,8 @@ describe('docker-utils', () => {
 
       // Postgres service should NOT be added without OAuth
       expect(parsed.services.postgres).toBeUndefined();
+      expect(parsed.services.migrate).toBeUndefined();
+      expect(parsed.services['gitlab-mcp'].image).toBe(DEFAULT_DOCKER_CONFIG.image);
       expect(parsed.services['gitlab-mcp'].depends_on).toBeUndefined();
       expect(parsed.volumes['postgres-data']).toBeUndefined();
     });
@@ -640,7 +709,9 @@ describe('docker-utils', () => {
       expect(parsed.volumes['gitlab-mcp-data']).toBeDefined();
     });
 
-    it('should include instances volume when OAuth enabled', () => {
+    // The server reads its instances from GITLAB_INSTANCES and instance secrets from the
+    // variables they name; the CLI's own instances.yml format is not the server's.
+    it('passes the instance list and secrets to an OAuth server through env files', () => {
       const config: DockerConfig = {
         port: 3333,
         oauthEnabled: true,
@@ -652,7 +723,8 @@ describe('docker-utils', () => {
       const result = generateDockerCompose(config);
       const parsed = YAML.parse(result);
 
-      expect(parsed.services['gitlab-mcp'].volumes).toContain(
+      expect(parsed.services['gitlab-mcp'].env_file).toEqual(['.env', 'instances.env']);
+      expect(parsed.services['gitlab-mcp'].volumes).not.toContain(
         './instances.yml:/app/config/instances.yml:ro',
       );
     });
@@ -862,6 +934,55 @@ describe('docker-utils', () => {
       const writeCall = mockFs.writeFileSync.mock.calls[0];
       expect(writeCall[0]).toContain('instances.yml');
     });
+
+    // The container reads instances.env at every start, so instances added later reach the
+    // server without regenerating the compose file.
+    it('writes the instances for the server in the format it validates', () => {
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.writeFileSync.mockImplementation(() => undefined);
+
+      saveInstances([
+        {
+          host: 'git.corp.io',
+          name: "Corp's GitLab",
+          oauth: { clientId: 'corp-app', clientSecretEnv: 'GIT_CORP_IO_SECRET' },
+        },
+        { host: 'https://gitlab.example.com/gitlab', name: 'Subpath' },
+      ]);
+
+      const envCall = mockFs.writeFileSync.mock.calls.find((call) =>
+        String(call[0]).endsWith('instances.env'),
+      );
+      const line = String(envCall![1]).trim();
+      expect(line.startsWith("GITLAB_INSTANCES='")).toBe(true);
+      const json = line.slice("GITLAB_INSTANCES='".length, -1);
+      // Single-quoted env values are literal and cannot contain a single quote.
+      expect(json).not.toContain("'");
+      const parsed = validateInstancesConfig(JSON.parse(json));
+      expect(parsed.instances).toEqual([
+        expect.objectContaining({
+          url: 'https://git.corp.io',
+          label: "Corp's GitLab",
+          oauth: expect.objectContaining({
+            clientId: 'corp-app',
+            clientSecretEnv: 'GIT_CORP_IO_SECRET',
+          }),
+        }),
+        expect.objectContaining({ url: 'https://gitlab.example.com/gitlab', label: 'Subpath' }),
+      ]);
+    });
+
+    it('writes an empty instance list when there are no instances', () => {
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.writeFileSync.mockImplementation(() => undefined);
+
+      saveInstances([]);
+
+      const envCall = mockFs.writeFileSync.mock.calls.find((call) =>
+        String(call[0]).endsWith('instances.env'),
+      );
+      expect(envCall![1]).toBe('GITLAB_INSTANCES=\n');
+    });
   });
 
   describe('addInstance', () => {
@@ -976,8 +1097,54 @@ describe('docker-utils', () => {
 
       initDockerConfig(config);
 
-      // Should write both docker-compose.yml and instances.yml
-      expect(mockFs.writeFileSync).toHaveBeenCalledTimes(2);
+      // docker-compose.yml, .env (OAUTH_ISSUER, required in OAuth mode), instances.yml and
+      // the server's instances.env
+      const written = mockFs.writeFileSync.mock.calls.map((call) => String(call[0]));
+      expect(written).toHaveLength(4);
+      expect(written.some((path) => path.endsWith('instances.yml'))).toBe(true);
+      expect(written.some((path) => path.endsWith('instances.env'))).toBe(true);
+    });
+
+    // The compose file names instances.env, so it exists even before any instance is added.
+    it('writes the instance list of an OAuth deployment without instances', () => {
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.writeFileSync.mockImplementation(() => undefined);
+
+      initDockerConfig({
+        port: 3333,
+        oauthEnabled: true,
+        instances: [],
+        containerName: 'gitlab-mcp',
+        image: 'ghcr.io/structured-world/gitlab-mcp:latest',
+      });
+
+      const written = mockFs.writeFileSync.mock.calls.map((call) => String(call[0]));
+      expect(written.some((path) => path.endsWith('instances.env'))).toBe(true);
+    });
+
+    it('should give an OAuth deployment its public URL in .env and compose', () => {
+      // The server refuses to start in OAuth mode without OAUTH_ISSUER.
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.writeFileSync.mockImplementation(() => undefined);
+
+      initDockerConfig({
+        port: 4444,
+        oauthEnabled: true,
+        instances: [],
+        containerName: 'gitlab-mcp',
+        image: 'ghcr.io/structured-world/gitlab-mcp:latest',
+      });
+
+      const files = mockFs.writeFileSync.mock.calls.map((call) => [
+        String(call[0]),
+        String(call[1]),
+      ]);
+      expect(files.find(([path]) => path.endsWith('.env'))?.[1]).toContain(
+        'OAUTH_ISSUER=http://localhost:4444',
+      );
+      expect(files.find(([path]) => path.endsWith('docker-compose.yml'))?.[1]).toContain(
+        'OAUTH_ISSUER=${OAUTH_ISSUER}',
+      );
     });
 
     it('should write .env file when oauthSessionSecret is set', () => {
@@ -1002,6 +1169,28 @@ describe('docker-utils', () => {
       expect(envCall).toBeDefined();
       expect(envCall![1]).toContain('OAUTH_SESSION_SECRET=abc123secret');
       expect(envCall![2]).toEqual({ encoding: 'utf8', mode: 0o600 });
+    });
+
+    // The mode of writeFileSync applies only when it creates the file: an existing .env
+    // keeps its permissions, so another account on the host could read the secrets.
+    it('restricts an existing .env before writing secrets into it', () => {
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.writeFileSync.mockImplementation(() => undefined);
+      mockFs.chmodSync.mockImplementation(() => undefined);
+
+      saveEnvFile({
+        ...DEFAULT_DOCKER_CONFIG,
+        oauthEnabled: true,
+        oauthSessionSecret: 'abc123secret',
+      });
+
+      const envPath = mockFs.writeFileSync.mock.calls.find((call) =>
+        String(call[0]).endsWith('.env'),
+      )![0];
+      expect(mockFs.chmodSync).toHaveBeenCalledWith(envPath, 0o600);
+      expect(mockFs.chmodSync.mock.invocationCallOrder[0]).toBeLessThan(
+        mockFs.writeFileSync.mock.invocationCallOrder[0],
+      );
     });
   });
 
@@ -1040,6 +1229,68 @@ describe('docker-utils', () => {
       const match = content.match(/POSTGRES_PASSWORD=(.+)/);
       expect(match).toBeDefined();
       expect(match![1].length).toBeGreaterThanOrEqual(20);
+    });
+
+    it('should write the public URL chosen during setup as OAUTH_ISSUER', () => {
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.writeFileSync.mockImplementation(() => undefined);
+
+      saveEnvFile({
+        ...DEFAULT_DOCKER_CONFIG,
+        oauthEnabled: true,
+        oauthIssuer: 'https://mcp.example.com',
+      });
+
+      const envCall = mockFs.writeFileSync.mock.calls.find((call) =>
+        (call[0] as string).endsWith('.env'),
+      );
+      expect(envCall![1]).toContain('OAUTH_ISSUER=https://mcp.example.com\n');
+      expect(envCall![1]).not.toContain('localhost');
+    });
+
+    // The external database URL carries its password, so it lives in the 0600 .env
+    // file and the compose file only references it.
+    it('should write the external PostgreSQL URL for external-db with OAuth', () => {
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.writeFileSync.mockImplementation(() => undefined);
+
+      saveEnvFile({
+        ...DEFAULT_DOCKER_CONFIG,
+        deploymentType: 'external-db',
+        oauthEnabled: true,
+        databaseUrl: 'postgresql://user:pass@host:5432/db',
+      });
+
+      const envCall = mockFs.writeFileSync.mock.calls.find((call) =>
+        (call[0] as string).endsWith('.env'),
+      );
+      expect(envCall).toBeDefined();
+      expect(envCall![1]).toContain(
+        "OAUTH_STORAGE_POSTGRESQL_URL='postgresql://user:pass@host:5432/db'\n",
+      );
+      expect(envCall![1]).not.toContain('POSTGRES_PASSWORD=');
+      expect(envCall![2]).toEqual({ encoding: 'utf8', mode: 0o600 });
+    });
+
+    // Compose interpolates unquoted .env values: a "$" in the password would be replaced.
+    // Single-quoted values are literal.
+    it('writes the external database URL as a literal value', () => {
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.writeFileSync.mockImplementation(() => undefined);
+
+      saveEnvFile({
+        ...DEFAULT_DOCKER_CONFIG,
+        deploymentType: 'external-db',
+        oauthEnabled: true,
+        databaseUrl: 'postgresql://user:pa$word@host:5432/db',
+      });
+
+      const envCall = mockFs.writeFileSync.mock.calls.find((call) =>
+        (call[0] as string).endsWith('.env'),
+      );
+      expect(envCall![1]).toContain(
+        "OAUTH_STORAGE_POSTGRESQL_URL='postgresql://user:pa$word@host:5432/db'\n",
+      );
     });
 
     it('should not include POSTGRES_PASSWORD for compose-bundle without OAuth', () => {

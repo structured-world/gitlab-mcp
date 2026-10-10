@@ -4,7 +4,7 @@
 
 import { spawnSync, spawn, ChildProcess } from 'child_process';
 import { randomBytes } from 'crypto';
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
+import { chmodSync, existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import YAML from 'yaml';
 import {
@@ -17,6 +17,7 @@ import {
   GitLabInstance,
   InstancesYaml,
   DEFAULT_DOCKER_CONFIG,
+  DEFAULT_DB_IMAGE,
   getConfigDir,
 } from './types';
 import { getContainerRuntime } from './container-runtime';
@@ -167,24 +168,60 @@ export function getDockerStatus(containerName: string = 'gitlab-mcp'): DockerSta
   return result;
 }
 
+/** Connection string of the database bundled by the compose-bundle deployment */
+const BUNDLED_POSTGRESQL_URL =
+  'postgresql://gitlab_mcp:${POSTGRES_PASSWORD}@postgres:5432/gitlab_mcp';
+
+/**
+ * PostgreSQL URL the deployment stores OAuth sessions in, as written into the compose
+ * file; undefined when sessions live in a file on the data volume. An external URL
+ * carries its password, so it stays in .env and the compose file references it.
+ */
+function sessionDatabaseUrl(config: DockerConfig): string | undefined {
+  if (!config.oauthEnabled) return undefined;
+  if (config.deploymentType === 'compose-bundle') return BUNDLED_POSTGRESQL_URL;
+  if (config.deploymentType === 'external-db') {
+    // The compose file references the URL written to .env; without one Compose would
+    // substitute an empty string and the migrations could not start.
+    if (!config.databaseUrl) {
+      throw new Error('An external-db deployment with OAuth needs the PostgreSQL connection URL');
+    }
+    return '${OAUTH_STORAGE_POSTGRESQL_URL}';
+  }
+  return undefined;
+}
+
+/**
+ * A URL as a literal .env value: Compose interpolates unquoted values (a "$" in a password
+ * would be replaced) but keeps single-quoted ones as written. A single quote inside the
+ * URL is percent-encoded, which PostgreSQL decodes back to the same connection string.
+ */
+function envLiteralUrl(url: string): string {
+  return `'${url.replaceAll("'", '%27')}'`;
+}
+
 /**
  * Generate docker-compose.yml content
  */
 export function generateDockerCompose(config: DockerConfig): string {
+  const databaseUrl = sessionDatabaseUrl(config);
+  const environment = [
+    'TRANSPORT=sse',
+    'HOST=0.0.0.0',
+    'PORT=3333',
+    `OAUTH_ENABLED=${config.oauthEnabled}`,
+  ];
+  const volumes = ['gitlab-mcp-data:/data'];
   const compose: DockerComposeFile = {
     version: '3.8',
     services: {
       'gitlab-mcp': {
-        image: config.image,
+        // Only the db image carries the PostgreSQL backend
+        image: databaseUrl ? DEFAULT_DB_IMAGE : config.image,
         container_name: config.containerName,
         ports: [`\${PORT:-${config.port}}:3333`],
-        environment: [
-          'TRANSPORT=sse',
-          'HOST=0.0.0.0',
-          'PORT=3333',
-          `OAUTH_ENABLED=${config.oauthEnabled}`,
-        ],
-        volumes: ['gitlab-mcp-data:/data'],
+        environment,
+        volumes,
         restart: 'unless-stopped',
       },
     },
@@ -192,6 +229,49 @@ export function generateDockerCompose(config: DockerConfig): string {
       'gitlab-mcp-data': {},
     },
   };
+
+  // Add OAuth-specific configuration
+  if (config.oauthEnabled) {
+    // Reference secret via env var — actual value stored in .env file
+    environment.push(
+      'OAUTH_SESSION_SECRET=${OAUTH_SESSION_SECRET}',
+      'OAUTH_ISSUER=${OAUTH_ISSUER}',
+    );
+    if (databaseUrl) {
+      environment.push(
+        'OAUTH_STORAGE_TYPE=postgresql',
+        `OAUTH_STORAGE_POSTGRESQL_URL=${databaseUrl}`,
+      );
+    } else {
+      // Sessions survive restarts on the data volume
+      environment.push(
+        'OAUTH_STORAGE_TYPE=file',
+        'OAUTH_STORAGE_FILE_PATH=/data/oauth-sessions.json',
+      );
+    }
+    // The instance list (GITLAB_INSTANCES, rewritten whenever instances change) and the
+    // instance secrets it names (kept in .env) reach the server at every start.
+    compose.services['gitlab-mcp'].env_file = ['.env', INSTANCES_ENV_FILE];
+  }
+
+  if (databaseUrl) {
+    // One-shot schema migration from the db image; the server starts only after it
+    // succeeds. It waits for the database to accept connections itself and baselines a
+    // database created before migrations shipped. The bundled database is only started
+    // first: podman-compose 1.6.0 on Podman 4.9.3 hangs on `service_healthy`
+    // (https://github.com/containers/podman-compose/issues/1541).
+    compose.services.migrate = {
+      image: DEFAULT_DB_IMAGE,
+      restart: 'no',
+      working_dir: '/app/node_modules/@structured-world/gitlab-mcp-db',
+      entrypoint: ['node', 'dist/src/migrate.js'],
+      environment: [`OAUTH_STORAGE_POSTGRESQL_URL=${databaseUrl}`],
+      ...(config.deploymentType === 'compose-bundle' && { depends_on: ['postgres'] }),
+    };
+    compose.services['gitlab-mcp'].depends_on = {
+      migrate: { condition: 'service_completed_successfully' },
+    };
+  }
 
   // Add compose-bundle postgres service (only when OAuth needs a database)
   if (config.deploymentType === 'compose-bundle' && config.oauthEnabled) {
@@ -206,34 +286,22 @@ export function generateDockerCompose(config: DockerConfig): string {
       ],
       volumes: ['postgres-data:/var/lib/postgresql/data'],
       restart: 'unless-stopped',
+      healthcheck: {
+        test: ['CMD-SHELL', 'pg_isready -U gitlab_mcp'],
+        interval: '5s',
+        timeout: '5s',
+        retries: 5,
+      },
     };
-    compose.services['gitlab-mcp'].depends_on = ['postgres'];
     if (compose.volumes) {
       compose.volumes['postgres-data'] = {};
     }
   }
 
-  // Add OAuth-specific configuration
-  if (config.oauthEnabled) {
-    // Determine DATABASE_URL based on deployment type
-    let databaseUrl: string;
-    if (config.deploymentType === 'compose-bundle') {
-      databaseUrl = 'postgresql://gitlab_mcp:${POSTGRES_PASSWORD}@postgres:5432/gitlab_mcp';
-    } else {
-      databaseUrl = config.databaseUrl ?? 'file:/data/sessions.db';
-    }
-    // Reference secret via env var — actual value stored in .env file
-    compose.services['gitlab-mcp'].environment.push(
-      'OAUTH_SESSION_SECRET=${OAUTH_SESSION_SECRET}',
-      `DATABASE_URL=${databaseUrl}`,
-    );
-    compose.services['gitlab-mcp'].volumes.push('./instances.yml:/app/config/instances.yml:ro');
-  }
-
   // Add tool configuration environment variables
   if (config.environment) {
     for (const [key, value] of Object.entries(config.environment)) {
-      compose.services['gitlab-mcp'].environment.push(`${key}=${value}`);
+      environment.push(`${key}=${value}`);
     }
   }
 
@@ -312,6 +380,42 @@ export function saveInstances(instances: GitLabInstance[]): void {
   const instancesPath = join(configDir, 'instances.yml');
   const content = generateInstancesYaml(instances);
   writeFileSync(instancesPath, content, 'utf8');
+  saveServerInstances(instances);
+}
+
+/** Env file holding the server's instance list, next to the compose file. */
+const INSTANCES_ENV_FILE = 'instances.env';
+/** JSON escape of a single quote: a backslash followed by u0027. */
+const JSON_QUOTE_ESCAPE = `${String.fromCodePoint(92)}u0027`;
+
+/**
+ * Write the instances as the server reads them: GITLAB_INSTANCES with the configuration
+ * object the server validates. Secrets stay in .env; each instance names its variable.
+ */
+function saveServerInstances(instances: GitLabInstance[]): void {
+  const configDir = getExpandedConfigDir();
+  if (!existsSync(configDir)) {
+    mkdirSync(configDir, { recursive: true });
+  }
+  let value = '';
+  if (instances.length > 0) {
+    const config = {
+      instances: instances.map((instance) => ({
+        url: instance.host.includes('://') ? instance.host : `https://${instance.host}`,
+        label: instance.name,
+        ...(instance.oauth && {
+          oauth: {
+            clientId: instance.oauth.clientId,
+            clientSecretEnv: instance.oauth.clientSecretEnv,
+          },
+        }),
+      })),
+    };
+    // Single-quoted env values are literal and cannot contain a single quote; JSON spells
+    // it as the escape backslash-u0027 instead.
+    value = `'${JSON.stringify(config).replaceAll("'", JSON_QUOTE_ESCAPE)}'`;
+  }
+  writeFileSync(join(configDir, INSTANCES_ENV_FILE), `GITLAB_INSTANCES=${value}\n`, 'utf8');
 }
 
 /**
@@ -495,9 +599,12 @@ export function initDockerConfig(config: Partial<DockerConfig> = {}): DockerConf
   // Write .env file with secrets (restricted permissions)
   saveEnvFile(fullConfig);
 
-  // Save instances if provided
+  // Save instances if provided; an OAuth deployment's compose file names the server's
+  // instance list, so it exists from the start
   if (fullConfig.instances.length > 0) {
     saveInstances(fullConfig.instances);
+  } else if (fullConfig.oauthEnabled) {
+    saveServerInstances([]);
   }
 
   return fullConfig;
@@ -520,14 +627,28 @@ export function saveEnvFile(config: DockerConfig): void {
     lines.push(`OAUTH_SESSION_SECRET=${config.oauthSessionSecret}`);
   }
 
+  if (config.oauthEnabled) {
+    // The public URL chosen during setup; without one, local access on the published port.
+    const issuer = config.oauthIssuer ?? `http://localhost:${config.port}`;
+    lines.push(`OAUTH_ISSUER=${issuer}`);
+  }
+
   if (config.deploymentType === 'compose-bundle' && config.oauthEnabled) {
     // Generate a strong random postgres password for the bundled database
     const pgPassword = randomBytes(24).toString('base64url');
     lines.push(`POSTGRES_PASSWORD=${pgPassword}`);
   }
 
+  if (config.deploymentType === 'external-db' && config.oauthEnabled && config.databaseUrl) {
+    // The compose file references it; the URL carries the database password
+    lines.push(`OAUTH_STORAGE_POSTGRESQL_URL=${envLiteralUrl(config.databaseUrl)}`);
+  }
+
   if (lines.length > 0) {
     const envPath = join(configDir, '.env');
+    // The mode applies only when the file is created: an existing .env is restricted
+    // first, so its secrets never land in a file other accounts on the host can read.
+    if (existsSync(envPath)) chmodSync(envPath, 0o600);
     writeFileSync(envPath, lines.join('\n') + '\n', { encoding: 'utf8', mode: 0o600 });
   }
 }

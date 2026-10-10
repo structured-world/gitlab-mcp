@@ -33,16 +33,11 @@ import {
   loadOAuthConfig,
   isOAuthEnabled,
   getAuthModeDescription,
-  metadataHandler,
-  protectedResourceHandler,
-  authorizeHandler,
-  pollHandler,
-  callbackHandler,
-  tokenHandler,
-  registerHandler,
   sessionStore,
   runWithTokenContext,
 } from './oauth/index';
+import { registerOAuthEndpoints } from './oauth/routes';
+import type { TokenContext } from './oauth/types';
 // Middleware imports
 import {
   oauthAuthMiddleware,
@@ -62,6 +57,46 @@ import {
   getConnectionTracker,
   runWithRequestContextAsync,
 } from './logging/index';
+
+/**
+ * Token context of a request the OAuth middleware authenticated (it stores the account in
+ * res.locals), or undefined for static-token and unauthenticated requests.
+ */
+function tokenContextFromLocals(
+  locals: Record<string, unknown> | undefined,
+): TokenContext | undefined {
+  if (!locals) return undefined;
+  const sessionId = locals.oauthSessionId as string | undefined;
+  const gitlabToken = locals.gitlabToken as string | undefined;
+  const gitlabUserId = locals.gitlabUserId as number | undefined;
+  const gitlabUsername = locals.gitlabUsername as string | undefined;
+  if (!sessionId || !gitlabToken || !gitlabUserId || !gitlabUsername) return undefined;
+  return {
+    gitlabToken,
+    gitlabUserId,
+    gitlabUsername,
+    gitlabScopes: locals.gitlabScopes as string[] | undefined,
+    sessionId,
+    apiUrl: (locals.gitlabApiUrl as string | undefined) ?? GITLAB_BASE_URL,
+    instanceLabel: locals.instanceLabel as string | undefined,
+    resource: locals.mcpResource as string | undefined,
+    mcpScopes: locals.mcpScopes as string[] | undefined,
+  };
+}
+
+/** A transport and the OAuth session that opened it (undefined in static-token mode). */
+interface OwnedTransport<T> {
+  transport: T;
+  owner: string | undefined;
+}
+
+/** Whether the request comes from the account that opened the transport. */
+function ownedBy(
+  owned: OwnedTransport<unknown>,
+  locals: Record<string, unknown> | undefined,
+): boolean {
+  return owned.owner === (locals?.oauthSessionId as string | undefined);
+}
 
 /** Determine why an SSE/streaming connection closed.
  *  Shared between legacy SSE and StreamableHTTP GET close handlers. */
@@ -101,58 +136,6 @@ export async function sendToolsListChangedNotification(): Promise<void> {
 // Terminal colors for logging (currently unused)
 // const colorGreen = '\x1b[32m';
 // const colorReset = '\x1b[0m';
-
-/**
- * Register OAuth endpoints on an Express app
- *
- * Adds:
- * - /.well-known/oauth-authorization-server - OAuth metadata
- * - /.well-known/oauth-protected-resource - Protected resource metadata (RFC 9470)
- * - /authorize - Authorization endpoint (supports both Device Flow and Authorization Code Flow)
- * - /oauth/poll - Device flow polling endpoint
- * - /oauth/callback - Authorization Code Flow callback from GitLab
- * - /token - Token exchange endpoint
- * - /health - Health check endpoint
- *
- * @param app - Express application
- */
-function registerOAuthEndpoints(app: Express): void {
-  // NOTE: Rate limiting is applied via rateLimiterMiddleware() BEFORE this function is called.
-  // All routes registered here are protected by the global rate limiter middleware.
-
-  // OAuth discovery metadata (no auth required)
-  app.get('/.well-known/oauth-authorization-server', metadataHandler);
-
-  // Protected Resource Metadata (RFC 9470) - required by Claude.ai custom connectors
-  app.get('/.well-known/oauth-protected-resource', protectedResourceHandler);
-
-  // Authorization endpoint - supports both flows:
-  // - Device Flow (no redirect_uri) - returns HTML page
-  // - Authorization Code Flow (with redirect_uri) - redirects to GitLab
-  app.get('/authorize', authorizeHandler);
-
-  // Device flow polling endpoint (no auth required)
-  app.get('/oauth/poll', pollHandler);
-
-  // Authorization Code Flow callback from GitLab
-  // GitLab redirects here after user authorizes, then we redirect to client
-  app.get('/oauth/callback', callbackHandler);
-
-  // Token endpoint - exchange code for tokens (no auth required)
-  // Uses URL-encoded body as per OAuth spec
-  app.post('/token', express.urlencoded({ extended: true }), tokenHandler);
-
-  // Dynamic Client Registration endpoint (RFC 7591) - required by Claude.ai
-  app.post('/register', express.json(), registerHandler);
-
-  // NOTE: /health endpoint is registered globally in startServer() BEFORE OAuth endpoints
-  // to avoid access log spam from load balancer health checks. The simple handler there
-  // returns {"status": "ok"} which is sufficient for basic liveness/readiness checks.
-  // For structured MCP metadata (version, tools, auth mode, instances), use GET /
-  // with Accept: application/json header (dashboard endpoint).
-
-  logInfo('OAuth endpoints registered');
-}
 
 /**
  * Check if TLS/HTTPS is enabled via SSL certificate configuration
@@ -570,14 +553,18 @@ export async function startServer(): Promise<void> {
       });
 
       // OAuth authentication middleware for MCP endpoints (when OAuth mode is enabled)
-      // Returns 401 with WWW-Authenticate header if no valid token, triggering OAuth flow
+      // Returns 401 with WWW-Authenticate header if no valid token, triggering OAuth flow.
+      // The legacy SSE transport runs tools too, so it is authenticated the same way.
       if (isOAuthEnabled()) {
         app.use(['/', '/mcp'], oauthAuthMiddleware);
+        app.use(['/sse', '/messages'], oauthAuthMiddleware);
       }
 
       // Transport storage for both SSE and StreamableHTTP
-      const sseTransports: { [sessionId: string]: SSEServerTransport } = {};
-      const streamableTransports: { [sessionId: string]: StreamableHTTPServerTransport } = {};
+      // Each transport belongs to the OAuth session that opened it (none in static-token
+      // mode); a request of another account never reaches it, even with a leaked id.
+      const sseTransports = new Map<string, OwnedTransport<SSEServerTransport>>();
+      const streamableTransports = new Map<string, OwnedTransport<StreamableHTTPServerTransport>>();
 
       // SSE Transport Endpoints (backwards compatibility)
       app.get('/sse', async (req, res) => {
@@ -595,7 +582,10 @@ export async function startServer(): Promise<void> {
         try {
           // Each SSE session gets its own Server instance
           await sessionManager.createSession(sessionId, transport);
-          sseTransports[sessionId] = transport;
+          sseTransports.set(sessionId, {
+            transport,
+            owner: res.locals?.oauthSessionId as string | undefined,
+          });
           logDebug('SSE transport created with session', { sessionId });
 
           // Track connection for access logging
@@ -636,7 +626,7 @@ export async function startServer(): Promise<void> {
         res.on('close', () => {
           stopHeartbeat();
           socket?.removeListener('error', onSocketError);
-          delete sseTransports[sessionId];
+          sseTransports.delete(sessionId);
 
           const reason = resolveCloseReason(socketError, res);
 
@@ -651,9 +641,10 @@ export async function startServer(): Promise<void> {
 
       app.post('/messages', async (req, res): Promise<void> => {
         logDebug('SSE messages endpoint hit!');
-        const sessionId = req.query.sessionId as string;
+        const sessionId = typeof req.query.sessionId === 'string' ? req.query.sessionId : '';
+        const owned = sseTransports.get(sessionId);
 
-        if (!sessionId || !sseTransports[sessionId]) {
+        if (!owned || !ownedBy(owned, res.locals)) {
           res.status(404).json({ error: 'Session not found' });
           return;
         }
@@ -671,11 +662,18 @@ export async function startServer(): Promise<void> {
 
         try {
           sessionManager.touchSession(sessionId);
-          const transport = sseTransports[sessionId];
+          const { transport } = owned;
 
-          // Wrap in request context for access logging so handlers can track tool calls
+          // Wrap in request context for access logging so handlers can track tool calls,
+          // and in the account's token context when the request was authenticated
+          const tokenContext = tokenContextFromLocals(res.locals);
           const doHandle = async () => {
-            await transport.handlePostMessage(req, res, req.body);
+            const handle = () => transport.handlePostMessage(req, res, req.body);
+            if (tokenContext) {
+              await runWithTokenContext(tokenContext, handle);
+            } else {
+              await handle();
+            }
           };
 
           if (accessLogRequestId) {
@@ -701,11 +699,7 @@ export async function startServer(): Promise<void> {
         // Get OAuth token info from middleware (stored in res.locals)
         const oauthSessionId = res.locals.oauthSessionId as string | undefined;
         const gitlabToken = res.locals.gitlabToken as string | undefined;
-        const gitlabUserId = res.locals.gitlabUserId as number | undefined;
-        const gitlabUsername = res.locals.gitlabUsername as string | undefined;
-        const gitlabScopes = res.locals.gitlabScopes as string[] | undefined;
-        const gitlabApiUrl = res.locals.gitlabApiUrl as string | undefined;
-        const instanceLabel = res.locals.instanceLabel as string | undefined;
+        const tokenContext = tokenContextFromLocals(res.locals);
 
         // Get full request context for logging (verbose mode)
         if (!useCondensedLogging) {
@@ -723,22 +717,11 @@ export async function startServer(): Promise<void> {
         ): Promise<void> => {
           // Wrap in request context for access logging
           const doHandle = async () => {
-            if (gitlabToken && oauthSessionId && gitlabUserId && gitlabUsername) {
+            if (tokenContext) {
               // Wrap transport.handleRequest in token context so MCP handlers have access
-              await runWithTokenContext(
-                {
-                  gitlabToken,
-                  gitlabUserId,
-                  gitlabUsername,
-                  gitlabScopes,
-                  sessionId: oauthSessionId,
-                  apiUrl: gitlabApiUrl ?? GITLAB_BASE_URL,
-                  instanceLabel,
-                },
-                async () => {
-                  await transport.handleRequest(req, res, req.body);
-                },
-              );
+              await runWithTokenContext(tokenContext, async () => {
+                await transport.handleRequest(req, res, req.body);
+              });
             } else {
               // No OAuth token - direct handling (static token mode or unauthenticated)
               await transport.handleRequest(req, res, req.body);
@@ -757,19 +740,19 @@ export async function startServer(): Promise<void> {
           let transport: StreamableHTTPServerTransport;
           let effectiveSessionId: string;
 
-          // Use Object.hasOwn() instead of 'in' to avoid matching inherited keys
-          // like 'toString' or '__proto__' which could bypass 404 path
-          if (sessionId && Object.hasOwn(streamableTransports, sessionId)) {
+          const owned = sessionId ? streamableTransports.get(sessionId) : undefined;
+          if (sessionId && owned && ownedBy(owned, res.locals)) {
             effectiveSessionId = sessionId;
             sessionManager.touchSession(sessionId);
 
             // Increment request count for connection tracking
             connectionTracker.incrementRequests(sessionId);
 
-            transport = streamableTransports[sessionId];
+            transport = owned.transport;
             await handleWithContext(transport);
           } else {
-            // Check if client sent invalid session ID
+            // Unknown session ID, or one opened by another account: the same answer, so
+            // the response does not reveal which sessions exist
             if (sessionId) {
               res.status(404).json({
                 error: 'Session not found',
@@ -785,7 +768,10 @@ export async function startServer(): Promise<void> {
             transport = new StreamableHTTPServerTransport({
               sessionIdGenerator: () => newSessionId,
               onsessioninitialized: (initializedSessionId: string) => {
-                streamableTransports[initializedSessionId] = transport;
+                streamableTransports.set(initializedSessionId, {
+                  transport,
+                  owner: oauthSessionId,
+                });
                 logInfo('MCP session initialized', {
                   sessionId: initializedSessionId,
                   method: req.method,
@@ -802,12 +788,18 @@ export async function startServer(): Promise<void> {
 
                 // Associate MCP session with OAuth session if authenticated
                 if (oauthSessionId) {
-                  sessionStore.associateMcpSession(initializedSessionId, oauthSessionId);
+                  sessionStore
+                    .associateMcpSession(initializedSessionId, oauthSessionId)
+                    .catch((err: unknown) => {
+                      logWarn('Failed to store MCP session association', { err });
+                    });
                 }
               },
               onsessionclosed: (closedSessionId: string) => {
-                delete streamableTransports[closedSessionId];
-                sessionStore.removeMcpSessionAssociation(closedSessionId);
+                streamableTransports.delete(closedSessionId);
+                sessionStore.removeMcpSessionAssociation(closedSessionId).catch((err: unknown) => {
+                  logWarn('Failed to remove MCP session association', { err });
+                });
 
                 connectionTracker.closeConnection(closedSessionId, 'session_closed');
 

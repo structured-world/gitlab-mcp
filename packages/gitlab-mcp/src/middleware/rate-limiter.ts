@@ -20,6 +20,7 @@ import {
   RATE_LIMIT_SESSION_MAX_REQUESTS,
 } from '../config';
 import { logDebug, logWarn } from '../logger';
+import { getSessionManager } from '../session-manager';
 import { getMinimalRequestContext, buildRateLimitInfo, truncateId } from '../utils/request-logger';
 
 interface RateLimitEntry {
@@ -87,13 +88,13 @@ function isAuthenticated(req: Request, res: Response): boolean {
     return true;
   }
 
-  // Check for MCP session ID header (indicates active session)
-  const mcpSessionId = req.headers['mcp-session-id'] as string | undefined;
-  if (mcpSessionId) {
-    return true;
-  }
-
-  return false;
+  // An MCP session ID counts only when it names a session this process holds: any client
+  // can send one, and a made-up one must not lift the per-IP limit. Streamable HTTP sends
+  // it in a header, the SSE transport in the query of POST /messages.
+  const headerSessionId = req.headers['mcp-session-id'];
+  const sseSessionId = req.path === '/messages' ? req.query?.sessionId : undefined;
+  const mcpSessionId = typeof headerSessionId === 'string' ? headerSessionId : sseSessionId;
+  return typeof mcpSessionId === 'string' && getSessionManager().hasSession(mcpSessionId);
 }
 
 /**

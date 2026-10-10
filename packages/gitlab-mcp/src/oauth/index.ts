@@ -94,6 +94,7 @@ export {
   validateGitLabToken,
   exchangeGitLabAuthCode,
   buildGitLabAuthUrl,
+  revokeGitLabToken,
 } from './gitlab-device-flow';
 
 // OAuth Endpoints
@@ -108,4 +109,5 @@ export {
   registerHandler,
   getRegisteredClient,
   isValidRedirectUri,
+  revokeHandler,
 } from './endpoints/index';

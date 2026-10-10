@@ -19,6 +19,10 @@ export interface ContainerRuntimeInfo {
   runtimeAvailable: boolean;
   /** Compose command tokens, e.g. ["docker", "compose"] or ["podman-compose"], null if unavailable */
   composeCmd: string[] | null;
+  /** Implementation behind the compose command (`podman compose` may run either) */
+  composeProvider?: 'docker-compose' | 'podman-compose';
+  /** Version of that implementation, e.g. "2.21.0" */
+  composeVersion?: string;
   /** Version string of the runtime, undefined if not detected */
   runtimeVersion?: string;
 }
@@ -76,6 +80,8 @@ export interface DockerConfig {
   oauthEnabled: boolean;
   /** OAuth session secret */
   oauthSessionSecret?: string;
+  /** Public URL clients connect to (OAUTH_ISSUER); localhost on the chosen port if unset */
+  oauthIssuer?: string;
   /** Database URL for sessions */
   databaseUrl?: string;
   /** Additional environment variables (e.g., GITLAB_PROFILE, USE_* flags) */
@@ -100,16 +106,33 @@ export const DEFAULT_DOCKER_CONFIG: DockerConfig = {
 };
 
 /**
+ * Image with the PostgreSQL backend and the Prisma CLI for migrations, used by
+ * deployments that keep OAuth sessions in PostgreSQL
+ */
+export const DEFAULT_DB_IMAGE = 'ghcr.io/structured-world/gitlab-mcp-db:latest';
+
+/**
  * Docker compose service configuration
  */
 export interface DockerComposeService {
   image: string;
-  container_name: string;
-  ports: string[];
+  container_name?: string;
+  ports?: string[];
   environment: string[];
-  volumes: string[];
+  volumes?: string[];
   restart: string;
-  depends_on?: string[];
+  working_dir?: string;
+  entrypoint?: string[];
+  /** Files whose variables are set in the container, read at every start */
+  env_file?: string[];
+  /** Services to start first (list), or with the state each must reach first (map) */
+  depends_on?: string[] | Record<string, { condition: 'service_completed_successfully' }>;
+  healthcheck?: {
+    test: string[];
+    interval: string;
+    timeout: string;
+    retries: number;
+  };
 }
 
 /**

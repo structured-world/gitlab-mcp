@@ -136,11 +136,14 @@ jest.mock('../../src/oauth/index', () => ({
   sessionStore: {
     initialize: jest.fn().mockResolvedValue(undefined),
     close: jest.fn().mockResolvedValue(undefined),
-    associateMcpSession: jest.fn(),
-    removeMcpSessionAssociation: jest.fn(),
+    associateMcpSession: jest.fn().mockResolvedValue(undefined),
+    removeMcpSessionAssociation: jest.fn().mockResolvedValue(true),
   },
   runWithTokenContext: jest.fn(),
 }));
+
+// OAuth routes have their own HTTP tests; here only their registration matters.
+jest.mock('../../src/oauth/routes', () => ({ registerOAuthEndpoints: jest.fn() }));
 
 // Mock session manager
 jest.mock('../../src/session-manager', () => ({
@@ -151,7 +154,12 @@ jest.mock('../../src/session-manager', () => ({
 import type { Server as _Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { startServer, sendToolsListChangedNotification } from '../../src/server';
 import { STDIO_SESSION_ID } from '../../src/session-manager';
-import { sessionStore as mockSessionStore, runWithTokenContext } from '../../src/oauth/index';
+import {
+  sessionStore as mockSessionStore,
+  runWithTokenContext,
+  isOAuthEnabled,
+} from '../../src/oauth/index';
+import { oauthAuthMiddleware } from '../../src/middleware';
 
 describe('server', () => {
   let originalArgv: string[];
@@ -455,6 +463,113 @@ describe('server', () => {
       await messagesHandler(mockReq, mockRes);
 
       expect(mockLogDebug).toHaveBeenCalledWith('SSE messages endpoint hit!');
+    });
+
+    // In OAuth mode the legacy SSE transport ran tools without any credentials check.
+    it('authenticates the SSE transport in OAuth mode', async () => {
+      (isOAuthEnabled as jest.Mock).mockReturnValue(true);
+      try {
+        await startServer();
+
+        expect(mockApp.use).toHaveBeenCalledWith(['/sse', '/messages'], oauthAuthMiddleware);
+      } finally {
+        (isOAuthEnabled as jest.Mock).mockReturnValue(false);
+      }
+    });
+
+    async function openSse(locals: Record<string, unknown>): Promise<void> {
+      const sseHandler = mockApp.get.mock.calls.find((call) => call[0] === '/sse')[1];
+      await sseHandler(
+        { headers: {}, method: 'GET', path: '/sse', query: {} },
+        {
+          on: jest.fn(),
+          write: jest.fn().mockReturnValue(true),
+          setHeader: jest.fn(),
+          writeHead: jest.fn(),
+          headersSent: false,
+          locals,
+        },
+      );
+    }
+
+    it('runs SSE messages in the token context of the authenticated account', async () => {
+      await startServer();
+      const locals = {
+        oauthSessionId: 'oauth-session-123',
+        gitlabToken: 'test-token',
+        gitlabUserId: 42,
+        gitlabUsername: 'testuser',
+        gitlabScopes: ['api'],
+        mcpResource: 'https://mcp.example.com',
+        mcpScopes: ['mcp:resources'],
+      };
+      await openSse(locals);
+      const messagesHandler = mockApp.post.mock.calls.find((call) => call[0] === '/messages')[1];
+
+      await messagesHandler(
+        { query: { sessionId: 'test-session-123' }, body: {} },
+        { json: jest.fn(), status: jest.fn().mockReturnThis(), headersSent: false, locals },
+      );
+
+      expect(runWithTokenContext).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sessionId: 'oauth-session-123',
+          gitlabToken: 'test-token',
+          mcpScopes: ['mcp:resources'],
+          resource: 'https://mcp.example.com',
+        }),
+        expect.any(Function),
+      );
+    });
+
+    // A leaked SSE session id must not let another account inject requests into that
+    // stream: the session belongs to the account that opened it.
+    it("refuses SSE messages from another account than the stream's owner", async () => {
+      await startServer();
+      await openSse({ oauthSessionId: 'owner-session' });
+      const messagesHandler = mockApp.post.mock.calls.find((call) => call[0] === '/messages')[1];
+      const res = {
+        json: jest.fn(),
+        status: jest.fn().mockReturnThis(),
+        headersSent: false,
+        locals: { oauthSessionId: 'other-session' },
+      };
+      mockTransport.handlePostMessage.mockClear();
+
+      await messagesHandler({ query: { sessionId: 'test-session-123' }, body: {} }, res);
+
+      expect(res.status).toHaveBeenCalledWith(404);
+      expect(mockTransport.handlePostMessage).not.toHaveBeenCalled();
+    });
+
+    it("refuses MCP requests from another account than the session's owner", async () => {
+      process.env.PORT = '3000';
+      await startServer();
+      const mcpHandler = mockApp.all.mock.calls.find(
+        (call) => Array.isArray(call[0]) && call[0].includes('/mcp'),
+      )[1];
+      const respond = (oauthSessionId: string) => ({
+        status: jest.fn().mockReturnThis(),
+        json: jest.fn(),
+        headersSent: false,
+        locals: { oauthSessionId },
+      });
+      await mcpHandler(
+        { headers: {}, method: 'POST', path: '/mcp', body: {} },
+        respond('owner-session'),
+      );
+      const sessionId = lastStreamableOpts!.sessionIdGenerator!();
+      lastStreamableOpts!.onsessioninitialized!(sessionId);
+      mockTransport.handleRequest.mockClear();
+
+      const res = respond('other-session');
+      await mcpHandler(
+        { headers: { 'mcp-session-id': sessionId }, method: 'POST', path: '/mcp', body: {} },
+        res,
+      );
+
+      expect(res.status).toHaveBeenCalledWith(404);
+      expect(mockTransport.handleRequest).not.toHaveBeenCalled();
     });
 
     it('should handle messages endpoint with missing session', async () => {
@@ -1037,6 +1152,75 @@ describe('server', () => {
         sessionId,
         'oauth-session-123',
       );
+    });
+
+    // The MCP request itself must run inside the account's token context, not only start it.
+    it('handles an authenticated MCP request inside the token context', async () => {
+      process.env.PORT = '3000';
+      (runWithTokenContext as jest.Mock).mockImplementationOnce(
+        (_context: unknown, fn: () => Promise<void>) => fn(),
+      );
+      await startServer();
+      const mcpHandler = mockApp.all.mock.calls.find(
+        (call) => Array.isArray(call[0]) && call[0].includes('/mcp'),
+      )[1];
+
+      await mcpHandler(
+        { headers: {}, method: 'POST', path: '/mcp', body: { id: 1 } },
+        {
+          status: jest.fn().mockReturnThis(),
+          json: jest.fn(),
+          headersSent: false,
+          locals: {
+            oauthSessionId: 'oauth-session-123',
+            gitlabToken: 'test-token',
+            gitlabUserId: 42,
+            gitlabUsername: 'testuser',
+          },
+        },
+      );
+
+      expect(mockTransport.handleRequest).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        { id: 1 },
+      );
+    });
+
+    // Associating or forgetting the MCP session is best effort; a storage failure is logged.
+    it('logs a failed MCP session association and removal', async () => {
+      process.env.PORT = '3000';
+      (mockSessionStore.associateMcpSession as jest.Mock).mockRejectedValueOnce(
+        new Error('storage down'),
+      );
+      (mockSessionStore.removeMcpSessionAssociation as jest.Mock).mockRejectedValueOnce(
+        new Error('storage down'),
+      );
+      await startServer();
+      const mcpHandler = mockApp.all.mock.calls.find(
+        (call) => Array.isArray(call[0]) && call[0].includes('/mcp'),
+      )[1];
+      await mcpHandler(
+        { headers: {}, method: 'POST', path: '/mcp', body: {} },
+        {
+          status: jest.fn().mockReturnThis(),
+          json: jest.fn(),
+          headersSent: false,
+          locals: { oauthSessionId: 'oauth-session-123' },
+        },
+      );
+
+      const sessionId = lastStreamableOpts!.sessionIdGenerator!();
+      lastStreamableOpts!.onsessioninitialized!(sessionId);
+      lastStreamableOpts!.onsessionclosed!(sessionId);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(mockLogWarn).toHaveBeenCalledWith('Failed to store MCP session association', {
+        err: expect.any(Error),
+      });
+      expect(mockLogWarn).toHaveBeenCalledWith('Failed to remove MCP session association', {
+        err: expect.any(Error),
+      });
     });
 
     it('should handle removeSession error in onsessionclosed gracefully', async () => {

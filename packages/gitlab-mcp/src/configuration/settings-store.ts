@@ -1,9 +1,10 @@
 /**
- * Where account settings are kept. With OAuth or an explicitly configured session storage
- * they live in that backend, shared by every replica. A local single-user server keeps
- * them in a file in the user's configuration directory.
+ * Where account settings are kept: in the session storage when it can keep them, otherwise
+ * in a file in the configuration directory of the user running the server, shared by every
+ * server process of that user.
  */
 
+import { randomUUID } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -34,6 +35,10 @@ const STALE_LOCK_MS = 10_000;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 /**
@@ -77,13 +82,26 @@ export class LocalSettingsFile implements SettingsStore {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { version: 1, accounts: {} };
       throw error;
     }
-    const parsed = JSON.parse(content) as Partial<SettingsFile>;
+    const parsed: unknown = JSON.parse(content);
+    if (!isPlainObject(parsed)) {
+      throw new Error(`Settings file is not a JSON object: ${this.filePath}`);
+    }
     const accounts: Record<string, AccountSettingsRecord> = {};
-    for (const [key, record] of Object.entries(parsed.accounts ?? {})) {
-      // A hand-edited entry the schema refuses is ignored rather than applied half-valid.
-      const settings = AccountSettingsSchema.safeParse(record.settings);
-      if (settings.success) accounts[key] = { ...record, settings: settings.data };
-      else logWarn('Ignoring invalid saved settings', { file: this.filePath });
+    const stored = isPlainObject(parsed.accounts) ? parsed.accounts : {};
+    for (const [key, record] of Object.entries(stored)) {
+      // A hand-edited entry of the wrong shape, or settings the schema refuses, is ignored
+      // rather than applied half-valid or failing every call.
+      const settings = isPlainObject(record)
+        ? AccountSettingsSchema.safeParse(record.settings)
+        : undefined;
+      if (settings?.success) {
+        accounts[key] = {
+          ...(record as Omit<AccountSettingsRecord, 'settings'>),
+          settings: settings.data,
+        };
+      } else {
+        logWarn('Ignoring invalid saved settings', { file: this.filePath });
+      }
     }
     return { version: 1, accounts };
   }
@@ -128,16 +146,38 @@ export class LocalSettingsFile implements SettingsStore {
     }
   }
 
+  /**
+   * Removes a lock left by a dead process; true when the lock can be taken again at once.
+   * The lock is claimed by an atomic rename and its identity checked, because between the
+   * age check and the removal another process may have replaced the dead lock with a fresh
+   * one; that one is put back instead of removed.
+   */
   private async removeStaleLock(lockPath: string): Promise<boolean> {
+    let seen: fs.Stats;
     try {
-      const stat = await fs.promises.stat(lockPath);
-      if (Date.now() - stat.mtimeMs < STALE_LOCK_MS) return false;
-      await fs.promises.rm(lockPath, { force: true });
-      return true;
+      seen = await fs.promises.stat(lockPath);
     } catch {
       // Released meanwhile: try again at once.
       return true;
     }
+    if (Date.now() - seen.mtimeMs < STALE_LOCK_MS) return false;
+    const claimed = `${lockPath}.${process.pid}.${randomUUID()}.stale`;
+    try {
+      await fs.promises.rename(lockPath, claimed);
+    } catch {
+      // Another process removed or claimed it first.
+      return true;
+    }
+    const taken = await fs.promises.stat(claimed);
+    if (taken.ino !== seen.ino || taken.dev !== seen.dev) {
+      // A fresh lock taken after the age check: hand it back to its holder. If the path was
+      // taken again meanwhile, that newer lock stays and this one is dropped.
+      await fs.promises.link(claimed, lockPath).catch(() => undefined);
+      await fs.promises.rm(claimed, { force: true });
+      return false;
+    }
+    await fs.promises.rm(claimed, { force: true });
+    return true;
   }
 }
 

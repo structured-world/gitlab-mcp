@@ -15,6 +15,17 @@ it('points tests at a temporary settings file, not the home directory', () => {
   expect(localSettingsPath().startsWith(os.homedir())).toBe(false);
 });
 
+// The real location, read without touching it.
+it('keeps a server settings in the user configuration directory', () => {
+  const actual = jest.requireActual<typeof import('../../../src/configuration/settings-store')>(
+    '../../../src/configuration/settings-store',
+  );
+
+  expect(actual.localSettingsPath()).toBe(
+    path.join(os.homedir(), '.config', 'gitlab-mcp', 'settings.json'),
+  );
+});
+
 describe('LocalSettingsFile', () => {
   let dir: string;
   let filePath: string;
@@ -89,6 +100,87 @@ describe('LocalSettingsFile', () => {
     expect((await store.get('one'))?.settings).toEqual({ readOnly: true });
   });
 
+  // Two writers see the same dead lock; one removes it and a third process takes a fresh
+  // lock before the second writer acts. The fresh lock must survive, or two writers would
+  // be inside the read-compare-write at once.
+  it('does not remove a fresh lock taken after the dead one was seen', async () => {
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    const lock = `${filePath}.lock`;
+    fs.writeFileSync(lock, '');
+    const longAgo = new Date(Date.now() - 60_000);
+    fs.utimesSync(lock, longAgo, longAgo);
+    const realStat = fs.promises.stat.bind(fs.promises);
+    jest.spyOn(fs.promises, 'stat').mockImplementationOnce(async (target) => {
+      const dead = await realStat(target);
+      // Another process replaced the dead lock with its own meanwhile.
+      fs.rmSync(lock);
+      fs.writeFileSync(lock, 'fresh');
+      return dead;
+    });
+
+    try {
+      const write = new LocalSettingsFile(filePath).put('acct', { readOnly: true }, 0);
+      await new Promise((resolve) => setTimeout(resolve, 60));
+
+      expect(fs.readFileSync(lock, 'utf-8')).toBe('fresh');
+      fs.rmSync(lock);
+      expect(await write).toBeDefined();
+    } finally {
+      jest.restoreAllMocks();
+    }
+  });
+
+  // Another writer claimed the dead lock first: the rename fails and the lock is tried again.
+  it('tries again when another writer claimed the dead lock first', async () => {
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    const lock = `${filePath}.lock`;
+    fs.writeFileSync(lock, '');
+    const longAgo = new Date(Date.now() - 60_000);
+    fs.utimesSync(lock, longAgo, longAgo);
+    jest
+      .spyOn(fs.promises, 'rename')
+      .mockRejectedValueOnce(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
+
+    try {
+      expect(
+        await new LocalSettingsFile(filePath).put('acct', { readOnly: true }, 0),
+      ).toBeDefined();
+    } finally {
+      jest.restoreAllMocks();
+    }
+  });
+
+  // The fresh lock could not be handed back because a newer one took the path: that newer
+  // lock stays, and the claimed copy is not left behind.
+  it('keeps a newer lock when a fresh one cannot be handed back', async () => {
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    const lock = `${filePath}.lock`;
+    fs.writeFileSync(lock, '');
+    const longAgo = new Date(Date.now() - 60_000);
+    fs.utimesSync(lock, longAgo, longAgo);
+    const realStat = fs.promises.stat.bind(fs.promises);
+    jest.spyOn(fs.promises, 'stat').mockImplementationOnce(async (target) => {
+      const dead = await realStat(target);
+      fs.rmSync(lock);
+      fs.writeFileSync(lock, 'fresh');
+      return dead;
+    });
+    jest
+      .spyOn(fs.promises, 'link')
+      .mockRejectedValueOnce(Object.assign(new Error('EEXIST'), { code: 'EEXIST' }));
+
+    try {
+      expect(
+        await new LocalSettingsFile(filePath).put('acct', { readOnly: true }, 0),
+      ).toBeDefined();
+      expect(fs.readdirSync(path.dirname(filePath)).filter((f) => f.endsWith('.stale'))).toEqual(
+        [],
+      );
+    } finally {
+      jest.restoreAllMocks();
+    }
+  });
+
   it('removes a lock left by a process that died while holding it', async () => {
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
     const lock = `${filePath}.lock`;
@@ -117,6 +209,47 @@ describe('LocalSettingsFile', () => {
     expect(await store.get('bad')).toBeUndefined();
     expect((await store.get('good'))?.settings).toEqual({ readOnly: true });
   });
+
+  // One hand-edited entry of the wrong shape must not fail every call of the server.
+  it.each([
+    ['an entry that is null', { bad: null }],
+    ['an entry that is not an object', { bad: 'readOnly' }],
+  ])('skips %s and reads the others', async (_label, broken) => {
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(
+      filePath,
+      JSON.stringify({
+        version: 1,
+        accounts: {
+          ...broken,
+          good: { accountKey: 'good', settings: { readOnly: true }, version: 1, updatedAt: 1 },
+        },
+      }),
+    );
+    const store = new LocalSettingsFile(filePath);
+
+    expect(await store.get('bad')).toBeUndefined();
+    expect((await store.get('good'))?.settings).toEqual({ readOnly: true });
+  });
+
+  it('reads accounts that are not an object as none', async () => {
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, JSON.stringify({ version: 1, accounts: [{ settings: {} }] }));
+
+    expect(await new LocalSettingsFile(filePath).get('0')).toBeUndefined();
+  });
+
+  it.each(['null', '[]', '"text"'])(
+    'reports a file whose content %s is not an object',
+    async (content) => {
+      fs.mkdirSync(path.dirname(filePath), { recursive: true });
+      fs.writeFileSync(filePath, content);
+
+      await expect(new LocalSettingsFile(filePath).get('acct')).rejects.toThrow(
+        `Settings file is not a JSON object: ${filePath}`,
+      );
+    },
+  );
 
   it('reports a file that is not JSON instead of treating it as empty', async () => {
     fs.mkdirSync(path.dirname(filePath), { recursive: true });

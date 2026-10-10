@@ -29,30 +29,63 @@ const hasValue = (value: unknown): boolean => value !== undefined && value !== n
 export function targetlessRestriction(tool: string, args: Args, scope: ScopeConfig): string | null {
   const creation = creationRestriction(tool, args, scope);
   if (creation) return creation;
-  if (tool !== 'browse_search' || args.action !== 'global') return null;
-  const target = singleTarget(scope);
-  if (!target) {
-    return 'a global search cannot be limited to a working scope of several projects or groups; search within one of them';
+  if (tool === 'browse_vulnerabilities' && isTargetlessList(args)) {
+    return unnarrowable(scope, 'vulnerabilities cannot be listed', 'list them for');
   }
-  if ('group' in target && scope.includeSubgroups === false) {
-    return 'a global search cannot be limited to a group without its subgroups; search within one of its projects';
+  if (tool === 'browse_search' && args.action === 'global') {
+    return unnarrowable(scope, 'a global search cannot be limited', 'search within');
   }
   return null;
 }
 
 /**
- * Creation that names no place lands outside the scope: a project without a namespace in
- * the user's own namespace (filled in with the scope group when there is a single one), a
- * group without a parent at the top level.
+ * Why a call GitLab only offers per project or per whole group cannot follow the scope:
+ * several targets, or a group without its subgroups (a group's results always cover them).
+ */
+function unnarrowable(scope: ScopeConfig, what: string, instead: string): string | null {
+  const target = singleTarget(scope);
+  if (!target) {
+    return `${what} for a working scope of several projects or groups; ${instead} one of them`;
+  }
+  if ('group' in target && scope.includeSubgroups === false) {
+    return `${what} to a group without its subgroups; ${instead} one of its projects`;
+  }
+  return null;
+}
+
+/** A project created or forked: its `namespace` names the group it goes into. */
+function isProjectCreation(tool: string, args: Args): boolean {
+  return tool === 'manage_project' && (args.action === 'create' || args.action === 'fork');
+}
+
+/** Whether a project created or forked names the group it goes into. */
+function namesDestination(args: Args): boolean {
+  return hasValue(args.namespace) || hasValue(args.namespace_path);
+}
+
+/**
+ * The call's arguments as the scope check reads them. A created or forked project's
+ * `namespace` is the group it goes into, so it is checked as a group: the scope group itself
+ * is a valid place also when its subgroups are not part of the scope.
+ */
+export function scopeCheckArgs(tool: string, args: Args): Args {
+  if (!isProjectCreation(tool, args) || !hasValue(args.namespace)) return args;
+  const { namespace, ...rest } = args;
+  return { ...rest, namespace_path: rest.namespace_path ?? namespace };
+}
+
+/**
+ * Creation that names no place lands outside the scope: a project created or forked without
+ * a namespace in the user's own namespace (filled in with the scope group when there is a
+ * single one), a group without a parent at the top level.
  */
 function creationRestriction(tool: string, args: Args, scope: ScopeConfig): string | null {
-  if (args.action !== 'create') return null;
-  if (tool === 'manage_project' && !hasValue(args.namespace)) {
+  if (isProjectCreation(tool, args) && !namesDestination(args)) {
     const target = singleTarget(scope);
     if (target && 'group' in target) return null;
-    return "a project without a namespace would be created outside the working scope; name the group to create it in with 'namespace'";
+    return "a project without a namespace would be created outside the working scope; name the group to put it in with 'namespace'";
   }
-  if (tool === 'manage_namespace' && !hasValue(args.parent_id)) {
+  if (tool === 'manage_namespace' && args.action === 'create' && !hasValue(args.parent_id)) {
     return "a top-level group would be outside the working scope; create it inside a group of the scope with 'parent_id'";
   }
   return null;
@@ -68,32 +101,54 @@ export function scopeProjectsOnly(scope: ScopeConfig): string[] | null {
   return projects.length > 0 ? projects : null;
 }
 
-/** The call's arguments with the scope as its filter, where the tool takes one. */
-export function scopedArgs(tool: string, args: Args, scope: ScopeConfig): Args {
-  const target = singleTarget(scope);
-  if (!target) return args;
-  if (tool === 'browse_search' && args.action === 'global') {
+type Target = { group: string } | { project: string };
+
+/** A listing that names neither a project nor a group. */
+const isTargetlessList = (args: Args): boolean =>
+  args.action === 'list' && !hasValue(args.project_id) && !hasValue(args.group_id);
+
+/**
+ * Per tool: the call's arguments with the single scope target as their filter, or null
+ * when the call keeps its own arguments.
+ */
+const NARROWERS: Record<string, (args: Args, target: Target, scope: ScopeConfig) => Args | null> = {
+  browse_search: (args, target) => {
+    if (args.action !== 'global') return null;
     // Group search covers subgroups; a scope without them is refused before this point.
     return 'group' in target
       ? { ...args, action: 'group', group_id: target.group }
       : { ...args, action: 'project', project_id: target.project };
-  }
-  if (tool === 'browse_projects' && args.action === 'list' && !hasValue(args.group_id)) {
-    if ('group' in target) {
-      return {
-        ...args,
-        group_id: target.group,
-        include_subgroups: scope.includeSubgroups !== false,
-      };
-    }
-  }
-  if (tool === 'browse_merge_requests' && args.action === 'list' && !hasValue(args.project_id)) {
-    if ('project' in target) return { ...args, project_id: target.project };
-  }
-  if (tool === 'manage_project' && args.action === 'create' && !hasValue(args.namespace)) {
-    if ('group' in target) return { ...args, namespace: target.group };
-  }
-  return args;
+  },
+  browse_projects: (args, target, scope) =>
+    args.action === 'list' && !hasValue(args.group_id) && 'group' in target
+      ? { ...args, group_id: target.group, include_subgroups: scope.includeSubgroups !== false }
+      : null,
+  browse_merge_requests: (args, target) =>
+    args.action === 'list' && !hasValue(args.project_id) && 'project' in target
+      ? { ...args, project_id: target.project }
+      : null,
+  browse_vulnerabilities: (args, target) => {
+    if (!isTargetlessList(args)) return null;
+    return 'group' in target
+      ? { ...args, group_id: target.group }
+      : { ...args, project_id: target.project };
+  },
+  manage_project: (args, target) => {
+    if (!isProjectCreation('manage_project', args) || namesDestination(args)) return null;
+    if (!('group' in target)) return null;
+    // Fork takes the destination as namespace_path, create as namespace.
+    return args.action === 'fork'
+      ? { ...args, namespace_path: target.group }
+      : { ...args, namespace: target.group };
+  },
+};
+
+/** The call's arguments with the scope as its filter, where the tool takes one. */
+export function scopedArgs(tool: string, args: Args, scope: ScopeConfig): Args {
+  const target = singleTarget(scope);
+  const narrow = NARROWERS[tool];
+  if (!target || !narrow) return args;
+  return narrow(args, target, scope) ?? args;
 }
 
 /** Project path of a listed project or merge request, as each listing reports it. */
@@ -106,6 +161,19 @@ function projectPathOf(tool: string, item: Record<string, unknown>): string | un
   return typeof full === 'string' && full.includes('!')
     ? full.slice(0, full.lastIndexOf('!'))
     : undefined;
+}
+
+/** A listing of projects or merge requests whose rows are filtered by their project. */
+function isProjectRowListing(tool: string, args: Args): boolean {
+  return (
+    (tool === 'browse_projects' && (args.action === 'search' || args.action === 'list')) ||
+    (tool === 'browse_merge_requests' && args.action === 'list' && !hasValue(args.project_id))
+  );
+}
+
+/** Whether a call's results are filtered to the scope after GitLab returned them. */
+export function isFilteredListing(tool: string, args: Args): boolean {
+  return isProjectRowListing(tool, args) || (tool === 'browse_todos' && isTargetlessList(args));
 }
 
 /**
@@ -121,21 +189,13 @@ export function scopedResult(
   enforcer: ScopeEnforcer,
 ): unknown {
   if (!Array.isArray(result)) return result;
-  const listing =
-    (tool === 'browse_projects' && (args.action === 'search' || args.action === 'list')) ||
-    (tool === 'browse_merge_requests' && args.action === 'list' && !hasValue(args.project_id));
-  if (listing) {
+  if (isProjectRowListing(tool, args)) {
     return result.filter((item: Record<string, unknown>) => {
       const path = projectPathOf(tool, item);
       return path !== undefined && enforcer.isAllowed(path);
     });
   }
-  if (
-    tool === 'browse_todos' &&
-    args.action === 'list' &&
-    !hasValue(args.project_id) &&
-    !hasValue(args.group_id)
-  ) {
+  if (tool === 'browse_todos' && isTargetlessList(args)) {
     return result.filter((todo: Record<string, unknown>) => {
       const project = (todo.project as { path_with_namespace?: unknown } | undefined)
         ?.path_with_namespace;

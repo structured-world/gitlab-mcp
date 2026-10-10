@@ -148,6 +148,20 @@ describe('working everywhere in one chat', () => {
   });
 });
 
+// The host identifies the connection's account with get_profile: a preset's tool list or
+// read-only mode must not hide it.
+it('keeps the account profile tool under any preset', () => {
+  const policy = buildPolicy(
+    { allowed_tools: ['browse_projects'], denied_tools_regex: '^get_', read_only: true },
+    { preset: 'narrow' },
+    {},
+  );
+  const profile: ToolFacts = { name: 'get_profile', readOnly: true };
+
+  expect(toolRestriction(policy, profile)).toBeNull();
+  expect(callRestriction(policy, profile, {})).toBeNull();
+});
+
 describe('callRestriction', () => {
   it('refuses an action the preset denies and allows the others', () => {
     const policy = buildPolicy(
@@ -173,6 +187,26 @@ describe('callRestriction', () => {
       /outside the allowed scope/,
     );
     expect(callRestriction(policy, browse, { project_id: 'team/sub/app' })).toBeNull();
+  });
+
+  // The namespace of a created or forked project is the group it goes into: naming the scope
+  // group itself is allowed also when its subgroups are not part of the scope.
+  it.each([
+    [{ action: 'create', name: 'app', namespace: 'team' }, null],
+    [{ action: 'fork', project_id: 'team/app', namespace: 'team' }, null],
+    [{ action: 'create', name: 'app', namespace: 'team/sub' }, /outside the allowed scope/],
+    [{ action: 'create', name: 'app', namespace: 'other' }, /outside the allowed scope/],
+  ])('checks the namespace of %j as the group it goes into', (args, expected) => {
+    const policy = buildPolicy(
+      undefined,
+      { scope: { type: 'group', path: 'team', includeSubgroups: false } },
+      {},
+    );
+    const project: ToolFacts = { name: 'manage_project', readOnly: false };
+
+    const reason = callRestriction(policy, project, args);
+    if (expected === null) expect(reason).toBeNull();
+    else expect(reason).toMatch(expected);
   });
 
   // A numeric id cannot be checked against a path scope without a lookup: refused.

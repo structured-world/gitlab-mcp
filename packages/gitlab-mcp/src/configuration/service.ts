@@ -85,28 +85,39 @@ function applyAccountPatch(
 ): AccountSettings {
   const next = applyPatch(saved, fields);
   if (scope === null) delete next.scope;
-  else if (scope) {
-    // Only a saved group scope says anything about subgroups; a project's flag is always false.
-    const savedChoice = saved.scope?.type === 'group' ? saved.scope.includeSubgroups : undefined;
-    next.scope = {
-      ...scope,
-      includeSubgroups: scope.type === 'group' && (scope.includeSubgroups ?? savedChoice ?? true),
-    };
-  }
+  else if (scope) next.scope = scopeAtWrite(scope, saved.scope);
   if (toolGroups) {
-    const disabled = new Set(next.disabledToolGroups ?? []);
-    for (const [group, enabled] of Object.entries(toolGroups)) {
-      if (enabled) disabled.delete(group);
-      else disabled.add(group);
-    }
-    if (disabled.size > 0)
-      next.disabledToolGroups = [...disabled].sort((a, b) => a.localeCompare(b));
+    const disabled = disabledGroupsAtWrite(next.disabledToolGroups, toolGroups);
+    if (disabled.length > 0) next.disabledToolGroups = disabled;
     else delete next.disabledToolGroups;
   }
   if (scopeIncludeSubgroups !== undefined && next.scope?.type === 'group') {
     next.scope = { ...next.scope, includeSubgroups: scopeIncludeSubgroups };
   }
   return next;
+}
+
+/** A new scope; a group without a subgroup choice keeps the one saved for a group scope. */
+function scopeAtWrite(scope: ScopePatch, saved: WorkingScope | undefined): WorkingScope {
+  // Only a saved group scope says anything about subgroups; a project's flag is always false.
+  const savedChoice = saved?.type === 'group' ? saved.includeSubgroups : undefined;
+  return {
+    ...scope,
+    includeSubgroups: scope.type === 'group' && (scope.includeSubgroups ?? savedChoice ?? true),
+  };
+}
+
+/** The groups turned off after these toggles are applied to the saved ones, sorted. */
+function disabledGroupsAtWrite(
+  saved: string[] | undefined,
+  toggles: Record<string, boolean>,
+): string[] {
+  const disabled = new Set(saved ?? []);
+  for (const [group, enabled] of Object.entries(toggles)) {
+    if (enabled) disabled.delete(group);
+    else disabled.add(group);
+  }
+  return [...disabled].sort((a, b) => a.localeCompare(b));
 }
 
 function applyPatch<T extends object>(base: T, patch: object): T {

@@ -33,6 +33,17 @@ describe('ScopeEnforcer', () => {
       expect(enforcer.isAllowed('other/project')).toBe(false);
     });
 
+    // Tools accept URL-encoded paths ("group%2Fproject"); the scope compares decoded paths.
+    it('should treat a URL-encoded path as the same project or group', () => {
+      expect(new ScopeEnforcer({ project: 'team/app' }).isAllowed('team%2Fapp')).toBe(true);
+      expect(new ScopeEnforcer({ project: 'team/app' }).isAllowed('team%2Fother')).toBe(false);
+      const group = new ScopeEnforcer({ group: 'team', includeSubgroups: true });
+      expect(group.isAllowed('team%2Fsub%2Fapp')).toBe(true);
+      expect(group.isGroupAllowed('team%2Fsub')).toBe(true);
+      // A malformed escape is compared as written instead of failing the call.
+      expect(new ScopeEnforcer({ project: 'team/app' }).isAllowed('team%2')).toBe(false);
+    });
+
     it('should handle leading/trailing slashes', () => {
       const enforcer = new ScopeEnforcer({ project: 'myteam/backend' });
 

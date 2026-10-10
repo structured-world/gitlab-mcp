@@ -49,11 +49,11 @@ import {
 import {
   CONFIGURATION_TOOLS,
   callRestriction,
+  scopeLabel,
   toolRestriction,
   type EffectivePolicy,
 } from './configuration/policy';
-import { scopedArgs, scopedResult, scopeProjectsOnly } from './configuration/scope-targets';
-import type { ScopeEnforcer } from './profiles/scope-enforcer';
+import { executeScoped } from './configuration/scoped-execution';
 
 interface JsonSchemaProperty {
   type?: string;
@@ -519,103 +519,7 @@ async function executeInScope(
     requestScopes === undefined
       ? registryManager.executeTool(tool, toolArgs, instanceUrl)
       : registryManager.executeTool(tool, toolArgs, instanceUrl, requestScopes);
-  if (policy.scopeEnforcer && toolName === 'manage_todos' && requested.action === 'mark_all_done') {
-    return markScopeTodosDone(run, policy.scopeEnforcer);
-  }
-  const scopeProjects =
-    policy.scope && toolName === 'browse_projects' && requested.action === 'list'
-      ? scopeProjectsOnly(policy.scope)
-      : null;
-  if (scopeProjects && requested.group_id === undefined) {
-    return listScopeProjects(run, scopeProjects, requested);
-  }
-  const args = policy.scope ? scopedArgs(toolName, requested, policy.scope) : requested;
-  const executed = await run(toolName, args);
-  return policy.scopeEnforcer
-    ? scopedResult(toolName, args, executed, policy.scopeEnforcer)
-    : executed;
-}
-
-/**
- * browse_projects list for a scope made of projects: the projects themselves, filtered by
- * the listing's search and paged like it. A project GitLab does not return is left out.
- */
-async function listScopeProjects(
-  run: (tool: string, args: Record<string, unknown>) => Promise<unknown>,
-  projects: string[],
-  requested: Record<string, unknown>,
-): Promise<unknown[]> {
-  const found = await Promise.allSettled(
-    projects.map((project_id) => run('browse_projects', { action: 'get', project_id })),
-  );
-  const search = typeof requested.search === 'string' ? requested.search.toLowerCase() : '';
-  const matching = found
-    .flatMap((result) => (result.status === 'fulfilled' ? [result.value] : []))
-    .filter((project) => {
-      if (!search) return true;
-      const { name, path_with_namespace } = project as {
-        name?: unknown;
-        path_with_namespace?: unknown;
-      };
-      return [name, path_with_namespace].some(
-        (value) => typeof value === 'string' && value.toLowerCase().includes(search),
-      );
-    });
-  const perPage = typeof requested.per_page === 'number' ? requested.per_page : 20;
-  const page = typeof requested.page === 'number' ? requested.page : 1;
-  return matching.slice((page - 1) * perPage, page * perPage);
-}
-
-const TODO_PAGE_SIZE = 100;
-const TODO_CONCURRENCY = 5;
-
-/**
- * mark_all_done for a scoped chat: GitLab's own would also clear todos outside the scope,
- * so the scope's pending todos are marked done one by one.
- */
-async function markScopeTodosDone(
-  run: (tool: string, args: Record<string, unknown>) => Promise<unknown>,
-  enforcer: ScopeEnforcer,
-): Promise<unknown> {
-  // Collected before marking: a todo marked done leaves the pending pages being read.
-  const ids: unknown[] = [];
-  for (let page = 1; ; page++) {
-    const todos = await run('browse_todos', {
-      action: 'list',
-      state: 'pending',
-      per_page: TODO_PAGE_SIZE,
-      page,
-    });
-    if (!Array.isArray(todos)) break;
-    const inScope = scopedResult('browse_todos', { action: 'list' }, todos, enforcer) as Array<{
-      id?: unknown;
-    }>;
-    for (const todo of inScope) ids.push(todo.id);
-    if (todos.length < TODO_PAGE_SIZE) break;
-  }
-  // A few requests at a time, so a large scope does not run into GitLab's rate limits;
-  // a todo that fails is reported and the rest are still marked.
-  const failed: Array<{ id: unknown; error: string }> = [];
-  let next = 0;
-  const worker = async (): Promise<void> => {
-    while (next < ids.length) {
-      const id = ids[next++];
-      try {
-        await run('manage_todos', { action: 'mark_done', id });
-      } catch (error: unknown) {
-        failed.push({ id, error: error instanceof Error ? error.message : String(error) });
-      }
-    }
-  };
-  await Promise.all(Array.from({ length: Math.min(TODO_CONCURRENCY, ids.length) }, worker));
-  const marked = ids.length - failed.length;
-  const failedNote = failed.length > 0 ? `; ${failed.length} could not be marked` : '';
-  return {
-    success: failed.length === 0,
-    marked,
-    failed,
-    message: `Marked ${marked} of ${ids.length} todos of the working scope as done${failedNote}; todos outside it were left pending`,
-  };
+  return executeScoped(run, toolName, requested, policy);
 }
 
 function recordCallContext(scopePath: string | undefined, readOnly: boolean): void {
@@ -1111,9 +1015,8 @@ export async function setupHandlers(server: Server): Promise<void> {
       if (LOG_FORMAT === 'condensed') {
         const requestTracker = getRequestTracker();
         requestTracker.setToolForCurrentRequest(toolName, action);
-        const scope = configuration.policy.scope;
         recordCallContext(
-          scope?.project ?? scope?.group ?? scope?.namespace ?? scope?.projects?.[0],
+          scopeLabel(configuration.policy.scope),
           GITLAB_READ_ONLY_MODE || configuration.policy.readOnly,
         );
       }

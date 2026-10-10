@@ -6,7 +6,7 @@
 
 import { GITLAB_BASE_URL } from '../../config';
 import { currentCaller, getConfigurationService, resolveCaller } from '../../configuration';
-import { toolRestriction } from '../../configuration/policy';
+import { scopeLabel, toolRestriction } from '../../configuration/policy';
 import { getTokenContext } from '../../oauth/token-context';
 import { isToolAvailableForScopes } from '../../services/TokenScopeDetector';
 import { executeWhoami } from './whoami';
@@ -92,7 +92,7 @@ export async function checkConnection(): Promise<ConnectionCheck> {
     authenticated: whoami.user !== null,
     readOnly: whoami.server.readOnlyMode || resolved.policy.readOnly,
     preset: resolved.policy.presetName ?? null,
-    scope: scope?.project ?? scope?.group ?? scope?.namespace ?? null,
+    scope: scopeLabel(scope) ?? null,
     availableTools,
     warnings,
     recommendations,

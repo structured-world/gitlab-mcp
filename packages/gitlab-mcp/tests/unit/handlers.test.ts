@@ -3079,10 +3079,13 @@ describe('handlers', () => {
         { sessionId: 'sess-1' },
       );
 
+      // Read in GitLab's largest pages: the scope filters the rows after GitLab paged them.
       expect(mockRegistryManager.executeTool.mock.calls[0][1]).toEqual({
         action: 'list',
         group_id: 'team',
         include_subgroups: true,
+        page: 1,
+        per_page: 100,
       });
       expect(JSON.parse(search.content?.[0].text ?? '')).toEqual([
         { path_with_namespace: 'team/app' },
@@ -3119,6 +3122,108 @@ describe('handlers', () => {
         { id: 7, path_with_namespace: 'team/app', name: 'App' },
       ]);
       expect(JSON.parse(filtered.content?.[0].text ?? '')).toEqual([]);
+    });
+
+    // GitLab paginates before the scope filters: a page of mostly outside rows must not hide
+    // the matching ones on later pages.
+    it('reads further pages until the scoped page is filled', async () => {
+      await service().updateAccount(staticCaller(), {
+        scope: { type: 'group', path: 'team', includeSubgroups: true },
+      });
+      const outside = Array.from({ length: 100 }, (_, i) => ({
+        path_with_namespace: `other/p${i}`,
+      }));
+      mockRegistryManager.executeTool.mockImplementation(
+        async (_tool: string, args: Record<string, unknown>) =>
+          args.page === 1 ? outside : [{ path_with_namespace: 'team/app' }],
+      );
+
+      const result = await callToolHandler(
+        { params: { name: 'browse_projects', arguments: { action: 'search', q: 'app' } } },
+        { sessionId: 'sess-1' },
+      );
+
+      expect(mockRegistryManager.executeTool.mock.calls.map(([, args]) => args)).toEqual([
+        { action: 'search', q: 'app', page: 1, per_page: 100 },
+        { action: 'search', q: 'app', page: 2, per_page: 100 },
+      ]);
+      expect(JSON.parse(result.content?.[0].text ?? '')).toEqual([
+        { path_with_namespace: 'team/app' },
+      ]);
+    });
+
+    it('returns the requested scoped page', async () => {
+      await service().updateAccount(staticCaller(), {
+        scope: { type: 'group', path: 'team', includeSubgroups: true },
+      });
+      const rows = Array.from({ length: 5 }, (_, i) => ({ path_with_namespace: `team/p${i}` }));
+      mockRegistryManager.executeTool.mockResolvedValue(rows);
+
+      const result = await callToolHandler(
+        {
+          params: {
+            name: 'browse_projects',
+            arguments: { action: 'search', q: 'p', page: 2, per_page: 2 },
+          },
+        },
+        { sessionId: 'sess-1' },
+      );
+
+      expect(JSON.parse(result.content?.[0].text ?? '')).toEqual([
+        { path_with_namespace: 'team/p2' },
+        { path_with_namespace: 'team/p3' },
+      ]);
+    });
+
+    // List filters the scope's own projects cannot apply keep GitLab's listing semantics.
+    it('keeps list filters for a project scope by filtering GitLab listing pages', async () => {
+      await service().updateAccount(staticCaller(), {
+        scope: { type: 'project', path: 'team/app', includeSubgroups: false },
+      });
+      mockRegistryManager.executeTool.mockResolvedValue([
+        { path_with_namespace: 'other/api' },
+        { path_with_namespace: 'team/app' },
+      ]);
+
+      const result = await callToolHandler(
+        { params: { name: 'browse_projects', arguments: { action: 'list', archived: true } } },
+        { sessionId: 'sess-1' },
+      );
+
+      expect(mockRegistryManager.executeTool.mock.calls[0].slice(0, 2)).toEqual([
+        'browse_projects',
+        { action: 'list', archived: true, page: 1, per_page: 100 },
+      ]);
+      expect(JSON.parse(result.content?.[0].text ?? '')).toEqual([
+        { path_with_namespace: 'team/app' },
+      ]);
+    });
+
+    // A scope project that is gone is left out; any other failure is reported, not hidden
+    // behind a shorter list.
+    it('reports a scope project GitLab failed to return', async () => {
+      await service().updateAccount(staticCaller(), {
+        scope: { type: 'project', path: 'team/app', includeSubgroups: false },
+      });
+      mockRegistryManager.executeTool.mockRejectedValueOnce(
+        new Error('GitLab API error: 503 Service Unavailable'),
+      );
+      const failed = await callToolHandler(
+        { params: { name: 'browse_projects', arguments: { action: 'list' } } },
+        { sessionId: 'sess-1' },
+      );
+      mockRegistryManager.executeTool.mockRejectedValueOnce(
+        new Error('GitLab API error: 404 Not Found'),
+      );
+      const gone = await callToolHandler(
+        { params: { name: 'browse_projects', arguments: { action: 'list' } } },
+        { sessionId: 'sess-1' },
+      );
+
+      expect(failed.isError).toBe(true);
+      expect(failed.content?.[0].text).toContain('503');
+      expect(gone.isError).toBeFalsy();
+      expect(JSON.parse(gone.content?.[0].text ?? '')).toEqual([]);
     });
 
     // Marking every todo done would also clear todos outside the scope: in a scoped chat

@@ -75,6 +75,8 @@ describe('checkConnection', () => {
       {
         load: async (name: string) => {
           if (name === 'readonly') return { read_only: true };
+          if (name === 'several-projects') return { scope: { projects: ['team/app', 'team/api'] } };
+          if (name === 'several-groups') return { scope: { groups: ['team', 'ops'] } };
           throw new Error(`Preset not found: ${name}`);
         },
       },
@@ -149,6 +151,18 @@ describe('checkConnection', () => {
     const check = await runWithCaller(alice, () => checkConnection());
 
     expect(check).toMatchObject({ preset: null, scope: 'team/app', readOnly: false });
+  });
+
+  // A preset scope given as a list still restricts calls, so it is reported too.
+  it.each([
+    ['several-projects', 'team/app'],
+    ['several-groups', 'team'],
+  ])('reports the scope of preset %s', async (preset, expected) => {
+    save({ preset });
+
+    const check = await runWithCaller(alice, () => checkConnection());
+
+    expect(check.scope).toBe(expected);
   });
 
   it('reports read-only mode of the server', async () => {

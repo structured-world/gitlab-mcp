@@ -5,8 +5,10 @@
  */
 
 import {
+  isFilteredListing,
   scopedArgs,
   scopedResult,
+  scopeProjectsOnly,
   targetlessRestriction,
 } from '../../../src/configuration/scope-targets';
 import { ScopeEnforcer } from '../../../src/profiles/scope-enforcer';
@@ -42,6 +44,21 @@ describe('scopedArgs', () => {
     });
   });
 
+  // Without a target namespace GitLab forks into the user's own namespace.
+  it('forks into the scope group when no target namespace is named', () => {
+    expect(scopedArgs('manage_project', { action: 'fork', project_id: 'team/app' }, group)).toEqual(
+      { action: 'fork', project_id: 'team/app', namespace_path: 'team' },
+    );
+  });
+
+  // A vulnerability listing without a target is instance-wide.
+  it.each([
+    [group, { action: 'list', group_id: 'team' }],
+    [project, { action: 'list', project_id: 'team/app' }],
+  ])('lists the vulnerabilities of the scope %j', (scope, expected) => {
+    expect(scopedArgs('browse_vulnerabilities', { action: 'list' }, scope)).toEqual(expected);
+  });
+
   it('lists the merge requests of the scope project', () => {
     expect(
       scopedArgs('browse_merge_requests', { action: 'list', state: 'opened' }, project),
@@ -58,8 +75,39 @@ describe('scopedArgs', () => {
     ['browse_projects', { action: 'list' }, several],
     ['browse_projects', { action: 'list' }, { project: 'team/app', group: 'other' }],
     ['browse_issues', { action: 'list' }, group],
+    ['browse_vulnerabilities', { action: 'list', project_id: 'team/app' }, group],
+    ['browse_vulnerabilities', { action: 'get', id: 'gid://x' }, group],
+    ['manage_project', { action: 'create', name: 'app', namespace: 'team/sub' }, group],
+    ['manage_project', { action: 'delete', project_id: 'team/app' }, group],
+    ['manage_project', { action: 'create', name: 'app' }, project],
   ])('leaves %s %j under %j as it is', (tool, args, scope) => {
     expect(scopedArgs(tool, args, scope)).toBe(args);
+  });
+});
+
+describe('scopeProjectsOnly', () => {
+  it.each([
+    [{ project: 'team/app' }, ['team/app']],
+    [{ projects: ['team/app', 'team/api'] }, ['team/app', 'team/api']],
+    [{ project: 'team/app', projects: ['team/api'] }, ['team/app', 'team/api']],
+    [{}, null],
+    [{ group: 'team' }, null],
+    [{ projects: ['team/app'], groups: ['ops'] }, null],
+  ])('reads %j as the projects %j', (scope, expected) => {
+    expect(scopeProjectsOnly(scope)).toEqual(expected);
+  });
+});
+
+describe('isFilteredListing', () => {
+  it.each([
+    ['browse_projects', { action: 'search' }, true],
+    ['browse_merge_requests', { action: 'list' }, true],
+    ['browse_merge_requests', { action: 'list', project_id: 'team/app' }, false],
+    ['browse_todos', { action: 'list' }, true],
+    ['browse_todos', { action: 'list', project_id: 7 }, false],
+    ['browse_issues', { action: 'list' }, false],
+  ])('%s %j is filtered: %s', (tool, args, expected) => {
+    expect(isFilteredListing(tool, args)).toBe(expected);
   });
 });
 
@@ -82,9 +130,23 @@ describe('targetlessRestriction', () => {
   it.each([
     ['manage_project', { action: 'create', name: 'app' }, project],
     ['manage_project', { action: 'create', name: 'app' }, several],
+    ['manage_project', { action: 'fork', project_id: 'team/app' }, project],
     ['manage_namespace', { action: 'create', name: 'Team', path: 'team2' }, group],
   ])('refuses %s %j under %j', (tool, args, scope) => {
     expect(targetlessRestriction(tool, args, scope)).toMatch(/outside the working scope/);
+  });
+
+  it('refuses a vulnerability listing a scope of several targets cannot narrow', () => {
+    expect(targetlessRestriction('browse_vulnerabilities', { action: 'list' }, several)).toMatch(
+      /list them for one of them/,
+    );
+  });
+
+  // A group's vulnerability list always covers its subgroups.
+  it('refuses a vulnerability listing under a group scope without subgroups', () => {
+    expect(targetlessRestriction('browse_vulnerabilities', { action: 'list' }, groupOnly)).toMatch(
+      /subgroups/,
+    );
   });
 
   it.each([
@@ -93,6 +155,8 @@ describe('targetlessRestriction', () => {
     ['browse_projects', { action: 'list' }, several],
     ['manage_project', { action: 'create', name: 'app' }, group],
     ['manage_project', { action: 'create', name: 'app', namespace: 'team/sub' }, project],
+    ['manage_project', { action: 'fork', project_id: 'team/app', namespace_path: 'x' }, project],
+    ['manage_project', { action: 'fork', project_id: 'team/app' }, group],
     ['manage_namespace', { action: 'create', name: 'Sub', path: 'sub', parent_id: 7 }, group],
   ])('allows %s %j under %j', (tool, args, scope) => {
     expect(targetlessRestriction(tool, args, scope)).toBeNull();

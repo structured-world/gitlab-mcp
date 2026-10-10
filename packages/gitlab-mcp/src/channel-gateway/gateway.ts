@@ -129,7 +129,8 @@ export class ChannelGateway {
       const catalog = (await this.readDownstream('tools/list', (client) =>
         client.listTools(request.params),
       )) as ListToolsResult;
-      this.recordCatalogReads(catalog, generation);
+      const complete = !request.params?.cursor && !catalog.nextCursor;
+      this.recordCatalogReads(catalog, generation, complete);
       return catalog;
     });
     this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
@@ -149,13 +150,23 @@ export class ChannelGateway {
     });
   }
 
-  private recordCatalogReads(catalog: ListToolsResult, generation: number): void {
+  private recordCatalogReads(
+    catalog: ListToolsResult,
+    generation: number,
+    complete: boolean,
+  ): void {
     for (const tool of catalog.tools) {
       const known = this.catalogReads.get(tool.name);
       if (known && known.generation > generation) continue;
       // A tool without the annotation is classified by its name, as before it was listed.
       const read = tool.annotations?.readOnlyHint ?? isReadCall(tool.name);
       this.catalogReads.set(tool.name, { read, generation });
+    }
+    // The whole catalog in one answer: a tool it no longer lists loses its verdict. A page
+    // of a paginated catalog cannot tell, the tool may be on another page.
+    if (!complete) return;
+    for (const [name, known] of this.catalogReads) {
+      if (known.generation < generation) this.catalogReads.delete(name);
     }
   }
 

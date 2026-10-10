@@ -36,7 +36,8 @@ settings, and a chat override never leaks into another chat.
 | `tools_<group>` | Turn a tool group off or on, for example `tools_wiki` or `tools_pipelines`. Groups the administrator turned off are not offered. |
 
 The effective restrictions combine all layers: a chat value replaces the account value for
-that chat, and read-only from any layer (including the preset) wins.
+that chat. Read-only mode set by the server administrator or by the selected preset always
+applies; a chat cannot turn it off.
 
 Restrictions are applied when a tool runs, not only to the tool list: a direct call to a
 tool the settings turn off, or to a project or group outside the working scope, is refused
@@ -45,15 +46,17 @@ are refused under it.
 
 A listing or search that names no project or group reads the working scope instead of
 everything the account can see: a global search becomes a search of the scope's group or
-project, a project listing lists the scope's group, a cross-project merge request listing
-lists the scope's project, and results that cannot be filtered at GitLab (project listings
-and searches, including projects only shared with the scope's group, todos, merge requests
-under a group scope) are filtered to the scope. A global search is refused under a scope of
-several projects or groups, and under a group scope without subgroups (GitLab's group
-search always includes them); search within one project or group instead. `manage_todos
+project, a project listing lists the scope's group (or the scope's own projects), a
+cross-project merge request listing and a vulnerability listing name the scope's target.
+Results that cannot be filtered at GitLab (project listings and searches, including
+projects only shared with the scope's group, todos, merge requests under a group scope)
+are filtered to the scope, reading further GitLab pages until the requested page is full
+(up to 1000 rows per call). A global search or vulnerability listing is refused under a
+scope of several projects or groups, and under a group scope without subgroups (GitLab's
+group results always include them); use one project or group instead. `manage_todos
 mark_all_done` marks only the scope's pending todos done and leaves the others pending. A
-project created without a namespace goes into the scope's group; with no single group to
-put it in, and for a group without a parent, the call is refused.
+project created or forked without a namespace goes into the scope's group; with no single
+group to put it in, and for a group without a parent, the call is refused.
 
 The working scope is a focus, not an access boundary: the user sets and clears it. Calls
 that name an object only by its global id (a work item or todo id) are not checked against
@@ -117,7 +120,8 @@ recommendations, and `find_scope_targets` finds projects and groups to scope to.
 
 | Deployment | Account settings are kept in |
 |------------|------------------------------|
-| OAuth with file or PostgreSQL session storage (`OAUTH_STORAGE_TYPE`) | The session storage, shared by every replica that uses it |
+| OAuth with PostgreSQL session storage | The session storage, shared by every replica that uses it |
+| OAuth with file session storage | The session storage file. File storage serves one server process: replicas need PostgreSQL |
 | OAuth with sessions in memory (the default), or a local server with a static token | `~/.config/gitlab-mcp/settings.json` of the user running the server, shared by every server process of that user; settings survive a restart even though memory sessions do not |
 
 Writes are compare-and-set: two chats editing different settings at the same time both

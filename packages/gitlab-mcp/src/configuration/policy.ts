@@ -7,7 +7,7 @@
 import type { Preset, ScopeConfig } from '../profiles/types';
 import { enforceArgsScope, ScopeEnforcer, ScopeViolationError } from '../profiles/scope-enforcer';
 import type { AccountSettings, WorkingScope } from './types';
-import { targetlessRestriction } from './scope-targets';
+import { scopeCheckArgs, targetlessRestriction } from './scope-targets';
 
 /** A session's choice to work without the account's default scope. */
 export const EVERYWHERE = 'everywhere';
@@ -47,6 +47,22 @@ export const CONFIGURATION_TOOLS: ReadonlySet<string> = new Set([
   // Choosing a new scope means searching outside the current one.
   'find_scope_targets',
 ]);
+
+/**
+ * Tools settings never restrict: the configuration tools, and the account identity the host
+ * reads to know whose connection it is. Unlike the configuration tools, the identity needs
+ * GitLab, so it does not answer while GitLab is unreachable.
+ */
+function isExemptFromSettings(name: string): boolean {
+  return CONFIGURATION_TOOLS.has(name) || name === 'get_profile';
+}
+
+/** The scope's first project or group, for reports; undefined when nothing is scoped. */
+export function scopeLabel(scope: ScopeConfig | undefined): string | undefined {
+  return (
+    scope?.project ?? scope?.group ?? scope?.namespace ?? scope?.projects?.[0] ?? scope?.groups?.[0]
+  );
+}
 
 export function scopeConfigOf(scope: WorkingScope): ScopeConfig {
   return scope.type === 'project'
@@ -111,7 +127,7 @@ export interface ToolFacts {
 
 /** Why the policy hides a tool from the caller, or null when it may use it. */
 export function toolRestriction(policy: EffectivePolicy, tool: ToolFacts): string | null {
-  if (CONFIGURATION_TOOLS.has(tool.name)) return null;
+  if (isExemptFromSettings(tool.name)) return null;
   if (policy.readOnly && !tool.readOnly) return 'read-only mode is on';
   if (tool.group !== undefined && policy.disabledGroups.has(tool.group)) {
     return `the '${tool.group}' tool group is turned off`;
@@ -136,7 +152,7 @@ export function callRestriction(
 ): string | null {
   const restriction = toolRestriction(policy, tool);
   if (restriction) return restriction;
-  if (CONFIGURATION_TOOLS.has(tool.name)) return null;
+  if (isExemptFromSettings(tool.name)) return null;
   const action = typeof args.action === 'string' ? args.action : undefined;
   if (action !== undefined && policy.deniedActions.get(tool.name)?.has(action)) {
     return `preset '${policy.presetName}' denies the '${action}' action`;
@@ -148,7 +164,7 @@ export function callRestriction(
   // is a project or group access token, which GitLab enforces on every call.
   if (policy.scopeEnforcer) {
     try {
-      enforceArgsScope(policy.scopeEnforcer, args);
+      enforceArgsScope(policy.scopeEnforcer, scopeCheckArgs(tool.name, args));
     } catch (error: unknown) {
       if (error instanceof ScopeViolationError) return error.message;
       throw error;

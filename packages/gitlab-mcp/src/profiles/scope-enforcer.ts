@@ -67,17 +67,28 @@ function getScopeDescription(scope: ScopeConfig): string {
 /**
  * Normalize a project path for comparison
  *
+ * - Decodes a URL-encoded path ("group%2Fproject"), which tools accept as well
  * - Removes leading/trailing slashes
  * - Converts to lowercase
  * - Handles numeric IDs (returns as-is)
  */
 function normalizeProjectPath(path: string): string {
-  const trimmed = path.trim().replace(/^\/+|\/+$/g, '');
+  const trimmed = decodePath(path.trim()).replace(/^\/+|\/+$/g, '');
   // If it's a numeric ID, return as-is
   if (/^\d+$/.test(trimmed)) {
     return trimmed;
   }
   return trimmed.toLowerCase();
+}
+
+/** A URL-encoded path decoded; a malformed escape is kept as written. */
+function decodePath(path: string): string {
+  if (!path.includes('%')) return path;
+  try {
+    return decodeURIComponent(path);
+  } catch {
+    return path;
+  }
 }
 
 /**

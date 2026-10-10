@@ -6,8 +6,10 @@
 import { loadOAuthConfig } from '../../../src/oauth/config';
 import { runWithTokenContext } from '../../../src/oauth/token-context';
 import {
+  APP_PANEL_SECURITY_SCHEMES,
   OAUTH_SECURITY_SCHEMES,
   isGitLabAuthFailure,
+  resourceScopeRejection,
   isGitLabInsufficientScope,
   toolScopeRejection,
   withReauthChallenge,
@@ -113,6 +115,41 @@ describe('tool authorization contract', () => {
       expect((result?._meta?.['mcp/www_authenticate'] as string[])[0]).toContain(
         'resource_metadata="https://mcp.example.com/.well-known/oauth-protected-resource/mcp"',
       );
+    });
+  });
+
+  describe('resourceScopeRejection', () => {
+    const context = {
+      gitlabToken: 'fixture-only',
+      gitlabUserId: 1,
+      gitlabUsername: 'u',
+      sessionId: 's',
+      apiUrl: 'https://gitlab.example.com',
+    };
+
+    it('lets reads without an OAuth token context through', () => {
+      expect(resourceScopeRejection()).toBeUndefined();
+    });
+
+    // RFC 6750 section 3.1: the challenge names the scope, at the default /mcp resource when
+    // the request recorded none.
+    it('refuses a tools-only token with a challenge naming mcp:resources', async () => {
+      const error = await runWithTokenContext({ ...context, mcpScopes: ['mcp:tools'] }, () =>
+        resourceScopeRejection(),
+      );
+
+      expect(error?.message).toContain('insufficient_scope');
+      expect((error?.data as { 'mcp/www_authenticate': string[] })['mcp/www_authenticate'][0]).toBe(
+        'Bearer resource_metadata="https://mcp.example.com/.well-known/oauth-protected-resource/mcp", ' +
+          'error="insufficient_scope", scope="mcp:resources", ' +
+          'error_description="This access token does not allow resource reads; reconnect to grant mcp:resources"',
+      );
+    });
+
+    it('declares both scopes for a tool that opens an app panel', () => {
+      expect(APP_PANEL_SECURITY_SCHEMES).toEqual([
+        { type: 'oauth2', scopes: ['mcp:tools', 'mcp:resources'] },
+      ]);
     });
   });
 

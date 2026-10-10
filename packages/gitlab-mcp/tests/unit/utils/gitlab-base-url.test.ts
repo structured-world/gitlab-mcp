@@ -37,6 +37,15 @@ describe('getGitLabBaseUrl', () => {
     expect(getGitLabBaseUrl()).toBe('https://other.example.com');
   });
 
+  // Every source yields a base URL without a trailing slash or /api/v4, so the REST paths
+  // built on it stay well-formed.
+  it("normalizes the OAuth token's instance URL", () => {
+    mockOAuth = true;
+    mockContextUrl = 'https://other.example.com/api/v4/';
+
+    expect(getGitLabBaseUrl()).toBe('https://other.example.com');
+  });
+
   it("uses the instance the server's token works with now", () => {
     setActiveInstanceSource(() => 'https://switched.example.com');
 

@@ -480,7 +480,9 @@ export class FileStorageBackend implements SessionStorageBackend {
     expectedVersion: number,
   ): Promise<AccountSettingsRecord | undefined> {
     // Written through and undone when the write fails: settings reported as not saved
-    // must not apply now or after a restart.
+    // must not apply now or after a restart. The compare-and-set runs against this
+    // process's state: file storage serves one process, as for its sessions, and replicas
+    // that share storage use PostgreSQL.
     let previous: AccountSettingsRecord | undefined;
     return this.transition(
       async () => {

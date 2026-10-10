@@ -27,7 +27,7 @@ export function getGitLabBaseUrl(): string {
   if (isOAuthEnabled()) {
     const apiUrl = getGitLabApiUrlFromContext();
     if (apiUrl) {
-      return apiUrl;
+      return normalizeInstanceUrl(apiUrl);
     }
     logWarn('OAuth mode: no API URL in context, falling back to global config');
   }

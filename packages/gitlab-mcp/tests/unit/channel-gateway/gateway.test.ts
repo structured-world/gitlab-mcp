@@ -232,6 +232,34 @@ describe('ChannelGateway', () => {
     }
   });
 
+  // A complete catalog that no longer lists a tool drops its verdict; a page of a paginated
+  // catalog does not, since the tool may be on another page.
+  it.each([
+    [undefined, false],
+    ['page-2', true],
+  ])('forgets a removed tool after a complete catalog (cursor %s)', async (cursor, replayed) => {
+    mockClientListTools
+      .mockResolvedValueOnce({ tools: [{ name: 'run_task', annotations: { readOnlyHint: true } }] })
+      .mockResolvedValueOnce({ tools: [{ name: 'other_tool' }] });
+    const gw = new ChannelGateway(baseConfig);
+    await gw.start();
+    await listTools();
+    await mockServerHandlers.get(ListToolsRequestSchema)!({ params: cursor ? { cursor } : {} });
+    dropLinkOnNextCall();
+
+    try {
+      if (replayed) {
+        expect(await callTool('run_task')).toEqual(mcp({ replayed: true }));
+      } else {
+        await expect(callTool('run_task')).rejects.toThrow();
+        expect(mockClientCallTool).toHaveBeenCalledTimes(1);
+      }
+    } finally {
+      mockClientCallTool.mockReset();
+      await gw.stop();
+    }
+  });
+
   // Two catalog reads in flight: the older answer arriving last does not undo the newer one.
   it('keeps the newest catalog verdict when catalog answers arrive out of order', async () => {
     let answerOlder: (value: unknown) => void = () => {};

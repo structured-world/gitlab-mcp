@@ -11,6 +11,7 @@ import { logInfo, logError, logWarn } from '../../logger';
 import { loadOAuthConfig } from '../config';
 import { sessionStore } from '../session-store';
 import type { RegisteredOAuthClient } from '../types';
+import { TOKEN_ENDPOINT_AUTH_METHODS } from '../resource';
 
 /**
  * Registration is anonymous and durable (RFC 7591 section 3 allows an open endpoint), so
@@ -87,6 +88,15 @@ export async function registerHandler(req: Request, res: Response): Promise<void
       grant_types = ['authorization_code', 'refresh_token'],
       response_types = ['code'],
     } = body;
+
+    // RFC 7591 section 3.2.2: only methods the token endpoint authenticates are registered.
+    if (!TOKEN_ENDPOINT_AUTH_METHODS.includes(token_endpoint_auth_method)) {
+      res.status(400).json({
+        error: 'invalid_client_metadata',
+        error_description: `token_endpoint_auth_method must be one of ${TOKEN_ENDPOINT_AUTH_METHODS.join(', ')}`,
+      });
+      return;
+    }
 
     // Validate required fields
     if (!redirect_uris || !Array.isArray(redirect_uris) || redirect_uris.length === 0) {

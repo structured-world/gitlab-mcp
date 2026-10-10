@@ -312,7 +312,7 @@ export class SessionStore {
     await this.backend.markClientUsed(clientId);
   }
 
-  /** Keep only the newest `keep` never-used registrations of one source. */
+  /** How many clients `registeredFrom` registered at or after `since` (epoch ms), used or not. */
   async countClientsRegisteredSince(registeredFrom: string, since: number): Promise<number> {
     return this.backend.countClientsRegisteredSince(registeredFrom, since);
   }

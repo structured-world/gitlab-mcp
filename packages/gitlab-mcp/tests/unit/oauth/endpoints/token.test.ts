@@ -43,6 +43,11 @@ jest.mock('../../../../src/oauth/instance-app', () => ({
   oauthAppFor: jest.fn(),
 }));
 
+// Registered clients; unregistered ones (the device flow) are public.
+jest.mock('../../../../src/oauth/endpoints/register', () => ({
+  getRegisteredClient: jest.fn().mockResolvedValue(undefined),
+}));
+
 jest.mock('../../../../src/oauth/endpoints/metadata', () => ({
   getBaseUrl: jest.fn(() => 'http://localhost:3333'),
 }));
@@ -82,6 +87,10 @@ const mockIsTokenExpiringSoon = isTokenExpiringSoon as jest.MockedFunction<
 const mockRefreshGitLabToken = refreshGitLabToken as jest.MockedFunction<typeof refreshGitLabToken>;
 import { oauthAppFor } from '../../../../src/oauth/instance-app';
 const mockOauthAppFor = oauthAppFor as jest.MockedFunction<typeof oauthAppFor>;
+import { getRegisteredClient } from '../../../../src/oauth/endpoints/register';
+const mockGetRegisteredClient = getRegisteredClient as jest.MockedFunction<
+  typeof getRegisteredClient
+>;
 const sessionApp = {
   baseUrl: 'https://gitlab.example.com',
   clientId: 'test-client-id',
@@ -102,8 +111,12 @@ describe('OAuth Token Endpoint', () => {
   };
 
   // Helper to create mock request
-  const createMockRequest = (body: Record<string, unknown> = {}): Partial<Request> => ({
+  const createMockRequest = (
+    body: Record<string, unknown> = {},
+    headers: Record<string, string> = {},
+  ): Partial<Request> => ({
     body,
+    headers,
     protocol: 'http',
     get: jest.fn((header: string): string | undefined => {
       if (header === 'host') return 'localhost:3333';
@@ -116,6 +129,7 @@ describe('OAuth Token Endpoint', () => {
     const res: Partial<Response> = {
       json: jest.fn().mockReturnThis(),
       status: jest.fn().mockReturnThis(),
+      set: jest.fn().mockReturnThis(),
     };
     return res;
   };
@@ -130,6 +144,8 @@ describe('OAuth Token Endpoint', () => {
     mockSessionStore.releaseGitLabRefresh.mockResolvedValue(undefined);
     mockSessionStore.markClientUsed.mockResolvedValue(undefined);
     mockOauthAppFor.mockResolvedValue(sessionApp);
+    // Clients are public unless a test registers one with a secret.
+    mockGetRegisteredClient.mockResolvedValue(undefined);
   });
 
   describe('tokenHandler - General', () => {
@@ -566,6 +582,131 @@ describe('OAuth Token Endpoint', () => {
           expect(mockSessionStore.consumeAuthCode).not.toHaveBeenCalled();
         },
       );
+
+      // RFC 6749 section 2.3.1: a confidential client registered with a secret authenticates
+      // with it, in the Authorization header (client_secret_basic) or the form
+      // (client_secret_post); a public client sends only its client_id.
+      describe('client authentication', () => {
+        const confidential = (method: 'client_secret_basic' | 'client_secret_post') => ({
+          client_id: 'test-client',
+          client_secret: 's3cret/+',
+          redirect_uris: ['https://client.example.com/callback'],
+          token_endpoint_auth_method: method,
+          grant_types: ['authorization_code', 'refresh_token'],
+          response_types: ['code'],
+          created_at: 1,
+        });
+        // RFC 6749 section 2.3.1: id and secret are form-encoded before base64.
+        const basic = (id: string, secret: string) =>
+          `Basic ${Buffer.from(`${encodeURIComponent(id)}:${encodeURIComponent(secret)}`).toString('base64')}`;
+        const exchangeWith = (body: Record<string, unknown>, headers: Record<string, string>) =>
+          createMockRequest(
+            {
+              grant_type: 'authorization_code',
+              code: 'valid-code',
+              code_verifier: 'correct-verifier',
+              ...body,
+            },
+            headers,
+          ) as Request;
+
+        it('accepts client_secret_basic credentials without client_id in the form', async () => {
+          mockGetRegisteredClient.mockResolvedValue(confidential('client_secret_basic'));
+          const res = createMockResponse() as Response;
+
+          await tokenHandler(
+            exchangeWith({}, { authorization: basic('test-client', 's3cret/+') }),
+            res,
+          );
+
+          expect(res.json).toHaveBeenCalledWith(
+            expect.objectContaining({ access_token: 'mcp-access-token-jwt' }),
+          );
+        });
+
+        it('accepts client_secret_post credentials', async () => {
+          mockGetRegisteredClient.mockResolvedValue(confidential('client_secret_post'));
+          const res = createMockResponse() as Response;
+
+          await tokenHandler(
+            exchangeWith({ client_id: 'test-client', client_secret: 's3cret/+' }, {}),
+            res,
+          );
+
+          expect(res.json).toHaveBeenCalledWith(
+            expect.objectContaining({ access_token: 'mcp-access-token-jwt' }),
+          );
+        });
+
+        it.each([
+          ['a wrong secret', { authorization: basic('test-client', 'wrong') }, {}],
+          ['no secret', {}, { client_id: 'test-client' }],
+        ])(
+          'refuses a confidential client with %s before the code is consumed',
+          async (_case, headers, body) => {
+            mockGetRegisteredClient.mockResolvedValue(confidential('client_secret_basic'));
+            const res = createMockResponse() as Response;
+
+            await tokenHandler(exchangeWith(body, headers), res);
+
+            expect(res.status).toHaveBeenCalledWith(401);
+            expect(res.json).toHaveBeenCalledWith({
+              error: 'invalid_client',
+              error_description: 'Client authentication failed',
+            });
+            expect(mockSessionStore.consumeAuthCode).not.toHaveBeenCalled();
+          },
+        );
+
+        // RFC 6749 section 5.2: a client that tried the Authorization header is told the
+        // scheme; malformed credentials are refused like wrong ones.
+        it.each([
+          ['without a separator', `Basic ${Buffer.from('no-separator').toString('base64')}`],
+          ['with broken encoding', `Basic ${Buffer.from('%E0%A4%A:x').toString('base64')}`],
+        ])('refuses a Basic header %s with a challenge', async (_case, authorization) => {
+          const res = createMockResponse() as Response;
+
+          await tokenHandler(exchangeWith({}, { authorization }), res);
+
+          expect(res.status).toHaveBeenCalledWith(401);
+          expect(res.set).toHaveBeenCalledWith('WWW-Authenticate', 'Basic realm="gitlab-mcp"');
+          expect(mockSessionStore.consumeAuthCode).not.toHaveBeenCalled();
+        });
+
+        it('refuses a form client_id that differs from the Authorization header', async () => {
+          const res = createMockResponse() as Response;
+
+          await tokenHandler(
+            exchangeWith(
+              { client_id: 'other-client' },
+              { authorization: basic('test-client', 's3cret/+') },
+            ),
+            res,
+          );
+
+          expect(res.json).toHaveBeenCalledWith({
+            error: 'invalid_request',
+            error_description: 'client_id does not match the Authorization header',
+          });
+        });
+
+        // RFC 6749 section 2.3: a client must not use more than one authentication method.
+        it('refuses credentials in both the header and the form', async () => {
+          mockGetRegisteredClient.mockResolvedValue(confidential('client_secret_basic'));
+          const res = createMockResponse() as Response;
+
+          await tokenHandler(
+            exchangeWith(
+              { client_id: 'test-client', client_secret: 's3cret/+' },
+              { authorization: basic('test-client', 's3cret/+') },
+            ),
+            res,
+          );
+
+          expect(res.status).toHaveBeenCalledWith(400);
+          expect(mockSessionStore.consumeAuthCode).not.toHaveBeenCalled();
+        });
+      });
 
       // Recording the client as used only stops its registration from expiring: a storage
       // failure there must not withhold tokens the exchange already issued.

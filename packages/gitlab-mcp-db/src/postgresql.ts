@@ -249,9 +249,15 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
       };
       const { PrismaPg } = await import('@prisma/adapter-pg');
 
-      // Prisma 7 connects through a driver adapter; the client has no built-in engine.
+      // Prisma 7 connects through a driver adapter; the client has no built-in engine. The
+      // adapter queries `public` unless told otherwise, while Prisma Migrate creates the
+      // tables in the URL's `schema` parameter: both must use the same schema.
+      const schema = new URL(this.connectionString).searchParams.get('schema') ?? undefined;
       this.prisma = new prismaModule.PrismaClient({
-        adapter: new PrismaPg({ connectionString: this.connectionString }),
+        adapter: new PrismaPg(
+          { connectionString: this.connectionString },
+          schema ? { schema } : undefined,
+        ),
       });
 
       // Connect and test

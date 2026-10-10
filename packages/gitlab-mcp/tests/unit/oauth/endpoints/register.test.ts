@@ -162,6 +162,24 @@ describe('OAuth Dynamic Client Registration', () => {
       );
     });
 
+    // RFC 7591 section 3.2.2: a method the token endpoint cannot authenticate is refused
+    // instead of registering a client whose credentials would never be checked.
+    it('rejects an unsupported token endpoint auth method', async () => {
+      mockReq.body = {
+        redirect_uris: ['https://example.com/callback'],
+        token_endpoint_auth_method: 'private_key_jwt',
+      };
+
+      await registerHandler(mockReq as Request, mockRes as Response);
+
+      expect(statusFn).toHaveBeenCalledWith(400);
+      expect(jsonFn).toHaveBeenCalledWith({
+        error: 'invalid_client_metadata',
+        error_description:
+          'token_endpoint_auth_method must be one of none, client_secret_basic, client_secret_post',
+      });
+    });
+
     it('should reject missing redirect_uris', async () => {
       mockReq.body = {
         client_name: 'Test Client',

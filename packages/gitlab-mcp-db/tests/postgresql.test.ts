@@ -17,6 +17,7 @@ jest.mock('@prisma/adapter-pg', () => ({
 }));
 
 import { PrismaClient } from '../generated/prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
 
 const createMockPrisma = () => ({
   $connect: jest.fn().mockResolvedValue(undefined),
@@ -153,6 +154,22 @@ describe('PostgreSQLStorageBackend', () => {
     expect(mockPrisma.$disconnect).toHaveBeenCalled();
 
     jest.useRealTimers();
+  });
+
+  // Prisma Migrate puts the tables in the URL's `schema`; the adapter must query the same
+  // schema, or every query targets `public` and finds no tables.
+  it('queries the schema named in the connection URL', async () => {
+    backend = new PostgreSQLStorageBackend({
+      connectionString: 'postgresql://db.example/x?schema=oauth',
+    });
+
+    await backend.initialize();
+
+    expect(PrismaPg).toHaveBeenCalledWith(
+      { connectionString: 'postgresql://db.example/x?schema=oauth' },
+      { schema: 'oauth' },
+    );
+    await backend.close();
   });
 
   it('refuses to start without a connection string', async () => {

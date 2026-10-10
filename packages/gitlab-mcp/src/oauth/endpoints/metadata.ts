@@ -10,7 +10,12 @@
 import { Request, Response } from 'express';
 import { HOST, PORT } from '../../config';
 import { loadOAuthConfig } from '../config';
-import { MCP_SCOPES, protectedResources, resourceForMetadataPath } from '../resource';
+import {
+  MCP_SCOPES,
+  TOKEN_ENDPOINT_AUTH_METHODS,
+  protectedResources,
+  resourceForMetadataPath,
+} from '../resource';
 
 /**
  * MCP Protocol version supported by this server
@@ -79,9 +84,9 @@ export function metadataHandler(_req: Request, res: Response): void {
     // OPTIONAL: Supported PKCE code challenge methods (S256 required for OAuth 2.1)
     code_challenge_methods_supported: ['S256'],
 
-    // OPTIONAL: Token endpoint authentication methods
-    // "none" for public clients (device flow with non-confidential apps)
-    token_endpoint_auth_methods_supported: ['none'],
+    // OPTIONAL: Token endpoint authentication methods: "none" for public clients (PKCE),
+    // and the secret of a client registered with one, in the header or the form
+    token_endpoint_auth_methods_supported: TOKEN_ENDPOINT_AUTH_METHODS,
 
     // OPTIONAL: Supported scopes
     scopes_supported: MCP_SCOPES,

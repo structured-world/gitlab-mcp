@@ -51,6 +51,16 @@ export function defaultResource(issuer: string): string {
   return protectedResources(issuer)[1];
 }
 
+/**
+ * Client authentication methods the token endpoint supports (advertised as
+ * `token_endpoint_auth_methods_supported`, the only ones /register accepts).
+ */
+export const TOKEN_ENDPOINT_AUTH_METHODS: readonly string[] = [
+  'none',
+  'client_secret_basic',
+  'client_secret_post',
+];
+
 /** MCP scopes this server grants (advertised as `scopes_supported`). */
 export const MCP_SCOPES: readonly string[] = ['mcp:tools', 'mcp:resources'];
 

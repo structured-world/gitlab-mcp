@@ -333,8 +333,15 @@ export class FileStorageBackend implements SessionStorageBackend {
   // GitLab issued once) are written through, so a crash cannot lose what was handed out.
   // Cleanup and MCP transport mappings stay debounced.
   async createSession(session: OAuthSession): Promise<void> {
-    await this.memory.createSession(session);
-    await this.persistNow();
+    // A session whose write failed was never returned to anyone: it is removed again.
+    await this.transition(
+      async () => {
+        await this.memory.createSession(session);
+        return true as const;
+      },
+      (created): created is true => created,
+      () => this.memory.deleteSession(session.id),
+    );
   }
 
   async getSession(sessionId: string): Promise<OAuthSession | undefined> {
@@ -349,19 +356,36 @@ export class FileStorageBackend implements SessionStorageBackend {
     return this.memory.getSessionByRefreshToken(refreshToken);
   }
 
-  async updateSession(sessionId: string, updates: Partial<OAuthSession>): Promise<boolean> {
-    const result = await this.memory.updateSession(sessionId, updates);
+  updateSession(sessionId: string, updates: Partial<OAuthSession>): Promise<boolean> {
     // Written through: updates carry tokens just handed to clients or replacing spent
-    // GitLab refresh tokens, which a crash must not lose.
-    if (result) await this.persistNow();
-    return result;
+    // GitLab refresh tokens, which a crash must not lose. An update whose write failed is
+    // undone, so tokens never handed out are not persisted by a later write.
+    const previous: Partial<OAuthSession> = {};
+    return this.transition(
+      async () => {
+        // The stored session is updated in place: copy the fields the update replaces.
+        const current = await this.memory.getSession(sessionId);
+        for (const key of Object.keys(updates) as Array<keyof OAuthSession>) {
+          Object.assign(previous, { [key]: current?.[key] });
+        }
+        return this.memory.updateSession(sessionId, updates);
+      },
+      (updated): updated is true => updated,
+      () => this.memory.updateSession(sessionId, previous),
+    );
   }
 
-  async deleteSession(sessionId: string): Promise<boolean> {
-    const result = await this.memory.deleteSession(sessionId);
-    // A revoked session must not come back after a crash.
-    if (result) await this.persistNow();
-    return result;
+  deleteSession(sessionId: string): Promise<boolean> {
+    // A revoked session must not come back after a crash; a revocation whose write failed
+    // restores the session, so the retry revokes it instead of finding nothing to revoke.
+    return this.transition(
+      async () => {
+        const removed = await this.memory.getSession(sessionId);
+        return (await this.memory.deleteSession(sessionId)) ? removed : undefined;
+      },
+      isPresent,
+      (removed) => this.memory.createSession(removed),
+    ).then((removed) => removed !== undefined);
   }
 
   async getAllSessions(): Promise<OAuthSession[]> {

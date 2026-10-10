@@ -174,7 +174,12 @@ describe('OAuth Metadata Endpoint', () => {
       metadataHandler(req, res);
 
       const metadata = (res.json as jest.Mock).mock.calls[0][0];
-      expect(metadata.token_endpoint_auth_methods_supported).toEqual(['none']);
+      // The methods /register accepts and /token authenticates.
+      expect(metadata.token_endpoint_auth_methods_supported).toEqual([
+        'none',
+        'client_secret_basic',
+        'client_secret_post',
+      ]);
     });
 
     it('should include supported scopes', () => {

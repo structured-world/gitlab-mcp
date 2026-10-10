@@ -359,6 +359,65 @@ describe('FileStorageBackend', () => {
       await restarted.close();
     });
 
+    // A revocation that could not be written reports a failure; the session must stay
+    // revoked-or-not consistently: still present, so the retry revokes it and a restart
+    // does not bring back a session the retry was told was already gone.
+    it('keeps a session whose deletion cannot be written', async () => {
+      const { session } = await seeded();
+      const open = failNextWrite();
+      try {
+        await expect(storage.deleteSession(session.id)).rejects.toThrow('EACCES');
+      } finally {
+        open.mockRestore();
+      }
+
+      expect((await storage.getSessionByRefreshToken(session.mcpRefreshToken))?.id).toBe(
+        session.id,
+      );
+      expect(await storage.deleteSession(session.id)).toBe(true);
+    });
+
+    // Tokens of an update that could not be written were never handed out: the session
+    // keeps its previous tokens, and no later write may persist the failed ones.
+    it('keeps the previous tokens when an update cannot be written', async () => {
+      const { session } = await seeded();
+      const open = failNextWrite();
+      try {
+        await expect(
+          storage.updateSession(session.id, {
+            mcpAccessToken: 'undisclosed-access',
+            mcpRefreshToken: 'undisclosed-refresh',
+          }),
+        ).rejects.toThrow('EACCES');
+      } finally {
+        open.mockRestore();
+      }
+      await storage.createSession(createTestSession({ id: 'later-write' }));
+      const restarted = await reloadAfterCrash();
+
+      expect(await storage.getSessionByToken('undisclosed-access')).toBeUndefined();
+      expect(await restarted.getSessionByRefreshToken('undisclosed-refresh')).toBeUndefined();
+      expect((await restarted.getSessionByRefreshToken(session.mcpRefreshToken))?.id).toBe(
+        session.id,
+      );
+      await restarted.close();
+    });
+
+    // A session whose creation could not be written was never returned to anyone.
+    it('drops a session whose creation cannot be written', async () => {
+      await seeded();
+      const open = failNextWrite();
+      try {
+        await expect(storage.createSession(createTestSession({ id: 'unwritten' }))).rejects.toThrow(
+          'EACCES',
+        );
+      } finally {
+        open.mockRestore();
+      }
+
+      expect(await storage.getSession('unwritten')).toBeUndefined();
+    });
+
     // Same for a consumption: the caller saw a failure, so the code stays redeemable.
     it('keeps a code whose consumption cannot be written', async () => {
       const { code } = await seeded();

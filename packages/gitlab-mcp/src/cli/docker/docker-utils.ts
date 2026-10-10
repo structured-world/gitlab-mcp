@@ -17,7 +17,6 @@ import {
   GitLabInstance,
   InstancesYaml,
   DEFAULT_DOCKER_CONFIG,
-  DEFAULT_DB_IMAGE,
   getConfigDir,
 } from './types';
 import { getContainerRuntime } from './container-runtime';
@@ -191,6 +190,22 @@ function sessionDatabaseUrl(config: DockerConfig): string | undefined {
   return undefined;
 }
 
+const CORE_IMAGE_REPOSITORY = 'ghcr.io/structured-world/gitlab-mcp';
+
+/**
+ * Image of a deployment that keeps sessions in PostgreSQL. Only the db image carries that
+ * backend, so the released core image is replaced by the db image of the same tag; any
+ * other image is taken as a db build already.
+ */
+function databaseImage(image: string): string {
+  if (image !== CORE_IMAGE_REPOSITORY && !image.startsWith(`${CORE_IMAGE_REPOSITORY}:`)) {
+    if (!image.startsWith(`${CORE_IMAGE_REPOSITORY}@`)) return image;
+    // A digest names one build of the core image; its db image has another digest.
+    throw new Error('Pin the gitlab-mcp-db image by tag or digest for a PostgreSQL deployment');
+  }
+  return image.replace(CORE_IMAGE_REPOSITORY, `${CORE_IMAGE_REPOSITORY}-db`);
+}
+
 /**
  * A URL as a literal .env value: Compose interpolates unquoted values (a "$" in a password
  * would be replaced) but keeps single-quoted ones as written. A single quote inside the
@@ -205,6 +220,7 @@ function envLiteralUrl(url: string): string {
  */
 export function generateDockerCompose(config: DockerConfig): string {
   const databaseUrl = sessionDatabaseUrl(config);
+  const image = databaseUrl ? databaseImage(config.image) : config.image;
   const environment = [
     'TRANSPORT=sse',
     'HOST=0.0.0.0',
@@ -216,8 +232,7 @@ export function generateDockerCompose(config: DockerConfig): string {
     version: '3.8',
     services: {
       'gitlab-mcp': {
-        // Only the db image carries the PostgreSQL backend
-        image: databaseUrl ? DEFAULT_DB_IMAGE : config.image,
+        image,
         container_name: config.containerName,
         ports: [`\${PORT:-${config.port}}:3333`],
         environment,
@@ -261,7 +276,7 @@ export function generateDockerCompose(config: DockerConfig): string {
     // first: podman-compose 1.6.0 on Podman 4.9.3 hangs on `service_healthy`
     // (https://github.com/containers/podman-compose/issues/1541).
     compose.services.migrate = {
-      image: DEFAULT_DB_IMAGE,
+      image,
       restart: 'no',
       working_dir: '/app/node_modules/@structured-world/gitlab-mcp-db',
       entrypoint: ['node', 'dist/src/migrate.js'],

@@ -977,7 +977,7 @@ describe('OAuth Token Endpoint', () => {
 
       it('reports invalid_grant without rotating when GitLab rejects the grant', async () => {
         mockRefreshGitLabToken.mockRejectedValue(
-          new GitLabOAuthHttpError('Failed to refresh token: 400 invalid_grant', 400),
+          new GitLabOAuthHttpError('Failed to refresh token: 400', 400, 'invalid_grant'),
         );
         const res = createMockResponse() as Response;
 
@@ -1180,7 +1180,9 @@ describe('OAuth Token Endpoint', () => {
       });
     });
 
-    it('should return invalid_grant when GitLab rejects the refresh with 401', async () => {
+    // invalid_client is the application's problem (RFC 6749 5.2), not a revoked grant: the
+    // account stays linked and the client retries.
+    it('keeps the account linked when GitLab rejects the application with 401', async () => {
       const existingSession = {
         id: 'session-123',
         mcpAccessToken: 'old-access-token',
@@ -1200,7 +1202,7 @@ describe('OAuth Token Endpoint', () => {
       mockSessionStore.getSessionByRefreshToken.mockResolvedValue(existingSession);
       mockIsTokenExpiringSoon.mockReturnValue(true);
       mockRefreshGitLabToken.mockRejectedValue(
-        new GitLabOAuthHttpError('Failed to refresh token: 401 invalid_client', 401),
+        new GitLabOAuthHttpError('Failed to refresh token: 401', 401, 'invalid_client'),
       );
 
       const req = createMockRequest({
@@ -1212,10 +1214,10 @@ describe('OAuth Token Endpoint', () => {
 
       await tokenHandler(req, res);
 
-      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.status).toHaveBeenCalledWith(503);
       expect(res.json).toHaveBeenCalledWith({
-        error: 'invalid_grant',
-        error_description: 'GitLab no longer accepts this account; sign in again',
+        error: 'temporarily_unavailable',
+        error_description: 'GitLab is temporarily unavailable; retry the refresh',
       });
     });
 

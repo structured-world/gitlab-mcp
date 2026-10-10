@@ -33,8 +33,8 @@ const STORE_RETRY_MS = 200;
 
 /**
  * The account cannot be refreshed any more: GitLab refused the grant (RFC 6749 section 5.2
- * errors come with 400 or 401) or the session's instance was removed. Any other failure
- * is temporary and leaves the account usable.
+ * invalid_grant) or the session's instance was removed. Any other failure is temporary and
+ * leaves the account usable.
  */
 export class GitLabGrantRevokedError extends Error {
   constructor(message: string, options?: ErrorOptions) {
@@ -43,8 +43,16 @@ export class GitLabGrantRevokedError extends Error {
   }
 }
 
+/**
+ * RFC 6749 section 5.2: invalid_grant is the only error about the refresh token itself.
+ * invalid_client and the others concern the application or the request, and a body
+ * without a code comes from a proxy; none of them ends the account's link. GitLab can
+ * answer invalid_grant for a refresh token issued moments earlier while a database replica
+ * lags (gitlab-org/gitlab#599181); the tokens refreshed here are as old as an access token
+ * lifetime, long past any replica lag.
+ */
 function isGrantRejection(error: unknown): boolean {
-  return error instanceof GitLabOAuthHttpError && (error.status === 400 || error.status === 401);
+  return error instanceof GitLabOAuthHttpError && error.oauthError === 'invalid_grant';
 }
 
 // Coalesces concurrent refreshes in this process; the backend stays the source of truth.

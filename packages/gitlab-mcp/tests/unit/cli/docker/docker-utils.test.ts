@@ -32,8 +32,10 @@ import {
   GitLabInstance,
   ContainerRuntimeInfo,
   DEFAULT_DOCKER_CONFIG,
-  DEFAULT_DB_IMAGE,
 } from '../../../../src/cli/docker/types';
+
+// The db image of the default core image (same tag).
+const DEFAULT_DB_IMAGE = 'ghcr.io/structured-world/gitlab-mcp-db:latest';
 import * as fs from 'fs';
 import * as childProcess from 'child_process';
 import YAML from 'yaml';
@@ -613,6 +615,44 @@ describe('docker-utils', () => {
         environment: ['OAUTH_STORAGE_POSTGRESQL_URL=${OAUTH_STORAGE_POSTGRESQL_URL}'],
       });
       expect(parsed.services.postgres).toBeUndefined();
+    });
+
+    // A pinned release stays pinned: the db image of the same tag runs the server and the
+    // migrations, never another version.
+    it.each([
+      [
+        'ghcr.io/structured-world/gitlab-mcp:10.2.0',
+        'ghcr.io/structured-world/gitlab-mcp-db:10.2.0',
+      ],
+      ['ghcr.io/structured-world/gitlab-mcp', 'ghcr.io/structured-world/gitlab-mcp-db'],
+      [
+        'registry.example.com/team/gitlab-mcp-db:custom',
+        'registry.example.com/team/gitlab-mcp-db:custom',
+      ],
+    ])('runs a database deployment of %s on %s', (image, dbImage) => {
+      const parsed = YAML.parse(
+        generateDockerCompose({
+          ...DEFAULT_DOCKER_CONFIG,
+          image,
+          deploymentType: 'compose-bundle',
+          oauthEnabled: true,
+        }),
+      );
+
+      expect(parsed.services['gitlab-mcp'].image).toBe(dbImage);
+      expect(parsed.services.migrate.image).toBe(dbImage);
+    });
+
+    // A digest names one image; the db image of that build has another digest.
+    it('refuses a database deployment of a digest-pinned core image', () => {
+      expect(() =>
+        generateDockerCompose({
+          ...DEFAULT_DOCKER_CONFIG,
+          image: 'ghcr.io/structured-world/gitlab-mcp@sha256:' + 'a'.repeat(64),
+          deploymentType: 'compose-bundle',
+          oauthEnabled: true,
+        }),
+      ).toThrow('Pin the gitlab-mcp-db image by tag or digest for a PostgreSQL deployment');
     });
 
     // Without a URL the compose file would reference an empty variable and migrations

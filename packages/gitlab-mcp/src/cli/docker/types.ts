@@ -106,12 +106,6 @@ export const DEFAULT_DOCKER_CONFIG: DockerConfig = {
 };
 
 /**
- * Image with the PostgreSQL backend and the Prisma CLI for migrations, used by
- * deployments that keep OAuth sessions in PostgreSQL
- */
-export const DEFAULT_DB_IMAGE = 'ghcr.io/structured-world/gitlab-mcp-db:latest';
-
-/**
  * Docker compose service configuration
  */
 export interface DockerComposeService {

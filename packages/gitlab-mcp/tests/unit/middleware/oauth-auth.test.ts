@@ -465,7 +465,7 @@ describe('OAuth Authentication Middleware', () => {
           typeof import('../../../src/oauth/gitlab-device-flow')
         >('../../../src/oauth/gitlab-device-flow');
         mockRefreshGitLabToken.mockRejectedValue(
-          new GitLabOAuthHttpError('Failed to refresh token: 400 invalid_grant', 400),
+          new GitLabOAuthHttpError('Failed to refresh token: 400', 400, 'invalid_grant'),
         );
 
         const req = createMockReq({

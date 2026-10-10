@@ -255,7 +255,7 @@ describe('withFreshGitLabToken', () => {
 
   it('uses the tokens another replica stored when GitLab refuses the spent token', async () => {
     mockRefresh.mockRejectedValue(
-      new GitLabOAuthHttpError('Failed to refresh token: 400 invalid_grant', 400),
+      new GitLabOAuthHttpError('Failed to refresh token: 400', 400, 'invalid_grant'),
     );
 
     const result = await withFreshGitLabToken(expiring, config);
@@ -266,13 +266,32 @@ describe('withFreshGitLabToken', () => {
 
   it('reports a revoked grant when GitLab refuses and nobody refreshed the session', async () => {
     mockRefresh.mockRejectedValue(
-      new GitLabOAuthHttpError('Failed to refresh token: 400 invalid_grant', 400),
+      new GitLabOAuthHttpError('Failed to refresh token: 400', 400, 'invalid_grant'),
     );
     mockStore.getSession.mockResolvedValue(expiring);
 
     await expect(withFreshGitLabToken(expiring, config)).rejects.toBeInstanceOf(
       GitLabGrantRevokedError,
     );
+  });
+
+  // RFC 6749 5.2: only invalid_grant says the refresh token itself is invalid or revoked.
+  // A misconfigured application (invalid_client), a malformed request or an intermediary's
+  // 400 page leaves the grant intact, so the account stays linked.
+  it.each([
+    ['invalid_client', 401],
+    ['invalid_request', 400],
+    [undefined, 400],
+  ])('keeps the account linked when GitLab answers %s with %d', async (oauthError, status) => {
+    const failure = new GitLabOAuthHttpError(
+      `Failed to refresh token: ${status}`,
+      status,
+      oauthError,
+    );
+    mockRefresh.mockRejectedValue(failure);
+    mockStore.getSession.mockResolvedValue(expiring);
+
+    await expect(withFreshGitLabToken(expiring, config)).rejects.toBe(failure);
   });
 
   // Network errors and GitLab 5xx must not read as a revoked grant: callers answer them

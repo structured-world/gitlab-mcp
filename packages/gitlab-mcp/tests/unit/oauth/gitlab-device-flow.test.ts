@@ -16,6 +16,7 @@ import {
   buildGitLabAuthUrl,
   revokeGitLabToken,
   DeviceGrantRefusedError,
+  GitLabOAuthHttpError,
 } from '../../../src/oauth/gitlab-device-flow';
 import { OAuthConfig } from '../../../src/oauth/config';
 
@@ -164,20 +165,24 @@ describe('GitLab Device Flow Client', () => {
       },
     );
 
-    it.each(['server_error', 'temporarily_unavailable'])(
-      'reports %s as a temporary failure',
-      async (error) => {
-        mockFetch.mockResolvedValueOnce({
-          ok: false,
-          json: jest.fn().mockResolvedValue({ error }),
-        });
-        const failure = await pollDeviceFlowStep('device-code-123', mockConfig).catch(
-          (e: unknown) => e,
-        );
-        expect(failure).toBeInstanceOf(Error);
-        expect(failure).not.toBeInstanceOf(DeviceGrantRefusedError);
-      },
-    );
+    // Only the errors RFC 6749 5.2 and RFC 8628 3.5 define end the flow; a rate limit or
+    // an intermediary's error body is retried until the device code expires.
+    it.each([
+      [{ error: 'server_error' }],
+      [{ error: 'temporarily_unavailable' }],
+      [{ error: 'too_many_requests' }],
+      [{ message: 'Retry later' }],
+    ])('reports %j as a temporary failure', async (body) => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        json: jest.fn().mockResolvedValue(body),
+      });
+      const failure = await pollDeviceFlowStep('device-code-123', mockConfig).catch(
+        (e: unknown) => e,
+      );
+      expect(failure).toBeInstanceOf(Error);
+      expect(failure).not.toBeInstanceOf(DeviceGrantRefusedError);
+    });
   });
 
   describe('pollDeviceFlowOnce', () => {
@@ -468,6 +473,25 @@ describe('GitLab Device Flow Client', () => {
       const call = mockFetch.mock.calls[0];
       const body = call[1].body as URLSearchParams;
       expect(body.has('client_secret')).toBe(false);
+    });
+
+    // The OAuth error code tells a refused grant from other failures of the same status.
+    it.each([
+      ['{"error":"invalid_grant","error_description":"revoked"}', 'invalid_grant'],
+      ['<html>Bad Request</html>', undefined],
+      ['{"message":"400 Bad request"}', undefined],
+      ['{"error":{"code":400}}', undefined],
+    ])('reports the OAuth error of %s', async (text, oauthError) => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        text: jest.fn().mockResolvedValue(text),
+      });
+
+      const failure = await refreshGitLabToken('token', mockConfig).catch((e: unknown) => e);
+
+      expect(failure).toBeInstanceOf(GitLabOAuthHttpError);
+      expect((failure as GitLabOAuthHttpError).oauthError).toBe(oauthError);
     });
 
     it('should throw error on failed refresh', async () => {

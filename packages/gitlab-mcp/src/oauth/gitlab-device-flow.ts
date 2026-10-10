@@ -15,15 +15,32 @@ import { logInfo, logWarn, logError, logDebug } from '../logger';
 import { enhancedFetch, type FetchWithRetryOptions } from '../utils/fetch';
 import { defaultOAuthApp, type GitLabOAuthApp } from './oauth-app';
 
-/** A GitLab OAuth endpoint answered with an error status. */
+/**
+ * A GitLab OAuth endpoint answered with an error status; `oauthError` is the RFC 6749
+ * section 5.2 error code when the body carried one.
+ */
 export class GitLabOAuthHttpError extends Error {
   constructor(
     message: string,
     readonly status: number,
+    readonly oauthError?: string,
   ) {
     super(message);
     this.name = 'GitLabOAuthHttpError';
   }
+}
+
+/** The `error` code of an OAuth error body; undefined for any other body. */
+function oauthErrorCode(body: string): string | undefined {
+  try {
+    const parsed: unknown = JSON.parse(body);
+    if (typeof parsed === 'object' && parsed !== null && 'error' in parsed) {
+      return typeof parsed.error === 'string' ? parsed.error : undefined;
+    }
+  } catch {
+    // Not JSON: an error page of GitLab or of a proxy in front of it.
+  }
+  return undefined;
 }
 
 /**
@@ -37,8 +54,18 @@ export class DeviceGrantRefusedError extends Error {
   }
 }
 
-/** Token endpoint errors reporting a server-side condition rather than a refused grant. */
-const RETRYABLE_DEVICE_ERRORS = new Set(['server_error', 'temporarily_unavailable']);
+/**
+ * Token endpoint errors that refuse the request for good (RFC 6749 section 5.2). Any other
+ * body (server_error, a rate limit, an intermediary's error) is retried by the next poll
+ * until the device code expires.
+ */
+const TERMINAL_DEVICE_ERRORS = new Set([
+  'invalid_request',
+  'invalid_client',
+  'unauthorized_client',
+  'unsupported_grant_type',
+  'invalid_scope',
+]);
 
 /** Throw a descriptive error if the GitLab OAuth response indicates failure */
 async function throwOnHttpError(response: Response, operation: string): Promise<void> {
@@ -50,6 +77,7 @@ async function throwOnHttpError(response: Response, operation: string): Promise<
     throw new GitLabOAuthHttpError(
       `Failed to ${operation}: ${response.status} ${details}`,
       response.status,
+      oauthErrorCode(rawText),
     );
   }
 }
@@ -90,21 +118,11 @@ function clientParams(app: GitLabOAuthApp): Record<string, string> {
 }
 
 /**
- * Device flow error types from GitLab
- */
-type DeviceFlowError =
-  | 'authorization_pending'
-  | 'slow_down'
-  | 'expired_token'
-  | 'access_denied'
-  | 'invalid_grant'
-  | 'invalid_request';
-
-/**
- * Device flow error response from GitLab
+ * Error body of a device token request: an RFC 8628 section 3.5 or RFC 6749 section 5.2
+ * code, or none when an intermediary answered.
  */
 interface DeviceFlowErrorResponse {
-  error: DeviceFlowError;
+  error?: string;
   error_description?: string;
 }
 
@@ -216,10 +234,10 @@ export async function pollDeviceFlowStep(
       throw new DeviceGrantRefusedError('Invalid device code or grant.');
 
     default: {
-      const message = `Device flow error: ${error.error_description ?? error.error}`;
-      throw RETRYABLE_DEVICE_ERRORS.has(error.error)
-        ? new Error(message)
-        : new DeviceGrantRefusedError(message);
+      const message = `Device flow error: ${error.error_description ?? error.error ?? 'unexpected response'}`;
+      throw error.error !== undefined && TERMINAL_DEVICE_ERRORS.has(error.error)
+        ? new DeviceGrantRefusedError(message)
+        : new Error(message);
     }
   }
 }

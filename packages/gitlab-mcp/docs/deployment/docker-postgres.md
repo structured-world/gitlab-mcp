@@ -170,7 +170,10 @@ gitlab-mcp docker add-instance gitlab.com
 gitlab-mcp docker add-instance gitlab.company.com
 ```
 
-Each instance can have its own OAuth application and default preset.
+Each instance can have its own OAuth application and default preset. The CLI writes the
+instance list for the server to `instances.env` (read by the container at every start,
+so `docker compose restart` picks up added instances), and an instance's OAuth secret is
+read from the variable the CLI names, which goes into `.env`.
 
 ## Scaling
 

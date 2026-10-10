@@ -249,7 +249,9 @@ export function generateDockerCompose(config: DockerConfig): string {
         'OAUTH_STORAGE_FILE_PATH=/data/oauth-sessions.json',
       );
     }
-    volumes.push('./instances.yml:/app/config/instances.yml:ro');
+    // The instance list (GITLAB_INSTANCES, rewritten whenever instances change) and the
+    // instance secrets it names (kept in .env) reach the server at every start.
+    compose.services['gitlab-mcp'].env_file = ['.env', INSTANCES_ENV_FILE];
   }
 
   if (databaseUrl) {
@@ -378,6 +380,42 @@ export function saveInstances(instances: GitLabInstance[]): void {
   const instancesPath = join(configDir, 'instances.yml');
   const content = generateInstancesYaml(instances);
   writeFileSync(instancesPath, content, 'utf8');
+  saveServerInstances(instances);
+}
+
+/** Env file holding the server's instance list, next to the compose file. */
+const INSTANCES_ENV_FILE = 'instances.env';
+/** JSON escape of a single quote: a backslash followed by u0027. */
+const JSON_QUOTE_ESCAPE = `${String.fromCodePoint(92)}u0027`;
+
+/**
+ * Write the instances as the server reads them: GITLAB_INSTANCES with the configuration
+ * object the server validates. Secrets stay in .env; each instance names its variable.
+ */
+function saveServerInstances(instances: GitLabInstance[]): void {
+  const configDir = getExpandedConfigDir();
+  if (!existsSync(configDir)) {
+    mkdirSync(configDir, { recursive: true });
+  }
+  let value = '';
+  if (instances.length > 0) {
+    const config = {
+      instances: instances.map((instance) => ({
+        url: instance.host.includes('://') ? instance.host : `https://${instance.host}`,
+        label: instance.name,
+        ...(instance.oauth && {
+          oauth: {
+            clientId: instance.oauth.clientId,
+            clientSecretEnv: instance.oauth.clientSecretEnv,
+          },
+        }),
+      })),
+    };
+    // Single-quoted env values are literal and cannot contain a single quote; JSON spells
+    // it as the escape backslash-u0027 instead.
+    value = `'${JSON.stringify(config).replaceAll("'", JSON_QUOTE_ESCAPE)}'`;
+  }
+  writeFileSync(join(configDir, INSTANCES_ENV_FILE), `GITLAB_INSTANCES=${value}\n`, 'utf8');
 }
 
 /**
@@ -561,9 +599,12 @@ export function initDockerConfig(config: Partial<DockerConfig> = {}): DockerConf
   // Write .env file with secrets (restricted permissions)
   saveEnvFile(fullConfig);
 
-  // Save instances if provided
+  // Save instances if provided; an OAuth deployment's compose file names the server's
+  // instance list, so it exists from the start
   if (fullConfig.instances.length > 0) {
     saveInstances(fullConfig.instances);
+  } else if (fullConfig.oauthEnabled) {
+    saveServerInstances([]);
   }
 
   return fullConfig;

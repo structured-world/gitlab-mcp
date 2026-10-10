@@ -37,6 +37,7 @@ import * as fs from 'fs';
 import * as childProcess from 'child_process';
 import YAML from 'yaml';
 import { homedir } from 'os';
+import { validateInstancesConfig } from '../../../../src/config/instances-schema';
 import { join } from 'path';
 
 // Mock modules
@@ -708,7 +709,9 @@ describe('docker-utils', () => {
       expect(parsed.volumes['gitlab-mcp-data']).toBeDefined();
     });
 
-    it('should include instances volume when OAuth enabled', () => {
+    // The server reads its instances from GITLAB_INSTANCES and instance secrets from the
+    // variables they name; the CLI's own instances.yml format is not the server's.
+    it('passes the instance list and secrets to an OAuth server through env files', () => {
       const config: DockerConfig = {
         port: 3333,
         oauthEnabled: true,
@@ -720,7 +723,8 @@ describe('docker-utils', () => {
       const result = generateDockerCompose(config);
       const parsed = YAML.parse(result);
 
-      expect(parsed.services['gitlab-mcp'].volumes).toContain(
+      expect(parsed.services['gitlab-mcp'].env_file).toEqual(['.env', 'instances.env']);
+      expect(parsed.services['gitlab-mcp'].volumes).not.toContain(
         './instances.yml:/app/config/instances.yml:ro',
       );
     });
@@ -930,6 +934,55 @@ describe('docker-utils', () => {
       const writeCall = mockFs.writeFileSync.mock.calls[0];
       expect(writeCall[0]).toContain('instances.yml');
     });
+
+    // The container reads instances.env at every start, so instances added later reach the
+    // server without regenerating the compose file.
+    it('writes the instances for the server in the format it validates', () => {
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.writeFileSync.mockImplementation(() => undefined);
+
+      saveInstances([
+        {
+          host: 'git.corp.io',
+          name: "Corp's GitLab",
+          oauth: { clientId: 'corp-app', clientSecretEnv: 'GIT_CORP_IO_SECRET' },
+        },
+        { host: 'https://gitlab.example.com/gitlab', name: 'Subpath' },
+      ]);
+
+      const envCall = mockFs.writeFileSync.mock.calls.find((call) =>
+        String(call[0]).endsWith('instances.env'),
+      );
+      const line = String(envCall![1]).trim();
+      expect(line.startsWith("GITLAB_INSTANCES='")).toBe(true);
+      const json = line.slice("GITLAB_INSTANCES='".length, -1);
+      // Single-quoted env values are literal and cannot contain a single quote.
+      expect(json).not.toContain("'");
+      const parsed = validateInstancesConfig(JSON.parse(json));
+      expect(parsed.instances).toEqual([
+        expect.objectContaining({
+          url: 'https://git.corp.io',
+          label: "Corp's GitLab",
+          oauth: expect.objectContaining({
+            clientId: 'corp-app',
+            clientSecretEnv: 'GIT_CORP_IO_SECRET',
+          }),
+        }),
+        expect.objectContaining({ url: 'https://gitlab.example.com/gitlab', label: 'Subpath' }),
+      ]);
+    });
+
+    it('writes an empty instance list when there are no instances', () => {
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.writeFileSync.mockImplementation(() => undefined);
+
+      saveInstances([]);
+
+      const envCall = mockFs.writeFileSync.mock.calls.find((call) =>
+        String(call[0]).endsWith('instances.env'),
+      );
+      expect(envCall![1]).toBe('GITLAB_INSTANCES=\n');
+    });
   });
 
   describe('addInstance', () => {
@@ -1044,10 +1097,29 @@ describe('docker-utils', () => {
 
       initDockerConfig(config);
 
-      // docker-compose.yml, .env (OAUTH_ISSUER, required in OAuth mode) and instances.yml
+      // docker-compose.yml, .env (OAUTH_ISSUER, required in OAuth mode), instances.yml and
+      // the server's instances.env
       const written = mockFs.writeFileSync.mock.calls.map((call) => String(call[0]));
-      expect(written).toHaveLength(3);
+      expect(written).toHaveLength(4);
       expect(written.some((path) => path.endsWith('instances.yml'))).toBe(true);
+      expect(written.some((path) => path.endsWith('instances.env'))).toBe(true);
+    });
+
+    // The compose file names instances.env, so it exists even before any instance is added.
+    it('writes the instance list of an OAuth deployment without instances', () => {
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.writeFileSync.mockImplementation(() => undefined);
+
+      initDockerConfig({
+        port: 3333,
+        oauthEnabled: true,
+        instances: [],
+        containerName: 'gitlab-mcp',
+        image: 'ghcr.io/structured-world/gitlab-mcp:latest',
+      });
+
+      const written = mockFs.writeFileSync.mock.calls.map((call) => String(call[0]));
+      expect(written.some((path) => path.endsWith('instances.env'))).toBe(true);
     });
 
     it('should give an OAuth deployment its public URL in .env and compose', () => {

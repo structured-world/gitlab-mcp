@@ -55,6 +55,10 @@ export const InstanceOAuthConfigSchema = z
   .object({
     clientId: z.string().min(1).describe('OAuth Application ID'),
     clientSecret: z.string().optional().describe('OAuth Secret (only for confidential apps)'),
+    clientSecretEnv: z
+      .string()
+      .optional()
+      .describe('Environment variable holding the OAuth Secret, read when clientSecret is unset'),
     scopes: z
       .string()
       .default('api read_user')

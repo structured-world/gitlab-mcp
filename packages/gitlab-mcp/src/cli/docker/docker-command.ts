@@ -422,7 +422,7 @@ export async function dockerAddInstance(host?: string): Promise<void> {
 
     p.note(
       `Store your OAuth secret in environment variable: ${envName}\n` +
-        `Add to docker-compose.yml environment section or use .env file.`,
+        `Add ${envName}=<secret> to the .env file next to docker-compose.yml.`,
       'OAuth Secret',
     );
 

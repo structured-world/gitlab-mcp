@@ -123,6 +123,8 @@ export interface DockerComposeService {
   restart: string;
   working_dir?: string;
   entrypoint?: string[];
+  /** Files whose variables are set in the container, read at every start */
+  env_file?: string[];
   /** Services to start first (list), or with the state each must reach first (map) */
   depends_on?: string[] | Record<string, { condition: 'service_completed_successfully' }>;
   healthcheck?: {

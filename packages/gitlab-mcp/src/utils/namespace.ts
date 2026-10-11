@@ -1,4 +1,5 @@
 import { enhancedFetch } from './fetch';
+import { getGitLabBaseUrl } from './gitlab-base-url';
 
 /**
  * Extract namespace (group path) from a full project path.
@@ -37,52 +38,62 @@ export function isLikelyProjectPath(namespacePath: string): boolean {
 }
 
 /**
- * Detect namespace type by attempting to fetch from GitLab API
- * Tries both project and group endpoints to determine which one exists
+ * Whether GitLab knows the path as a project or a group, or null when it confirms neither
+ * (the path does not exist, or GitLab could not be reached). The likelier type is asked first.
  */
-export async function detectNamespaceType(namespacePath: string): Promise<'project' | 'group'> {
-  // First try heuristic for common cases
-  if (isLikelyProjectPath(namespacePath)) {
-    // Try project first, fallback to group if needed
-    const isProject = await verifyNamespaceType(namespacePath, 'project');
-    if (isProject) return 'project';
-
-    const isGroup = await verifyNamespaceType(namespacePath, 'group');
-    if (isGroup) return 'group';
-
-    // Default fallback for paths with slash
-    return 'project';
-  } else {
-    // Try group first, fallback to project if needed
-    const isGroup = await verifyNamespaceType(namespacePath, 'group');
-    if (isGroup) return 'group';
-
-    const isProject = await verifyNamespaceType(namespacePath, 'project');
-    if (isProject) return 'project';
-
-    // Default fallback for paths without slash
-    return 'group';
+export async function findNamespaceType(
+  namespacePath: string,
+): Promise<'project' | 'group' | null> {
+  const order: Array<'project' | 'group'> = isLikelyProjectPath(namespacePath)
+    ? ['project', 'group']
+    : ['group', 'project'];
+  for (const type of order) {
+    if (await verifyNamespaceType(namespacePath, type)) return type;
   }
+  return null;
 }
 
 /**
- * Verify if a namespace exists as the specified type by making a lightweight API call
+ * Detect namespace type by attempting to fetch from GitLab API, falling back to the path
+ * shape when GitLab confirms neither type
+ */
+export async function detectNamespaceType(namespacePath: string): Promise<'project' | 'group'> {
+  return (
+    (await findNamespaceType(namespacePath)) ??
+    (isLikelyProjectPath(namespacePath) ? 'project' : 'group')
+  );
+}
+
+/**
+ * Verify if a namespace exists as the specified type by making a lightweight API call.
+ * A rejected sign-in (401, or 403 insufficient_scope) fails with GitLab's error, so the call
+ * reaches the reauthorization challenge; other failures read as "not this type".
  */
 async function verifyNamespaceType(
   namespacePath: string,
   type: 'project' | 'group',
 ): Promise<boolean> {
+  const entityType = type === 'project' ? 'projects' : 'groups';
+  const apiUrl = `${getGitLabBaseUrl()}/api/v4/${entityType}/${encodeURIComponent(namespacePath)}`;
+  let response: Response;
   try {
-    const entityType = type === 'project' ? 'projects' : 'groups';
-    const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/${entityType}/${encodeURIComponent(namespacePath)}`;
-
-    const response = await enhancedFetch(apiUrl);
-
-    return response.ok;
+    response = await enhancedFetch(apiUrl);
   } catch {
-    // If API call fails, return false
+    // Unreachable: the caller falls back or reports that GitLab could not confirm the path.
     return false;
   }
+  if (response.ok) return true;
+  if (response.status === 401) {
+    throw new Error(`GitLab API error: 401 ${response.statusText}`);
+  }
+  if (response.status === 403) {
+    const body = await response.text().catch(() => '');
+    // RFC 6750 section 3.1: the token lacks a scope, not access to this path.
+    if (body.includes('insufficient_scope')) {
+      throw new Error(`GitLab API error: 403 ${response.statusText} - insufficient_scope`);
+    }
+  }
+  return false;
 }
 
 /**

@@ -148,6 +148,17 @@ model OAuthClient {
   @@index([expiresAt], map: "idx_oauth_clients_expires_at")
 }
 
+// Settings an account keeps across its sessions and restarts
+model AccountSettings {
+  accountKey String @id @map("account_key")
+  settings   Json
+  // Grows with every write; writes are compare-and-set on it.
+  version    Int
+  updatedAt  BigInt @map("updated_at")
+
+  @@map("oauth_account_settings")
+}
+
 // MCP session to OAuth session mapping
 model McpSessionMapping {
   mcpSessionId        String        @id @map("mcp_session_id")

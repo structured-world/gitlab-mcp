@@ -5,7 +5,7 @@
  * and scope enforcement functionality.
  */
 
-import { IntegrationTestHelper } from '../helpers/registry-helper';
+import { IntegrationTestHelper, findTestProjectPath } from '../helpers/registry-helper';
 import { ContextManager } from '../../../src/entities/context/context-manager';
 import { ManageContextSchema } from '../../../src/entities/context/schema';
 
@@ -139,7 +139,8 @@ describe('manage_context Integration Tests', () => {
 
       expect(result.success).toBe(true);
       expect(result.current).toBe(presetName);
-      expect(result.message).toContain('Switched to preset');
+      // The switch applies to this session only.
+      expect(result.message).toBe(`Switched this session to preset '${presetName}'`);
 
       console.log(`  Switched to preset: ${presetName}`);
     });
@@ -197,8 +198,9 @@ describe('manage_context Integration Tests', () => {
     });
 
     it('should auto-detect project namespace', async () => {
-      // Use a test project that exists in the test environment
-      const testProject = 'test/backend/project1';
+      // A project that exists: set_scope accepts only paths GitLab confirms.
+      const testProject = await findTestProjectPath(helper);
+      if (!testProject) throw new Error('No project under the test group to scope to');
 
       const result = (await helper.executeTool('manage_context', {
         action: 'set_scope',
@@ -283,7 +285,8 @@ describe('manage_context Integration Tests', () => {
       })) as Record<string, unknown>;
 
       expect(result.success).toBe(true);
-      expect(result.message).toContain('reset to initial state');
+      // Reset drops the session overrides; the account settings (none here) apply again.
+      expect(result.message).toBe('Session context reset to the account settings');
       expect(result).toHaveProperty('context');
 
       // Verify reset state

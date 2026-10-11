@@ -1,7 +1,7 @@
 /**
  * Schema definitions for manage_context tool
  *
- * CQRS pattern with 8 actions:
+ * CQRS pattern with 9 actions:
  * - show: Display current context (Query)
  * - list_presets: List available presets (Query)
  * - list_profiles: List available profiles - OAuth only (Query)
@@ -9,6 +9,7 @@
  * - switch_preset: Change active preset (Command)
  * - switch_profile: Change active profile - OAuth only (Command)
  * - set_scope: Set namespace scope with auto-detection (Command)
+ * - clear_scope: Work everywhere in this session (Command)
  * - reset: Restore initial context (Command)
  */
 
@@ -78,6 +79,17 @@ const SetScopeSchema = z.object({
 });
 
 /**
+ * Work everywhere in this session, keeping its other overrides
+ */
+const ClearScopeSchema = z.object({
+  action: z
+    .literal('clear_scope')
+    .describe(
+      "Work everywhere the account has access in this session: drops this session's scope and the account's default scope for it; preset and read-only mode stay",
+    ),
+});
+
+/**
  * Reset context to initial state
  */
 const ResetContextSchema = z.object({
@@ -115,6 +127,7 @@ export const ManageContextSchema = z.discriminatedUnion('action', [
   SwitchPresetSchema,
   SwitchProfileSchema,
   SetScopeSchema,
+  ClearScopeSchema,
   ResetContextSchema,
   WhoamiSchema,
 ]);
@@ -130,5 +143,6 @@ export type ListProfilesInput = z.infer<typeof ListProfilesSchema>;
 export type SwitchPresetInput = z.infer<typeof SwitchPresetSchema>;
 export type SwitchProfileInput = z.infer<typeof SwitchProfileSchema>;
 export type SetScopeInput = z.infer<typeof SetScopeSchema>;
+export type ClearScopeInput = z.infer<typeof ClearScopeSchema>;
 export type ResetContextInput = z.infer<typeof ResetContextSchema>;
 export type WhoamiInput = z.infer<typeof WhoamiSchema>;

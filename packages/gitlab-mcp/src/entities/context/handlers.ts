@@ -117,6 +117,8 @@ export async function handleManageContext(
       return handleSwitchProfile(input);
     case 'set_scope':
       return handleSetScope(input);
+    case 'clear_scope':
+      return getContextManager().clearScope();
     case 'reset':
       return handleResetContext(input);
     case 'whoami':

@@ -12,6 +12,7 @@ import {
   AuthorizationCode,
   RegisteredOAuthClient,
 } from '../types';
+import type { AccountSettings, AccountSettingsRecord } from '../../configuration/types';
 
 /**
  * Session storage backend interface
@@ -112,6 +113,19 @@ export interface SessionStorageBackend {
     updates: Partial<OAuthSession>,
   ): Promise<boolean>;
 
+  // Account settings, shared by every replica
+  getAccountSettings(accountKey: string): Promise<AccountSettingsRecord | undefined>;
+  /**
+   * Store an account's settings only while its stored version is still `expectedVersion`
+   * (0: none stored yet). Returns the stored record, or undefined when another write
+   * changed the settings first, so a stale edit never overwrites a newer one.
+   */
+  putAccountSettings(
+    accountKey: string,
+    settings: AccountSettings,
+    expectedVersion: number,
+  ): Promise<AccountSettingsRecord | undefined>;
+
   // Lifecycle
   initialize(): Promise<void>;
   /** Remove expired sessions, flows, codes and expired never-used client registrations. */
@@ -172,6 +186,8 @@ export interface StorageData {
   mcpSessionMappings: Array<{ mcpSessionId: string; oauthSessionId: string }>;
   /** Registered OAuth clients; absent in files written before client persistence */
   clients?: RegisteredOAuthClient[];
+  /** Account settings; absent in files written before settings persistence */
+  accountSettings?: AccountSettingsRecord[];
 }
 
 /** Current storage data format version */

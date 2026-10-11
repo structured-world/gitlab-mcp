@@ -67,17 +67,28 @@ function getScopeDescription(scope: ScopeConfig): string {
 /**
  * Normalize a project path for comparison
  *
+ * - Decodes a URL-encoded path ("group%2Fproject"), which tools accept as well
  * - Removes leading/trailing slashes
  * - Converts to lowercase
  * - Handles numeric IDs (returns as-is)
  */
 function normalizeProjectPath(path: string): string {
-  const trimmed = path.trim().replace(/^\/+|\/+$/g, '');
+  const trimmed = decodePath(path.trim()).replace(/^\/+|\/+$/g, '');
   // If it's a numeric ID, return as-is
   if (/^\d+$/.test(trimmed)) {
     return trimmed;
   }
   return trimmed.toLowerCase();
+}
+
+/** A URL-encoded path decoded; a malformed escape is kept as written. */
+function decodePath(path: string): string {
+  if (!path.includes('%')) return path;
+  try {
+    return decodeURIComponent(path);
+  } catch {
+    return path;
+  }
 }
 
 /**
@@ -216,9 +227,10 @@ export class ScopeEnforcer {
    * @returns true if allowed, false if outside scope
    */
   isGroupAllowed(groupPath: string): boolean {
-    // If no group restrictions are defined, allow all groups
+    // Without group restrictions, any group only when nothing is restricted: a scope of
+    // projects reaches no group.
     if (!this.hasGroupRestrictions()) {
-      return true;
+      return !this.hasProjectRestrictions();
     }
 
     const normalized = normalizeProjectPath(groupPath);
@@ -330,6 +342,50 @@ export class ScopeEnforcer {
 }
 
 /**
+ * A project or group identifier as the tool will use it: tool schemas coerce a JSON
+ * number id to its string form, so a number is checked exactly like that string.
+ */
+function identifierOf(value: unknown): string | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  if (typeof value === 'string' && value.trim()) return value.trim();
+  return undefined;
+}
+
+/**
+ * Arguments that name a project. Destinations count too: a cross-project merge request or
+ * job token target.
+ */
+const PROJECT_FIELDS = [
+  'project_id',
+  'projectId',
+  'project',
+  'namespace',
+  'namespacePath',
+  'fullPath',
+  'target_project_id',
+];
+
+/** Of those, the ones that name a project or a group (labels, wiki, milestones of either). */
+const PROJECT_OR_GROUP_FIELDS: ReadonlySet<string> = new Set([
+  'namespace',
+  'namespacePath',
+  'fullPath',
+]);
+
+/**
+ * Arguments that name a group. Destinations count too: a fork's target namespace, a job
+ * token target group, and a namespace read by id or path.
+ */
+const GROUP_FIELDS = [
+  'group_id',
+  'groupId',
+  'group',
+  'target_group_id',
+  'namespace_path',
+  'namespace_id',
+];
+
+/**
  * Extract project path from tool arguments
  *
  * Tools may specify project in different ways:
@@ -342,24 +398,10 @@ export class ScopeEnforcer {
  */
 export function extractProjectsFromArgs(args: Record<string, unknown>): string[] {
   const projects: string[] = [];
-
-  // Common parameter names for project identification
-  const projectFields = [
-    'project_id',
-    'projectId',
-    'project',
-    'namespace',
-    'namespacePath',
-    'fullPath',
-  ];
-
-  for (const field of projectFields) {
-    const value = args[field];
-    if (typeof value === 'string' && value.trim()) {
-      projects.push(value.trim());
-    }
+  for (const field of PROJECT_FIELDS) {
+    const id = identifierOf(args[field]);
+    if (id) projects.push(id);
   }
-
   return projects;
 }
 
@@ -376,18 +418,33 @@ export function extractProjectsFromArgs(args: Record<string, unknown>): string[]
  */
 export function extractGroupsFromArgs(args: Record<string, unknown>): string[] {
   const groups: string[] = [];
-
-  // Common parameter names for group identification
-  const groupFields = ['group_id', 'groupId', 'group'];
-
-  for (const field of groupFields) {
-    const value = args[field];
-    if (typeof value === 'string' && value.trim()) {
-      groups.push(value.trim());
-    }
+  for (const field of GROUP_FIELDS) {
+    const id = identifierOf(args[field]);
+    if (id) groups.push(id);
   }
-
   return groups;
+}
+
+/** What a numeric id argument may name. */
+export type NumericTargetKind = 'project' | 'group' | 'either';
+
+/**
+ * Every argument naming its project or group by numeric id. A scope is saved as paths, so
+ * these are resolved to paths before the check, which compares paths only.
+ */
+export function numericTargets(
+  args: Record<string, unknown>,
+): Array<{ field: string; id: string; kind: NumericTargetKind }> {
+  const found: Array<{ field: string; id: string; kind: NumericTargetKind }> = [];
+  const add = (field: string, kind: NumericTargetKind): void => {
+    const id = identifierOf(args[field]);
+    if (id && /^\d+$/.test(id)) found.push({ field, id, kind });
+  };
+  for (const field of PROJECT_FIELDS) {
+    add(field, PROJECT_OR_GROUP_FIELDS.has(field) ? 'either' : 'project');
+  }
+  for (const field of GROUP_FIELDS) add(field, 'group');
+  return found;
 }
 
 /**
@@ -400,10 +457,12 @@ export function extractGroupsFromArgs(args: Record<string, unknown>): string[] {
  * @throws ScopeViolationError if any project or group is outside scope
  */
 export function enforceArgsScope(enforcer: ScopeEnforcer, args: Record<string, unknown>): void {
-  // Check project paths
-  const projects = extractProjectsFromArgs(args);
-  for (const project of projects) {
-    enforcer.enforce(project);
+  // Check project paths; an argument that may name a group passes as an allowed group too
+  for (const field of PROJECT_FIELDS) {
+    const id = identifierOf(args[field]);
+    if (!id) continue;
+    if (PROJECT_OR_GROUP_FIELDS.has(field) && enforcer.isGroupAllowed(id)) continue;
+    enforcer.enforce(id);
   }
 
   // Check group paths

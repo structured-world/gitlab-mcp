@@ -1,5 +1,18 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
-import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
+import {
+  CallToolRequestSchema,
+  ErrorCode,
+  ListResourcesRequestSchema,
+  ListToolsRequestSchema,
+  McpError,
+  ReadResourceRequestSchema,
+} from '@modelcontextprotocol/sdk/types.js';
+import {
+  MCP_APP_MIME_TYPE,
+  SETTINGS_PANEL_RESOURCE_META,
+  SETTINGS_PANEL_URI,
+  settingsPanelHtml,
+} from './entities/context/settings-panel';
 import { ConnectionManager } from './services/ConnectionManager';
 import { HealthMonitor } from './services/HealthMonitor';
 import { normalizeInstanceUrl } from './utils/url';
@@ -16,11 +29,32 @@ import {
 } from './utils/error-handler';
 import { GitLabTimeoutError } from './utils/fetch';
 import { getRequestTracker, getConnectionTracker, getCurrentRequestId } from './logging/index';
-import { LOG_FORMAT, HANDLER_TIMEOUT_MS, GITLAB_BASE_URL } from './config';
+import { LOG_FORMAT, HANDLER_TIMEOUT_MS, GITLAB_BASE_URL, GITLAB_READ_ONLY_MODE } from './config';
 import { getSchemaMode } from './utils/schema-utils';
 import { formatToolResult, errorToolResult } from './utils/tool-result';
-import { OAUTH_SECURITY_SCHEMES, toolScopeRejection, withReauthChallenge } from './oauth/tool-auth';
+import {
+  APP_PANEL_SECURITY_SCHEMES,
+  OAUTH_SECURITY_SCHEMES,
+  resourceScopeRejection,
+  toolScopeRejection,
+  withReauthChallenge,
+} from './oauth/tool-auth';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import {
+  getConfigurationService,
+  resolveCaller,
+  runWithCaller,
+  type Caller,
+} from './configuration';
+import {
+  CONFIGURATION_TOOLS,
+  callRestriction,
+  scopeLabel,
+  toolRestriction,
+  type EffectivePolicy,
+} from './configuration/policy';
+import { executeScoped } from './configuration/scoped-execution';
+import { withTargetPaths } from './configuration/scope-ids';
 
 interface JsonSchemaProperty {
   type?: string;
@@ -191,8 +225,8 @@ interface BootstrapContext {
  * Return a CONNECTION_FAILED response if the target instance is unreachable for
  * non-context tools, or null to proceed normally.
  *
- * manage_context always passes through — it operates on local state and can
- * surface the disconnected status to the caller.
+ * Configuration tools always pass through: they work on local state and are how the
+ * caller finds out about, and recovers from, the disconnected state.
  */
 function checkUnreachableInstance(
   toolName: string,
@@ -200,7 +234,10 @@ function checkUnreachableInstance(
   effectiveInstanceUrl: string,
   healthMonitor: HealthMonitor,
 ): CallToolResult | null {
-  if (healthMonitor.isInstanceReachable(effectiveInstanceUrl) || toolName === 'manage_context') {
+  if (
+    healthMonitor.isInstanceReachable(effectiveInstanceUrl) ||
+    CONFIGURATION_TOOLS.has(toolName)
+  ) {
     return null;
   }
   const action =
@@ -271,7 +308,7 @@ async function resyncSessionAfterSwitchProfile(
 }
 
 /**
- * Fast-path for manage_context when the instance is unreachable: bypass connection
+ * Fast-path for configuration tools when the instance is unreachable: bypass connection
  * bootstrap and health reporting. Returns a tool response if handled, or null to
  * fall through to the normal bootstrap path.
  *
@@ -286,7 +323,10 @@ async function tryManageContextFastPath(
   healthMonitor: HealthMonitor,
   sessionId: string | undefined,
 ): Promise<CallToolResult | null> {
-  if (toolName !== 'manage_context' || healthMonitor.isInstanceReachable(effectiveInstanceUrl)) {
+  if (
+    !CONFIGURATION_TOOLS.has(toolName) ||
+    healthMonitor.isInstanceReachable(effectiveInstanceUrl)
+  ) {
     return null;
   }
   if (LOG_FORMAT === 'condensed') {
@@ -423,15 +463,73 @@ function formatBootstrapFailure(ctx: BootstrapContext, initError: unknown): Call
   return withReauthChallenge(errorToolResult(connError), initError);
 }
 
-function recordCallContext(
-  sessionContext: import('./entities/context/types').SessionContext,
-): void {
+/**
+ * The tool list narrowed by the caller's settings. When the settings cannot be read the
+ * list stays as the registry built it: listing is only visibility, and every call is
+ * still checked (and refused while the settings cannot be read).
+ */
+async function withoutRestrictedTools<T extends { name: string }>(
+  tools: T[],
+  caller: Caller,
+  registryManager: import('./registry-manager').RegistryManager,
+): Promise<T[]> {
+  let policy: EffectivePolicy;
+  try {
+    policy = (await getConfigurationService().resolve(caller)).policy;
+  } catch (error: unknown) {
+    logWarn('Could not read the caller settings for the tool list', { err: error as Error });
+    return tools;
+  }
+  return tools.filter(
+    (tool) => toolRestriction(policy, registryManager.getToolFacts(tool.name)) === null,
+  );
+}
+
+/** A refusal for a call the caller's settings do not allow, or null when it may run. */
+function settingsRejection(
+  toolName: string,
+  args: Record<string, unknown>,
+  policy: EffectivePolicy,
+  registryManager: import('./registry-manager').RegistryManager,
+): CallToolResult | null {
+  const reason = callRestriction(policy, registryManager.getToolFacts(toolName), args);
+  if (reason === null) return null;
+  const action = typeof args.action === 'string' ? args.action : undefined;
+  const call = action ? `${toolName} ${action}` : toolName;
+  const message =
+    `'${call}' is not allowed by the current settings: ` +
+    `${reason}. The account settings are changed with update_settings, this session's ` +
+    'with manage_context.';
+  recordEarlyReturnError(toolName, action, message);
+  return errorToolResult({ error: message });
+}
+
+/**
+ * Runs the tool through the registry (per-URL cache). A listing that names no target
+ * reads the working scope instead of everything the account sees.
+ */
+async function executeInScope(
+  registryManager: import('./registry-manager').RegistryManager,
+  toolName: string,
+  requested: Record<string, unknown>,
+  policy: EffectivePolicy,
+  instanceUrl: string | undefined,
+  requestScopes: readonly string[] | undefined,
+): Promise<unknown> {
+  const run = (tool: string, toolArgs: Record<string, unknown>): Promise<unknown> =>
+    requestScopes === undefined
+      ? registryManager.executeTool(tool, toolArgs, instanceUrl)
+      : registryManager.executeTool(tool, toolArgs, instanceUrl, requestScopes);
+  return executeScoped(run, toolName, requested, policy);
+}
+
+function recordCallContext(scopePath: string | undefined, readOnly: boolean): void {
   const requestTracker = getRequestTracker();
   // Capture current context and read-only state for access logging
-  if (sessionContext.scope?.path) {
-    requestTracker.setContextForCurrentRequest(sessionContext.scope.path);
+  if (scopePath) {
+    requestTracker.setContextForCurrentRequest(scopePath);
   }
-  requestTracker.setReadOnlyForCurrentRequest(sessionContext.readOnly);
+  requestTracker.setReadOnlyForCurrentRequest(readOnly);
 
   // Increment tool count for connection tracking
   const currentRequestId = getCurrentRequestId();
@@ -570,6 +668,42 @@ export async function setupHandlers(server: Server): Promise<void> {
     // No authentication configured - server will respond to tools/list but tool calls will fail
     logInfo('Skipping connection initialization - no authentication configured');
   }
+
+  // The settings panel is the server's one resource: an MCP App document. It holds no
+  // account data; everything it shows comes from tool calls made with the caller's own
+  // authorization.
+  server.setRequestHandler(ListResourcesRequestSchema, () => {
+    const rejection = resourceScopeRejection();
+    if (rejection) throw rejection;
+    return {
+      resources: [
+        {
+          uri: SETTINGS_PANEL_URI,
+          name: 'GitLab connection panel',
+          mimeType: MCP_APP_MIME_TYPE,
+          _meta: SETTINGS_PANEL_RESOURCE_META,
+        },
+      ],
+    };
+  });
+  server.setRequestHandler(ReadResourceRequestSchema, (request) => {
+    const rejection = resourceScopeRejection();
+    if (rejection) throw rejection;
+    if (request.params.uri !== SETTINGS_PANEL_URI) {
+      throw new McpError(ErrorCode.InvalidParams, `Unknown resource: ${request.params.uri}`);
+    }
+    return {
+      contents: [
+        {
+          uri: SETTINGS_PANEL_URI,
+          mimeType: MCP_APP_MIME_TYPE,
+          text: settingsPanelHtml(),
+          _meta: SETTINGS_PANEL_RESOURCE_META,
+        },
+      ],
+    };
+  });
+
   // List tools handler
   // Uses per-session instance URL tracking so each session receives the tool list
   // filtered for its target GitLab instance (#398). The sessionId from RequestHandlerExtra
@@ -607,10 +741,15 @@ export async function setupHandlers(server: Server): Promise<void> {
     // OAuth deployments declare the token every tool needs; static-token mode keeps
     // the descriptors as before.
     const securitySchemes = isCatalogOAuth() ? OAUTH_SECURITY_SCHEMES : undefined;
-    const tools =
+    const catalog =
       scopes === undefined
         ? registryManager.getAllToolDefinitions(sessionInstanceUrl, mode)
         : registryManager.getAllToolDefinitions(sessionInstanceUrl, mode, scopes);
+    const tools = await withoutRestrictedTools(
+      catalog,
+      resolveCaller(listToolsSessionId, sessionInstanceUrl ?? GITLAB_BASE_URL),
+      registryManager,
+    );
 
     logInfo('Returning tools list', { toolCount: tools.length });
 
@@ -699,12 +838,14 @@ export async function setupHandlers(server: Server): Promise<void> {
       if (!securitySchemes || tool._meta?.securitySchemes !== undefined) {
         return { ...tool, inputSchema };
       }
-      // Mirrored in _meta for clients whose descriptor schema drops unknown top-level fields.
+      // A tool that opens an app panel also needs the panel resource read. Mirrored in _meta
+      // for clients whose descriptor schema drops unknown top-level fields.
+      const schemes = tool._meta?.ui ? APP_PANEL_SECURITY_SCHEMES : securitySchemes;
       return {
         ...tool,
         inputSchema,
-        securitySchemes,
-        _meta: { ...tool._meta, securitySchemes },
+        securitySchemes: schemes,
+        _meta: { ...tool._meta, securitySchemes: schemes },
       };
     });
 
@@ -769,6 +910,8 @@ export async function setupHandlers(server: Server): Promise<void> {
       const { getSessionManager: getSessionMgrForCall } = await import('./session-manager');
       getSessionMgrForCall().setSessionInstanceUrl(callSessionId, requestInstanceUrl);
     }
+    // Whose settings apply, from the authenticated request only.
+    const caller = resolveCaller(callSessionId, requestInstanceUrl);
 
     // Flag to prevent late reportSuccess/reportError from a timed-out handlerWork()
     // overwriting the timeout signal already sent to HealthMonitor.
@@ -818,6 +961,23 @@ export async function setupHandlers(server: Server): Promise<void> {
       const toolName = request.params.name;
       const toolArguments = request.params.arguments;
 
+      // The caller's settings, checked before anything reaches GitLab. A call is refused
+      // when they cannot be read: allowing it could bypass a restriction.
+      const { RegistryManager: CallRegistry } = await import('./registry-manager');
+      const configuration = await getConfigurationService().resolve(caller);
+      // A scope holds paths: numeric ids are checked as the paths they stand for.
+      const callArguments = toolArguments ?? {};
+      const checkedArguments = configuration.policy.scopeEnforcer
+        ? await withTargetPaths(callArguments)
+        : callArguments;
+      const settingsRefusal = settingsRejection(
+        toolName,
+        checkedArguments,
+        configuration.policy,
+        CallRegistry.getInstance(),
+      );
+      if (settingsRefusal) return settingsRefusal;
+
       // Early return: instance unreachable for non-context tools
       // (isInstanceReachable treats untracked URLs as reachable before HealthMonitor.initialize)
       const unreachableResult = checkUnreachableInstance(
@@ -861,8 +1021,10 @@ export async function setupHandlers(server: Server): Promise<void> {
       if (LOG_FORMAT === 'condensed') {
         const requestTracker = getRequestTracker();
         requestTracker.setToolForCurrentRequest(toolName, action);
-        const { getContextManager } = await import('./entities/context/context-manager');
-        recordCallContext(getContextManager().getContext());
+        recordCallContext(
+          scopeLabel(configuration.policy.scope),
+          GITLAB_READ_ONLY_MODE || configuration.policy.readOnly,
+        );
       }
 
       try {
@@ -897,17 +1059,14 @@ export async function setupHandlers(server: Server): Promise<void> {
           });
         }
 
-        // Execute the tool using the registry manager (per-URL cache)
-        const args = request.params.arguments ?? {};
-        const result =
-          requestScopes === undefined
-            ? await registryManager.executeTool(toolName, args, effectiveInstanceUrl)
-            : await registryManager.executeTool(
-                toolName,
-                args,
-                effectiveInstanceUrl,
-                requestScopes,
-              );
+        const result = await executeInScope(
+          registryManager,
+          toolName,
+          request.params.arguments ?? {},
+          configuration.policy,
+          effectiveInstanceUrl,
+          requestScopes,
+        );
 
         // Guard against TOCTOU cache miss: hasToolHandler returned true but a
         // concurrent refreshCache swapped the lookup table before executeTool ran.
@@ -939,7 +1098,7 @@ export async function setupHandlers(server: Server): Promise<void> {
       // complete — but the alternative (no timeout) leaves bootstrap unbounded
       // if the instance is hung. The timedOut flag prevents late reportSuccess/
       // reportError from overwriting the timeout health signal.
-      const result = await Promise.race([handlerWork(), timeoutPromise]);
+      const result = await Promise.race([runWithCaller(caller, handlerWork), timeoutPromise]);
 
       if (result === HANDLER_TIMEOUT_SYMBOL) {
         // timedOut already set in timer callback — handler is still running but we respond

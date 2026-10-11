@@ -16,10 +16,14 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import {
   CallToolRequestSchema,
+  ListResourcesRequestSchema,
   ListToolsRequestSchema,
+  ReadResourceRequestSchema,
+  ToolListChangedNotificationSchema,
   type CallToolResult,
+  type ListResourcesResult,
   type ListToolsResult,
-  type ListToolsRequest,
+  type ReadResourceResult,
   McpError,
   ErrorCode,
 } from '@modelcontextprotocol/sdk/types.js';
@@ -61,13 +65,22 @@ export class ChannelGateway {
   private reconnecting = false;
   private closing = false;
   private pendingWaiters = 0;
+  /**
+   * Whether the downstream catalog marks a tool read-only (safe to replay after a lost
+   * link), with the catalog read that said so. Catalog pages arrive independently, so each
+   * page updates only its own tools, and an older read never overrides a newer one.
+   */
+  private readonly catalogReads = new Map<string, { read: boolean; generation: number }>();
+  private catalogGeneration = 0;
 
   constructor(private readonly config: GatewayConfig) {
     this.server = new Server(
       { name: config.name ?? 'gitlab-ci-gateway', version: config.version ?? '0.1.0' },
       {
         capabilities: {
-          tools: {}, // re-exposes the downstream catalog
+          // Re-exposes the downstream catalog, which changes with the caller's settings.
+          tools: { listChanged: true },
+          resources: {}, // and the ui:// resources its tools point at (settings panel)
           experimental: { 'claude/channel': {} }, // allowed to push channel events
         },
         instructions:
@@ -99,7 +112,12 @@ export class ChannelGateway {
   }
 
   private newClient(): Client {
-    return new Client({ name: this.config.name ?? 'gitlab-ci-gateway', version: '0.1.0' });
+    const client = new Client({ name: this.config.name ?? 'gitlab-ci-gateway', version: '0.1.0' });
+    // The host lists the catalog again only when told it changed.
+    client.setNotificationHandler(ToolListChangedNotificationSchema, () => {
+      void this.server.sendToolListChanged().catch(() => {});
+    });
+    return client;
   }
 
   private registerHandlers(): void {
@@ -107,21 +125,78 @@ export class ChannelGateway {
       // The catalog read must honour the same reconnect/buffer policy as
       // CallTool: a ListTools that lands mid-reconnect should wait for the
       // link (bounded) and replay once, not throw against a dead client.
-      return (await forwardWithPolicy(
-        {
-          isRead: () => true, // listing the catalog is an idempotent read
-          isConnected: () => this.connected,
-          waitForConnection: () => this.waitForConnection(),
-          call: () => this.listDownstream(request.params),
-        },
-        'tools/list',
-        undefined,
+      const generation = ++this.catalogGeneration;
+      const catalog = (await this.readDownstream('tools/list', (client) =>
+        client.listTools(request.params),
       )) as ListToolsResult;
+      const complete = !request.params?.cursor && !catalog.nextCursor;
+      this.recordCatalogReads(catalog, generation, complete);
+      return catalog;
     });
     this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const { name, arguments: args } = request.params;
       return (await this.interceptor.handleCall(name, args ?? {})) as CallToolResult;
     });
+    // Resource reads are idempotent like the catalog read: same bounded reconnect policy.
+    this.server.setRequestHandler(ListResourcesRequestSchema, async (request) => {
+      return (await this.readDownstream('resources/list', (client) =>
+        client.listResources(request.params),
+      )) as ListResourcesResult;
+    });
+    this.server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
+      return (await this.readDownstream('resources/read', (client) =>
+        client.readResource(request.params),
+      )) as ReadResourceResult;
+    });
+  }
+
+  private recordCatalogReads(
+    catalog: ListToolsResult,
+    generation: number,
+    complete: boolean,
+  ): void {
+    for (const tool of catalog.tools) {
+      const known = this.catalogReads.get(tool.name);
+      if (known && known.generation > generation) continue;
+      // A tool without the annotation is classified by its name, as before it was listed.
+      const read = tool.annotations?.readOnlyHint ?? isReadCall(tool.name);
+      this.catalogReads.set(tool.name, { read, generation });
+    }
+    // The whole catalog in one answer: a tool it no longer lists loses its verdict. A page
+    // of a paginated catalog cannot tell, the tool may be on another page.
+    if (!complete) return;
+    for (const [name, known] of this.catalogReads) {
+      if (known.generation < generation) this.catalogReads.delete(name);
+    }
+  }
+
+  /** Whether a call is a read: the catalog's annotation, else the name for an unlisted tool. */
+  private isRead(name: string): boolean {
+    return this.catalogReads.get(name)?.read ?? isReadCall(name);
+  }
+
+  /** An idempotent downstream read under the reconnect/buffer policy. */
+  private readDownstream(
+    name: string,
+    read: (client: Client) => Promise<unknown>,
+  ): Promise<unknown> {
+    return forwardWithPolicy(
+      {
+        isRead: () => true,
+        isConnected: () => this.connected,
+        waitForConnection: () => this.waitForConnection(),
+        call: async () => {
+          const client = this.client;
+          try {
+            return await read(client);
+          } catch (error) {
+            this.rethrowDownstreamError(client, error);
+          }
+        },
+      },
+      name,
+      undefined,
+    );
   }
 
   /** Establish the downstream session, retrying with exponential backoff. */
@@ -199,7 +274,7 @@ export class ChannelGateway {
   private forward(name: string, args: unknown): Promise<unknown> {
     return forwardWithPolicy(
       {
-        isRead: isReadCall,
+        isRead: (name) => this.isRead(name),
         isConnected: () => this.connected,
         waitForConnection: () => this.waitForConnection(),
         call: (n, a) => this.callDownstream(n, a),
@@ -213,15 +288,6 @@ export class ChannelGateway {
     const client = this.client;
     try {
       return await client.callTool({ name, arguments: (args ?? {}) as Record<string, unknown> });
-    } catch (error) {
-      this.rethrowDownstreamError(client, error);
-    }
-  }
-
-  private async listDownstream(params: ListToolsRequest['params']): Promise<ListToolsResult> {
-    const client = this.client;
-    try {
-      return await client.listTools(params);
     } catch (error) {
       this.rethrowDownstreamError(client, error);
     }

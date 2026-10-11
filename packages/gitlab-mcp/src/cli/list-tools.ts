@@ -1056,8 +1056,8 @@ function countToolsForPreset(preset: Preset, allToolNames: string[]): number {
     enabledTools = enabledTools.filter((name) => !name.startsWith('manage_'));
   }
 
-  // Apply denied_tools_regex
-  if (preset.denied_tools_regex) {
+  // Apply denied_tools_regex; a whitelist overrides it
+  if (preset.denied_tools_regex && !preset.allowed_tools?.length) {
     try {
       const regex = new RegExp(preset.denied_tools_regex);
       enabledTools = enabledTools.filter((name) => !regex.test(name));
@@ -1105,8 +1105,8 @@ function getToolsForPreset(
     enabledTools = enabledTools.filter((name) => !name.startsWith('manage_'));
   }
 
-  // Apply denied_tools_regex
-  if (preset.denied_tools_regex) {
+  // Apply denied_tools_regex; a whitelist overrides it
+  if (preset.denied_tools_regex && !preset.allowed_tools?.length) {
     try {
       const regex = new RegExp(preset.denied_tools_regex);
       const denied = enabledTools.filter((name) => regex.test(name));

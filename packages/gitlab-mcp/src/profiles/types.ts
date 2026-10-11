@@ -199,7 +199,10 @@ export const PresetSchema = z
     // Access Control
     read_only: z.boolean().optional().describe('Enable read-only mode'),
     denied_tools_regex: z.string().optional().describe('Regex pattern to exclude tools'),
-    allowed_tools: z.array(z.string()).optional().describe('Explicit tool whitelist'),
+    allowed_tools: z
+      .array(z.string())
+      .optional()
+      .describe('Explicit tool whitelist (overrides denied_tools_regex)'),
     denied_actions: z
       .array(z.string())
       .optional()

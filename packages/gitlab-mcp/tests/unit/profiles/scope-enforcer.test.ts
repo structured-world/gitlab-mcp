@@ -558,6 +558,16 @@ describe('enforceArgsScope', () => {
     ]);
   });
 
+  // Slashes are trimmed at both ends only, also on a long run of them inside a path.
+  it.each([
+    ['///team/app///', true],
+    ['team//app', false],
+    [`team${'/'.repeat(5000)}x`, false],
+    ['////', false],
+  ])('trims the slashes of %s at its ends only', (path, allowed) => {
+    expect(new ScopeEnforcer({ project: 'team/app' }).isAllowed(path)).toBe(allowed);
+  });
+
   it('should allow a destination inside the scope', () => {
     const enforcer = new ScopeEnforcer({ group: 'team', includeSubgroups: true });
 

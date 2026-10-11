@@ -73,12 +73,24 @@ function getScopeDescription(scope: ScopeConfig): string {
  * - Handles numeric IDs (returns as-is)
  */
 function normalizeProjectPath(path: string): string {
-  const trimmed = decodePath(path.trim()).replace(/^\/+|\/+$/g, '');
+  const trimmed = trimSlashes(decodePath(path.trim()));
   // If it's a numeric ID, return as-is
   if (/^\d+$/.test(trimmed)) {
     return trimmed;
   }
   return trimmed.toLowerCase();
+}
+
+/**
+ * The path without leading and trailing slashes, in one pass: a pattern anchored at the end
+ * backtracks over every run of slashes inside a path a caller supplies.
+ */
+function trimSlashes(path: string): string {
+  let start = 0;
+  let end = path.length;
+  while (start < end && path[start] === '/') start++;
+  while (end > start && path[end - 1] === '/') end--;
+  return path.slice(start, end);
 }
 
 /** A URL-encoded path decoded; a malformed escape is kept as written. */

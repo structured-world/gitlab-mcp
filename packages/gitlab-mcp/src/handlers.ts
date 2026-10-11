@@ -490,7 +490,24 @@ async function withoutRestrictedTools<T extends { name: string }>(
   );
 }
 
-/** A refusal for a call the caller's settings do not allow, or null when it may run. */
+/**
+ * A refusal for a call the caller's settings do not allow, or null when it may run. Tool,
+ * group, read-only and action limits come first: they need nothing from GitLab, so a call
+ * they refuse reaches nothing. Then the scope, which holds paths: numeric ids are checked
+ * as the paths they stand for.
+ */
+async function callSettingsRejection(
+  toolName: string,
+  args: Record<string, unknown>,
+  policy: EffectivePolicy,
+  registryManager: import('./registry-manager').RegistryManager,
+): Promise<CallToolResult | null> {
+  const unscoped = settingsRejection(toolName, args, withoutScope(policy), registryManager);
+  if (unscoped || !policy.scopeEnforcer || isExemptFromSettings(toolName)) return unscoped;
+  return settingsRejection(toolName, await withTargetPaths(args), policy, registryManager);
+}
+
+/** A refusal for a call the given policy does not allow, or null when it may run. */
 function settingsRejection(
   toolName: string,
   args: Record<string, unknown>,
@@ -970,17 +987,12 @@ export async function setupHandlers(server: Server): Promise<void> {
       // when they cannot be read: allowing it could bypass a restriction.
       const { RegistryManager: CallRegistry } = await import('./registry-manager');
       const configuration = await getConfigurationService().resolve(caller);
-      const { policy } = configuration;
-      const callRegistry = CallRegistry.getInstance();
-      const callArguments = toolArguments ?? {};
-      // Tool, group, read-only and action limits first: they need nothing from GitLab, so a
-      // call they refuse reaches nothing.
-      const settingsRefusal =
-        settingsRejection(toolName, callArguments, withoutScope(policy), callRegistry) ??
-        // A scope holds paths: numeric ids are checked as the paths they stand for.
-        (policy.scopeEnforcer && !isExemptFromSettings(toolName)
-          ? settingsRejection(toolName, await withTargetPaths(callArguments), policy, callRegistry)
-          : null);
+      const settingsRefusal = await callSettingsRejection(
+        toolName,
+        toolArguments ?? {},
+        configuration.policy,
+        CallRegistry.getInstance(),
+      );
       if (settingsRefusal) return settingsRefusal;
 
       // Early return: instance unreachable for non-context tools

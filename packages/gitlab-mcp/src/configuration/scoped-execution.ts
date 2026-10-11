@@ -12,7 +12,20 @@ import { assertActionAllowed } from '../entities/utils';
 import { BrowseProjectsSchema } from '../entities/core/schema-readonly';
 import { ManageTodosSchema } from '../entities/core/schema';
 import { BrowseSearchSchema } from '../entities/search/schema-readonly';
-import { isFilteredListing, scopedArgs, scopedResult, scopeProjectsOnly } from './scope-targets';
+import {
+  isFilteredListing,
+  scopedArgs,
+  scopedResult,
+  scopeProjectsOnly,
+  singleTarget,
+} from './scope-targets';
+import {
+  directGroup,
+  directGroupSearchRows,
+  isScopeVulnerability,
+  keepNodes,
+  ownedRunnersInScope,
+} from './scoped-feeds';
 
 type Args = Record<string, unknown>;
 /** Runs one tool call with the caller's instance and token scopes. */
@@ -53,7 +66,8 @@ const SIMPLE_PROJECT_FIELDS: ReadonlySet<string> = new Set([
   'custom_attributes',
   'repository_storage',
 ]);
-const TODO_CONCURRENCY = 5;
+/** Requests one scoped call keeps in flight, so a large scope stays within rate limits. */
+const REQUEST_CONCURRENCY = 5;
 
 const numberOr = (value: unknown, fallback: number): number =>
   typeof value === 'number' && value > 0 ? value : fallback;
@@ -73,8 +87,24 @@ export async function executeScoped(
   const emulation = emulate(run, tool, requested, scope, scopeEnforcer);
   if (emulation) return emulation;
   const args = scopedArgs(tool, requested, scope);
-  if (isFilteredListing(tool, args)) return fillScopedPage(run, tool, args, scopeEnforcer);
+  const group = directGroup(scope);
+  // A group without its subgroups: GitLab's group search covers them, so its rows are kept.
+  if (group && tool === 'browse_search' && requested.action === 'global') {
+    const keep = await directGroupSearchRows(run, group, args.scope, scopeEnforcer);
+    return fillScopedPage(run, tool, args, keep);
+  }
+  if (isFilteredListing(tool, args)) {
+    return fillScopedPage(
+      run,
+      tool,
+      args,
+      (rows) => scopedResult(tool, args, rows, scopeEnforcer) as unknown[],
+    );
+  }
   const result = await run(tool, args);
+  if (group && tool === 'browse_vulnerabilities' && requested.group_id === undefined) {
+    return keepNodes(result, isScopeVulnerability(scopeEnforcer));
+  }
   return isGroupAuditTrail(requested, args) ? groupAuditTrail(result, args.group_id) : result;
 }
 
@@ -93,6 +123,11 @@ function emulate(
   if (tool === 'manage_todos' && requested.action === 'mark_all_done') {
     ManageTodosSchema.parse(requested);
     return markScopeTodosDone(run, enforcer);
+  }
+  // The caller's own runners stay the feed asked for, kept to those the scope can use.
+  const target = singleTarget(scope);
+  if (target && tool === 'browse_runners' && requested.action === 'list_owned') {
+    return ownedRunnersInScope(run, requested, target);
   }
   const projects = scopeProjectsOnly(scope);
   if (!projects) return undefined;
@@ -138,7 +173,7 @@ async function fillScopedPage(
   run: RunTool,
   tool: string,
   args: Args,
-  enforcer: ScopeEnforcer,
+  keep: (rows: unknown[]) => unknown[],
 ): Promise<unknown> {
   const perPage = numberOr(args.per_page, DEFAULT_PAGE_SIZE);
   const page = numberOr(args.page, 1);
@@ -156,7 +191,7 @@ async function fillScopedPage(
   for (let upstream = 1; upstream <= MAX_UPSTREAM_PAGES && rows.length < wanted; upstream++) {
     const result = await run(tool, { ...args, page: upstream, per_page: UPSTREAM_PAGE_SIZE });
     if (!Array.isArray(result)) return result;
-    rows.push(...(scopedResult(tool, args, result, enforcer) as unknown[]));
+    rows.push(...keep(result));
     exhausted = result.length < UPSTREAM_PAGE_SIZE;
     if (exhausted) break;
   }
@@ -187,17 +222,8 @@ async function listScopeProjects(
   projects: string[],
   requested: Args,
 ): Promise<unknown[]> {
-  const found = await Promise.all(
-    projects.map((project_id) =>
-      run('browse_projects', { action: 'get', project_id }).catch((error: unknown) => {
-        const message = error instanceof Error ? error.message : String(error);
-        if (parseGitLabApiError(message)?.status === 404) return undefined;
-        throw error;
-      }),
-    ),
-  );
   const search = typeof requested.search === 'string' ? requested.search.toLowerCase() : '';
-  const matching = found.filter((project) => {
+  const matches = (project: unknown): boolean => {
     if (project === undefined) return false;
     if (!search) return true;
     const { name, path_with_namespace } = project as {
@@ -207,10 +233,30 @@ async function listScopeProjects(
     return [name, path_with_namespace].some(
       (value) => typeof value === 'string' && value.toLowerCase().includes(search),
     );
-  });
+  };
   const perPage = numberOr(requested.per_page, DEFAULT_PAGE_SIZE);
   const page = numberOr(requested.page, 1);
-  const listed = matching.slice((page - 1) * perPage, page * perPage);
+  const wanted = page * perPage;
+  const matching: unknown[] = [];
+  // A few projects at a time, in the scope's order, and only until the page is full: a
+  // large scope must not send a request per project for a small page.
+  for (
+    let start = 0;
+    start < projects.length && matching.length < wanted;
+    start += REQUEST_CONCURRENCY
+  ) {
+    const batch = await Promise.all(
+      projects.slice(start, start + REQUEST_CONCURRENCY).map((project_id) =>
+        run('browse_projects', { action: 'get', project_id }).catch((error: unknown) => {
+          const message = error instanceof Error ? error.message : String(error);
+          if (parseGitLabApiError(message)?.status === 404) return undefined;
+          throw error;
+        }),
+      ),
+    );
+    matching.push(...batch.filter(matches));
+  }
+  const listed = matching.slice((page - 1) * perPage, wanted);
   // A project is read in full; a listing answers with the simple representation unless
   // simple=false, as GitLab does (its schema default is true).
   return requested.simple === false ? listed : listed.map(simpleProject);
@@ -258,7 +304,7 @@ async function markScopeTodosDone(run: RunTool, enforcer: ScopeEnforcer): Promis
       });
     }
   };
-  await Promise.all(Array.from({ length: Math.min(TODO_CONCURRENCY, ids.length) }, worker));
+  await Promise.all(Array.from({ length: Math.min(REQUEST_CONCURRENCY, ids.length) }, worker));
   const marked = ids.length - failed.length;
   const failedNote = failed.length > 0 ? `; ${failed.length} could not be marked` : '';
   return {

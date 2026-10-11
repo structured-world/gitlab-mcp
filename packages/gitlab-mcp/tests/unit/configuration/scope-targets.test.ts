@@ -96,7 +96,7 @@ describe('scopedArgs', () => {
     ],
     [
       'browse_runners',
-      { action: 'list_owned' },
+      { action: 'list_all' },
       groupOnly,
       { action: 'list_group', group_id: 'team' },
     ],
@@ -143,6 +143,8 @@ describe('scopedArgs', () => {
     ['browse_deploy_keys', { action: 'list', public: true }, project],
     ['browse_deploy_keys', { action: 'list' }, group],
     ['browse_runners', { action: 'list_project', project_id: 'team/app' }, project],
+    // The caller's own runners keep their own feed; they are filtered to the scope instead.
+    ['browse_runners', { action: 'list_owned' }, project],
     ['browse_audit_events', { action: 'list_group', group_id: 'team' }, project],
     ['browse_audit_events', { action: 'list_instance', entity_type: 'User' }, project],
     ['browse_audit_events', { action: 'list_instance', entity_id: 3 }, project],
@@ -178,13 +180,6 @@ describe('isFilteredListing', () => {
 });
 
 describe('targetlessRestriction', () => {
-  // GitLab's group search always covers subgroups; results are not filterable by path.
-  it('refuses a global search under a group scope that excludes subgroups', () => {
-    expect(targetlessRestriction('browse_search', { action: 'global' }, groupOnly)).toMatch(
-      /subgroups/,
-    );
-  });
-
   it('refuses a global search under a scope of several projects', () => {
     expect(targetlessRestriction('browse_search', { action: 'global' }, several)).toMatch(
       /search within one of them/,
@@ -258,15 +253,11 @@ describe('targetlessRestriction', () => {
     );
   });
 
-  // A group's vulnerability list always covers its subgroups.
-  it('refuses a vulnerability listing under a group scope without subgroups', () => {
-    expect(targetlessRestriction('browse_vulnerabilities', { action: 'list' }, groupOnly)).toMatch(
-      /subgroups/,
-    );
-  });
-
   it.each([
     ['browse_search', { action: 'global' }, group],
+    // A group without its subgroups is answered by the group's results, kept to it.
+    ['browse_search', { action: 'global' }, groupOnly],
+    ['browse_vulnerabilities', { action: 'list' }, groupOnly],
     ['browse_search', { action: 'group', group_id: 'team' }, several],
     ['browse_projects', { action: 'list' }, several],
     ['manage_project', { action: 'create', name: 'app' }, group],

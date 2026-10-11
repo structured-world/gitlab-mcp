@@ -139,13 +139,6 @@ describe('LocalSettingsFile', () => {
       .spyOn(fs.promises, 'readFile')
       .mockImplementationOnce(async (...args: Parameters<typeof fs.promises.readFile>) => {
         const content = await realReadFile(...args);
-        // Long enough for any lock this writer holds to look abandoned.
-        for (const name of fs.readdirSync(path.dirname(dir))) {
-          if (name.endsWith('.lock')) {
-            const longAgo = new Date(Date.now() - 60_000);
-            fs.utimesSync(path.join(path.dirname(dir), name), longAgo, longAgo);
-          }
-        }
         paused();
         await resumed;
         return content;

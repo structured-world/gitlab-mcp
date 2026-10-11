@@ -29,6 +29,11 @@ jest.mock('../../../../src/server', () => ({
   sendToolsListChangedNotification: jest.fn().mockResolvedValue(undefined),
 }));
 
+const mockPinAllSessions = jest.fn();
+jest.mock('../../../../src/session-manager', () => ({
+  getSessionManager: () => ({ pinAllSessions: mockPinAllSessions }),
+}));
+
 const mockClearNamespaceTierCache = jest.fn();
 jest.mock('../../../../src/services/NamespaceTierDetector', () => ({
   clearNamespaceTierCache: () => mockClearNamespaceTierCache(),
@@ -545,6 +550,12 @@ describe('ContextManager', () => {
       expect(mockClearNamespaceTierCache).toHaveBeenCalled();
       expect(mockReinitialize).toHaveBeenCalledWith('https://success-gitlab.example.com');
       expect(mockSendToolsListChangedNotification).toHaveBeenCalled();
+      // Sessions follow the shared token to the new instance before they are told to refresh,
+      // so the refreshed tool list is built for the new instance's account.
+      expect(mockPinAllSessions).toHaveBeenCalledWith('https://success-gitlab.example.com');
+      expect(mockPinAllSessions.mock.invocationCallOrder[0]).toBeLessThan(
+        mockSendToolsListChangedNotification.mock.invocationCallOrder[0],
+      );
       expect((await runWithCaller(alice1, () => manager.getContext())).scope).toBeUndefined();
     });
 

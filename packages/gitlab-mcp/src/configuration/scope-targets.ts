@@ -10,7 +10,9 @@ import type { ScopeEnforcer } from '../profiles/scope-enforcer';
 type Args = Record<string, unknown>;
 
 /** The scope as one group or one project, when it is exactly that. */
-function singleTarget(scope: ScopeConfig): { group: string } | { project: string } | undefined {
+export function singleTarget(
+  scope: ScopeConfig,
+): { group: string } | { project: string } | undefined {
   const lists = (scope.projects?.length ?? 0) + (scope.groups?.length ?? 0);
   if (lists > 0 || scope.namespace) return undefined;
   if (scope.group && !scope.project) return { group: scope.group };
@@ -22,9 +24,9 @@ const hasValue = (value: unknown): boolean => value !== undefined && value !== n
 
 /**
  * Why a targetless call cannot be narrowed to the scope, or null: a creation that names no
- * place, a global search or vulnerability listing no GitLab filter expresses (several
- * projects or groups, or a group without its subgroups, which group results always cover),
- * and instance-wide listings with no per-scope form.
+ * place, a global search or vulnerability listing for several projects or groups, and
+ * instance-wide listings with no per-scope form. A group without its subgroups reads the
+ * group's results kept to its own projects instead.
  */
 export function targetlessRestriction(tool: string, args: Args, scope: ScopeConfig): string | null {
   const creation = creationRestriction(tool, args, scope);
@@ -80,19 +82,11 @@ const INSTANCE_LISTINGS: Record<string, (args: Args, target: Target | undefined)
         : null,
   };
 
-/**
- * Why a call GitLab only offers per project or per whole group cannot follow the scope:
- * several targets, or a group without its subgroups (a group's results always cover them).
- */
+/** Why a call GitLab only offers per project or per group cannot follow several targets. */
 function unnarrowable(scope: ScopeConfig, what: string, instead: string): string | null {
-  const target = singleTarget(scope);
-  if (!target) {
-    return `${what} for a working scope of several projects or groups; ${instead} one of them`;
-  }
-  if ('group' in target && scope.includeSubgroups === false) {
-    return `${what} to a group without its subgroups; ${instead} one of its projects`;
-  }
-  return null;
+  return singleTarget(scope)
+    ? null
+    : `${what} for a working scope of several projects or groups; ${instead} one of them`;
 }
 
 /** A project created or forked: its `namespace` names the group it goes into. */
@@ -158,7 +152,7 @@ const isTargetlessList = (args: Args): boolean =>
 const NARROWERS: Record<string, (args: Args, target: Target, scope: ScopeConfig) => Args | null> = {
   browse_search: (args, target) => {
     if (args.action !== 'global') return null;
-    // Group search covers subgroups; a scope without them is refused before this point.
+    // Group search covers subgroups; under a scope without them its rows are filtered.
     return 'group' in target
       ? { ...args, action: 'group', group_id: target.group }
       : { ...args, action: 'project', project_id: target.project };
@@ -188,9 +182,10 @@ const NARROWERS: Record<string, (args: Args, target: Target, scope: ScopeConfig)
     'project' in target
       ? { ...args, project_id: target.project }
       : null,
-  // Runners available to the scope's project or group, with the same filters.
+  // Runners available to the scope's project or group, with the same filters. The caller's
+  // owned runners keep their own feed and are filtered to the scope instead.
   browse_runners: (args, target) => {
-    if (args.action !== 'list_all' && args.action !== 'list_owned') return null;
+    if (args.action !== 'list_all') return null;
     return 'group' in target
       ? { ...args, action: 'list_group', group_id: target.group }
       : { ...args, action: 'list_project', project_id: target.project };

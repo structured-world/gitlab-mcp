@@ -58,15 +58,18 @@ scope project's events under a project scope and is refused under a group scope.
 Instance-wide listings read the scope instead: deploy keys those of the scope project,
 instance audit events the trail of the scope project or group (a group's trail holds the
 group's own events, and the result says that its projects' events are listed per project),
-all or owned runners those available to the scope's project or group; where the scope has
-no such form, the listing is refused. A global search or vulnerability
-listing is refused under a scope of several projects or groups, and under a group scope
-without subgroups (GitLab's group results always include them); use one project or group
-instead. A global search for projects under a project scope answers with the scope's
-projects that match; a search of snippet titles, which GitLab offers only instance-wide, is
-refused under any scope. An action the administrator denied stays denied when the scope
-runs other requests in its place. `manage_todos mark_all_done` marks only the scope's pending todos done and leaves
-the others pending. A project created or forked without a namespace goes into the scope's
+all runners those available to the scope's project or group, and your own runners those of
+yours the scope's project or group can use; where the scope has no such form, the listing is
+refused. Under a group scope without subgroups, a global search and a vulnerability listing
+read the group's results kept to the group itself and its direct projects (GitLab's group
+results always include subgroups; a user search stays as GitLab gives it). A global search or
+vulnerability listing is refused under a scope of several projects or groups; use one
+project or group instead. A global search for projects under a project scope answers with
+the scope's projects that match; a search of snippet titles, which GitLab offers only
+instance-wide, is refused under any scope. An action the administrator denied stays denied
+when the scope runs other requests in its place. A scope made of many projects is read a few
+projects at a time, and only as far as the requested page needs. `manage_todos
+mark_all_done` marks only the scope's pending todos done and leaves the others pending. A project created or forked without a namespace goes into the scope's
 group; with no single group to put it in, and for a group without a parent, the call is
 refused.
 

@@ -149,6 +149,15 @@ export class SessionManager {
   }
 
   /**
+   * Point every session at one instance, without notifying them: a switch of the shared
+   * static-token instance moves all sessions, and its caller notifies them once afterwards.
+   */
+  pinAllSessions(url: string): void {
+    const normalizedUrl = normalizeInstanceUrl(url);
+    for (const session of this.sessions.values()) session.instanceUrl = normalizedUrl;
+  }
+
+  /**
    * Get the GitLab instance URL associated with a session.
    * Returns undefined if the session does not exist.
    */

@@ -315,6 +315,10 @@ export class ContextManager {
       // instance's projects.
       const after = resolveCaller(before.sessionKey, instanceUrl);
       await getConfigurationService().moveSessions(before.accountKey, after.accountKey);
+      // Every session follows the shared token before it is told to refresh, so its tool
+      // list is built for the new instance's account.
+      const { getSessionManager } = await import('../../session-manager');
+      getSessionManager().pinAllSessions(instanceUrl);
 
       logInfo('Switched GitLab instance', {
         previous: previousUrl,

@@ -7,6 +7,7 @@
 import { executeScoped } from '../../../src/configuration/scoped-execution';
 import { buildPolicy } from '../../../src/configuration/policy';
 import { isActionDenied } from '../../../src/config';
+import { ScopeEnforcer } from '../../../src/profiles/scope-enforcer';
 
 jest.mock('../../../src/config', () => ({
   ...jest.requireActual('../../../src/config'),
@@ -16,6 +17,11 @@ jest.mock('../../../src/config', () => ({
 const groupPolicy = buildPolicy(
   undefined,
   { scope: { type: 'group', path: 'team', includeSubgroups: true } },
+  {},
+);
+const groupOnlyPolicy = buildPolicy(
+  undefined,
+  { scope: { type: 'group', path: 'team', includeSubgroups: false } },
   {},
 );
 const projectPolicy = buildPolicy(
@@ -223,6 +229,157 @@ describe('executeScoped', () => {
     expect(
       await executeScoped(run, 'browse_audit_events', { action: 'list_instance' }, groupPolicy),
     ).toEqual({ message: 'not a list' });
+  });
+
+  // A scope of many projects: the first page reads only the projects it needs, a few at a
+  // time, instead of every project of the scope at once.
+  it('reads a page of a large project scope a few projects at a time', async () => {
+    const paths = Array.from({ length: 50 }, (_, i) => `team/p${i}`);
+    const many = buildPolicy(undefined, {}, {});
+    many.scope = { projects: paths };
+    many.scopeEnforcer = new ScopeEnforcer(many.scope);
+    let inFlight = 0;
+    let peak = 0;
+    const run = jest.fn(async (_tool: string, args: Record<string, unknown>) => {
+      inFlight++;
+      peak = Math.max(peak, inFlight);
+      await new Promise((resolve) => setTimeout(resolve, 1));
+      inFlight--;
+      return { id: 1, name: String(args.project_id), path_with_namespace: args.project_id };
+    });
+
+    const result = (await executeScoped(
+      run,
+      'browse_projects',
+      { action: 'list', per_page: 2 },
+      many,
+    )) as Array<Record<string, unknown>>;
+
+    expect(result.map((p) => p.path_with_namespace)).toEqual(['team/p0', 'team/p1']);
+    expect(run.mock.calls.length).toBeLessThanOrEqual(5);
+    expect(peak).toBeLessThanOrEqual(5);
+  });
+
+  // The caller's own runners stay the caller's: the owned feed, with its own cursor, keeps
+  // the runners available to the scope project.
+  it('lists the owned runners available to the scope', async () => {
+    const run = jest.fn(async (_tool: string, args: Record<string, unknown>) =>
+      args.action === 'list_project'
+        ? { nodes: [{ id: 1 }, { id: 2 }], pageInfo: { hasNextPage: false, endCursor: null } }
+        : { nodes: [{ id: 2 }, { id: 3 }], pageInfo: { hasNextPage: true, endCursor: 'c' } },
+    );
+
+    const result = await executeScoped(
+      run,
+      'browse_runners',
+      { action: 'list_owned', status: 'ONLINE', first: 20 },
+      projectPolicy,
+    );
+
+    expect(run).toHaveBeenCalledWith('browse_runners', {
+      action: 'list_owned',
+      status: 'ONLINE',
+      first: 20,
+    });
+    expect(run).toHaveBeenCalledWith('browse_runners', {
+      action: 'list_project',
+      project_id: 'team/app',
+      first: 100,
+    });
+    expect(result).toEqual({
+      nodes: [{ id: 2 }],
+      pageInfo: { hasNextPage: true, endCursor: 'c' },
+    });
+  });
+
+  // A group without its subgroups has no search of its own: the group search answers, kept
+  // to the group's direct projects and the group itself.
+  it('searches a group without its subgroups through its direct projects', async () => {
+    const run = jest.fn(async (tool: string, args: Record<string, unknown>) => {
+      if (tool === 'browse_namespaces') return { id: 10, full_path: 'team' };
+      if (tool === 'browse_projects') {
+        return args.page === 1 ? [{ id: 1, path_with_namespace: 'team/app' }] : [];
+      }
+      return [
+        { project_id: 1, title: 'direct' },
+        { project_id: 2, title: 'subgroup' },
+        { group_id: 10, title: 'group' },
+        { group_id: 11, title: 'subgroup group' },
+      ];
+    });
+
+    const result = await executeScoped(
+      run,
+      'browse_search',
+      { action: 'global', scope: 'issues', search: 'x' },
+      groupOnlyPolicy,
+    );
+
+    expect(run).toHaveBeenCalledWith('browse_search', {
+      action: 'group',
+      group_id: 'team',
+      scope: 'issues',
+      search: 'x',
+      page: 1,
+      per_page: 100,
+    });
+    expect(result).toEqual([
+      { project_id: 1, title: 'direct' },
+      { group_id: 10, title: 'group' },
+    ]);
+  });
+
+  it.each([
+    [
+      'projects',
+      [{ path_with_namespace: 'team/app' }, { path_with_namespace: 'team/sub/x' }],
+      [{ path_with_namespace: 'team/app' }],
+    ],
+    // Users belong to no project; a group search lists them all.
+    ['users', [{ id: 1 }, { id: 2 }], [{ id: 1 }, { id: 2 }]],
+  ])(
+    'keeps %s of a group search without subgroups by their own place',
+    async (scope, rows, expected) => {
+      const run = jest.fn().mockResolvedValue(rows);
+
+      const result = await executeScoped(
+        run,
+        'browse_search',
+        { action: 'global', scope, search: 'x' },
+        groupOnlyPolicy,
+      );
+
+      expect(result).toEqual(expected);
+      expect(run).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  // The group's vulnerabilities, kept to its direct projects; the cursor stays the group's.
+  it('lists the vulnerabilities of a group without its subgroups', async () => {
+    const run = jest.fn().mockResolvedValue({
+      nodes: [
+        { id: 1, project: { fullPath: 'team/app' } },
+        { id: 2, project: { fullPath: 'team/sub/x' } },
+      ],
+      pageInfo: { hasNextPage: true, endCursor: 'c' },
+    });
+
+    const result = await executeScoped(
+      run,
+      'browse_vulnerabilities',
+      { action: 'list', first: 20 },
+      groupOnlyPolicy,
+    );
+
+    expect(run).toHaveBeenCalledWith('browse_vulnerabilities', {
+      action: 'list',
+      group_id: 'team',
+      first: 20,
+    });
+    expect(result).toEqual({
+      nodes: [{ id: 1, project: { fullPath: 'team/app' } }],
+      pageInfo: { hasNextPage: true, endCursor: 'c' },
+    });
   });
 
   it('fails a project scope listing on a failure that is not an Error', async () => {

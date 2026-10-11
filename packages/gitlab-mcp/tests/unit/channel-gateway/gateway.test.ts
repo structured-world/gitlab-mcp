@@ -472,6 +472,21 @@ describe('ChannelGateway', () => {
     await gw.stop();
   });
 
+  // The replacement downstream may serve another catalog (settings changed during the
+  // outage, or its own notification was lost with the old link): the host is told to list
+  // again after a reconnect, not after the first connect.
+  it('tells the host to list tools again after a reconnect', async () => {
+    const gw = new ChannelGateway(baseConfig);
+    await gw.start();
+    expect(mockServerSendToolListChanged).not.toHaveBeenCalled();
+
+    mockTransportInstance.onclose!();
+    await wait(10);
+
+    expect(mockServerSendToolListChanged).toHaveBeenCalledTimes(1);
+    await gw.stop();
+  });
+
   it('retries the downstream connection with backoff', async () => {
     jest.useFakeTimers();
     try {

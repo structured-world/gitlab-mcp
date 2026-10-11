@@ -62,7 +62,8 @@ all runners those available to the scope's project or group, and your own runner
 yours the scope's project or group can use; where the scope has no such form, the listing is
 refused. Under a group scope without subgroups, a global search and a vulnerability listing
 read the group's results kept to the group itself and its direct projects (GitLab's group
-results always include subgroups; a user search stays as GitLab gives it). A global search or
+results always include subgroups; a user search stays as GitLab gives it). The group's own
+projects are read up to 1000; a search of a larger group comes back marked `partial`. A global search or
 vulnerability listing is refused under a scope of several projects or groups; use one
 project or group instead. A global search for projects under a project scope answers with
 the scope's projects that match; a search of snippet titles, which GitLab offers only

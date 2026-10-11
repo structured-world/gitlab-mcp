@@ -44,8 +44,9 @@ describe('directGroupSearchRows', () => {
       ];
     });
 
-    const keep = await directGroupSearchRows(run, 'team', 'issues', groupOnly);
+    const { keep, complete } = await directGroupSearchRows(run, 'team', 'issues', groupOnly);
 
+    expect(complete).toBe(true);
     expect(
       keep([
         { project_id: 150 },
@@ -58,13 +59,15 @@ describe('directGroupSearchRows', () => {
     ).toEqual([{ project_id: 150 }, { project_id: 9 }, { project_id: null, group_id: 10 }]);
   });
 
-  it('keeps no project rows when the group listing is not a list', async () => {
+  // The group's projects are unknown, so the answer cannot claim to be complete.
+  it('keeps no project rows, and says so, when the group listing is not a list', async () => {
     const run = jest.fn(async (tool: string) =>
       tool === 'browse_namespaces' ? { id: 10 } : { message: 'not a list' },
     );
 
-    const keep = await directGroupSearchRows(run, 'team', 'blobs', groupOnly);
+    const { keep, complete } = await directGroupSearchRows(run, 'team', 'blobs', groupOnly);
 
+    expect(complete).toBe(false);
     expect(keep([{ project_id: 1 }, { group_id: 10 }])).toEqual([{ group_id: 10 }]);
   });
 });

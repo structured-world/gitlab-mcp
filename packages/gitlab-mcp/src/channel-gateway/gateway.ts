@@ -222,8 +222,13 @@ export class ChannelGateway {
           return;
         }
         this.connected = true;
-        // Only on a reconnect (not the initial connect): announce link restored.
-        if (this.reconnecting) this.notifyLink('restored');
+        // Only on a reconnect (not the initial connect): announce link restored, and have the
+        // host list tools again: the replacement downstream may serve another catalog (its
+        // settings changed during the outage, or the old link lost its notification).
+        if (this.reconnecting) {
+          this.notifyLink('restored');
+          void this.server.sendToolListChanged().catch(() => {});
+        }
         return;
       } catch {
         if (this.closing) return;

@@ -34,37 +34,43 @@ export async function directGroupSearchRows(
   group: string,
   searchScope: unknown,
   enforcer: ScopeEnforcer,
-): Promise<(rows: unknown[]) => unknown[]> {
-  if (searchScope === 'users') return (rows) => rows;
+): Promise<{ keep: (rows: unknown[]) => unknown[]; complete: boolean }> {
+  if (searchScope === 'users') return { keep: (rows) => rows, complete: true };
   if (searchScope === 'projects') {
-    return (rows) =>
+    const keep = (rows: unknown[]): unknown[] =>
       rows.filter((row) => {
         const path = (row as Row).path_with_namespace;
         return typeof path === 'string' && enforcer.isAllowed(path);
       });
+    return { keep, complete: true };
   }
-  const [namespace, projectIds] = await Promise.all([
+  const [namespace, projects] = await Promise.all([
     run('browse_namespaces', { action: 'get', namespace_id: group }),
     directProjectIds(run, group, enforcer),
   ]);
   const groupId = (namespace as Row | undefined)?.id;
-  return (rows) =>
+  const keep = (rows: unknown[]): unknown[] =>
     rows.filter((row) => {
       const { project_id, group_id } = row as Row;
-      if (project_id !== undefined && project_id !== null) return projectIds.has(project_id);
+      if (project_id !== undefined && project_id !== null) return projects.ids.has(project_id);
       return group_id !== undefined && group_id === groupId;
     });
+  return { keep, complete: projects.complete };
 }
 
+/** The bound on the group's own projects read to keep its search rows. */
+export const DIRECT_PROJECTS_READ = MAX_PAGES * PAGE_SIZE;
+
 /**
- * Ids of the group's own projects. A group's listing also returns projects shared with it
- * from other namespaces; those are left out.
+ * Ids of the group's own projects, and whether all of them were read within the bound. A
+ * group's listing also returns projects shared with it from other namespaces; those are left
+ * out.
  */
 async function directProjectIds(
   run: RunTool,
   group: string,
   enforcer: ScopeEnforcer,
-): Promise<Set<unknown>> {
+): Promise<{ ids: Set<unknown>; complete: boolean }> {
   const ids = new Set<unknown>();
   // Pages are read one after another: whether the next one is needed depends on this one.
   for (let page = 1; page <= MAX_PAGES; page++) {
@@ -80,9 +86,11 @@ async function directProjectIds(
       const path = project.path_with_namespace;
       if (typeof path === 'string' && enforcer.isAllowed(path)) ids.add(project.id);
     }
-    if (projects.length < PAGE_SIZE) break;
+    if (projects.length < PAGE_SIZE) return { ids, complete: true };
   }
-  return ids;
+  // The read stopped at the bound on a full page, or the listing gave no list: more of the
+  // group's projects may exist.
+  return { ids, complete: false };
 }
 
 /**

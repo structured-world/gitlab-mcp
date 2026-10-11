@@ -329,6 +329,70 @@ describe('executeScoped', () => {
     ]);
   });
 
+  // The group's own projects are read up to a bound; past it, rows of the projects not read
+  // would be dropped, so the answer says it is partial instead of looking complete.
+  it('marks a group search partial when the group has more direct projects than are read', async () => {
+    let next = 0;
+    const run = jest.fn(async (tool: string) => {
+      if (tool === 'browse_namespaces') return { id: 10 };
+      if (tool === 'browse_projects') {
+        return Array.from({ length: 100 }, () => ({
+          id: next++,
+          path_with_namespace: `team/p${next}`,
+        }));
+      }
+      return [{ project_id: 5, title: 'read' }];
+    });
+
+    const result = await executeScoped(
+      run,
+      'browse_search',
+      { action: 'global', scope: 'issues', search: 'x' },
+      groupOnlyPolicy,
+    );
+
+    expect(result).toEqual({
+      items: [{ project_id: 5, title: 'read' }],
+      partial: true,
+      message:
+        "Results are kept to the first 1000 direct projects of group 'team'; results of its other projects are not shown. Narrow the listing (for example with a search) to see the rest.",
+    });
+  });
+
+  // A page that is partial for its own reason keeps it, and adds the projects bound.
+  it.each([
+    [
+      { action: 'global', scope: 'issues', search: 'x', page: 51, per_page: 20 },
+      {
+        items: [],
+        partial: true,
+        message:
+          "Results are kept to the first 1000 direct projects of group 'team'; results of its other projects are not shown. A scoped listing reads the first 1000 rows GitLab returns, and page 51 starts after them. Narrow the listing (for example with a search) to see the rest.",
+      },
+    ],
+  ])('combines the reasons of a partial group search %j', async (args, expected) => {
+    const run = jest.fn(async (tool: string) =>
+      tool === 'browse_namespaces' ? { id: 10 } : { message: 'not a list' },
+    );
+
+    expect(await executeScoped(run, 'browse_search', args, groupOnlyPolicy)).toEqual(expected);
+  });
+
+  it('passes on a group search answer that is not a list', async () => {
+    const run = jest.fn(async (tool: string) =>
+      tool === 'browse_search' ? { message: 'search failed' } : { message: 'not a list' },
+    );
+
+    expect(
+      await executeScoped(
+        run,
+        'browse_search',
+        { action: 'global', scope: 'issues', search: 'x' },
+        groupOnlyPolicy,
+      ),
+    ).toEqual({ message: 'search failed' });
+  });
+
   it.each([
     [
       'projects',

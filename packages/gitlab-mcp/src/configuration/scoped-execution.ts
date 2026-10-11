@@ -20,6 +20,7 @@ import {
   singleTarget,
 } from './scope-targets';
 import {
+  DIRECT_PROJECTS_READ,
   directGroup,
   directGroupSearchRows,
   isScopeVulnerability,
@@ -90,8 +91,14 @@ export async function executeScoped(
   const group = directGroup(scope);
   // A group without its subgroups: GitLab's group search covers them, so its rows are kept.
   if (group && tool === 'browse_search' && requested.action === 'global') {
-    const keep = await directGroupSearchRows(run, group, args.scope, scopeEnforcer);
-    return fillScopedPage(run, tool, args, keep);
+    const { keep, complete } = await directGroupSearchRows(run, group, args.scope, scopeEnforcer);
+    const page = await fillScopedPage(run, tool, args, keep);
+    return complete
+      ? page
+      : withPartialReason(
+          page,
+          `Results are kept to the first ${DIRECT_PROJECTS_READ} direct projects of group '${group}'; results of its other projects are not shown.`,
+        );
   }
   if (isFilteredListing(tool, args)) {
     return fillScopedPage(
@@ -210,6 +217,14 @@ function partialPage(items: unknown[], reason: string): unknown {
     partial: true,
     message: `${reason} Narrow the listing (for example with a search) to see the rest.`,
   };
+}
+
+/** A scoped page marked partial for one more reason, whether or not it already was. */
+function withPartialReason(page: unknown, reason: string): unknown {
+  if (Array.isArray(page)) return partialPage(page, reason);
+  const partial = page as { items?: unknown; partial?: unknown; message?: unknown };
+  if (partial?.partial !== true || !Array.isArray(partial.items)) return page;
+  return { ...partial, message: `${reason} ${String(partial.message)}` };
 }
 
 /**

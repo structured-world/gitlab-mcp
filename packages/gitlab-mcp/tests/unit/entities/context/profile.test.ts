@@ -6,14 +6,10 @@
 import { accountProfileId, getAccountProfile } from '../../../../src/entities/context/profile';
 import { runWithTokenContext } from '../../../../src/oauth/token-context';
 import type { TokenContext } from '../../../../src/oauth/types';
+import { setActiveInstanceSource } from '../../../../src/utils/gitlab-base-url';
 
 jest.mock('../../../../src/utils/fetch', () => ({
   enhancedFetch: jest.fn(),
-}));
-
-jest.mock('../../../../src/config', () => ({
-  ...jest.requireActual('../../../../src/config'),
-  GITLAB_BASE_URL: 'https://gitlab.example.com',
 }));
 
 import { enhancedFetch } from '../../../../src/utils/fetch';
@@ -100,14 +96,42 @@ describe('account profile', () => {
 
   it('identifies a static-token connection from GitLab', async () => {
     mockFetch.mockResolvedValue(userResponse({ id: 7, username: 'bot', public_email: 'b@x.io' }));
+    const configured = process.env.GITLAB_API_URL;
+    process.env.GITLAB_API_URL = 'https://gitlab.example.com';
 
-    const profile = await getAccountProfile();
+    let profile;
+    try {
+      profile = await getAccountProfile();
+    } finally {
+      process.env.GITLAB_API_URL = configured;
+    }
 
     expect(profile).toEqual({
       id: accountProfileId('https://gitlab.example.com', 7),
       email: 'b@x.io',
       nickname: 'bot @ gitlab.example.com',
     });
+  });
+
+  // After switch_instance the server's token works with another instance: the profile is
+  // that instance's account, read from it.
+  it('identifies a static-token connection on the instance it works with now', async () => {
+    mockFetch.mockResolvedValue(userResponse({ id: 7, username: 'bot' }));
+    setActiveInstanceSource(() => 'https://other.example.com');
+
+    try {
+      const profile = await getAccountProfile();
+
+      expect(mockFetch).toHaveBeenCalledWith('https://other.example.com/api/v4/user', {
+        retry: false,
+      });
+      expect(profile).toEqual({
+        id: accountProfileId('https://other.example.com', 7),
+        nickname: 'bot @ other.example.com',
+      });
+    } finally {
+      setActiveInstanceSource(() => null);
+    }
   });
 
   it('keeps the linked identity when GitLab throws a non-Error value', async () => {

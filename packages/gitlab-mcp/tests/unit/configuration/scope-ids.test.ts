@@ -40,6 +40,33 @@ describe('withTargetPaths', () => {
     expect(await withTargetPaths({ project_id: '12' }, read)).toEqual({ project_id: '12' });
   });
 
+  // Only a definitive not-found keeps an id numeric. A rejected token or any other failure
+  // fails the call with GitLab's own error, so an expired sign-in reaches the reauthorization
+  // challenge instead of reading as an out-of-scope target.
+  it.each([
+    ['GitLab API error: 401 Unauthorized'],
+    ['GitLab API error: 403 Forbidden - insufficient_scope'],
+    ['GitLab API error: 500 Internal Server Error'],
+  ])('fails on %s', async (message) => {
+    const failing = jest.fn().mockRejectedValue(new Error(message));
+
+    await expect(withTargetPaths({ project_id: 7 }, failing)).rejects.toThrow(message);
+  });
+
+  it('fails on a failure that is not an Error', async () => {
+    const failing = jest.fn().mockRejectedValue('connection reset');
+
+    await expect(withTargetPaths({ project_id: 7 }, failing)).rejects.toBe('connection reset');
+  });
+
+  // A namespace that is not a group is read as a project; a failure there still fails.
+  it('fails when the group lookup of a namespace fails other than not found', async () => {
+    const failing = jest.fn().mockRejectedValue(new Error('GitLab API error: 401 Unauthorized'));
+
+    await expect(withTargetPaths({ namespace: '4' }, failing)).rejects.toThrow('401');
+    expect(failing).toHaveBeenCalledTimes(1);
+  });
+
   // Without a reader the caller's own GitLab client is asked; an empty answer resolves nothing.
   it("reads with the caller's GitLab client and keeps an id it gets no path for", async () => {
     jest.mocked(gitlab.get).mockResolvedValue(undefined);

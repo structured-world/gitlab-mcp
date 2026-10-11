@@ -5,6 +5,7 @@
 
 import { numericTargets, type NumericTargetKind } from '../profiles/scope-enforcer';
 import { gitlab } from '../utils/gitlab-api';
+import { parseGitLabApiError } from '../utils/error-handler';
 
 type Args = Record<string, unknown>;
 /** Reads one GitLab REST resource with the caller's token and instance. */
@@ -14,8 +15,8 @@ const readWithCaller: ReadResource = (path) => gitlab.get(path);
 
 /**
  * The call's arguments with every numeric project or group id replaced by its path, for the
- * scope check only; the call itself keeps the ids. An id GitLab does not resolve stays
- * numeric, and the check refuses it. No request is made when no target is numeric.
+ * scope check only; the call itself keeps the ids. An id GitLab does not know stays numeric,
+ * and the check refuses it. No request is made when no target is numeric.
  */
 export async function withTargetPaths(
   args: Args,
@@ -48,12 +49,20 @@ async function pathOf(
   return field(read, `projects/${id}`, 'path_with_namespace');
 }
 
+/**
+ * One field of a GitLab resource, or undefined when GitLab has no such resource (404). Any
+ * other failure fails the call with GitLab's error, so a rejected token reaches the
+ * reauthorization challenge instead of reading as a target outside the scope.
+ */
 async function field(read: ReadResource, path: string, name: string): Promise<string | undefined> {
+  let resource: unknown;
   try {
-    const value = ((await read(path)) as Record<string, unknown> | undefined)?.[name];
-    return typeof value === 'string' ? value : undefined;
-  } catch {
-    // Unknown or unreadable: the id stays numeric and the scope check refuses it.
-    return undefined;
+    resource = await read(path);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (parseGitLabApiError(message)?.status === 404) return undefined;
+    throw error;
   }
+  const value = (resource as Record<string, unknown> | undefined)?.[name];
+  return typeof value === 'string' ? value : undefined;
 }

@@ -28,12 +28,27 @@ describe('scopedArgs', () => {
     ).toEqual(expected);
   });
 
+  // A plain listing lists active projects; the group listing applies that only when asked,
+  // so the default is kept when the scope's group is filled in.
   it.each([
-    [group, { action: 'list', group_id: 'team', include_subgroups: true }],
-    [groupOnly, { action: 'list', group_id: 'team', include_subgroups: false }],
-  ])('lists the projects of the scope group %j', (scope, expected) => {
+    [group, { action: 'list', group_id: 'team', include_subgroups: true, active: true }],
+    [groupOnly, { action: 'list', group_id: 'team', include_subgroups: false, active: true }],
+  ])('lists the active projects of the scope group %j', (scope, expected) => {
     expect(scopedArgs('browse_projects', { action: 'list' }, scope)).toEqual(expected);
   });
+
+  // The caller's own choice of active or archived projects stays as asked.
+  it.each([[{ active: false }], [{ archived: true }]])(
+    'keeps the requested %j filter when listing the scope group',
+    (filter) => {
+      expect(scopedArgs('browse_projects', { action: 'list', ...filter }, group)).toEqual({
+        action: 'list',
+        ...filter,
+        group_id: 'team',
+        include_subgroups: true,
+      });
+    },
+  );
 
   // The caller's narrower choice stays; a scope without subgroups excludes them whatever
   // the caller asked, as the results outside it are filtered anyway.
@@ -44,7 +59,7 @@ describe('scopedArgs', () => {
   ])('lists the scope group %j with subgroups %s as %s', (scope, requested, expected) => {
     expect(
       scopedArgs('browse_projects', { action: 'list', include_subgroups: requested }, scope),
-    ).toEqual({ action: 'list', group_id: 'team', include_subgroups: expected });
+    ).toEqual({ action: 'list', group_id: 'team', include_subgroups: expected, active: true });
   });
 
   // Without a namespace GitLab creates the project in the user's own namespace.

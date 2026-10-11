@@ -91,14 +91,7 @@ export async function executeScoped(
   const group = directGroup(scope);
   // A group without its subgroups: GitLab's group search covers them, so its rows are kept.
   if (group && tool === 'browse_search' && requested.action === 'global') {
-    const { keep, complete } = await directGroupSearchRows(run, group, args.scope, scopeEnforcer);
-    const page = await fillScopedPage(run, tool, args, keep);
-    return complete
-      ? page
-      : withPartialReason(
-          page,
-          `Results are kept to the first ${DIRECT_PROJECTS_READ} direct projects of group '${group}'; results of its other projects are not shown.`,
-        );
+    return directGroupSearch(run, args, group, scopeEnforcer);
   }
   if (isFilteredListing(tool, args)) {
     return fillScopedPage(
@@ -113,6 +106,50 @@ export async function executeScoped(
     return keepNodes(result, isScopeVulnerability(scopeEnforcer));
   }
   return isGroupAuditTrail(requested, args) ? groupAuditTrail(result, args.group_id) : result;
+}
+
+/**
+ * A global search under a group scope without subgroups: the group search, its rows kept to
+ * the group and its direct projects and paged like the search, in the search's answer shape.
+ */
+async function directGroupSearch(
+  run: RunTool,
+  args: Args,
+  group: string,
+  enforcer: ScopeEnforcer,
+): Promise<unknown> {
+  const { keep, complete } = await directGroupSearchRows(run, group, args.scope, enforcer);
+  // The search tool answers with its rows under `results`.
+  const rows: RunTool = async (tool, toolArgs) => {
+    const answer = await run(tool, toolArgs);
+    const results = (answer as { results?: unknown } | undefined)?.results;
+    return Array.isArray(results) ? results : answer;
+  };
+  const page = await fillScopedPage(rows, 'browse_search', args, keep);
+  const marked = complete
+    ? page
+    : withPartialReason(
+        page,
+        `Results are kept to the first ${DIRECT_PROJECTS_READ} direct projects of group '${group}'; results of its other projects are not shown.`,
+      );
+  return searchAnswer(marked, { group_id: args.group_id, scope: args.scope });
+}
+
+/**
+ * A scoped page in the search tool's answer shape (`count` and `results`, beside what the
+ * search was for), keeping a partial page's reason. Anything else passes as it came.
+ */
+function searchAnswer(page: unknown, about: Args): unknown {
+  if (Array.isArray(page)) return { ...about, count: page.length, results: page };
+  const partial = page as { items?: unknown; partial?: unknown; message?: unknown } | undefined;
+  if (partial?.partial !== true || !Array.isArray(partial.items)) return page;
+  return {
+    ...about,
+    count: partial.items.length,
+    results: partial.items,
+    partial: true,
+    message: partial.message,
+  };
 }
 
 /**
@@ -145,10 +182,13 @@ function emulate(
   ) {
     return listScopeProjects(run, projects, BrowseProjectsSchema.parse(requested));
   }
-  // Project search has no projects scope: the scope's projects matching the search answer it.
+  // Project search has no projects scope: the scope's projects matching the search answer it,
+  // in the global search's answer shape.
   if (tool === 'browse_search' && requested.action === 'global' && requested.scope === 'projects') {
     const { search, page, per_page } = BrowseSearchSchema.parse(requested);
-    return listScopeProjects(run, projects, { search, page, per_page });
+    return listScopeProjects(run, projects, { search, page, per_page }).then((found) =>
+      searchAnswer(found, { scope: 'projects' }),
+    );
   }
   return undefined;
 }

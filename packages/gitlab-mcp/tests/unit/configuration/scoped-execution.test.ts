@@ -8,6 +8,13 @@ import { executeScoped } from '../../../src/configuration/scoped-execution';
 import { buildPolicy } from '../../../src/configuration/policy';
 import { isActionDenied } from '../../../src/config';
 import { ScopeEnforcer } from '../../../src/profiles/scope-enforcer';
+import { searchToolRegistry } from '../../../src/entities/search/registry';
+import { gitlab } from '../../../src/utils/gitlab-api';
+
+jest.mock('../../../src/utils/gitlab-api', () => ({
+  ...jest.requireActual('../../../src/utils/gitlab-api'),
+  gitlab: { get: jest.fn() },
+}));
 
 jest.mock('../../../src/config', () => ({
   ...jest.requireActual('../../../src/config'),
@@ -19,6 +26,13 @@ const groupPolicy = buildPolicy(
   { scope: { type: 'group', path: 'team', includeSubgroups: true } },
   {},
 );
+/** The answer of the search tool for a group search: its rows under `results`. */
+const searchAnswer = (scope: string, results: unknown[]) => ({
+  group_id: 'team',
+  scope,
+  count: results.length,
+  results,
+});
 const groupOnlyPolicy = buildPolicy(
   undefined,
   { scope: { type: 'group', path: 'team', includeSubgroups: false } },
@@ -162,10 +176,18 @@ describe('executeScoped', () => {
     }
   });
 
-  // Project search has no projects scope: the scope project itself answers, when it matches.
+  // Project search has no projects scope: the scope project itself answers, when it matches,
+  // in the shape of a search answer.
   it.each([
-    ['app', [{ id: 7, name: 'App', path_with_namespace: 'team/app' }]],
-    ['other', []],
+    [
+      'app',
+      {
+        scope: 'projects',
+        count: 1,
+        results: [{ id: 7, name: 'App', path_with_namespace: 'team/app' }],
+      },
+    ],
+    ['other', { scope: 'projects', count: 0, results: [] }],
   ])('answers a project search for %s with the scope project', async (search, expected) => {
     const run = jest.fn().mockResolvedValue({
       id: 7,
@@ -300,12 +322,13 @@ describe('executeScoped', () => {
       if (tool === 'browse_projects') {
         return args.page === 1 ? [{ id: 1, path_with_namespace: 'team/app' }] : [];
       }
-      return [
+      // The search tool's own answer shape.
+      return searchAnswer('issues', [
         { project_id: 1, title: 'direct' },
         { project_id: 2, title: 'subgroup' },
         { group_id: 10, title: 'group' },
         { group_id: 11, title: 'subgroup group' },
-      ];
+      ]);
     });
 
     const result = await executeScoped(
@@ -323,10 +346,12 @@ describe('executeScoped', () => {
       page: 1,
       per_page: 100,
     });
-    expect(result).toEqual([
-      { project_id: 1, title: 'direct' },
-      { group_id: 10, title: 'group' },
-    ]);
+    expect(result).toEqual(
+      searchAnswer('issues', [
+        { project_id: 1, title: 'direct' },
+        { group_id: 10, title: 'group' },
+      ]),
+    );
   });
 
   // The group's own projects are read up to a bound; past it, rows of the projects not read
@@ -341,7 +366,7 @@ describe('executeScoped', () => {
           path_with_namespace: `team/p${next}`,
         }));
       }
-      return [{ project_id: 5, title: 'read' }];
+      return searchAnswer('issues', [{ project_id: 5, title: 'read' }]);
     });
 
     const result = await executeScoped(
@@ -352,7 +377,7 @@ describe('executeScoped', () => {
     );
 
     expect(result).toEqual({
-      items: [{ project_id: 5, title: 'read' }],
+      ...searchAnswer('issues', [{ project_id: 5, title: 'read' }]),
       partial: true,
       message:
         "Results are kept to the first 1000 direct projects of group 'team'; results of its other projects are not shown. Narrow the listing (for example with a search) to see the rest.",
@@ -364,7 +389,7 @@ describe('executeScoped', () => {
     [
       { action: 'global', scope: 'issues', search: 'x', page: 51, per_page: 20 },
       {
-        items: [],
+        ...searchAnswer('issues', []),
         partial: true,
         message:
           "Results are kept to the first 1000 direct projects of group 'team'; results of its other projects are not shown. A scoped listing reads the first 1000 rows GitLab returns, and page 51 starts after them. Narrow the listing (for example with a search) to see the rest.",
@@ -393,6 +418,30 @@ describe('executeScoped', () => {
     ).toEqual({ message: 'search failed' });
   });
 
+  // Against the search tool itself, not a stand-in: its answer wraps the rows, and those are
+  // what the group scope keeps.
+  it('keeps the rows the search tool returns for a group without subgroups', async () => {
+    const searchTool = searchToolRegistry.get('browse_search');
+    jest.mocked(gitlab.get).mockResolvedValue([
+      { project_id: 1, title: 'direct' },
+      { project_id: 2, title: 'subgroup' },
+    ]);
+    const run = jest.fn(async (tool: string, args: Record<string, unknown>) => {
+      if (tool === 'browse_namespaces') return { id: 10 };
+      if (tool === 'browse_projects') return [{ id: 1, path_with_namespace: 'team/app' }];
+      return searchTool?.handler(args);
+    });
+
+    const result = await executeScoped(
+      run,
+      'browse_search',
+      { action: 'global', scope: 'issues', search: 'x' },
+      groupOnlyPolicy,
+    );
+
+    expect(result).toEqual(searchAnswer('issues', [{ project_id: 1, title: 'direct' }]));
+  });
+
   it.each([
     [
       'projects',
@@ -404,7 +453,7 @@ describe('executeScoped', () => {
   ])(
     'keeps %s of a group search without subgroups by their own place',
     async (scope, rows, expected) => {
-      const run = jest.fn().mockResolvedValue(rows);
+      const run = jest.fn().mockResolvedValue(searchAnswer(scope, rows));
 
       const result = await executeScoped(
         run,
@@ -413,7 +462,7 @@ describe('executeScoped', () => {
         groupOnlyPolicy,
       );
 
-      expect(result).toEqual(expected);
+      expect(result).toEqual(searchAnswer(scope, expected));
       expect(run).toHaveBeenCalledTimes(1);
     },
   );

@@ -124,14 +124,26 @@ export async function ownedRunnersInScope(
     'group' in target
       ? { action: 'list_group', group_id: target.group }
       : { action: 'list_project', project_id: target.project };
-  const [owned, ids] = await Promise.all([
+  const [owned, usable] = await Promise.all([
     run('browse_runners', requested),
     runnerIds(run, available),
   ]);
-  return keepNodes(owned, (node) => ids.has(node.id));
+  const kept = keepNodes(owned, (node) => usable.ids.has(node.id));
+  if (usable.complete || kept === owned) return kept;
+  // Past the bound an owned runner the target can use would be dropped: say the answer is
+  // partial instead of letting it look complete.
+  return {
+    ...(kept as Row),
+    partial: true,
+    message: `Runners are kept to the first ${MAX_PAGES * PAGE_SIZE} runners the scope's project or group can use; your runners beyond them are not shown.`,
+  };
 }
 
-async function runnerIds(run: RunTool, args: Args): Promise<Set<unknown>> {
+/** Ids of the runners a target can use, and whether all of them were read within the bound. */
+async function runnerIds(
+  run: RunTool,
+  args: Args,
+): Promise<{ ids: Set<unknown>; complete: boolean }> {
   const ids = new Set<unknown>();
   let after: unknown;
   // Pages are read one after another: each continues from the previous page's cursor.
@@ -142,8 +154,8 @@ async function runnerIds(run: RunTool, args: Args): Promise<Set<unknown>> {
       ...(after === undefined ? {} : { after }),
     })) as { nodes?: Row[]; pageInfo?: { hasNextPage?: boolean; endCursor?: unknown } };
     for (const node of connection?.nodes ?? []) ids.add(node.id);
-    if (!connection?.pageInfo?.hasNextPage) break;
+    if (!connection?.pageInfo?.hasNextPage) return { ids, complete: true };
     after = connection.pageInfo.endCursor;
   }
-  return ids;
+  return { ids, complete: false };
 }

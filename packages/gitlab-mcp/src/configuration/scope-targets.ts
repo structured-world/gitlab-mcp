@@ -158,12 +158,15 @@ const NARROWERS: Record<string, (args: Args, target: Target, scope: ScopeConfig)
       : { ...args, action: 'project', project_id: target.project };
   },
   // The caller's own exclusion of subgroups stays; a scope without them excludes them anyway.
+  // A plain listing lists active projects, a group listing only when asked: that default is
+  // kept unless the caller chose active or archived projects.
   browse_projects: (args, target, scope) =>
     args.action === 'list' && !hasValue(args.group_id) && 'group' in target
       ? {
           ...args,
           group_id: target.group,
           include_subgroups: scope.includeSubgroups !== false && args.include_subgroups !== false,
+          ...(hasValue(args.active) || hasValue(args.archived) ? {} : { active: true }),
         }
       : null,
   browse_merge_requests: (args, target) =>

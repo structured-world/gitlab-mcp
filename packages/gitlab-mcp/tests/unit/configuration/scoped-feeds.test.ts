@@ -103,6 +103,31 @@ describe('ownedRunnersInScope', () => {
     expect(result).toEqual({ nodes: [{ id: 1 }, { id: 3 }], pageInfo: { hasNextPage: false } });
   });
 
+  // The scope's runners are read up to a bound; an owned runner past it would be dropped, so
+  // the answer says it is partial instead of looking complete.
+  it('marks the owned runners partial when the scope has more runners than are read', async () => {
+    let next = 0;
+    const run = jest.fn(async (_tool: string, args: Record<string, unknown>) => {
+      if (args.action === 'list_owned') return { nodes: [{ id: 0 }], pageInfo: {} };
+      const nodes = Array.from({ length: 100 }, () => ({ id: next++ }));
+      return { nodes, pageInfo: { hasNextPage: true, endCursor: String(next) } };
+    });
+
+    const result = await ownedRunnersInScope(
+      run,
+      { action: 'list_owned' },
+      { project: 'team/app' },
+    );
+
+    expect(result).toEqual({
+      nodes: [{ id: 0 }],
+      pageInfo: {},
+      partial: true,
+      message:
+        "Runners are kept to the first 1000 runners the scope's project or group can use; your runners beyond them are not shown.",
+    });
+  });
+
   it('keeps no owned runner when the scope runners come back without nodes', async () => {
     const run = jest.fn(async (_tool: string, args: Record<string, unknown>) =>
       args.action === 'list_owned' ? { nodes: [{ id: 1 }] } : undefined,

@@ -3134,10 +3134,12 @@ describe('handlers', () => {
       );
 
       // Read in GitLab's largest pages: the scope filters the rows after GitLab paged them.
+      // Active projects only, as a plain listing lists them.
       expect(mockRegistryManager.executeTool.mock.calls[0][1]).toEqual({
         action: 'list',
         group_id: 'team',
         include_subgroups: true,
+        active: true,
         page: 1,
         per_page: 100,
       });

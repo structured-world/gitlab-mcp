@@ -209,6 +209,15 @@ describe('callRestriction', () => {
     [{ action: 'fork', project_id: 'team/app', namespace: 'team' }, null],
     [{ action: 'create', name: 'app', namespace: 'team/sub' }, /outside the allowed scope/],
     [{ action: 'create', name: 'app', namespace: 'other' }, /outside the allowed scope/],
+    // A fork accepts both destination fields; each is checked, not only the first.
+    [
+      { action: 'fork', project_id: 'team/app', namespace: 'other', namespace_path: 'team' },
+      /outside the allowed scope/,
+    ],
+    [
+      { action: 'fork', project_id: 'team/app', namespace: 'team', namespace_path: 'other' },
+      /outside the allowed scope/,
+    ],
   ])('checks the namespace of %j as the group it goes into', (args, expected) => {
     const policy = buildPolicy(
       undefined,

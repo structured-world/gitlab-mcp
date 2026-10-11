@@ -42,10 +42,10 @@ jest.mock('../../../src/session-manager', () => ({
   getSessionManager: () => ({ notifyToolsListChanged: mockNotify }),
 }));
 
-let mockSettingsPath = '';
+let mockSettingsDir = '';
 jest.mock('../../../src/configuration/settings-store', () => ({
   ...jest.requireActual('../../../src/configuration/settings-store'),
-  localSettingsPath: () => mockSettingsPath,
+  localSettingsDir: () => mockSettingsDir,
 }));
 
 import { getConfigurationService, resetConfigurationService } from '../../../src/configuration';
@@ -71,7 +71,7 @@ describe('getConfigurationService', () => {
     mockKeepsSettings = true;
     delete process.env.OAUTH_STORAGE_TYPE;
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'configuration-index-test-'));
-    mockSettingsPath = path.join(dir, 'settings.json');
+    mockSettingsDir = path.join(dir, 'settings');
   });
 
   afterEach(() => {
@@ -91,7 +91,7 @@ describe('getConfigurationService', () => {
   it('keeps a local server settings in the local file and notifies its session', async () => {
     await getConfigurationService().updateAccount(alice, { readOnly: true });
 
-    const file = JSON.parse(fs.readFileSync(mockSettingsPath, 'utf-8'));
+    const file = JSON.parse(fs.readFileSync(path.join(mockSettingsDir, '1.json'), 'utf-8'));
     expect(file.accounts[alice.accountKey].settings).toEqual({ readOnly: true });
     expect(mockSessionStore.initialize).not.toHaveBeenCalled();
     expect(mockNotify).toHaveBeenCalledWith(['stdio']);
@@ -114,7 +114,7 @@ describe('getConfigurationService', () => {
       { readOnly: true },
       0,
     );
-    expect(fs.existsSync(mockSettingsPath)).toBe(false);
+    expect(fs.existsSync(mockSettingsDir)).toBe(false);
   });
 
   // Sessions held in memory (the OAuth default) are gone after a restart; saved settings
@@ -130,7 +130,7 @@ describe('getConfigurationService', () => {
 
     await getConfigurationService().updateAccount(alice, { readOnly: true });
 
-    const file = JSON.parse(fs.readFileSync(mockSettingsPath, 'utf-8'));
+    const file = JSON.parse(fs.readFileSync(path.join(mockSettingsDir, '1.json'), 'utf-8'));
     expect(file.accounts[alice.accountKey].settings).toEqual({ readOnly: true });
     expect(mockSessionStore.putAccountSettings).not.toHaveBeenCalled();
   });

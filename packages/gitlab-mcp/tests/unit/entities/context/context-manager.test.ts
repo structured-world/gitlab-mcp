@@ -113,6 +113,7 @@ import {
   getContextManager,
 } from '../../../../src/entities/context/context-manager';
 import { findNamespaceType } from '../../../../src/utils/namespace';
+import { isGitLabAuthFailure } from '../../../../src/oauth/tool-auth';
 import { sendToolsListChangedNotification } from '../../../../src/server';
 import { ConfigurationService } from '../../../../src/configuration/service';
 import { resolveCaller, runWithCaller, type Caller } from '../../../../src/configuration/caller';
@@ -408,6 +409,20 @@ describe('ContextManager', () => {
       await expect(runWithCaller(alice1, () => manager.setScope('team/typo'))).rejects.toThrow(
         "Failed to set scope for 'team/typo': No project or group 'team/typo' was found on GitLab, or GitLab could not be reached",
       );
+      expect((await runWithCaller(alice1, () => manager.getContext())).scope).toBeUndefined();
+    });
+
+    // An expired sign-in keeps GitLab's error in the cause, which the call's error handling
+    // turns into the reauthorization challenge.
+    it('keeps the authorization failure of the lookup recognizable', async () => {
+      mockDetectNamespaceType.mockRejectedValue(new Error('GitLab API error: 401 Unauthorized'));
+      const manager = getContextManager();
+
+      const failure = await runWithCaller(alice1, () => manager.setScope('team/app')).catch(
+        (error: unknown) => error,
+      );
+
+      expect(isGitLabAuthFailure(failure)).toBe(true);
       expect((await runWithCaller(alice1, () => manager.getContext())).scope).toBeUndefined();
     });
   });

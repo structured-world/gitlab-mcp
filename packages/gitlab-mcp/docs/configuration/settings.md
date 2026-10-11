@@ -60,7 +60,10 @@ of the scope project, all or owned runners those available to the scope's projec
 where the scope has no such form, the listing is refused. A global search or vulnerability
 listing is refused under a scope of several projects or groups, and under a group scope
 without subgroups (GitLab's group results always include them); use one project or group
-instead. `manage_todos mark_all_done` marks only the scope's pending todos done and leaves
+instead. A global search for projects under a project scope answers with the scope's
+projects that match; a search of snippet titles, which GitLab offers only instance-wide, is
+refused under any scope. An action the administrator denied stays denied when the scope
+runs other requests in its place. `manage_todos mark_all_done` marks only the scope's pending todos done and leaves
 the others pending. A project created or forked without a namespace goes into the scope's
 group; with no single group to put it in, and for a group without a parent, the call is
 refused.
@@ -125,14 +128,17 @@ recommendations, and `find_scope_targets` finds projects and groups to scope to.
 
 ## Storage
 
-| Deployment                                                                         | Account settings are kept in                                                                                                                                                    |
-| ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| OAuth with PostgreSQL session storage                                              | The session storage, shared by every replica that uses it                                                                                                                       |
-| OAuth with file session storage                                                    | The session storage file. File storage serves one server process: replicas need PostgreSQL                                                                                      |
-| OAuth with sessions in memory (the default), or a local server with a static token | `~/.config/gitlab-mcp/settings.json` of the user running the server, shared by every server process of that user; settings survive a restart even though memory sessions do not |
+| Deployment                                                                         | Account settings are kept in                                                                                                                                                |
+| ---------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| OAuth with PostgreSQL session storage                                              | The session storage, shared by every replica that uses it                                                                                                                   |
+| OAuth with file session storage                                                    | The session storage file. File storage serves one server process: replicas need PostgreSQL                                                                                  |
+| OAuth with sessions in memory (the default), or a local server with a static token | `~/.config/gitlab-mcp/settings/` of the user running the server, shared by every server process of that user; settings survive a restart even though memory sessions do not |
 
 Writes are compare-and-set: two chats editing different settings at the same time both
 keep their change. Chat overrides are held by the server process that serves the chat.
+The local settings directory keeps each saved state as a new numbered file, created only if
+no other process saved that number first, so there is no lock: a server process that stops
+or is suspended mid-write never blocks the others or overwrites newer settings.
 
 If a saved preset is later removed from the server, chats that use it work read-only until
 another preset is chosen, and `check_connection` reports it.

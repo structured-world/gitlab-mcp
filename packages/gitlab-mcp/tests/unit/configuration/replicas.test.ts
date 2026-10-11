@@ -30,7 +30,7 @@ async function startReplica(shared: SessionStorageBackend, dir: string): Promise
     // Never the user's own settings file, whatever store the replica picks.
     jest.doMock('../../../src/configuration/settings-store', () => ({
       ...jest.requireActual('../../../src/configuration/settings-store'),
-      localSettingsPath: () => path.join(dir, 'local-settings.json'),
+      localSettingsDir: () => path.join(dir, 'local-settings'),
     }));
     const { getConfigurationService } = await import('../../../src/configuration');
     const { sessionStore } = await import('../../../src/oauth/session-store');

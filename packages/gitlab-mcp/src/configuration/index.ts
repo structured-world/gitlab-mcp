@@ -8,7 +8,7 @@ import { isOAuthEnabled } from '../oauth/config';
 import { sessionStore } from '../oauth/session-store';
 import { ProfileLoader } from '../profiles/loader';
 import { ConfigurationService } from './service';
-import { LocalSettingsFile, localSettingsPath, type SettingsStore } from './settings-store';
+import { LocalSettingsFile, localSettingsDir, type SettingsStore } from './settings-store';
 
 export { ConfigurationError } from './service';
 export type { ResolvedConfiguration } from './service';
@@ -20,7 +20,7 @@ let settingsStore: Promise<SettingsStore> | undefined;
  * Settings live with the sessions when that storage can keep them (file or PostgreSQL),
  * shared by every replica using it. Otherwise (a local server, sessions held in memory as
  * the OAuth default, or a database package older than the server) they live in the
- * settings file, so saved settings survive a restart and calls keep working.
+ * local settings directory, so saved settings survive a restart and calls keep working.
  */
 function storeOfDeployment(): Promise<SettingsStore> {
   settingsStore ??= (async (): Promise<SettingsStore> => {
@@ -35,11 +35,11 @@ function storeOfDeployment(): Promise<SettingsStore> {
     }
     if (sessionsStored && sessionStore.getBackendType() !== 'memory') {
       logWarn(
-        'The session storage cannot keep account settings; upgrade @structured-world/gitlab-mcp-db to the version of this server. Settings are kept in the settings file meanwhile.',
+        'The session storage cannot keep account settings; upgrade @structured-world/gitlab-mcp-db to the version of this server. Settings are kept in the local settings directory meanwhile.',
         { backend: sessionStore.getBackendType() },
       );
     }
-    return new LocalSettingsFile(localSettingsPath());
+    return new LocalSettingsFile(localSettingsDir());
   })().catch((error: unknown) => {
     // A failed open is retried by the next request instead of failing until restart.
     settingsStore = undefined;

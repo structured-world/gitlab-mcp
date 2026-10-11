@@ -1,6 +1,6 @@
 /**
- * Settings a test reads or saves through the local settings file go to a temporary file,
- * never the user's own ~/.config/gitlab-mcp/settings.json. A test file that mocks the
+ * Settings a test reads or saves through the local settings directory go to a temporary
+ * directory, never the user's own ~/.config/gitlab-mcp/settings. A test file that mocks the
  * settings store itself replaces this.
  */
 
@@ -12,7 +12,7 @@ const mockIsolatedSettingsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gitlab-mc
 
 jest.mock('../../src/configuration/settings-store', () => ({
   ...jest.requireActual('../../src/configuration/settings-store'),
-  localSettingsPath: () => `${mockIsolatedSettingsDir}/settings.json`,
+  localSettingsDir: () => `${mockIsolatedSettingsDir}/settings`,
 }));
 
 afterAll(() => {

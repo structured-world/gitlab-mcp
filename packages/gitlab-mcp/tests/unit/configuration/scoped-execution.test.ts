@@ -6,6 +6,12 @@
 
 import { executeScoped } from '../../../src/configuration/scoped-execution';
 import { buildPolicy } from '../../../src/configuration/policy';
+import { isActionDenied } from '../../../src/config';
+
+jest.mock('../../../src/config', () => ({
+  ...jest.requireActual('../../../src/config'),
+  isActionDenied: jest.fn(() => false),
+}));
 
 const groupPolicy = buildPolicy(
   undefined,
@@ -126,6 +132,51 @@ describe('executeScoped', () => {
       message:
         'A scoped listing reads the first 1000 rows GitLab returns, and page 51 starts after them. Narrow the listing (for example with a search) to see the rest.',
     });
+  });
+
+  // Emulating a call under a scope runs other actions in its place; an action the operator
+  // denied stays denied instead of running through them.
+  it.each([
+    ['manage_todos', { action: 'mark_all_done' }, groupPolicy],
+    ['browse_events', { action: 'user' }, projectPolicy],
+    ['browse_search', { action: 'global', search: 'x', scope: 'issues' }, groupPolicy],
+  ])('refuses %s %j the operator denied', async (tool, args, policy) => {
+    jest
+      .mocked(isActionDenied)
+      .mockImplementation((name, action) => name === tool && action === args.action);
+    const run = jest.fn();
+
+    try {
+      await expect(executeScoped(run, tool, args, policy)).rejects.toThrow(
+        `Action '${args.action}' is not allowed for ${tool} tool`,
+      );
+      expect(run).not.toHaveBeenCalled();
+    } finally {
+      jest.mocked(isActionDenied).mockImplementation(() => false);
+    }
+  });
+
+  // Project search has no projects scope: the scope project itself answers, when it matches.
+  it.each([
+    ['app', [{ id: 7, name: 'App', path_with_namespace: 'team/app' }]],
+    ['other', []],
+  ])('answers a project search for %s with the scope project', async (search, expected) => {
+    const run = jest.fn().mockResolvedValue({
+      id: 7,
+      name: 'App',
+      path_with_namespace: 'team/app',
+      permissions: {},
+    });
+
+    const result = await executeScoped(
+      run,
+      'browse_search',
+      { action: 'global', scope: 'projects', search },
+      projectPolicy,
+    );
+
+    expect(run).toHaveBeenCalledWith('browse_projects', { action: 'get', project_id: 'team/app' });
+    expect(result).toEqual(expected);
   });
 
   it('fails a project scope listing on a failure that is not an Error', async () => {

@@ -4,15 +4,6 @@
  * Tests the context tool registry exports and functions.
  */
 
-// Account settings go to a file of this test run, never to the user's configuration.
-jest.mock('../../../../src/configuration/settings-store', () => ({
-  ...jest.requireActual('../../../../src/configuration/settings-store'),
-  localSettingsPath: () =>
-    jest
-      .requireActual('path')
-      .join(jest.requireActual('os').tmpdir(), `context-registry-test-${process.pid}.json`),
-}));
-
 import {
   contextToolRegistry,
   getContextReadOnlyToolNames,

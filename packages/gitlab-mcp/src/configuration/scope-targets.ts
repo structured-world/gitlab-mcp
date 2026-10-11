@@ -33,6 +33,10 @@ export function targetlessRestriction(tool: string, args: Args, scope: ScopeConf
     return unnarrowable(scope, 'vulnerabilities cannot be listed', 'list them for');
   }
   if (tool === 'browse_search' && args.action === 'global') {
+    // Group and project search have no snippet_titles scope (lib/api/helpers/search_helpers.rb).
+    if (args.scope === 'snippet_titles') {
+      return 'snippet titles are searched across the whole instance only and cannot be limited to the working scope';
+    }
     return unnarrowable(scope, 'a global search cannot be limited', 'search within');
   }
   return INSTANCE_LISTINGS[tool]?.(args, singleTarget(scope)) ?? null;
@@ -108,8 +112,10 @@ function namesDestination(args: Args): boolean {
  */
 export function scopeCheckArgs(tool: string, args: Args): Args {
   if (!isProjectCreation(tool, args) || !hasValue(args.namespace)) return args;
+  // Checked as the group-valued namespace_id, which create and fork do not take, so a fork
+  // naming both namespace and namespace_path has each destination checked.
   const { namespace, ...rest } = args;
-  return { ...rest, namespace_path: rest.namespace_path ?? namespace };
+  return { ...rest, namespace_id: namespace };
 }
 
 /**
@@ -157,9 +163,14 @@ const NARROWERS: Record<string, (args: Args, target: Target, scope: ScopeConfig)
       ? { ...args, action: 'group', group_id: target.group }
       : { ...args, action: 'project', project_id: target.project };
   },
+  // The caller's own exclusion of subgroups stays; a scope without them excludes them anyway.
   browse_projects: (args, target, scope) =>
     args.action === 'list' && !hasValue(args.group_id) && 'group' in target
-      ? { ...args, group_id: target.group, include_subgroups: scope.includeSubgroups !== false }
+      ? {
+          ...args,
+          group_id: target.group,
+          include_subgroups: scope.includeSubgroups !== false && args.include_subgroups !== false,
+        }
       : null,
   browse_merge_requests: (args, target) =>
     args.action === 'list' && !hasValue(args.project_id) && 'project' in target

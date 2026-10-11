@@ -35,6 +35,18 @@ describe('scopedArgs', () => {
     expect(scopedArgs('browse_projects', { action: 'list' }, scope)).toEqual(expected);
   });
 
+  // The caller's narrower choice stays; a scope without subgroups excludes them whatever
+  // the caller asked, as the results outside it are filtered anyway.
+  it.each([
+    [group, false, false],
+    [group, true, true],
+    [groupOnly, true, false],
+  ])('lists the scope group %j with subgroups %s as %s', (scope, requested, expected) => {
+    expect(
+      scopedArgs('browse_projects', { action: 'list', include_subgroups: requested }, scope),
+    ).toEqual({ action: 'list', group_id: 'team', include_subgroups: expected });
+  });
+
   // Without a namespace GitLab creates the project in the user's own namespace.
   it('creates a project without a namespace in the scope group', () => {
     expect(scopedArgs('manage_project', { action: 'create', name: 'app' }, group)).toEqual({
@@ -221,6 +233,17 @@ describe('targetlessRestriction', () => {
     ['browse_events', { action: 'project', project_id: 'team/app' }, group],
   ])('allows the listing %s %j under %j', (tool, args, scope) => {
     expect(targetlessRestriction(tool, args, scope)).toBeNull();
+  });
+
+  // GitLab searches snippet titles only across the whole instance.
+  it.each([group, project])('refuses a snippet title search under %j', (scope) => {
+    expect(
+      targetlessRestriction(
+        'browse_search',
+        { action: 'global', scope: 'snippet_titles', search: 'x' },
+        scope,
+      ),
+    ).toMatch(/snippet titles/);
   });
 
   it('refuses a vulnerability listing a scope of several targets cannot narrow', () => {

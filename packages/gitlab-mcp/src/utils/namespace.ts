@@ -65,23 +65,35 @@ export async function detectNamespaceType(namespacePath: string): Promise<'proje
 }
 
 /**
- * Verify if a namespace exists as the specified type by making a lightweight API call
+ * Verify if a namespace exists as the specified type by making a lightweight API call.
+ * A rejected sign-in (401, or 403 insufficient_scope) fails with GitLab's error, so the call
+ * reaches the reauthorization challenge; other failures read as "not this type".
  */
 async function verifyNamespaceType(
   namespacePath: string,
   type: 'project' | 'group',
 ): Promise<boolean> {
+  const entityType = type === 'project' ? 'projects' : 'groups';
+  const apiUrl = `${getGitLabBaseUrl()}/api/v4/${entityType}/${encodeURIComponent(namespacePath)}`;
+  let response: Response;
   try {
-    const entityType = type === 'project' ? 'projects' : 'groups';
-    const apiUrl = `${getGitLabBaseUrl()}/api/v4/${entityType}/${encodeURIComponent(namespacePath)}`;
-
-    const response = await enhancedFetch(apiUrl);
-
-    return response.ok;
+    response = await enhancedFetch(apiUrl);
   } catch {
-    // If API call fails, return false
+    // Unreachable: the caller falls back or reports that GitLab could not confirm the path.
     return false;
   }
+  if (response.ok) return true;
+  if (response.status === 401) {
+    throw new Error(`GitLab API error: 401 ${response.statusText}`);
+  }
+  if (response.status === 403) {
+    const body = await response.text().catch(() => '');
+    // RFC 6750 section 3.1: the token lacks a scope, not access to this path.
+    if (body.includes('insufficient_scope')) {
+      throw new Error(`GitLab API error: 403 ${response.statusText} - insufficient_scope`);
+    }
+  }
+  return false;
 }
 
 /**

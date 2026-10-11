@@ -7,6 +7,7 @@
 import type { EffectivePolicy } from './policy';
 import type { ScopeEnforcer } from '../profiles/scope-enforcer';
 import { parseGitLabApiError } from '../utils/error-handler';
+import { assertActionAllowed } from '../entities/utils';
 import { isFilteredListing, scopedArgs, scopedResult, scopeProjectsOnly } from './scope-targets';
 
 type Args = Record<string, unknown>;
@@ -62,6 +63,9 @@ export async function executeScoped(
 ): Promise<unknown> {
   const { scope, scopeEnforcer } = policy;
   if (!scope || !scopeEnforcer) return run(tool, requested);
+  // The emulations below run other actions in place of the requested one; an action the
+  // operator denied must stay denied rather than run through them.
+  if (typeof requested.action === 'string') assertActionAllowed(tool, requested.action);
   if (tool === 'manage_todos' && requested.action === 'mark_all_done') {
     return markScopeTodosDone(run, scopeEnforcer);
   }
@@ -73,6 +77,16 @@ export async function executeScoped(
     Object.keys(requested).every((key) => PROJECT_LIST_OPTIONS.has(key))
   ) {
     return listScopeProjects(run, projects, requested);
+  }
+  // Project search has no projects scope: the scope's projects matching the search answer it.
+  if (
+    projects &&
+    tool === 'browse_search' &&
+    requested.action === 'global' &&
+    requested.scope === 'projects'
+  ) {
+    const { search, page, per_page } = requested;
+    return listScopeProjects(run, projects, { search, page, per_page });
   }
   const args = scopedArgs(tool, requested, scope);
   if (isFilteredListing(tool, args)) return fillScopedPage(run, tool, args, scopeEnforcer);

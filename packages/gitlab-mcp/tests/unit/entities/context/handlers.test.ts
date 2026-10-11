@@ -35,15 +35,6 @@ jest.mock('../../../../src/profiles/loader', () => ({
   })),
 }));
 
-// Account settings go to a file of this test run, never to the user's configuration.
-jest.mock('../../../../src/configuration/settings-store', () => ({
-  ...jest.requireActual('../../../../src/configuration/settings-store'),
-  localSettingsPath: () =>
-    jest
-      .requireActual('path')
-      .join(jest.requireActual('os').tmpdir(), `context-handlers-test-${process.pid}.json`),
-}));
-
 describe('handleManageContext', () => {
   const originalEnv = process.env;
 

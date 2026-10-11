@@ -95,6 +95,8 @@ jest.mock('../../src/config', () => ({
   HANDLER_TIMEOUT_MS: 100,
   GITLAB_BASE_URL: 'https://gitlab.example.com',
   GITLAB_SCHEMA_MODE: 'flat',
+  // No action is denied by the operator here; scoped calls check the requested action.
+  isActionDenied: () => false,
 }));
 
 // Mock HealthMonitor

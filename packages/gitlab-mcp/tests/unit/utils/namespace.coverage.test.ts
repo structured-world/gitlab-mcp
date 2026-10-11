@@ -81,6 +81,49 @@ describe('Namespace Utils Coverage Tests', () => {
 
       expect(await findNamespaceType('team/app')).toBeNull();
     });
+
+    // A rejected sign-in is not "not found": it fails with GitLab's error, so the call gets
+    // the reauthorization challenge instead of a misleading unknown-path answer.
+    it.each([
+      [401, 'Unauthorized', '{"message":"401 Unauthorized"}', 'GitLab API error: 401 Unauthorized'],
+      [
+        403,
+        'Forbidden',
+        '{"error":"insufficient_scope"}',
+        'GitLab API error: 403 Forbidden - insufficient_scope',
+      ],
+    ])(
+      'fails on %d instead of reading it as not found',
+      async (status, statusText, body, message) => {
+        mockEnhancedFetch.mockResolvedValue({
+          ok: false,
+          status,
+          statusText,
+          text: jest.fn().mockResolvedValue(body),
+        } as unknown as Response);
+
+        await expect(findNamespaceType('team/app')).rejects.toThrow(message);
+        expect(mockEnhancedFetch).toHaveBeenCalledTimes(1);
+      },
+    );
+
+    // A path the token may not read as this type is not an authorization failure, also when
+    // the body of the refusal cannot be read.
+    it.each([
+      ['a plain 403', jest.fn().mockResolvedValue('{"message":"403 Forbidden"}')],
+      ['a 403 whose body cannot be read', jest.fn().mockRejectedValue(new Error('aborted'))],
+    ])('reads %s as not this type', async (_label, text) => {
+      mockEnhancedFetch
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 403,
+          statusText: 'Forbidden',
+          text,
+        } as unknown as Response)
+        .mockResolvedValueOnce({ ok: true, status: 200 } as Response);
+
+      expect(await findNamespaceType('team/app')).toBe('group');
+    });
   });
 
   describe('detectNamespaceType', () => {

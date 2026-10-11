@@ -179,6 +179,52 @@ describe('executeScoped', () => {
     expect(result).toEqual(expected);
   });
 
+  // An emulated call is validated as the tool itself would: a call the tool refuses is not
+  // turned into a listing of the scope.
+  it.each([
+    ['browse_search', { action: 'global', scope: 'projects' }],
+    ['browse_search', { action: 'global', scope: 'projects', search: '' }],
+    ['browse_projects', { action: 'list', per_page: 'many' }],
+  ])('refuses the invalid call %s %j before emulating it', async (tool, args) => {
+    const run = jest.fn();
+
+    await expect(executeScoped(run, tool, args, projectPolicy)).rejects.toThrow();
+    expect(run).not.toHaveBeenCalled();
+  });
+
+  // The group's own audit trail answers an instance listing under a group scope; the events
+  // of its projects are listed per project, which the result says.
+  it('lists the scope group audit trail and says project events are listed per project', async () => {
+    const run = jest.fn().mockResolvedValue([{ id: 1 }]);
+
+    const result = await executeScoped(
+      run,
+      'browse_audit_events',
+      { action: 'list_instance', created_after: '2026-01-01' },
+      groupPolicy,
+    );
+
+    expect(run).toHaveBeenCalledWith('browse_audit_events', {
+      action: 'list_group',
+      group_id: 'team',
+      created_after: '2026-01-01',
+    });
+    expect(result).toEqual({
+      items: [{ id: 1 }],
+      partial: true,
+      message:
+        "These are the audit events of group 'team' itself; events of its projects are listed per project with action 'list_project'.",
+    });
+  });
+
+  it('passes on a group audit answer that is not a list', async () => {
+    const run = jest.fn().mockResolvedValue({ message: 'not a list' });
+
+    expect(
+      await executeScoped(run, 'browse_audit_events', { action: 'list_instance' }, groupPolicy),
+    ).toEqual({ message: 'not a list' });
+  });
+
   it('fails a project scope listing on a failure that is not an Error', async () => {
     const run = jest.fn().mockRejectedValue('connection reset');
 

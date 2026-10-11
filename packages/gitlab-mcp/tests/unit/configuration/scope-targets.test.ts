@@ -106,6 +106,12 @@ describe('scopedArgs', () => {
       project,
       { action: 'list_project', created_after: '2026-01-01', project_id: 'team/app' },
     ],
+    [
+      'browse_audit_events',
+      { action: 'list_instance' },
+      group,
+      { action: 'list_group', group_id: 'team' },
+    ],
   ])('reads %s %j under %j as %j', (tool, args, scope, expected) => {
     expect(scopedArgs(tool, args, scope)).toEqual(expected);
   });
@@ -138,7 +144,6 @@ describe('scopedArgs', () => {
     ['browse_deploy_keys', { action: 'list' }, group],
     ['browse_runners', { action: 'list_project', project_id: 'team/app' }, project],
     ['browse_audit_events', { action: 'list_group', group_id: 'team' }, project],
-    ['browse_audit_events', { action: 'list_instance' }, group],
     ['browse_audit_events', { action: 'list_instance', entity_type: 'User' }, project],
     ['browse_audit_events', { action: 'list_instance', entity_id: 3 }, project],
   ])('leaves %s %j under %j as it is', (tool, args, scope) => {
@@ -211,7 +216,7 @@ describe('targetlessRestriction', () => {
     ['browse_deploy_keys', { action: 'list' }, several, /deploy keys/],
     ['browse_deploy_keys', { action: 'list', public: true }, project, /public deploy keys/],
     ['browse_runners', { action: 'list_all' }, several, /runners/],
-    ['browse_audit_events', { action: 'list_instance' }, group, /audit events/],
+    ['browse_audit_events', { action: 'list_instance' }, several, /audit events/],
     [
       'browse_audit_events',
       { action: 'list_instance', entity_type: 'User', entity_id: 4 },
@@ -228,6 +233,7 @@ describe('targetlessRestriction', () => {
     ['browse_runners', { action: 'list_all' }, group],
     ['browse_runners', { action: 'list_project', project_id: 'team/app' }, several],
     ['browse_audit_events', { action: 'list_instance' }, project],
+    ['browse_audit_events', { action: 'list_instance' }, group],
     ['browse_audit_events', { action: 'list_group', group_id: 'team' }, several],
     ['browse_deploy_keys', { action: 'get', project_id: 'team/app', key_id: 1 }, group],
     ['browse_events', { action: 'project', project_id: 'team/app' }, group],

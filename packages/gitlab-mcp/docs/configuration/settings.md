@@ -55,9 +55,11 @@ are filtered to the scope, reading further GitLab pages until the requested page
 (up to 1000 rows per call; a page still short then comes back marked `partial`, with a hint
 to narrow the listing). Your own activity (`browse_events` with `action: "user"`) shows the
 scope project's events under a project scope and is refused under a group scope.
-Instance-wide listings read the scope instead: deploy keys and instance audit events those
-of the scope project, all or owned runners those available to the scope's project or group;
-where the scope has no such form, the listing is refused. A global search or vulnerability
+Instance-wide listings read the scope instead: deploy keys those of the scope project,
+instance audit events the trail of the scope project or group (a group's trail holds the
+group's own events, and the result says that its projects' events are listed per project),
+all or owned runners those available to the scope's project or group; where the scope has
+no such form, the listing is refused. A global search or vulnerability
 listing is refused under a scope of several projects or groups, and under a group scope
 without subgroups (GitLab's group results always include them); use one project or group
 instead. A global search for projects under a project scope answers with the scope's

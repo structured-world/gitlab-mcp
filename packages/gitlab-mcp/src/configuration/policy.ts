@@ -53,8 +53,13 @@ export const CONFIGURATION_TOOLS: ReadonlySet<string> = new Set([
  * reads to know whose connection it is. Unlike the configuration tools, the identity needs
  * GitLab, so it does not answer while GitLab is unreachable.
  */
-function isExemptFromSettings(name: string): boolean {
+export function isExemptFromSettings(name: string): boolean {
   return CONFIGURATION_TOOLS.has(name) || name === 'get_profile';
+}
+
+/** The policy without its working scope: the limits checked without looking up targets. */
+export function withoutScope(policy: EffectivePolicy): EffectivePolicy {
+  return { ...policy, scope: undefined, scopeEnforcer: undefined };
 }
 
 /** The scope's first project or group, for reports; undefined when nothing is scoped. */

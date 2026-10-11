@@ -49,8 +49,10 @@ import {
 import {
   CONFIGURATION_TOOLS,
   callRestriction,
+  isExemptFromSettings,
   scopeLabel,
   toolRestriction,
+  withoutScope,
   type EffectivePolicy,
 } from './configuration/policy';
 import { executeScoped } from './configuration/scoped-execution';
@@ -313,8 +315,10 @@ async function resyncSessionAfterSwitchProfile(
  * fall through to the normal bootstrap path.
  *
  * Bypasses bootstrap intentionally — context tools mostly operate on local state
- * (cached scopes, config, instance registry). Health reporting is skipped because
- * the fast-path bypasses bootstrap — there is no connection lifecycle to report on.
+ * (cached scopes, config, instance registry). Some of them read GitLab too (check_connection,
+ * find_scope_targets, scope checks), and a caller runs them to check or recover the
+ * connection; their own success says nothing about GitLab, so instead of reporting it the
+ * monitor is asked to probe GitLab again, which lets other tools recover at once.
  */
 async function tryManageContextFastPath(
   toolName: string,
@@ -348,6 +352,7 @@ async function tryManageContextFastPath(
     if (result === undefined) {
       return null;
     }
+    healthMonitor.forceReconnect(effectiveInstanceUrl);
     await resyncSessionAfterSwitchProfile(toolName, toolArguments, sessionId);
     return formatToolResult(result, registryManager.getTool(toolName, effectiveInstanceUrl));
   }
@@ -965,17 +970,17 @@ export async function setupHandlers(server: Server): Promise<void> {
       // when they cannot be read: allowing it could bypass a restriction.
       const { RegistryManager: CallRegistry } = await import('./registry-manager');
       const configuration = await getConfigurationService().resolve(caller);
-      // A scope holds paths: numeric ids are checked as the paths they stand for.
+      const { policy } = configuration;
+      const callRegistry = CallRegistry.getInstance();
       const callArguments = toolArguments ?? {};
-      const checkedArguments = configuration.policy.scopeEnforcer
-        ? await withTargetPaths(callArguments)
-        : callArguments;
-      const settingsRefusal = settingsRejection(
-        toolName,
-        checkedArguments,
-        configuration.policy,
-        CallRegistry.getInstance(),
-      );
+      // Tool, group, read-only and action limits first: they need nothing from GitLab, so a
+      // call they refuse reaches nothing.
+      const settingsRefusal =
+        settingsRejection(toolName, callArguments, withoutScope(policy), callRegistry) ??
+        // A scope holds paths: numeric ids are checked as the paths they stand for.
+        (policy.scopeEnforcer && !isExemptFromSettings(toolName)
+          ? settingsRejection(toolName, await withTargetPaths(callArguments), policy, callRegistry)
+          : null);
       if (settingsRefusal) return settingsRefusal;
 
       // Early return: instance unreachable for non-context tools

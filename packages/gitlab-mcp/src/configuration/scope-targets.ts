@@ -72,10 +72,10 @@ const INSTANCE_LISTINGS: Record<string, (args: Args, target: Target | undefined)
       (args.action === 'list_all' || args.action === 'list_owned') && !target
         ? "runners cannot be listed for a working scope of several projects or groups; list them for one of them with action 'list_project' or 'list_group'"
         : null,
-    // A group's audit trail holds the group's own events, not those of its projects.
+    // A single project or group reads its own trail; the trails take no entity filter.
     browse_audit_events: (args, target) =>
       args.action === 'list_instance' &&
-      (!isProject(target) || hasValue(args.entity_type) || hasValue(args.entity_id))
+      (!target || hasValue(args.entity_type) || hasValue(args.entity_id))
         ? "instance audit events cannot be limited to the working scope; list a project's or a group's with action 'list_project' or 'list_group'"
         : null,
   };
@@ -195,13 +195,15 @@ const NARROWERS: Record<string, (args: Args, target: Target, scope: ScopeConfig)
       ? { ...args, action: 'list_group', group_id: target.group }
       : { ...args, action: 'list_project', project_id: target.project };
   },
-  browse_audit_events: (args, target) =>
-    args.action === 'list_instance' &&
-    'project' in target &&
-    !hasValue(args.entity_type) &&
-    !hasValue(args.entity_id)
-      ? { ...args, action: 'list_project', project_id: target.project }
-      : null,
+  // A group's trail holds the group's own events only; the result says so.
+  browse_audit_events: (args, target) => {
+    if (args.action !== 'list_instance' || hasValue(args.entity_type) || hasValue(args.entity_id)) {
+      return null;
+    }
+    return 'group' in target
+      ? { ...args, action: 'list_group', group_id: target.group }
+      : { ...args, action: 'list_project', project_id: target.project };
+  },
   browse_vulnerabilities: (args, target) => {
     if (!isTargetlessList(args)) return null;
     return 'group' in target

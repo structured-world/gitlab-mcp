@@ -11,6 +11,7 @@ import {
   ReadResourceRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import { setupHandlers, resetHandlersState } from '../../src/handlers';
+import * as scopeIds from '../../src/configuration/scope-ids';
 import { StructuredToolError, parseGitLabApiError } from '../../src/utils/error-handler';
 import { GitLabTimeoutError } from '../../src/utils/fetch';
 import { ConfigurationService } from '../../src/configuration/service';
@@ -108,6 +109,7 @@ const mockHealthMonitor = {
   isInstanceReachable: jest.fn().mockReturnValue(true),
   reportSuccess: jest.fn(),
   reportError: jest.fn(),
+  forceReconnect: jest.fn(),
   getMonitoredInstances: jest.fn().mockReturnValue(['https://gitlab.example.com']),
   shutdown: jest.fn(),
 };
@@ -2503,6 +2505,29 @@ describe('handlers', () => {
       mockHealthMonitor.getState.mockReturnValue('healthy');
       (oauth.getGitLabApiUrlFromContext as jest.Mock).mockReturnValue(undefined);
     });
+
+    // A configuration tool answered while GitLab is marked unreachable is how a caller checks
+    // or recovers the connection: the monitor probes GitLab again itself, so other tools
+    // recover as soon as GitLab answers instead of waiting for the next scheduled attempt.
+    it('has the monitor probe GitLab again after a configuration tool answers', async () => {
+      mockHealthMonitor.isInstanceReachable.mockReturnValue(false);
+      mockHealthMonitor.getState.mockReturnValue('disconnected');
+      mockRegistryManager.hasToolHandler.mockReturnValue(true);
+      mockRegistryManager.executeTool.mockResolvedValueOnce({ success: true });
+
+      try {
+        const result = await callToolHandler({
+          params: { name: 'check_connection', arguments: {} },
+        });
+
+        expect(result.isError).toBeFalsy();
+        expect(mockHealthMonitor.forceReconnect).toHaveBeenCalledWith('https://gitlab.example.com');
+        expect(mockHealthMonitor.reportSuccess).not.toHaveBeenCalled();
+      } finally {
+        mockHealthMonitor.isInstanceReachable.mockReturnValue(true);
+        mockHealthMonitor.getState.mockReturnValue('healthy');
+      }
+    });
   });
 
   describe('connection tracker integration via logging mock', () => {
@@ -2974,6 +2999,33 @@ describe('handlers', () => {
       );
       expect(mockRegistryManager.executeTool).not.toHaveBeenCalled();
       expect(mockConnectionManager.initialize).not.toHaveBeenCalled();
+    });
+
+    // Limits that need no lookup refuse the call before a numeric target is resolved through
+    // GitLab, so a refused call reaches nothing.
+    it('refuses a read-only call with a numeric target without looking the target up', async () => {
+      await service().updateAccount(staticCaller(), {
+        readOnly: true,
+        scope: { type: 'group', path: 'team', includeSubgroups: true },
+      });
+      const lookup = jest.spyOn(scopeIds, 'withTargetPaths');
+
+      try {
+        const result = await callToolHandler(
+          {
+            params: {
+              name: 'manage_merge_request',
+              arguments: { action: 'merge', project_id: 7, merge_request_iid: 1 },
+            },
+          },
+          { sessionId: 'sess-1' },
+        );
+
+        expect(result.content?.[0].text).toContain('read-only mode is on');
+        expect(lookup).not.toHaveBeenCalled();
+      } finally {
+        lookup.mockRestore();
+      }
     });
 
     it('names only the tool when a refused call has no action', async () => {

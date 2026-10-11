@@ -6,8 +6,12 @@
 
 import type { EffectivePolicy } from './policy';
 import type { ScopeEnforcer } from '../profiles/scope-enforcer';
+import type { ScopeConfig } from '../profiles/types';
 import { parseGitLabApiError } from '../utils/error-handler';
 import { assertActionAllowed } from '../entities/utils';
+import { BrowseProjectsSchema } from '../entities/core/schema-readonly';
+import { ManageTodosSchema } from '../entities/core/schema';
+import { BrowseSearchSchema } from '../entities/search/schema-readonly';
 import { isFilteredListing, scopedArgs, scopedResult, scopeProjectsOnly } from './scope-targets';
 
 type Args = Record<string, unknown>;
@@ -66,31 +70,62 @@ export async function executeScoped(
   // The emulations below run other actions in place of the requested one; an action the
   // operator denied must stay denied rather than run through them.
   if (typeof requested.action === 'string') assertActionAllowed(tool, requested.action);
+  const emulation = emulate(run, tool, requested, scope, scopeEnforcer);
+  if (emulation) return emulation;
+  const args = scopedArgs(tool, requested, scope);
+  if (isFilteredListing(tool, args)) return fillScopedPage(run, tool, args, scopeEnforcer);
+  const result = await run(tool, args);
+  return isGroupAuditTrail(requested, args) ? groupAuditTrail(result, args.group_id) : result;
+}
+
+/**
+ * The answer to a call that the scope replaces by other requests, or undefined when the
+ * call runs as itself. The call is validated as the tool would validate it first, so an
+ * invalid call is refused instead of answered with the scope's data.
+ */
+function emulate(
+  run: RunTool,
+  tool: string,
+  requested: Args,
+  scope: ScopeConfig,
+  enforcer: ScopeEnforcer,
+): Promise<unknown> | undefined {
   if (tool === 'manage_todos' && requested.action === 'mark_all_done') {
-    return markScopeTodosDone(run, scopeEnforcer);
+    ManageTodosSchema.parse(requested);
+    return markScopeTodosDone(run, enforcer);
   }
   const projects = scopeProjectsOnly(scope);
+  if (!projects) return undefined;
   if (
-    projects &&
     tool === 'browse_projects' &&
     requested.action === 'list' &&
     Object.keys(requested).every((key) => PROJECT_LIST_OPTIONS.has(key))
   ) {
-    return listScopeProjects(run, projects, requested);
+    return listScopeProjects(run, projects, BrowseProjectsSchema.parse(requested));
   }
   // Project search has no projects scope: the scope's projects matching the search answer it.
-  if (
-    projects &&
-    tool === 'browse_search' &&
-    requested.action === 'global' &&
-    requested.scope === 'projects'
-  ) {
-    const { search, page, per_page } = requested;
+  if (tool === 'browse_search' && requested.action === 'global' && requested.scope === 'projects') {
+    const { search, page, per_page } = BrowseSearchSchema.parse(requested);
     return listScopeProjects(run, projects, { search, page, per_page });
   }
-  const args = scopedArgs(tool, requested, scope);
-  if (isFilteredListing(tool, args)) return fillScopedPage(run, tool, args, scopeEnforcer);
-  return run(tool, args);
+  return undefined;
+}
+
+/** An instance audit listing a group scope answered with the group's own audit trail. */
+const isGroupAuditTrail = (requested: Args, args: Args): boolean =>
+  requested.action === 'list_instance' && args.action === 'list_group';
+
+/**
+ * The group's own audit events, marked partial: GitLab keeps the events of the group's
+ * projects in each project's trail, which an instance listing would also have shown.
+ */
+function groupAuditTrail(result: unknown, group: unknown): unknown {
+  if (!Array.isArray(result)) return result;
+  return {
+    items: result,
+    partial: true,
+    message: `These are the audit events of group '${String(group)}' itself; events of its projects are listed per project with action 'list_project'.`,
+  };
 }
 
 /**

@@ -10,20 +10,23 @@
  * All tracking respects user consent - events are silently dropped
  * if analytics consent is denied.
  */
-import { onMounted, onUnmounted } from "vue";
-import { trackSearch, trackFileDownload, trackOutboundClick } from "../composables/useGA4Tracking";
+import { onMounted, onUnmounted } from 'vue';
+import { useGA4Tracking } from '../composables/useGA4Tracking';
+
+// Bound to the consent manager here in setup; the listeners below call them later.
+const { trackSearch, trackFileDownload, trackOutboundClick } = useGA4Tracking();
 
 // Debounce timeout for search tracking (avoid tracking every keystroke)
 const SEARCH_DEBOUNCE_MS = 1000;
 let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
-let lastTrackedSearch = "";
+let lastTrackedSearch = '';
 
 /**
  * Handle search input changes from VitePress local search
  */
 function handleSearchInput(event: Event): void {
   const target = event.target as HTMLInputElement;
-  if (!target || target.type !== "search") {
+  if (!target || target.type !== 'search') {
     return;
   }
 
@@ -56,7 +59,7 @@ function handleSearchInput(event: Event): void {
  */
 function handleClick(event: MouseEvent): void {
   const target = event.target as HTMLElement;
-  const link = target.closest("a");
+  const link = target.closest('a');
 
   if (!link || !link.href) {
     return;
@@ -67,7 +70,7 @@ function handleClick(event: MouseEvent): void {
   // Track .mcpb file downloads (only when pathname ends with .mcpb)
   try {
     const downloadUrl = new URL(href);
-    if (downloadUrl.pathname.endsWith(".mcpb")) {
+    if (downloadUrl.pathname.endsWith('.mcpb')) {
       trackFileDownload(href);
       return;
     }
@@ -89,22 +92,22 @@ function handleClick(event: MouseEvent): void {
 onMounted(() => {
   // Listen for search input (VitePress search modal uses input[type="search"])
   // Use capture phase to ensure we see events before any component stops propagation
-  document.addEventListener("input", handleSearchInput, { capture: true });
+  document.addEventListener('input', handleSearchInput, { capture: true });
 
   // Listen for clicks on links (use bubbling phase - sufficient for link tracking)
-  document.addEventListener("click", handleClick);
+  document.addEventListener('click', handleClick);
 });
 
 onUnmounted(() => {
-  document.removeEventListener("input", handleSearchInput, { capture: true });
-  document.removeEventListener("click", handleClick);
+  document.removeEventListener('input', handleSearchInput, { capture: true });
+  document.removeEventListener('click', handleClick);
 
   if (searchDebounceTimer) {
     clearTimeout(searchDebounceTimer);
   }
 
   // Reset state on unmount to allow re-tracking same search on remount
-  lastTrackedSearch = "";
+  lastTrackedSearch = '';
 });
 </script>
 

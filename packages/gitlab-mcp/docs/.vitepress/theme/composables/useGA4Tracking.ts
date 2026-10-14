@@ -12,8 +12,8 @@
  * Query parameters are included in URL tracking. Consent must be granted before any
  * data is sent to Google Analytics.
  */
-import { useConsent } from "@structured-world/vue-privacy/vitepress";
-import "../types/gtag"; // Import gtag type declaration
+import { useConsent } from '@structured-world/vue-privacy/vitepress';
+import '../types/gtag'; // Import gtag type declaration
 
 /**
  * GA4 recommended event parameters
@@ -35,46 +35,22 @@ interface OutboundClickEventParams {
   outbound: true;
 }
 
-/**
- * Check if analytics consent is granted.
- *
- * Note: useConsent() from vue-privacy's /vitepress export is designed to be called
- * outside of Vue component setup context. It uses a module-level singleton pattern
- * internally, making it safe to call from plain functions.
- */
-function hasAnalyticsConsent(): boolean {
-  const { getConsent } = useConsent();
-  const consent = getConsent();
-  return consent?.categories?.analytics === true;
-}
-
-/**
- * Send GA4 event if analytics consent is granted
- */
-function sendEvent(
+type SendEvent = (
   eventName: string,
-  params: SearchEventParams | FileDownloadEventParams | OutboundClickEventParams
-): void {
-  if (!hasAnalyticsConsent()) {
-    return;
-  }
-
-  if (typeof window !== "undefined" && typeof window.gtag === "function") {
-    window.gtag("event", eventName, params);
-  }
-}
+  params: SearchEventParams | FileDownloadEventParams | OutboundClickEventParams,
+) => void;
 
 /**
  * Track search event (GA4 recommended event).
  * Search terms are sent as-is to GA4 for analytics purposes.
  * @see https://developers.google.com/analytics/devguides/collection/ga4/reference/events#search
  */
-export function trackSearch(searchTerm: string): void {
+function trackSearch(sendEvent: SendEvent, searchTerm: string): void {
   if (!searchTerm || searchTerm.trim().length === 0) {
     return;
   }
 
-  sendEvent("search", {
+  sendEvent('search', {
     search_term: searchTerm.trim(),
   });
 }
@@ -83,7 +59,7 @@ export function trackSearch(searchTerm: string): void {
  * Track file download event (GA4 recommended event)
  * @see https://developers.google.com/analytics/devguides/collection/ga4/reference/events#file_download
  */
-export function trackFileDownload(linkUrl: string): void {
+function trackFileDownload(sendEvent: SendEvent, linkUrl: string): void {
   if (!linkUrl) {
     return;
   }
@@ -95,19 +71,19 @@ export function trackFileDownload(linkUrl: string): void {
   try {
     // Use window.location.href as base for relative URL resolution
     const baseHref =
-      typeof window !== "undefined" && window.location ? window.location.href : undefined;
+      typeof window !== 'undefined' && window.location ? window.location.href : undefined;
     const url = baseHref ? new URL(linkUrl, baseHref) : new URL(linkUrl);
     const pathname = url.pathname;
-    fileName = pathname.split("/").pop() || pathname;
-    fileExtension = fileName.includes(".") ? fileName.split(".").pop() || "" : "";
+    fileName = pathname.split('/').pop() || pathname;
+    fileExtension = fileName.includes('.') ? fileName.split('.').pop() || '' : '';
   } catch {
     // Fallback: derive filename directly from the raw link URL
-    const sanitized = linkUrl.split("#")[0].split("?")[0];
-    fileName = sanitized.split("/").pop() || sanitized;
-    fileExtension = fileName.includes(".") ? fileName.split(".").pop() || "" : "";
+    const sanitized = linkUrl.split('#')[0].split('?')[0];
+    fileName = sanitized.split('/').pop() || sanitized;
+    fileExtension = fileName.includes('.') ? fileName.split('.').pop() || '' : '';
   }
 
-  sendEvent("file_download", {
+  sendEvent('file_download', {
     file_name: fileName,
     file_extension: fileExtension,
     link_url: linkUrl,
@@ -119,7 +95,7 @@ export function trackFileDownload(linkUrl: string): void {
  * Full URLs including query parameters are tracked for analytics purposes.
  * @see https://developers.google.com/analytics/devguides/collection/ga4/reference/events#click
  */
-export function trackOutboundClick(linkUrl: string): void {
+function trackOutboundClick(sendEvent: SendEvent, linkUrl: string): void {
   if (!linkUrl) {
     return;
   }
@@ -133,7 +109,7 @@ export function trackOutboundClick(linkUrl: string): void {
       return;
     }
 
-    sendEvent("click", {
+    sendEvent('click', {
       link_url: linkUrl,
       link_domain: linkDomain,
       outbound: true,
@@ -144,13 +120,30 @@ export function trackOutboundClick(linkUrl: string): void {
 }
 
 /**
- * Composable for GA4 event tracking
+ * Composable for GA4 event tracking. Call it in a component's setup: useConsent() injects the
+ * consent manager, which only works there; the trackers it returns may then run from any
+ * event handler.
  */
 export function useGA4Tracking() {
+  const { getConsent } = useConsent();
+
+  const hasAnalyticsConsent = (): boolean => getConsent()?.categories?.analytics === true;
+
+  /** Send a GA4 event if analytics consent is granted. */
+  const sendEvent: SendEvent = (eventName, params) => {
+    if (!hasAnalyticsConsent()) {
+      return;
+    }
+
+    if (typeof window !== 'undefined' && typeof window.gtag === 'function') {
+      window.gtag('event', eventName, params);
+    }
+  };
+
   return {
-    trackSearch,
-    trackFileDownload,
-    trackOutboundClick,
+    trackSearch: (searchTerm: string) => trackSearch(sendEvent, searchTerm),
+    trackFileDownload: (linkUrl: string) => trackFileDownload(sendEvent, linkUrl),
+    trackOutboundClick: (linkUrl: string) => trackOutboundClick(sendEvent, linkUrl),
     hasAnalyticsConsent,
   };
 }

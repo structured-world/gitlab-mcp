@@ -1,10 +1,9 @@
 version: 2
 updates:
   - package-ecosystem: "npm"
-    directories:
-      - "/"
-      - "/packages/gitlab-mcp"
-      - "/packages/gitlab-mcp-db"
+    # The root job updates workspace manifests together with the root yarn.lock;
+    # a job per workspace edits package.json without the lockfile and fails CI.
+    directory: "/"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 10

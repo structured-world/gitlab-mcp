@@ -2168,7 +2168,7 @@ __metadata:
     "@eslint/js": "npm:^10.0.1"
     "@graphql-typed-document-node/core": "npm:^3.2.0"
     "@modelcontextprotocol/sdk": "npm:^1.32.1"
-    "@structured-world/vue-privacy": "npm:^2.0.1"
+    "@structured-world/vue-privacy": "npm:^2.0.2"
     "@types/express": "npm:^5.0.6"
     "@types/jest": "npm:^30.0.0"
     "@types/node": "npm:^25.9.9"
@@ -2204,9 +2204,9 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@structured-world/vue-privacy@npm:^2.0.1":
-  version: 2.0.1
-  resolution: "@structured-world/vue-privacy@npm:2.0.1"
+"@structured-world/vue-privacy@npm:^2.0.2":
+  version: 2.0.2
+  resolution: "@structured-world/vue-privacy@npm:2.0.2"
   peerDependencies:
     vue: ^3.3.0
     vue-router: ^4.0.0 || ^5.0.0
@@ -2215,7 +2215,7 @@ __metadata:
       optional: true
     vue-router:
       optional: true
-  checksum: 10c0/d9f70a220426d8b0d4c59a615ca43fc2a01bac9bd9666f2498b5905dcd1559b8955d24e2724456a9bd38bad21f3fcf97283f8dbea269378af1fa2a88d9bcc53e
+  checksum: 10c0/6244e4f34747eecfddf0da2a53464d641c32de65b81fcbac12ab8f46594c4e775bb0a8919933109786d4bd02cdf694c6191408441e37bef7b836b8dec44c974b
   languageName: node
   linkType: hard
 

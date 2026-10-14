@@ -1,24 +1,28 @@
-import { h } from "vue";
-import DefaultTheme from "vitepress/theme";
-import type { Theme } from "vitepress";
-import { enhanceWithConsent, ConsentBanner } from "@structured-world/vue-privacy/vitepress";
-import { createKVStorage } from "@structured-world/vue-privacy";
-import "./style.css";
-import BugReportWidget from "./components/BugReportWidget.vue";
-import GA4EventTracker from "./components/GA4EventTracker.vue";
+import { h } from 'vue';
+import DefaultTheme from 'vitepress/theme';
+import type { Theme } from 'vitepress';
+import { enhanceWithConsent, ConsentBanner } from '@structured-world/vue-privacy/vitepress';
+import { ConsentPreferenceModal } from '@structured-world/vue-privacy/vue';
+import { createKVStorage } from '@structured-world/vue-privacy';
+import './style.css';
+import BugReportWidget from './components/BugReportWidget.vue';
+import GA4EventTracker from './components/GA4EventTracker.vue';
 
 // GA4 tracking ID - fallback is gitlab-mcp.sw.foundation production property
-const GA_ID = import.meta.env.VITE_GA_ID || "G-RY1XJ7LR5F";
+const GA_ID = import.meta.env.VITE_GA_ID || 'G-RY1XJ7LR5F';
 
 // Enhance DefaultTheme with GDPR-compliant consent management and SPA page tracking.
 // enhanceWithConsent automatically:
-// - Sets consent defaults (denied for EU, granted for non-EU)
+// - Sets consent defaults (denied in consent jurisdictions, granted elsewhere)
 // - Loads gtag.js with send_page_view: false (SPA mode)
 // - Tracks initial page view and watches router for SPA navigations
 const consentTheme = enhanceWithConsent(DefaultTheme, {
   gaId: GA_ID,
+  // The site measures visits only: analytics is the one category offered, and marketing and
+  // functional stay refused even after "Accept all".
+  usedCategories: ['analytics'],
   // KV storage via Cloudflare Worker (vue-privacy-worker) at gitlab-mcp.sw.foundation/api/consent*
-  storage: createKVStorage("/api/consent"),
+  storage: createKVStorage('/api/consent'),
 });
 
 export default {
@@ -27,8 +31,14 @@ export default {
     return h(consentTheme.Layout ?? DefaultTheme.Layout, null, {
       // GA4EventTracker: invisible component for tracking search, downloads, and outbound links
       // ConsentBanner: GDPR consent banner from vue-privacy
+      // ConsentPreferenceModal: the preference centre the banner's "Customize" opens
       // BugReportWidget: bug report floating button
-      "layout-bottom": () => [h(GA4EventTracker), h(ConsentBanner), h(BugReportWidget)],
+      'layout-bottom': () => [
+        h(GA4EventTracker),
+        h(ConsentBanner),
+        h(ConsentPreferenceModal),
+        h(BugReportWidget),
+      ],
     });
   },
 } satisfies Theme;

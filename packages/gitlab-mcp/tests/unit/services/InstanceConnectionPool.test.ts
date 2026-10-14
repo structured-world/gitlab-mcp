@@ -48,6 +48,12 @@ jest.mock('../../../src/logger', () => ({
 // Now import the module under test
 import { InstanceConnectionPool } from '../../../src/services/InstanceConnectionPool';
 import { GitLabInstanceConfig } from '../../../src/config/instances-schema';
+import {
+  BODY_TIMEOUT_MS,
+  CONNECT_TIMEOUT_MS,
+  HEADERS_TIMEOUT_MS,
+  POOL_MAX_CONNECTIONS,
+} from '../../../src/config';
 
 describe('InstanceConnectionPool', () => {
   beforeEach(async () => {
@@ -528,16 +534,18 @@ describe('InstanceConnectionPool', () => {
 
       pool.getGraphQLClient({ url: 'https://gitlab.com', insecureSkipVerify: false });
 
+      // Connection limits and timeouts come from config, which the environment may override
+      // (the full suite loads .env.test); the pool must pass exactly those values to Undici.
       expect(MockPool).toHaveBeenCalledWith(
         'https://gitlab.com',
         expect.objectContaining({
-          connections: 25,
+          connections: POOL_MAX_CONNECTIONS,
           keepAliveTimeout: 30000,
           keepAliveMaxTimeout: 300000,
           pipelining: 1,
-          headersTimeout: 10000,
-          bodyTimeout: 30000,
-          connect: expect.objectContaining({ timeout: 2000 }),
+          headersTimeout: HEADERS_TIMEOUT_MS,
+          bodyTimeout: BODY_TIMEOUT_MS,
+          connect: expect.objectContaining({ timeout: CONNECT_TIMEOUT_MS }),
         }),
       );
     });

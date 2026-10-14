@@ -20,6 +20,8 @@ import type {
   GitLabTokenResponse,
   SessionStorageBackend,
   SessionStorageStats,
+  AccountSettings,
+  AccountSettingsRecord,
 } from '@structured-world/gitlab-mcp/storage-contract';
 import { logInfo, logError, logDebug } from './logger';
 
@@ -44,6 +46,13 @@ interface PrismaOAuthSessionRow {
   scopes: string[];
   resource?: string | null;
   createdAt: bigint;
+  updatedAt: bigint;
+}
+
+interface PrismaAccountSettingsRow {
+  accountKey: string;
+  settings: unknown;
+  version: number;
   updatedAt: bigint;
 }
 
@@ -215,6 +224,11 @@ interface GenericPrismaClient {
     delete(args: unknown): Promise<unknown>;
     deleteMany(args: unknown): Promise<unknown>;
     count(): Promise<number>;
+  };
+  accountSettings: {
+    create(args: unknown): Promise<unknown>;
+    findUnique(args: unknown): Promise<unknown>;
+    updateMany(args: unknown): Promise<unknown>;
   };
 }
 
@@ -780,6 +794,50 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
       registeredFrom: optional(row.registeredFrom),
       expiresAt: row.expiresAt == null ? undefined : Number(row.expiresAt),
     };
+  }
+
+  // Account settings
+  async getAccountSettings(accountKey: string): Promise<AccountSettingsRecord | undefined> {
+    const prisma = this.getPrisma();
+    const row = (await prisma.accountSettings.findUnique({
+      where: { accountKey },
+    })) as PrismaAccountSettingsRow | null;
+    if (!row) return undefined;
+    return {
+      accountKey: row.accountKey,
+      settings: row.settings as AccountSettings,
+      version: row.version,
+      updatedAt: Number(row.updatedAt),
+    };
+  }
+
+  async putAccountSettings(
+    accountKey: string,
+    settings: AccountSettings,
+    expectedVersion: number,
+  ): Promise<AccountSettingsRecord | undefined> {
+    const prisma = this.getPrisma();
+    const version = expectedVersion + 1;
+    const updatedAt = Date.now();
+    if (expectedVersion === 0) {
+      // First settings of the account: the primary key lets one of racing inserts win.
+      try {
+        await prisma.accountSettings.create({
+          data: { accountKey, settings, version, updatedAt: BigInt(updatedAt) },
+        });
+      } catch (error: unknown) {
+        if ((error as { code?: unknown }).code === 'P2002') return undefined;
+        throw error;
+      }
+    } else {
+      // Compare-and-set in one statement: only the row still at the expected version.
+      const result = (await prisma.accountSettings.updateMany({
+        where: { accountKey, version: expectedVersion },
+        data: { settings, version, updatedAt: BigInt(updatedAt) },
+      })) as PrismaBatchPayload;
+      if (result.count !== 1) return undefined;
+    }
+    return { accountKey, settings, version, updatedAt };
   }
 
   // Cleanup

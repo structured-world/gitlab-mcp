@@ -768,6 +768,71 @@ describe('RegistryManager', () => {
       }
     });
 
+    // The settings page offers only the tool groups this server actually loaded.
+    it('lists the keys of loaded registries and not of those a feature flag turned off', () => {
+      process.env.USE_LABELS = 'false';
+      resetRegistryManagerSingleton();
+
+      const keys = RegistryManager.getInstance().getRegistryKeys();
+
+      expect(keys).toContain('core');
+      expect(keys).not.toContain('labels');
+    });
+
+    // Without declared arguments every argument is held to the scope, as before.
+    it('knows no declared arguments for an unknown tool or one without properties', () => {
+      expect(registryManager.getDeclaredArguments('no_such_tool')).toBeUndefined();
+      expect(registryManager.getDeclaredArguments('core_tool_1')).toBeUndefined();
+    });
+
+    it("reads a tool's declared arguments from its input schema", () => {
+      const coreRegistry = require('../../src/entities/core/registry').coreToolRegistry;
+      coreRegistry.set('tool_with_args', {
+        name: 'tool_with_args',
+        description: 'Tool with arguments',
+        inputSchema: { type: 'object', properties: { action: {}, user_id: {} } },
+        handler: jest.fn(),
+      });
+      try {
+        resetRegistryManagerSingleton();
+
+        expect([
+          ...(RegistryManager.getInstance().getDeclaredArguments('tool_with_args') ?? []),
+        ]).toEqual(['action', 'user_id']);
+      } finally {
+        coreRegistry.delete('tool_with_args');
+        resetRegistryManagerSingleton();
+      }
+    });
+
+    it('reads only the requested action branch of a discriminated union', () => {
+      const coreRegistry = require('../../src/entities/core/registry').coreToolRegistry;
+      coreRegistry.set('tool_with_actions', {
+        name: 'tool_with_actions',
+        description: 'Tool with actions',
+        inputSchema: {
+          oneOf: [
+            { properties: { action: { const: 'list_project' }, project_id: {} } },
+            { properties: { action: { const: 'list_group' }, group_id: {} } },
+          ],
+        },
+        handler: jest.fn(),
+      });
+      try {
+        resetRegistryManagerSingleton();
+
+        expect([
+          ...(RegistryManager.getInstance().getDeclaredArguments(
+            'tool_with_actions',
+            'list_project',
+          ) ?? []),
+        ]).toEqual(['action', 'project_id']);
+      } finally {
+        coreRegistry.delete('tool_with_actions');
+        resetRegistryManagerSingleton();
+      }
+    });
+
     it('should provide cache refresh functionality', () => {
       const _originalNames = registryManager.getAvailableToolNames();
 

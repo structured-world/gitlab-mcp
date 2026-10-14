@@ -1,5 +1,6 @@
 import {
   detectNamespaceType,
+  findNamespaceType,
   resolveNamespaceForAPI,
   extractNamespaceFromPath,
 } from '../../../src/utils/namespace';
@@ -52,6 +53,128 @@ describe('Namespace Utils Coverage Tests', () => {
 
     it('should return undefined for empty string', () => {
       expect(extractNamespaceFromPath('')).toBeUndefined();
+    });
+  });
+
+  // Only a type GitLab confirms: a scope must never be saved from a guess.
+  describe('findNamespaceType', () => {
+    // Malformed successful responses must identify the namespace and retain the parsing cause.
+    it('adds numeric namespace context to a malformed JSON response', async () => {
+      const cause = new SyntaxError('invalid JSON');
+      mockEnhancedFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => {
+          throw cause;
+        },
+      } as unknown as Response);
+      const found = jest.fn();
+      await expect(findNamespaceType('123', found)).rejects.toMatchObject({
+        message: "Could not resolve canonical namespace path for group '123'",
+        cause,
+      });
+      expect(found).not.toHaveBeenCalled();
+    });
+    // A confirmed path needs no body parse; numeric selections need an actual canonical path.
+    it('returns a confirmed nonnumeric path without reading the response body', async () => {
+      const json = jest.fn();
+      mockEnhancedFetch.mockResolvedValueOnce({ ok: true, json } as unknown as Response);
+      const found = jest.fn();
+      expect(await findNamespaceType('team', found)).toBe('group');
+      expect(found).toHaveBeenCalledWith('team');
+      expect(json).not.toHaveBeenCalled();
+    });
+
+    // Malformed canonical identities must never be persisted as guessed numeric scope paths.
+    it.each([undefined, '', 123])(
+      'rejects a numeric scope with canonical path %s',
+      async (full_path) => {
+        mockEnhancedFetch.mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ full_path }),
+        } as Response);
+        const found = jest.fn();
+        await expect(findNamespaceType('123', found)).rejects.toThrow('canonical namespace path');
+        expect(found).not.toHaveBeenCalled();
+        expect(mockEnhancedFetch).toHaveBeenCalledTimes(1);
+      },
+    );
+    it.each([
+      ['group', { full_path: 'team' }],
+      ['project', { path_with_namespace: 'team/app' }],
+    ])('returns the canonical numeric %s path from the same lookup', async (type, entity) => {
+      // No second lookup or numeric path is allowed when saving a working scope.
+      if (type === 'project')
+        mockEnhancedFetch.mockResolvedValueOnce({ ok: false, status: 404 } as Response);
+      mockEnhancedFetch.mockResolvedValueOnce({ ok: true, json: async () => entity } as Response);
+      const found = jest.fn();
+      expect(await findNamespaceType('123', found)).toBe(type);
+      expect(found).toHaveBeenCalledWith(type === 'group' ? 'team' : 'team/app');
+    });
+    it('returns the type GitLab confirms', async () => {
+      mockEnhancedFetch
+        .mockResolvedValueOnce({ ok: false, status: 404 } as Response)
+        .mockResolvedValueOnce({ ok: true, status: 200 } as Response);
+
+      expect(await findNamespaceType('team')).toBe('project');
+    });
+
+    it.each(['team', 'team/app'])(
+      'returns null for %s when GitLab knows neither type',
+      async (path) => {
+        mockEnhancedFetch.mockResolvedValue({ ok: false, status: 404 } as Response);
+
+        expect(await findNamespaceType(path)).toBeNull();
+        expect(mockEnhancedFetch).toHaveBeenCalledTimes(2);
+      },
+    );
+
+    it('returns null when GitLab cannot be reached', async () => {
+      mockEnhancedFetch.mockRejectedValue(new Error('Network error'));
+
+      expect(await findNamespaceType('team/app')).toBeNull();
+    });
+
+    // A rejected sign-in is not "not found": it fails with GitLab's error, so the call gets
+    // the reauthorization challenge instead of a misleading unknown-path answer.
+    it.each([
+      [401, 'Unauthorized', '{"message":"401 Unauthorized"}', 'GitLab API error: 401 Unauthorized'],
+      [
+        403,
+        'Forbidden',
+        '{"error":"insufficient_scope"}',
+        'GitLab API error: 403 Forbidden - insufficient_scope',
+      ],
+    ])(
+      'fails on %d instead of reading it as not found',
+      async (status, statusText, body, message) => {
+        mockEnhancedFetch.mockResolvedValue({
+          ok: false,
+          status,
+          statusText,
+          text: jest.fn().mockResolvedValue(body),
+        } as unknown as Response);
+
+        await expect(findNamespaceType('team/app')).rejects.toThrow(message);
+        expect(mockEnhancedFetch).toHaveBeenCalledTimes(1);
+      },
+    );
+
+    // A path the token may not read as this type is not an authorization failure, also when
+    // the body of the refusal cannot be read.
+    it.each([
+      ['a plain 403', jest.fn().mockResolvedValue('{"message":"403 Forbidden"}')],
+      ['a 403 whose body cannot be read', jest.fn().mockRejectedValue(new Error('aborted'))],
+    ])('reads %s as not this type', async (_label, text) => {
+      mockEnhancedFetch
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 403,
+          statusText: 'Forbidden',
+          text,
+        } as unknown as Response)
+        .mockResolvedValueOnce({ ok: true, status: 200 } as Response);
+
+      expect(await findNamespaceType('team/app')).toBe('group');
     });
   });
 

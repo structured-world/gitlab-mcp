@@ -63,6 +63,7 @@ jest.mock('../../../../src/server', () => ({
 
 // Mock isOAuthEnabled to check process.env at runtime
 jest.mock('../../../../src/oauth/index.js', () => ({
+  ...jest.requireActual('../../../../src/oauth/index.js'),
   isOAuthEnabled: () => process.env.OAUTH_ENABLED === 'true',
 }));
 

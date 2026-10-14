@@ -6,6 +6,7 @@ import { ConsentPreferenceModal } from '@structured-world/vue-privacy/vue';
 import { createKVStorage } from '@structured-world/vue-privacy';
 import './style.css';
 import BugReportWidget from './components/BugReportWidget.vue';
+import CookieSettingsButton from './components/CookieSettingsButton.vue';
 import GA4EventTracker from './components/GA4EventTracker.vue';
 
 // GA4 tracking ID - fallback is gitlab-mcp.sw.foundation production property
@@ -19,7 +20,9 @@ const GA_ID = import.meta.env.VITE_GA_ID || 'G-RY1XJ7LR5F';
 const consentTheme = enhanceWithConsent(DefaultTheme, {
   gaId: GA_ID,
   // The site measures visits only: analytics is the one category offered, and marketing and
-  // functional stay refused even after "Accept all".
+  // functional stay refused even after "Accept all". A choice stored before this (cookie or KV
+  // record with marketing or functional granted) needs no new consent `version`: vue-privacy
+  // limits every stored and restored choice to these categories when it reads it.
   usedCategories: ['analytics'],
   // KV storage via Cloudflare Worker (vue-privacy-worker) at gitlab-mcp.sw.foundation/api/consent*
   storage: createKVStorage('/api/consent'),
@@ -32,11 +35,13 @@ export default {
       // GA4EventTracker: invisible component for tracking search, downloads, and outbound links
       // ConsentBanner: GDPR consent banner from vue-privacy
       // ConsentPreferenceModal: the preference centre the banner's "Customize" opens
+      // CookieSettingsButton: reopens that preference centre on every page after a choice
       // BugReportWidget: bug report floating button
       'layout-bottom': () => [
         h(GA4EventTracker),
         h(ConsentBanner),
         h(ConsentPreferenceModal),
+        h(CookieSettingsButton),
         h(BugReportWidget),
       ],
     });

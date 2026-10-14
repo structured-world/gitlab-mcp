@@ -8,6 +8,7 @@ import type { Preset, ScopeConfig } from '../profiles/types';
 import { enforceArgsScope, ScopeEnforcer, ScopeViolationError } from '../profiles/scope-enforcer';
 import type { AccountSettings, WorkingScope } from './types';
 import { scopeCheckArgs, targetlessRestriction } from './scope-targets';
+import { withoutSchemaActions } from '../utils/schema-utils';
 
 /** A session's choice to work without the account's default scope. */
 export const EVERYWHERE = 'everywhere';
@@ -147,6 +148,21 @@ export function toolRestriction(policy: EffectivePolicy, tool: ToolFacts): strin
     return `preset '${policy.presetName}' excludes it`;
   }
   return null;
+}
+
+/**
+ * The input schema tools/list shows the caller for a tool: without the actions the preset
+ * denies, or undefined when the tool is hidden (restricted, or every action denied).
+ */
+export function listedToolSchema(
+  policy: EffectivePolicy,
+  tool: ToolFacts,
+  inputSchema: Record<string, unknown>,
+): Record<string, unknown> | undefined {
+  if (toolRestriction(policy, tool) !== null) return undefined;
+  const denied = isExemptFromSettings(tool.name) ? undefined : policy.deniedActions.get(tool.name);
+  // Matched as the call check matches them: schema action names are lowercase.
+  return denied ? withoutSchemaActions(tool.name, inputSchema, denied) : inputSchema;
 }
 
 /**

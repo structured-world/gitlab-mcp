@@ -585,6 +585,12 @@ describe('runners registry', () => {
       expect(vars).toMatchObject({ id: RUNNER_GID, statuses: ['FAILED', 'CANCELED'] });
     });
 
+    // A runner GitLab answers without a jobs connection has no jobs to list.
+    it('list_jobs answers an empty page for a runner without jobs', async () => {
+      mockClient.request.mockResolvedValueOnce({ runner: { id: RUNNER_GID, jobs: null } });
+      expect(await browse().handler({ action: 'list_jobs', runner_id: 7 })).toEqual({ nodes: [] });
+    });
+
     it('list_jobs throws when the runner is missing', async () => {
       mockClient.request.mockResolvedValueOnce({ runner: null });
       await expect(browse().handler({ action: 'list_jobs', runner_id: 7 })).rejects.toThrow(

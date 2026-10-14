@@ -11,11 +11,15 @@ jest.mock('../../../src/utils/gitlab-api', () => ({ gitlab: { get: jest.fn() } }
 
 const notFound = new Error('GitLab API error: 404 Not Found');
 
-/** A GitLab that knows project 7 (team/app), group 4 (team) and project 9 (other/api). */
+/**
+ * A GitLab that knows project 7 (team/app), group 4 (team) and project 9 (other/api). Namespace
+ * 7 is a user's namespace (alice): its id collides with project 7.
+ */
 const read = jest.fn(async (path: string): Promise<unknown> => {
   if (path === 'projects/7') return { id: 7, path_with_namespace: 'team/app' };
   if (path === 'projects/9') return { id: 9, path_with_namespace: 'other/api' };
-  if (path === 'namespaces/4') return { id: 4, full_path: 'team' };
+  if (path === 'namespaces/4' || path === 'groups/4') return { id: 4, full_path: 'team' };
+  if (path === 'namespaces/7') return { id: 7, kind: 'user', full_path: 'alice' };
   throw notFound;
 });
 
@@ -29,10 +33,16 @@ describe('withTargetPaths', () => {
   });
 
   // A namespace argument may be a group or a project; a group is tried first, as the
-  // handlers do for a path without a slash.
+  // handlers do for a path without a slash. A user namespace with the same id is no group:
+  // the handlers read project 7 then, so the check does too.
   it('reads a numeric namespace as a group, else as a project', async () => {
     expect(await withTargetPaths({ namespace: '4' }, read)).toEqual({ namespace: 'team' });
     expect(await withTargetPaths({ namespace: '7' }, read)).toEqual({ namespace: 'team/app' });
+  });
+
+  // An argument that only names a namespace keeps reading it as one, users' included.
+  it('reads a numeric namespace_id as a namespace', async () => {
+    expect(await withTargetPaths({ namespace_id: '7' }, read)).toEqual({ namespace_id: 'alice' });
   });
 
   // An id GitLab does not know stays numeric, and the scope check then refuses it.

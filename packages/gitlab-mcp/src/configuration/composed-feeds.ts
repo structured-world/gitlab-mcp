@@ -841,12 +841,13 @@ export async function multiTargetVulnerabilities(
   if ('answer' in scan) return scan.answer;
   if (ordered)
     rows.sort((a, b) => {
-      if (a.value === undefined || b.value === undefined)
-        throw new Error('Cannot sort incomplete vulnerability ordering data');
-      if (a.value !== b.value) return (a.value < b.value ? -1 : 1) * direction;
-      // Numeric IDs may exceed Number's safe range. Equal sort keys use ID descending.
+      // `ordered` holds only when every row has its ordering value.
+      const left = a.value as string | number;
+      const right = b.value as string | number;
+      if (left !== right) return (left < right ? -1 : 1) * direction;
+      // Numeric IDs may exceed Number's safe range. Equal sort keys use ID descending; IDs
+      // are unique, as repeats were dropped above.
       if (a.id.length !== b.id.length) return b.id.length - a.id.length;
-      if (a.id === b.id) return 0;
       return a.id < b.id ? 1 : -1;
     });
   // The tool schema already holds `first` to an integer from 1 to 100.

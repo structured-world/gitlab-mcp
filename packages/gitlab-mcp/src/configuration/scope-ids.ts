@@ -34,17 +34,19 @@ export async function withTargetPaths(
 }
 
 /**
- * The path a numeric id stands for, or undefined. A group id is a namespace id; an argument
- * that may name either is read as a group first, as the handlers read a path without a slash.
+ * The path a numeric id stands for, or undefined. A group-valued argument names a namespace
+ * (a user's too). An argument that may name either is read as a group, then as a project, as
+ * the handlers read it (utils/namespace.ts): a user namespace sharing the id is neither.
  */
 async function pathOf(
   read: ReadResource,
   id: string,
   kind: NumericTargetKind,
 ): Promise<string | undefined> {
-  if (kind !== 'project') {
-    const group = await field(read, `namespaces/${id}`, 'full_path');
-    if (group !== undefined || kind === 'group') return group;
+  if (kind === 'group') return field(read, `namespaces/${id}`, 'full_path');
+  if (kind === 'either') {
+    const group = await field(read, `groups/${id}`, 'full_path');
+    if (group !== undefined) return group;
   }
   return field(read, `projects/${id}`, 'path_with_namespace');
 }

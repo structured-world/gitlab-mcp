@@ -30,7 +30,7 @@ import {
 import { GitLabTimeoutError } from './utils/fetch';
 import { getRequestTracker, getConnectionTracker, getCurrentRequestId } from './logging/index';
 import { LOG_FORMAT, HANDLER_TIMEOUT_MS, GITLAB_BASE_URL, GITLAB_READ_ONLY_MODE } from './config';
-import { getSchemaMode, withoutSchemaActions } from './utils/schema-utils';
+import { getSchemaMode } from './utils/schema-utils';
 import { formatToolResult, errorToolResult } from './utils/tool-result';
 import {
   APP_PANEL_SECURITY_SCHEMES,
@@ -50,8 +50,8 @@ import {
   CONFIGURATION_TOOLS,
   callRestriction,
   isExemptFromSettings,
+  listedToolSchema,
   scopeLabel,
-  toolRestriction,
   withoutScope,
   type EffectivePolicy,
 } from './configuration/policy';
@@ -516,16 +516,11 @@ async function withoutRestrictedTools<
   }
   const listed: T[] = [];
   for (const tool of tools) {
-    if (toolRestriction(policy, registryManager.getToolFacts(tool.name)) !== null) continue;
-    const denied = isExemptFromSettings(tool.name)
-      ? undefined
-      : policy.deniedActions.get(tool.name);
-    if (!denied) {
-      listed.push(tool);
-      continue;
-    }
-    // Matched as the call check matches them: schema action names are lowercase.
-    const inputSchema = withoutSchemaActions(tool.name, tool.inputSchema, denied);
+    const inputSchema = listedToolSchema(
+      policy,
+      registryManager.getToolFacts(tool.name),
+      tool.inputSchema,
+    );
     if (inputSchema)
       listed.push(inputSchema === tool.inputSchema ? tool : { ...tool, inputSchema });
   }
@@ -1142,7 +1137,7 @@ export async function setupHandlers(server: Server): Promise<void> {
         const result = await executeInScope(
           registryManager,
           toolName,
-          toolArguments ?? {},
+          toolArguments,
           configuration.policy,
           effectiveInstanceUrl,
           requestScopes,

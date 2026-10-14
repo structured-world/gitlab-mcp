@@ -13,6 +13,7 @@ import {
   extractActionsFromSchema,
   declaredArgumentNames,
   getSchemaMode,
+  withoutSchemaActions,
 } from '../../../src/utils/schema-utils';
 
 // Mock config module
@@ -1030,6 +1031,20 @@ describe('schema-utils', () => {
     it('declares nothing for a schema without properties', () => {
       expect(declaredArgumentNames({ type: 'object' }).size).toBe(0);
       expect(declaredArgumentNames(null).size).toBe(0);
+    });
+  });
+
+  describe('withoutSchemaActions', () => {
+    // A tool without actions, or nothing denied, keeps its schema as it is: there is no
+    // action to drop and no reason to hide it.
+    it('keeps a schema without actions or with nothing denied', () => {
+      const plain = { type: 'object', properties: { id: { type: 'string' } } };
+      expect(withoutSchemaActions('get_profile', plain, new Set(['get']))).toBe(plain);
+      const listed = {
+        type: 'object',
+        properties: { action: { type: 'string', enum: ['list', 'get'] } },
+      };
+      expect(withoutSchemaActions('browse_wiki', listed, new Set())).toBe(listed);
     });
   });
 });

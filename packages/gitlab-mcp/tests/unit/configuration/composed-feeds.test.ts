@@ -2,6 +2,7 @@
 import {
   scanScopeConnections,
   multiTargetRunners,
+  multiTargetSearch,
   multiTargetVulnerabilities,
   scopeAuditEvents,
   scopeProjectSnippets,
@@ -477,5 +478,244 @@ describe('composed scope feeds', () => {
     expect(await multiTargetVulnerabilities(run, { action: 'list' }, scope, enforcer)).toEqual({
       error: 'unavailable',
     });
+    // A detection-time order with a vulnerability lacking detectedAt cannot be kept.
+    run.mockResolvedValue(connection([vulnerability('1')]));
+    expect(
+      await multiTargetVulnerabilities(
+        run,
+        { action: 'list', sort: 'detected_desc' },
+        scope,
+        enforcer,
+      ),
+    ).toMatchObject({ partial: true });
+  });
+
+  // State follows GitLab's enum priorities and title its text, each in the requested direction.
+  it.each([
+    ['state_asc', 'state', ['DISMISSED', 'CONFIRMED'], ['2', '1']],
+    ['title_desc', 'title', ['beta', 'alpha'], ['1', '2']],
+  ])('orders vulnerabilities by %s', async (sort, field, values, expected) => {
+    const run = jest
+      .fn()
+      .mockResolvedValue(
+        connection([
+          vulnerability('1', { [field]: values[1] }),
+          vulnerability('2', { [field]: values[0] }),
+        ]),
+      );
+    const result = (await multiTargetVulnerabilities(
+      run,
+      { action: 'list', sort },
+      scope,
+      enforcer,
+    )) as { nodes: Array<{ id: string }> };
+    expect(result.nodes.map(({ id }) => id)).toEqual(
+      sort === 'state_asc' ? expected : [...expected].reverse(),
+    );
+  });
+
+  // A vulnerability without the field it is ordered by cannot be placed: the page says so.
+  it.each(['state_asc', 'title_desc'])(
+    'reports vulnerabilities it cannot order by %s',
+    async (sort) => {
+      const run = jest.fn().mockResolvedValue(connection([vulnerability('1')]));
+      expect(
+        await multiTargetVulnerabilities(run, { action: 'list', sort }, scope, enforcer),
+      ).toMatchObject({ partial: true });
+    },
+  );
+
+  // A group-only entity filter reads only group trails. A scope naming a project or group
+  // twice reads it once; a project only shared with the group is not one of its places; and a
+  // group whose projects are listed past the page bound marks the trails partial.
+  it('reads each place once and reports groups listed only in part', async () => {
+    const wide = {
+      project: 'other/x',
+      projects: ['other/x'],
+      groups: ['ops', 'ops'],
+      includeSubgroups: false,
+    };
+    let next = 0;
+    const run = jest.fn(async (tool: string, _args: Record<string, unknown>) =>
+      tool === 'browse_projects'
+        ? [
+            { path_with_namespace: 'other/x' },
+            ...Array.from({ length: 99 }, () => ({ path_with_namespace: `ops/p${next++}` })),
+          ]
+        : [],
+    );
+    const result = await scopeAuditEvents(
+      run,
+      { action: 'list_instance', entity_type: 'Group' },
+      wide,
+      new ScopeEnforcer(wide),
+    );
+    expect(result).toMatchObject({
+      items: [],
+      partial: true,
+      message: expect.stringContaining('listed up to 1000'),
+    });
+    expect(run.mock.calls.filter(([tool]) => tool === 'browse_projects')).toHaveLength(10);
+    expect(
+      run.mock.calls.filter(([tool]) => tool === 'browse_audit_events').map(([, args]) => args),
+    ).toEqual([expect.objectContaining({ action: 'list_group', group_id: 'ops' })]);
+  });
+
+  // A not-found lookup thrown as a plain value still reads as an entity GitLab does not know.
+  it('finds no trail for an entity whose lookup answers 404 with a plain value', async () => {
+    const run = jest.fn().mockRejectedValue('GitLab API error: 404 Not Found');
+    expect(
+      await scopeAuditEvents(
+        run,
+        { action: 'list_instance', entity_type: 'Project', entity_id: 7 },
+        scope,
+        enforcer,
+      ),
+    ).toEqual([]);
+  });
+
+  // A failing group project listing is passed on by the project snippet listing too.
+  it('passes on a group project listing that is not a list for snippets', async () => {
+    const answer = { error: 'forbidden' };
+    const group = { group: 'ops' };
+    const run = jest.fn(async (tool: string) => (tool === 'browse_projects' ? answer : []));
+    expect(
+      await scopeProjectSnippets(
+        run,
+        { action: 'list', scope: 'project' },
+        group,
+        new ScopeEnforcer(group),
+      ),
+    ).toBe(answer);
+  });
+
+  // A snippet title search without a search term, or only blanks, matches every snippet.
+  it.each([[undefined], ['   ']])('matches every snippet for the search %j', async (search) => {
+    const run = jest.fn(async (_tool: string, args: Record<string, unknown>) => [
+      { id: args.projectId === 'team/a' ? 1 : 2, updated_at: '2026-01-01T00:00:00Z' },
+    ]);
+    const result = (await scopeSnippetTitleSearch(
+      run,
+      { action: 'global', scope: 'snippet_titles', search },
+      scope,
+      enforcer,
+    )) as Array<{ id: number }>;
+    expect(result.map(({ id }) => id)).toEqual([2, 1]);
+  });
+});
+
+describe('multiTargetSearch', () => {
+  const search = (results: unknown[]) => ({ results });
+
+  // Kinds with no order shared across targets keep target order and say so; rows without an
+  // ID (code hits) are told apart by their content.
+  it('keeps target order for results with no shared order', async () => {
+    const run = jest.fn(async (_tool: string, args: Record<string, unknown>) =>
+      search([{ path: `${String(args.project_id)}.md`, data: 'x' }]),
+    );
+    expect(
+      await multiTargetSearch(
+        run,
+        { action: 'global', scope: 'blobs', search: 'x' },
+        scope,
+        enforcer,
+      ),
+    ).toEqual({
+      scope: 'blobs',
+      count: 2,
+      results: [
+        { path: 'team/a.md', data: 'x' },
+        { path: 'team/b.md', data: 'x' },
+      ],
+      partial: true,
+      message: expect.stringContaining('no order shared'),
+    });
+  });
+
+  // Issues order by creation time; results lacking it keep target order and say so, and an
+  // ID that is not a number does not break the comparison.
+  it('reports results it cannot order by time', async () => {
+    const run = jest.fn(async (_tool: string, args: Record<string, unknown>) =>
+      search([{ id: args.project_id === 'team/a' ? 'a1' : 2 }]),
+    );
+    expect(
+      await multiTargetSearch(
+        run,
+        { action: 'global', scope: 'issues', search: 'x' },
+        scope,
+        enforcer,
+      ),
+    ).toMatchObject({ count: 2, partial: true, message: expect.stringContaining('ordering time') });
+  });
+
+  // Equal creation times put the numbered ID first over one GitLab gave as text.
+  it('orders equal times with a non-numeric ID last', async () => {
+    const at = '2026-01-01T00:00:00Z';
+    const run = jest.fn(async (_tool: string, args: Record<string, unknown>) =>
+      search([{ id: args.project_id === 'team/a' ? 'a1' : 2, created_at: at }]),
+    );
+    const result = (await multiTargetSearch(
+      run,
+      { action: 'global', scope: 'issues', search: 'x' },
+      scope,
+      enforcer,
+    )) as { results: Array<{ id: unknown }> };
+    expect(result.results.map(({ id }) => id)).toEqual([2, 'a1']);
+  });
+
+  // Full pages are read on until the requested page holds its rows.
+  it('reads further pages of a target to fill the page', async () => {
+    let id = 0;
+    const run = jest.fn(async (_tool: string, args: Record<string, unknown>) =>
+      search(
+        args.project_id === 'team/a' && args.page === 1
+          ? Array.from({ length: 100 }, () => ({ id: ++id, updated_at: '2026-01-01T00:00:00Z' }))
+          : [],
+      ),
+    );
+    const result = (await multiTargetSearch(
+      run,
+      { action: 'global', scope: 'milestones', search: 'x', page: 2, per_page: 60 },
+      scope,
+      enforcer,
+    )) as { count: number };
+    expect(result.count).toBe(40);
+    expect(run).toHaveBeenCalledWith('browse_search', expect.objectContaining({ page: 2 }));
+  });
+
+  // A target named twice is searched once.
+  it('searches a repeated target once', async () => {
+    const twice = { projects: ['team/a', 'team/a'] };
+    const run = jest.fn(async () => search([{ id: 1, created_at: '2026-01-01T00:00:00Z' }]));
+    await multiTargetSearch(
+      run,
+      { action: 'global', scope: 'issues', search: 'x' },
+      twice,
+      new ScopeEnforcer(twice),
+    );
+    expect(run).toHaveBeenCalledTimes(1);
+  });
+
+  // A page past the read bound is answered without GitLab; a failed search is passed on.
+  it('answers past the read bound and passes on a failed search', async () => {
+    const idle = jest.fn();
+    expect(
+      await multiTargetSearch(
+        idle,
+        { action: 'global', scope: 'issues', search: 'x', page: 11, per_page: 100 },
+        scope,
+        enforcer,
+      ),
+    ).toMatchObject({ results: [], partial: true });
+    expect(idle).not.toHaveBeenCalled();
+    const answer = { error: 'forbidden' };
+    expect(
+      await multiTargetSearch(
+        jest.fn().mockResolvedValue(answer),
+        { action: 'global', scope: 'issues', search: 'x' },
+        scope,
+        enforcer,
+      ),
+    ).toBe(answer);
   });
 });

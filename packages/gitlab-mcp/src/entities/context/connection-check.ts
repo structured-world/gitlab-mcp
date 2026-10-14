@@ -6,7 +6,7 @@
 
 import { GITLAB_BASE_URL } from '../../config';
 import { currentCaller, getConfigurationService, resolveCaller } from '../../configuration';
-import { scopeLabel, toolRestriction } from '../../configuration/policy';
+import { listedToolSchema, scopeLabel } from '../../configuration/policy';
 import { getTokenContext } from '../../oauth/token-context';
 import { isToolAvailableForScopes } from '../../services/TokenScopeDetector';
 import { executeWhoami } from './whoami';
@@ -65,17 +65,19 @@ export async function checkConnection(): Promise<ConnectionCheck> {
   ]);
   const scope = resolved.policy.scope;
   // What this caller can call, as tools/list shows it: the instance's tools narrowed by
-  // the OAuth token's scopes and by the caller's own settings.
+  // the OAuth token's scopes and by the caller's own settings, including a tool left
+  // without any action the preset allows.
   const { RegistryManager } = await import('../../registry-manager');
   const registry = RegistryManager.getInstance();
   const tokenScopes = getTokenContext()?.gitlabScopes;
-  const availableTools = registry
-    .getAvailableToolNames(caller.instanceUrl)
-    .filter(
-      (name) =>
-        (tokenScopes === undefined || isToolAvailableForScopes(name, tokenScopes)) &&
-        toolRestriction(resolved.policy, registry.getToolFacts(name)) === null,
-    ).length;
+  const availableTools = registry.getAvailableToolNames(caller.instanceUrl).filter((name) => {
+    if (tokenScopes !== undefined && !isToolAvailableForScopes(name, tokenScopes)) return false;
+    const tool = registry.getTool(name, caller.instanceUrl);
+    return (
+      tool !== null &&
+      listedToolSchema(resolved.policy, registry.getToolFacts(name), tool.inputSchema) !== undefined
+    );
+  }).length;
   const warnings = [...whoami.warnings];
   const recommendations = whoami.recommendations.map((r) => r.message);
   if (resolved.presetUnavailable) {

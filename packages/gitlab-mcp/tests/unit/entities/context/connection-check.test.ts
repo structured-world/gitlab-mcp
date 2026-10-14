@@ -21,6 +21,17 @@ jest.mock('../../../../src/registry-manager', () => ({
         group: 'wiki',
         readOnly: name.startsWith('browse_'),
       }),
+      // Each tool offers two actions, as a discriminated schema.
+      getTool: (name: string) => ({
+        name,
+        inputSchema: {
+          type: 'object',
+          oneOf: ['list', 'get'].map((action) => ({
+            type: 'object',
+            properties: { action: { type: 'string', const: action } },
+          })),
+        },
+      }),
     }),
   },
 }));
@@ -77,6 +88,9 @@ describe('checkConnection', () => {
           if (name === 'readonly') return { read_only: true };
           if (name === 'several-projects') return { scope: { projects: ['team/app', 'team/api'] } };
           if (name === 'several-groups') return { scope: { groups: ['team', 'ops'] } };
+          if (name === 'no-wiki-reads')
+            return { denied_actions: ['browse_wiki:list', 'browse_wiki:get'] };
+          if (name === 'no-wiki-list') return { denied_actions: ['browse_wiki:list'] };
           throw new Error(`Preset not found: ${name}`);
         },
       },
@@ -119,6 +133,10 @@ describe('checkConnection', () => {
     [{}, 2],
     [{ readOnly: true }, 1],
     [{ disabledToolGroups: ['wiki'] }, 0],
+    // tools/list drops a tool whose every action the preset denies, and keeps one with an
+    // action left.
+    [{ preset: 'no-wiki-reads' }, 1],
+    [{ preset: 'no-wiki-list' }, 2],
   ])('counts the tools %j leaves available', async (settings, count) => {
     save(settings);
 

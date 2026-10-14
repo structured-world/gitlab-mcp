@@ -629,6 +629,43 @@ describe('executeScoped', () => {
     ).toMatchObject({ success: true, marked: 1 });
   });
 
+  // A target named twice is read once, and a todo listed for both a project and its group is
+  // marked once. A target read without a numeric ID, or not found (also as a plain value),
+  // has no todos to read.
+  it('marks each scope todo once and skips targets it cannot read', async () => {
+    const scope = {
+      projects: ['team/app', 'team/app', 'team/noid', 'team/gone'],
+      group: 'team',
+    };
+    const policy = { ...projectPolicy, scope, scopeEnforcer: new ScopeEnforcer(scope) };
+    const run = jest.fn(async (tool: string, args: Record<string, unknown>) => {
+      if (tool === 'browse_projects') {
+        if (args.project_id === 'team/gone') throw 'GitLab API error: 404 Not Found';
+        return { id: args.project_id === 'team/app' ? 7 : 'seven' };
+      }
+      if (tool === 'browse_namespaces') return { id: 5 };
+      if (tool === 'browse_todos') return [{ id: 1, project: { path_with_namespace: 'team/app' } }];
+      return {};
+    });
+
+    expect(
+      await executeScoped(run, 'manage_todos', { action: 'mark_all_done' }, policy),
+    ).toMatchObject({ success: true, marked: 1 });
+    expect(run.mock.calls.filter(([tool]) => tool === 'browse_todos')).toHaveLength(2);
+  });
+
+  // A target lookup failing other than not found fails the call instead of skipping it.
+  it('fails mark_all_done when a target lookup fails', async () => {
+    const run = jest.fn(async (tool: string) => {
+      if (tool === 'browse_namespaces') throw new Error('GitLab API error: 500 Server Error');
+      return [];
+    });
+
+    await expect(
+      executeScoped(run, 'manage_todos', { action: 'mark_all_done' }, groupPolicy),
+    ).rejects.toThrow('500');
+  });
+
   // A project listing answers with GitLab's simple representation unless simple is false;
   // the scope's projects are read one by one, which returns the full one.
   it.each([
@@ -1440,6 +1477,27 @@ describe('executeScoped', () => {
     });
   });
 
+  // A page with no user IDs asks GitLab nothing; a member listing GitLab did not answer with a
+  // list confirms no one.
+  it.each([
+    ['no user IDs', [{ username: 'x' }], [{ id: 1 }], 0],
+    ['an unreadable member listing', [{ id: 1 }], { error: 'forbidden' }, 1],
+  ])('keeps no users for %s', async (_case, rows, members, lookups) => {
+    const run = jest.fn(async (tool: string) =>
+      tool === 'browse_members' ? members : searchAnswer('users', rows),
+    );
+
+    const result = await executeScoped(
+      run,
+      'browse_search',
+      { action: 'global', scope: 'users', search: 'x' },
+      groupOnlyPolicy,
+    );
+
+    expect(result).toEqual(searchAnswer('users', []));
+    expect(run.mock.calls.filter(([tool]) => tool === 'browse_members')).toHaveLength(lookups);
+  });
+
   // A multi-target search keeps each direct group's users to its members the same way.
   it('keeps users of a direct group to its members in a multi-target search', async () => {
     const scope = { groups: ['team', 'other'], includeSubgroups: false };
@@ -1552,6 +1610,87 @@ describe('executeScoped', () => {
         groupPolicy,
       ),
     ).resolves.toMatchObject({ partial: true, message: expect.stringContaining('updated_at') });
+  });
+
+  // A failed namespace listing is passed on; groups without an ID keep the listing order, and
+  // a search matching more namespaces than are read says so.
+  it('reports a search of groups it cannot read, order or finish', async () => {
+    const search = { action: 'global', scope: 'groups', search: 'x' };
+    const answer = { error: 'forbidden' };
+    expect(
+      await executeScoped(
+        jest.fn().mockResolvedValue(answer),
+        'browse_search',
+        search,
+        groupPolicy,
+      ),
+    ).toBe(answer);
+    const run = jest.fn(async () =>
+      Array.from({ length: 100 }, (_, i) => ({ kind: 'group', full_path: `team/g${i}` })),
+    );
+    const result = await executeScoped(run, 'browse_search', search, groupPolicy);
+    expect(run).toHaveBeenCalledTimes(10);
+    expect(result).toMatchObject({
+      partial: true,
+      message: expect.stringMatching(/omitted the ID[\s\S]*first 1000 namespaces/),
+    });
+  });
+
+  // Keys of a group's projects: full key pages are read on, and when the group's project
+  // listing stops at its page bound the keys say they cover only the projects read.
+  it('marks deploy keys partial when the group projects are listed in part', async () => {
+    let project = 0;
+    let key = 0;
+    const run = jest.fn(async (tool: string) =>
+      tool === 'browse_projects'
+        ? Array.from({ length: 100 }, () => ({ path_with_namespace: `team/p${project++}` }))
+        : Array.from({ length: 100 }, () => ({ id: ++key })),
+    );
+    const result = await executeScoped(run, 'browse_deploy_keys', { action: 'list' }, groupPolicy);
+    expect(run.mock.calls.filter(([tool]) => tool === 'browse_projects')).toHaveLength(10);
+    expect(result).toMatchObject({
+      partial: true,
+      message: expect.stringContaining('Keys cover only'),
+    });
+    expect((result as { items: unknown[] }).items).toHaveLength(20);
+  });
+
+  // A scope of more than 1000 projects reads the first 1000 and says the others were not read.
+  it('reads at most 1000 projects of a scope made of projects', async () => {
+    const scope = { projects: Array.from({ length: 1001 }, (_, i) => `team/p${i}`) };
+    const policy = { ...projectPolicy, scope, scopeEnforcer: new ScopeEnforcer(scope) };
+    const run = jest.fn(async (_tool: string, args: Record<string, unknown>) => ({
+      path_with_namespace: args.project_id,
+      created_at: '2026-01-01T00:00:00Z',
+    }));
+    const result = await executeScoped(run, 'browse_projects', { action: 'list' }, policy);
+    expect(run).toHaveBeenCalledTimes(1000);
+    expect(result).toMatchObject({
+      partial: true,
+      message: expect.stringContaining('first 1000 scope projects'),
+    });
+  });
+
+  // Ordered by update time, projects updated at the same moment keep scope order.
+  it('keeps scope order for projects updated at the same time', async () => {
+    const scope = { projects: ['team/a', 'team/b', 'team/c'] };
+    const policy = { ...projectPolicy, scope, scopeEnforcer: new ScopeEnforcer(scope) };
+    const updated = (path: unknown) => (path === 'team/c' ? '2026-02-01' : '2026-01-01');
+    const run = jest.fn(async (_tool: string, args: Record<string, unknown>) => ({
+      path_with_namespace: args.project_id,
+      updated_at: updated(args.project_id),
+    }));
+    const result = (await executeScoped(
+      run,
+      'browse_search',
+      { action: 'global', scope: 'projects', search: 'team', order_by: 'updated_at', sort: 'desc' },
+      policy,
+    )) as { results: Array<{ path_with_namespace: string }> };
+    expect(result.results.map((project) => project.path_with_namespace)).toEqual([
+      'team/c',
+      'team/a',
+      'team/b',
+    ]);
   });
 
   // Naming the scope group itself reads the same group feed, subgroups included.

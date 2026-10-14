@@ -360,6 +360,18 @@ describe('targetlessRestriction', () => {
     ).toMatch(/personal snippets/);
   });
 
+  // An empty entry in a preset's project or group list names no target.
+  it('skips empty entries of a preset scope list', () => {
+    expect(singleTarget({ projects: ['', 'team/app'], groups: [''] })).toEqual({
+      project: 'team/app',
+    });
+  });
+
+  // Only the snippet listing spans the instance or the account; reading one snippet does not.
+  it('allows reading a snippet by ID under a scope', () => {
+    expect(targetlessRestriction('browse_snippets', { action: 'get', id: 1 }, project)).toBeNull();
+  });
+
   // A snippet created without a project is a personal one, outside any scope: a project
   // scope creates it in its project, any other scope refuses the call.
   it('creates a targetless snippet in the scope project', () => {

@@ -861,14 +861,20 @@ async function collectTargetTodos(
     const inScope = scopedResult('browse_todos', { action: 'list' }, todos, enforcer) as Array<{
       id?: unknown;
     }>;
-    for (const todo of inScope) {
-      if (ids.has(todo.id)) continue;
-      if (ids.size === UPSTREAM_PAGE_SIZE)
-        return `One call marks at most ${UPSTREAM_PAGE_SIZE} todos; call mark_all_done again to mark the rest.`;
-      ids.add(todo.id);
-    }
+    if (!addTodoIds(inScope, ids))
+      return `One call marks at most ${UPSTREAM_PAGE_SIZE} todos; call mark_all_done again to mark the rest.`;
     if (todos.length < UPSTREAM_PAGE_SIZE) return undefined;
   }
+}
+
+/** Adds the todos' ids not seen yet; false when one did not fit within a call's limit. */
+function addTodoIds(todos: Array<{ id?: unknown }>, ids: Set<unknown>): boolean {
+  for (const { id } of todos) {
+    if (ids.has(id)) continue;
+    if (ids.size === UPSTREAM_PAGE_SIZE) return false;
+    ids.add(id);
+  }
+  return true;
 }
 
 /** The scope's projects and groups, each once however often a preset names it. */

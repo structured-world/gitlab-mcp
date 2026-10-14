@@ -8,10 +8,10 @@
  */
 
 import { createHash } from 'node:crypto';
-import { GITLAB_BASE_URL } from '../../config';
 import { logDebug } from '../../logger';
 import { getGitLabApiUrlFromContext, getTokenContext } from '../../oauth/token-context';
 import { enhancedFetch } from '../../utils/fetch';
+import { getGitLabBaseUrl } from '../../utils/gitlab-base-url';
 import { normalizeInstanceUrl } from '../../utils/url';
 
 /** Profile returned to the host (OpenAI `openai/profile` contract). */
@@ -84,7 +84,9 @@ function instanceName(instanceUrl: string, label: string | undefined): string {
  */
 export async function getAccountProfile(): Promise<AccountProfile> {
   const context = getTokenContext();
-  const instanceUrl = normalizeInstanceUrl(getGitLabApiUrlFromContext() ?? GITLAB_BASE_URL);
+  // The linked account's instance, else the one the server's token works with now (it
+  // follows switch_instance).
+  const instanceUrl = normalizeInstanceUrl(getGitLabApiUrlFromContext() ?? getGitLabBaseUrl());
   const user = await fetchCurrentUser(instanceUrl);
 
   const userId = context?.gitlabUserId ?? user?.id;

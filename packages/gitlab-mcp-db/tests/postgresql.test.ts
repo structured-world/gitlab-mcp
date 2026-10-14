@@ -74,6 +74,11 @@ const createMockPrisma = () => ({
     deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
     count: jest.fn().mockResolvedValue(0),
   },
+  accountSettings: {
+    create: jest.fn().mockResolvedValue({}),
+    findUnique: jest.fn(),
+    updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+  },
 });
 
 const createSession = (): OAuthSession => ({
@@ -952,5 +957,87 @@ describe('PostgreSQLStorageBackend', () => {
     expect(stats.authCodeFlows).toBe(4);
     expect(stats.authCodes).toBe(5);
     expect(stats.mcpSessionMappings).toBe(6);
+  });
+
+  // Account settings are written compare-and-set in one statement, so of replicas
+  // writing the same version exactly one succeeds and a stale edit changes nothing.
+  describe('account settings', () => {
+    beforeEach(() => {
+      (backend as any).prisma = mockPrisma;
+    });
+
+    it('reads stored settings with their version', async () => {
+      mockPrisma.accountSettings.findUnique.mockResolvedValue({
+        accountKey: 'acct',
+        settings: { readOnly: true },
+        version: 3,
+        updatedAt: BigInt(42),
+      });
+
+      expect(await backend.getAccountSettings('acct')).toEqual({
+        accountKey: 'acct',
+        settings: { readOnly: true },
+        version: 3,
+        updatedAt: 42,
+      });
+      expect(mockPrisma.accountSettings.findUnique).toHaveBeenCalledWith({
+        where: { accountKey: 'acct' },
+      });
+    });
+
+    it('has no settings for an unknown account', async () => {
+      mockPrisma.accountSettings.findUnique.mockResolvedValue(null);
+
+      expect(await backend.getAccountSettings('acct')).toBeUndefined();
+    });
+
+    it('creates the first settings at version 1', async () => {
+      const stored = await backend.putAccountSettings('acct', { preset: 'pm' }, 0);
+
+      expect(mockPrisma.accountSettings.create).toHaveBeenCalledWith({
+        data: {
+          accountKey: 'acct',
+          settings: { preset: 'pm' },
+          version: 1,
+          updatedAt: expect.any(BigInt),
+        },
+      });
+      expect(stored).toMatchObject({ settings: { preset: 'pm' }, version: 1 });
+    });
+
+    // Two replicas creating the first settings: the primary key lets one insert win.
+    it('reports a lost race for the first settings as a conflict', async () => {
+      mockPrisma.accountSettings.create.mockRejectedValue(
+        Object.assign(new Error('Unique constraint failed'), { code: 'P2002' }),
+      );
+
+      expect(await backend.putAccountSettings('acct', { preset: 'pm' }, 0)).toBeUndefined();
+    });
+
+    it('propagates any other failure of the first write', async () => {
+      mockPrisma.accountSettings.create.mockRejectedValue(new Error('connection lost'));
+
+      await expect(backend.putAccountSettings('acct', { preset: 'pm' }, 0)).rejects.toThrow(
+        'connection lost',
+      );
+    });
+
+    it('updates only the row still at the expected version', async () => {
+      mockPrisma.accountSettings.updateMany.mockResolvedValue({ count: 1 });
+
+      const stored = await backend.putAccountSettings('acct', { readOnly: false }, 4);
+
+      expect(mockPrisma.accountSettings.updateMany).toHaveBeenCalledWith({
+        where: { accountKey: 'acct', version: 4 },
+        data: { settings: { readOnly: false }, version: 5, updatedAt: expect.any(BigInt) },
+      });
+      expect(stored).toMatchObject({ settings: { readOnly: false }, version: 5 });
+    });
+
+    it('reports a stale version as a conflict', async () => {
+      mockPrisma.accountSettings.updateMany.mockResolvedValue({ count: 0 });
+
+      expect(await backend.putAccountSettings('acct', { readOnly: false }, 4)).toBeUndefined();
+    });
   });
 });

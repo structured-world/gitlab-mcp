@@ -1,0 +1,205 @@
+/**
+ * Feeds GitLab only offers wider than the working scope, kept to it: the search and
+ * vulnerabilities of a group without its subgroups (GitLab's group results always include
+ * them), and the caller's own runners available to the scope's project or group.
+ */
+
+import type { ScopeEnforcer } from '../profiles/scope-enforcer';
+import type { ScopeConfig } from '../profiles/types';
+import type { RunTool } from './scoped-execution';
+import { singleTarget } from './scope-targets';
+
+type Args = Record<string, unknown>;
+type Row = Record<string, unknown>;
+
+/** GitLab's largest page, for the listings these feeds read in full. */
+const PAGE_SIZE = 100;
+/** Bounds those listings: up to 1000 direct projects or runners. */
+const MAX_PAGES = 10;
+
+/** The scope's group when it is exactly one group without its subgroups. */
+export function directGroup(scope: ScopeConfig): string | undefined {
+  const target = singleTarget(scope);
+  return target && 'group' in target && !target.subgroups ? target.group : undefined;
+}
+
+/** Keeps the search rows of one page; a user search asks GitLab which of them are members. */
+export type KeepRows = (rows: unknown[]) => unknown[] | Promise<unknown[]>;
+
+/**
+ * Keeps the search rows of a group without its subgroups: projects by their path, results
+ * of a project (issues, merge requests, notes, commits, code, wiki, milestones) by the
+ * group's direct projects, results of the group itself by its id, users by the group's
+ * members. Several groups searched for one call pass the same `lookups` counter, so their
+ * lookups together stay within one bound.
+ */
+export async function directGroupSearchRows(
+  run: RunTool,
+  group: string,
+  searchScope: unknown,
+  enforcer: ScopeEnforcer,
+  lookups: { requests: number },
+): Promise<{ keep: KeepRows; complete: boolean }> {
+  if (searchScope === 'users')
+    return { keep: (rows) => groupMembers(run, group, rows), complete: true };
+  if (searchScope === 'groups') {
+    const keep = (rows: unknown[]): unknown[] =>
+      rows.filter((row) => {
+        const path = (row as Row).full_path;
+        return typeof path === 'string' && enforcer.isGroupAllowed(path);
+      });
+    return { keep, complete: true };
+  }
+  if (searchScope === 'projects') {
+    const keep = (rows: unknown[]): unknown[] =>
+      rows.filter((row) => {
+        const path = (row as Row).path_with_namespace;
+        return typeof path === 'string' && enforcer.isAllowed(path);
+      });
+    return { keep, complete: true };
+  }
+  const spend = (): boolean => {
+    if (lookups.requests >= LOOKUP_REQUESTS) return false;
+    lookups.requests++;
+    return true;
+  };
+  const named = spend();
+  const [namespace, projects] = await Promise.all([
+    named ? run('browse_namespaces', { action: 'get', namespace_id: group }) : undefined,
+    directProjectIds(run, group, enforcer, spend),
+  ]);
+  const groupId = (namespace as Row | undefined)?.id;
+  const keep = (rows: unknown[]): unknown[] =>
+    rows.filter((row) => {
+      const { project_id, group_id } = row as Row;
+      if (project_id !== undefined && project_id !== null) return projects.ids.has(project_id);
+      return group_id !== undefined && group_id === groupId;
+    });
+  return { keep, complete: named && projects.complete };
+}
+
+/**
+ * The users of a search page who are members of the group, its own or inherited from its
+ * parents. GitLab's group user search also lists members of its subgroups
+ * (lib/gitlab/group_search_results.rb); one member lookup filtered to the page's users, at
+ * most a page, leaves those out.
+ */
+async function groupMembers(run: RunTool, group: string, rows: unknown[]): Promise<unknown[]> {
+  const ids = rows.map((row) => (row as Row).id).filter((id) => typeof id === 'number');
+  if (ids.length === 0) return [];
+  const members = await run('browse_members', {
+    action: 'list_all_group',
+    group_id: group,
+    user_ids: ids.map(String),
+    per_page: PAGE_SIZE,
+  });
+  if (!Array.isArray(members)) return [];
+  const memberIds = new Set((members as Row[]).map((member) => member.id));
+  return rows.filter((row) => memberIds.has((row as Row).id));
+}
+
+/** The bound on the group's own projects read to keep its search rows. */
+export const DIRECT_PROJECTS_READ = MAX_PAGES * PAGE_SIZE;
+/** The group lookup and its project pages, shared by every group of one search. */
+const LOOKUP_REQUESTS = MAX_PAGES + 1;
+
+/**
+ * Ids of the group's own projects, and whether all of them were read within the bound. A
+ * group's listing also returns projects shared with it from other namespaces; those are left
+ * out.
+ */
+async function directProjectIds(
+  run: RunTool,
+  group: string,
+  enforcer: ScopeEnforcer,
+  spend: () => boolean,
+): Promise<{ ids: Set<unknown>; complete: boolean }> {
+  const ids = new Set<unknown>();
+  // Pages are read one after another: whether the next one is needed depends on this one.
+  for (let page = 1; page <= MAX_PAGES && spend(); page++) {
+    const projects = await run('browse_projects', {
+      action: 'list',
+      group_id: group,
+      include_subgroups: false,
+      per_page: PAGE_SIZE,
+      page,
+    });
+    if (!Array.isArray(projects)) break;
+    for (const project of projects as Row[]) {
+      const path = project.path_with_namespace;
+      if (typeof path === 'string' && enforcer.isAllowed(path)) ids.add(project.id);
+    }
+    if (projects.length < PAGE_SIZE) return { ids, complete: true };
+  }
+  // The read stopped at the bound on a full page, or the listing gave no list: more of the
+  // group's projects may exist.
+  return { ids, complete: false };
+}
+
+/**
+ * A connection (`nodes` and `pageInfo`) with only the nodes that pass. Its cursor stays the
+ * one GitLab gave, so paging on continues the same feed; a page may come back shorter.
+ */
+export function keepNodes(result: unknown, keep: (node: Row) => boolean): unknown {
+  const nodes = (result as { nodes?: unknown } | undefined)?.nodes;
+  if (!Array.isArray(nodes)) return result;
+  return { ...(result as Row), nodes: (nodes as Row[]).filter(keep) };
+}
+
+/** A vulnerability of the scope: its project is one the scope allows. */
+export function isScopeVulnerability(enforcer: ScopeEnforcer): (node: Row) => boolean {
+  return (node) => {
+    const path = (node.project as { fullPath?: unknown } | undefined)?.fullPath;
+    return typeof path === 'string' && enforcer.isAllowed(path);
+  };
+}
+
+/**
+ * The caller's own runners available to the scope's project or group: the owned feed as
+ * requested, with its own cursor, kept to the runners the target can use.
+ */
+export async function ownedRunnersInScope(
+  run: RunTool,
+  requested: Args,
+  target: { group: string } | { project: string },
+): Promise<unknown> {
+  const available: Args =
+    'group' in target
+      ? { action: 'list_group', group_id: target.group }
+      : { action: 'list_project', project_id: target.project };
+  const [owned, usable] = await Promise.all([
+    run('browse_runners', requested),
+    runnerIds(run, available),
+  ]);
+  // Owned runners from REST (before GitLab 18.3) carry numeric IDs, GraphQL feeds strings.
+  const kept = keepNodes(owned, (node) => usable.ids.has(String(node.id)));
+  if (usable.complete || kept === owned) return kept;
+  // Past the bound an owned runner the target can use would be dropped: say the answer is
+  // partial instead of letting it look complete.
+  return {
+    ...(kept as Row),
+    partial: true,
+    message: `Runners are kept to the first ${MAX_PAGES * PAGE_SIZE} runners the scope's project or group can use; your runners beyond them are not shown.`,
+  };
+}
+
+/** Ids of the runners a target can use, and whether all of them were read within the bound. */
+async function runnerIds(
+  run: RunTool,
+  args: Args,
+): Promise<{ ids: Set<string>; complete: boolean }> {
+  const ids = new Set<string>();
+  let after: unknown;
+  // Pages are read one after another: each continues from the previous page's cursor.
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const connection = (await run('browse_runners', {
+      ...args,
+      first: PAGE_SIZE,
+      ...(after === undefined ? {} : { after }),
+    })) as { nodes?: Row[]; pageInfo?: { hasNextPage?: boolean; endCursor?: unknown } };
+    for (const node of connection?.nodes ?? []) ids.add(String(node.id));
+    if (!connection?.pageInfo?.hasNextPage) return { ids, complete: true };
+    after = connection.pageInfo.endCursor;
+  }
+  return { ids, complete: false };
+}

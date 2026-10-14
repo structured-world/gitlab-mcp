@@ -7,7 +7,7 @@
  * own reconnect flow instead of asking for a token in chat.
  */
 
-import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import { ErrorCode, McpError, type CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { loadOAuthConfig } from './config';
 import { getTokenContext } from './token-context';
 import { defaultResource, resourceMetadataUrl } from './resource';
@@ -26,6 +26,38 @@ export const OAUTH_SECURITY_SCHEMES: readonly OAuthSecurityScheme[] = [
 
 /** Scope a tool call needs, the one every tool declares. */
 const TOOL_SCOPE = OAUTH_SECURITY_SCHEMES[0].scopes[0];
+
+/** Scope a resource list or read needs. */
+const RESOURCE_SCOPE = 'mcp:resources';
+
+/** A tool that opens an app panel also needs its panel resource read. */
+export const APP_PANEL_SECURITY_SCHEMES: readonly OAuthSecurityScheme[] = [
+  { type: 'oauth2', scopes: [TOOL_SCOPE, RESOURCE_SCOPE] },
+];
+
+/**
+ * The error for a resource list or read whose MCP access token lacks `mcp:resources`
+ * (RFC 6750 section 3.1 insufficient_scope, with its challenge in the error data), or
+ * undefined when it may proceed. As for tools, calls without an OAuth token context are not
+ * scope-checked.
+ */
+export function resourceScopeRejection(): McpError | undefined {
+  const config = loadOAuthConfig();
+  const context = getTokenContext();
+  if (!config || !context?.mcpScopes || context.mcpScopes.includes(RESOURCE_SCOPE)) {
+    return undefined;
+  }
+  const resource = context.resource ?? defaultResource(config.issuer);
+  const challenge =
+    `Bearer resource_metadata="${resourceMetadataUrl(resource)}", ` +
+    `error="insufficient_scope", scope="${RESOURCE_SCOPE}", ` +
+    `error_description="This access token does not allow resource reads; reconnect to grant ${RESOURCE_SCOPE}"`;
+  return new McpError(
+    ErrorCode.InvalidRequest,
+    `insufficient_scope: the access token was not granted ${RESOURCE_SCOPE}`,
+    { 'mcp/www_authenticate': [challenge] },
+  );
+}
 
 /**
  * Error result for a tool call whose MCP access token lacks `mcp:tools` (RFC 6750 section

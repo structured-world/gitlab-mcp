@@ -1049,43 +1049,24 @@ const FEATURE_NAMES = Object.keys(FEATURE_TO_TOOLS) as readonly string[];
  * Count tools enabled for a preset by simulating its application
  */
 function countToolsForPreset(preset: Preset, allToolNames: string[]): number {
-  let enabledTools = allToolNames;
+  return getToolsForPreset(preset, allToolNames).enabled.length;
+}
 
-  // Apply read_only filter (removes manage_* tools)
-  if (preset.read_only) {
-    enabledTools = enabledTools.filter((name) => !name.startsWith('manage_'));
+/**
+ * The preset's deny pattern, or undefined when it has none, has a whitelist (which
+ * overrides it), or does not compile (reported once as a warning).
+ */
+function presetDenyPattern(preset: Preset): RegExp | undefined {
+  if (!preset.denied_tools_regex || preset.allowed_tools?.length) return undefined;
+  try {
+    return new RegExp(preset.denied_tools_regex);
+  } catch (error) {
+    // The RegExp constructor throws a SyntaxError for a pattern it cannot compile.
+    console.warn(
+      `Warning: invalid denied_tools_regex "${preset.denied_tools_regex}": ${(error as SyntaxError).message}`,
+    );
+    return undefined;
   }
-
-  // Apply denied_tools_regex
-  if (preset.denied_tools_regex) {
-    try {
-      const regex = new RegExp(preset.denied_tools_regex);
-      enabledTools = enabledTools.filter((name) => !regex.test(name));
-    } catch (error) {
-      console.warn(
-        `Warning: invalid denied_tools_regex "${preset.denied_tools_regex}": ${error instanceof Error ? error.message : 'unknown error'}`,
-      );
-    }
-  }
-
-  // Apply allowed_tools (whitelist overrides everything)
-  if (preset.allowed_tools && preset.allowed_tools.length > 0) {
-    const allowedSet = new Set(preset.allowed_tools);
-    enabledTools = enabledTools.filter((name) => allowedSet.has(name));
-  }
-
-  // Apply feature flags
-  if (preset.features) {
-    for (const [feature, tools] of Object.entries(FEATURE_TO_TOOLS)) {
-      const featureKey = feature as keyof typeof preset.features;
-      if (preset.features[featureKey] === false) {
-        const toolSet = new Set(tools);
-        enabledTools = enabledTools.filter((name) => !toolSet.has(name));
-      }
-    }
-  }
-
-  return enabledTools.length;
 }
 
 /**
@@ -1105,18 +1086,11 @@ function getToolsForPreset(
     enabledTools = enabledTools.filter((name) => !name.startsWith('manage_'));
   }
 
-  // Apply denied_tools_regex
-  if (preset.denied_tools_regex) {
-    try {
-      const regex = new RegExp(preset.denied_tools_regex);
-      const denied = enabledTools.filter((name) => regex.test(name));
-      disabledTools.push(...denied);
-      enabledTools = enabledTools.filter((name) => !regex.test(name));
-    } catch (error) {
-      console.warn(
-        `Warning: invalid denied_tools_regex "${preset.denied_tools_regex}": ${error instanceof Error ? error.message : 'unknown error'}`,
-      );
-    }
+  // Apply denied_tools_regex; a whitelist overrides it
+  const denyPattern = presetDenyPattern(preset);
+  if (denyPattern) {
+    disabledTools.push(...enabledTools.filter((name) => denyPattern.test(name)));
+    enabledTools = enabledTools.filter((name) => !denyPattern.test(name));
   }
 
   // Apply allowed_tools (whitelist)

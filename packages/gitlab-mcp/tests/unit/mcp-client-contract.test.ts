@@ -279,9 +279,65 @@ describe('simultaneous MCP client contracts', () => {
     const catalog = await asAccount(['api'], 'https://new.example.com', () => client.listTools());
     expect(catalog.tools.length).toBeGreaterThan(0);
     for (const tool of catalog.tools) {
-      expect(tool._meta?.securitySchemes).toEqual([{ type: 'oauth2', scopes: ['mcp:tools'] }]);
+      // A tool that opens an app panel also needs the panel resource read.
+      const scopes = tool._meta?.ui ? ['mcp:tools', 'mcp:resources'] : ['mcp:tools'];
+      expect(tool._meta?.securitySchemes).toEqual([{ type: 'oauth2', scopes }]);
     }
+    expect(catalog.tools.find((tool) => tool.name === 'open_settings_panel')?._meta).toMatchObject({
+      securitySchemes: [{ type: 'oauth2', scopes: ['mcp:tools', 'mcp:resources'] }],
+    });
   });
+
+  // The separately granted mcp:resources must gate the panel resource like mcp:tools gates
+  // tool calls; otherwise a tools-only token reads resources too.
+  it.each([
+    { mcpScopes: ['mcp:tools'], allowed: false },
+    { mcpScopes: ['mcp:resources'], allowed: true },
+    { mcpScopes: ['mcp:tools', 'mcp:resources'], allowed: true },
+  ])(
+    'requires mcp:resources to list and read resources: $mcpScopes',
+    async ({ mcpScopes, allowed }) => {
+      const oauthConfig = await import('../../src/oauth/config');
+      const config = jest
+        .spyOn(oauthConfig, 'loadOAuthConfig')
+        .mockReturnValue({ issuer: 'https://mcp.example.com' } as ReturnType<
+          typeof oauthConfig.loadOAuthConfig
+        >);
+      try {
+        const client = await connect('codex', '2025-11-25');
+        const asToken = <T>(work: () => Promise<T>): Promise<T> =>
+          Promise.resolve(
+            runWithTokenContext(
+              {
+                gitlabToken: 'fixture-only',
+                gitlabUserId: 1,
+                gitlabUsername: 'fixture',
+                sessionId: 'fixture',
+                gitlabScopes: ['api'],
+                apiUrl: 'https://new.example.com',
+                resource: 'https://mcp.example.com/mcp',
+                mcpScopes,
+              },
+              work,
+            ),
+          );
+        const list = asToken(() => client.listResources());
+        const read = asToken(() =>
+          client.readResource({ uri: 'ui://gitlab-mcp/settings-panel-v1.html' }),
+        );
+
+        if (allowed) {
+          await expect(list).resolves.toHaveProperty('resources');
+          await expect(read).resolves.toHaveProperty('contents');
+        } else {
+          await expect(list).rejects.toThrow(/insufficient_scope.*mcp:resources/);
+          await expect(read).rejects.toThrow(/insufficient_scope.*mcp:resources/);
+        }
+      } finally {
+        config.mockRestore();
+      }
+    },
+  );
 
   it('publishes the account profile tool and returns a schema-valid profile', async () => {
     // The host reads the connection's account from the tool marked openai/profile.

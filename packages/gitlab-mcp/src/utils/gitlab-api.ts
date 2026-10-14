@@ -11,6 +11,7 @@
  */
 
 import { enhancedFetch } from './fetch';
+import { getGitLabBaseUrl } from './gitlab-base-url';
 import { cleanGidsFromObject } from './idConversion';
 
 type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
@@ -117,7 +118,7 @@ async function request<T>(
   path: string,
   options: RequestOptions = {},
 ): Promise<T> {
-  const baseUrl = process.env.GITLAB_API_URL ?? 'https://gitlab.com';
+  const baseUrl = getGitLabBaseUrl();
   const queryString = buildQueryString(options.query);
   const url = `${baseUrl}/api/v4/${path}${queryString}`;
 

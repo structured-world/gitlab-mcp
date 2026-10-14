@@ -40,6 +40,8 @@ export interface SessionContext {
   presetName?: string;
   /** Read-only mode status */
   readOnly: boolean;
+  /** Tool groups off for this session, by the account or its preset */
+  disabledToolGroups?: string[];
   /** Current scope restriction */
   scope?: RuntimeScope;
   /** OAuth mode indicator */

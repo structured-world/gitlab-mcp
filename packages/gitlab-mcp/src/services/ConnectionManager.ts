@@ -16,6 +16,7 @@ import {
 } from '../config';
 import { isOAuthEnabled, getGitLabApiUrlFromContext } from '../oauth/index';
 import { enhancedFetch } from '../utils/fetch';
+import { setActiveInstanceSource } from '../utils/gitlab-base-url';
 import { logInfo, logDebug, logError } from '../logger';
 import { InstanceRegistry } from './InstanceRegistry';
 import { CachedIntrospection } from '../config/instances-schema';
@@ -1068,3 +1069,6 @@ export class ConnectionManager {
     }
   }
 }
+
+// REST calls go to the instance this manager works with now, also after switch_instance.
+setActiveInstanceSource(() => ConnectionManager.getInstance().getCurrentInstanceUrl());

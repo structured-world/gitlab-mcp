@@ -5,7 +5,7 @@
  */
 
 import type { ScopeConfig } from '../profiles/types';
-import type { ScopeEnforcer } from '../profiles/scope-enforcer';
+import { decodePath, type ScopeEnforcer } from '../profiles/scope-enforcer';
 
 type Args = Record<string, unknown>;
 
@@ -25,14 +25,21 @@ export function singleTarget(scope: ScopeConfig): Target | undefined {
   return found;
 }
 
-/** Iterate targets by reference, allowing callers to stop without copying a wide preset. */
+/**
+ * Iterate targets by reference, allowing callers to stop without copying a wide preset. A
+ * preset may name a place URL-encoded, as tools accept it; targets carry the plain path,
+ * which tools encode themselves and listed paths are compared with.
+ */
 export function* scopeTargets(scope: ScopeConfig): Generator<Target> {
   const subgroups = scope.includeSubgroups !== false;
-  if (hasValue(scope.project)) yield { project: scope.project as string };
-  for (const project of scope.projects ?? []) if (hasValue(project)) yield { project };
-  if (hasValue(scope.group)) yield { group: scope.group as string, subgroups };
-  for (const group of scope.groups ?? []) if (hasValue(group)) yield { group, subgroups };
-  if (hasValue(scope.namespace)) yield { group: scope.namespace as string, subgroups: true };
+  if (hasValue(scope.project)) yield { project: decodePath(scope.project as string) };
+  for (const project of scope.projects ?? [])
+    if (hasValue(project)) yield { project: decodePath(project) };
+  if (hasValue(scope.group)) yield { group: decodePath(scope.group as string), subgroups };
+  for (const group of scope.groups ?? [])
+    if (hasValue(group)) yield { group: decodePath(group), subgroups };
+  if (hasValue(scope.namespace))
+    yield { group: decodePath(scope.namespace as string), subgroups: true };
 }
 
 const hasValue = (value: unknown): boolean => value !== undefined && value !== null && value !== '';
@@ -70,8 +77,8 @@ export function targetlessRestriction(tool: string, args: Args, scope: ScopeConf
       return 'groups cannot be searched under a working scope made of projects, which reaches no group';
     }
     // These emulators compose multiple targets; they do not need a single target rewrite.
-    if (args.scope === 'groups' || (args.scope === 'projects' && scopeProjectsOnly(scope)))
-      return null;
+    // Groups answer a search of projects themselves, and the scope's projects are matched.
+    if (args.scope === 'groups' || args.scope === 'projects') return null;
     if (COMPOSED_SEARCH_SCOPES.has(args.scope as string)) return null;
     return unnarrowable(scope, 'a global search cannot be limited', 'search within');
   }
@@ -308,10 +315,17 @@ function isProjectRowListing(tool: string, args: Args): boolean {
 export function isFilteredListing(tool: string, args: Args): boolean {
   return (
     isProjectRowListing(tool, args) ||
-    (tool === 'browse_todos' && isTargetlessList(args)) ||
+    isScopedTodoListing(tool, args) ||
     isNamespaceListing(tool, args)
   );
 }
+
+/**
+ * A todo listing not kept to one project. A group's todo filter covers its subgroups too, so
+ * a listing naming a group of a scope without them is filtered as well.
+ */
+const isScopedTodoListing = (tool: string, args: Args): boolean =>
+  tool === 'browse_todos' && args.action === 'list' && !hasValue(args.project_id);
 
 /** The instance-wide namespace listing, which has no per-group form. */
 const isNamespaceListing = (tool: string, args: Args): boolean =>
@@ -336,7 +350,7 @@ export function scopedResult(
       return path !== undefined && enforcer.isAllowed(path);
     });
   }
-  if (tool === 'browse_todos' && isTargetlessList(args)) {
+  if (isScopedTodoListing(tool, args)) {
     return result.filter((todo: Record<string, unknown>) => {
       const project = (todo.project as { path_with_namespace?: unknown } | undefined)
         ?.path_with_namespace;

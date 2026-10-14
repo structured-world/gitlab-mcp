@@ -173,6 +173,41 @@ describe('composed scope feeds', () => {
     expect(await multiTargetRunners(run, { action: 'list_owned' }, scope)).toBe(answer);
   });
 
+  // All runners of several targets: a foreign cursor asks GitLab nothing, runners without a
+  // numeric ID keep target order, a cut-off scan says so, and an error is passed on.
+  it('reports composed runner listings it cannot reach, order or finish', async () => {
+    const idle = jest.fn();
+    await expect(
+      multiTargetRunners(idle, { action: 'list_all', after: 'other:1' }, scope),
+    ).rejects.toThrow('Invalid composed runner cursor');
+    const hash = createHash('sha256')
+      .update(JSON.stringify(scope))
+      .update(JSON.stringify({ action: 'list_all' }))
+      .digest('hex');
+    expect(
+      await multiTargetRunners(idle, { action: 'list_all', after: `scope:${hash}:1000` }, scope),
+    ).toMatchObject({ nodes: [], partial: true });
+    expect(idle).not.toHaveBeenCalled();
+
+    const unnumbered = jest.fn().mockResolvedValue(connection([{ id: 'gid' }, { id: '3' }]));
+    expect(await multiTargetRunners(unnumbered, { action: 'list_all' }, scope)).toMatchObject({
+      nodes: [{ id: 'gid' }, { id: '3' }],
+      partial: true,
+      message: expect.stringContaining('IDs'),
+    });
+
+    let page = 0;
+    const endless = jest.fn(async () => connection([{ id: String(++page) }], true, String(page)));
+    expect(await multiTargetRunners(endless, { action: 'list_all' }, scope)).toMatchObject({
+      partial: true,
+      message: expect.stringContaining('ten connection requests'),
+    });
+
+    const answer = { error: 'forbidden' };
+    const failing = jest.fn().mockResolvedValue(answer);
+    expect(await multiTargetRunners(failing, { action: 'list_all' }, scope)).toBe(answer);
+  });
+
   // Sort values are normalized once; enum priorities and timestamp offsets must be respected.
   it.each([
     ['severity_asc', { severity: 'INFO' }, { severity: 'UNKNOWN' }],
@@ -294,6 +329,21 @@ describe('composed scope feeds', () => {
       'ops/app',
       'ops',
       'ops',
+    ]);
+  });
+
+  // A preset may name a group URL-encoded, as tools accept it. The group is read by its path,
+  // and its listed projects, named by path, are read too.
+  it('reads the projects of a group the scope names URL-encoded', async () => {
+    const encoded = { group: 'parent%2Fteam' };
+    const run = jest.fn(async (tool: string, _args: Record<string, unknown>) =>
+      tool === 'browse_projects' ? [{ path_with_namespace: 'parent/team/app' }] : [],
+    );
+    await scopeAuditEvents(run, { action: 'list_instance' }, encoded, new ScopeEnforcer(encoded));
+    expect(run.mock.calls.map(([, args]) => args.project_id ?? args.group_id)).toEqual([
+      'parent/team',
+      'parent/team',
+      'parent/team/app',
     ]);
   });
 

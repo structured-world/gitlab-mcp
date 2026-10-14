@@ -552,7 +552,12 @@ async function prepareScopedCall(
     ? Object.fromEntries(Object.entries(selected).filter(([name]) => declared.has(name)))
     : selected;
   return {
-    rejection: settingsRejection(toolName, await withTargetPaths(own), policy, registryManager),
+    rejection: settingsRejection(
+      toolName,
+      await withTargetPaths(own, undefined, policy.scopeEnforcer),
+      policy,
+      registryManager,
+    ),
     args: selected,
   };
 }

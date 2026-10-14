@@ -239,6 +239,7 @@ describe('isFilteredListing', () => {
     ['browse_merge_requests', { action: 'list' }, true],
     ['browse_merge_requests', { action: 'list', project_id: 'team/app' }, false],
     ['browse_todos', { action: 'list' }, true],
+    ['browse_todos', { action: 'list', group_id: 'team' }, true],
     ['browse_todos', { action: 'list', project_id: 7 }, false],
     ['browse_issues', { action: 'list' }, false],
     ['browse_namespaces', { action: 'list' }, true],
@@ -262,6 +263,16 @@ describe('targetlessRestriction', () => {
       ),
     ).toBeNull();
   });
+  // Each group answers a search of projects, and each project of the scope is matched
+  // itself, so a scope with groups composes it as well.
+  it.each([[{ groups: ['team', 'ops'] }], [{ project: 'other/app', groups: ['team'] }]])(
+    'allows a composed projects search under %j',
+    (scope) => {
+      expect(
+        targetlessRestriction('browse_search', { action: 'global', scope: 'projects' }, scope),
+      ).toBeNull();
+    },
+  );
   // Both runner feeds can be intersected with the union of the preset's targets.
   it.each(['list_all', 'list_owned'])('allows composed %s for several targets', (action) => {
     expect(targetlessRestriction('browse_runners', { action }, several)).toBeNull();
@@ -533,6 +544,24 @@ describe('scopedResult', () => {
       { id: 1, project: { path_with_namespace: 'team/app' } },
       { id: 3, group: { full_path: 'team/sub' } },
     ]);
+  });
+
+  // GitLab's group todo filter covers the group's subgroups too; a scope without them keeps
+  // only the group's own todos, also when the call names the group.
+  it("keeps only the scope group's own todos when the call names the group", () => {
+    const todos = [
+      { id: 1, project: { path_with_namespace: 'team/app' } },
+      { id: 2, project: { path_with_namespace: 'team/sub/app' } },
+    ];
+
+    expect(
+      scopedResult(
+        'browse_todos',
+        { action: 'list', group_id: 'team' },
+        todos,
+        new ScopeEnforcer(groupOnly),
+      ),
+    ).toEqual([{ id: 1, project: { path_with_namespace: 'team/app' } }]);
   });
 
   // User namespaces and namespaces outside the scope are left out, as is a row without a path.

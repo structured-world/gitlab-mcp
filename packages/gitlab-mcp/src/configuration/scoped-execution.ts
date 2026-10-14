@@ -11,6 +11,7 @@ import { parseGitLabApiError } from '../utils/error-handler';
 import { mapBounded } from '../utils/bounded-map';
 import { assertActionAllowed } from '../entities/utils';
 import { withTargetPaths } from './scope-ids';
+import { matchesScopeProject, readScopeProject, simpleProject } from './scope-projects';
 import {
   multiTargetRunners,
   multiTargetSearch,
@@ -65,33 +66,6 @@ const MAX_UPSTREAM_PAGES = 10;
 const DEFAULT_PAGE_SIZE = 20;
 /** Listing options a scope made of projects can apply to its projects itself. */
 const PROJECT_LIST_OPTIONS = new Set(['action', 'search', 'page', 'per_page', 'simple']);
-/** GitLab's simple project representation (BasicProjectDetails), returned unless simple=false. */
-const SIMPLE_PROJECT_FIELDS: ReadonlySet<string> = new Set([
-  'id',
-  'description',
-  'name',
-  'name_with_namespace',
-  'path',
-  'path_with_namespace',
-  'created_at',
-  'default_branch',
-  'tag_list',
-  'topics',
-  'ssh_url_to_repo',
-  'http_url_to_repo',
-  'web_url',
-  'readme_url',
-  'forks_count',
-  'license_url',
-  'license',
-  'avatar_url',
-  'star_count',
-  'last_activity_at',
-  'visibility',
-  'namespace',
-  'custom_attributes',
-  'repository_storage',
-]);
 /** The input schemas of the tools whose calls the scope rewrites, filters or emulates. */
 const SCOPED_TOOL_SCHEMAS: Readonly<Record<string, ZodType>> = {
   browse_projects: BrowseProjectsSchema,
@@ -313,7 +287,7 @@ function emulateScopeProjects(
     return listScopeProjects(run, projects, requested);
   }
   // Project search has no projects scope: search the selected projects themselves.
-  if (tool === 'browse_search' && requested.action === 'global' && requested.scope === 'projects') {
+  if (isProjectSearch(tool, requested)) {
     const { search, page, per_page, sort, order_by } = requested;
     return listScopeProjects(run, projects, { search, page, per_page, sort, order_by }).then(
       (found) => searchAnswer(found, { scope: 'projects' }),
@@ -344,7 +318,11 @@ function emulateMultiTarget(
   ) {
     return multiTargetRunners(run, requested, scope);
   }
-  if (isComposedSearch(tool, requested)) {
+  // A scope made of projects only answers a search of projects from its projects' listing.
+  if (
+    isComposedSearch(tool, requested) ||
+    (isProjectSearch(tool, requested) && !scopeProjectsOnly(scope))
+  ) {
     return multiTargetSearch(run, requested, scope, enforcer);
   }
   if (isScopeKeyListing(tool, requested)) {
@@ -383,6 +361,10 @@ const isComposedSearch = (tool: string, requested: Args): boolean =>
   tool === 'browse_search' &&
   requested.action === 'global' &&
   COMPOSED_SEARCH_SCOPES.has(requested.scope as string);
+
+/** A global search of projects, which a project's own search does not offer. */
+const isProjectSearch = (tool: string, requested: Args): boolean =>
+  tool === 'browse_search' && requested.action === 'global' && requested.scope === 'projects';
 
 /** A deploy key listing that names no project; the public listing is instance-wide only. */
 const isScopeKeyListing = (tool: string, requested: Args): boolean =>
@@ -536,7 +518,7 @@ async function userEventsInScope(
     const pending: string[] = [];
     for (const row of rows) {
       const id = idOf(row);
-      if (id === undefined || paths.has(id)) continue;
+      if (id === undefined || paths.has(id) || enforcer.listsId(id, 'project')) continue;
       if (paths.size === lookupLimit) {
         complete = false;
         continue;
@@ -551,7 +533,9 @@ async function userEventsInScope(
     });
     return rows.filter((row) => {
       const id = idOf(row);
-      const path = id === undefined ? undefined : paths.get(id);
+      if (id === undefined) return false;
+      if (enforcer.listsId(id, 'project')) return true;
+      const path = paths.get(id);
       return path !== undefined && enforcer.isAllowed(path);
     });
   };
@@ -721,13 +705,9 @@ async function listScopeProjects(
   // needs every project read and ordered first; a few at a time stays within rate limits.
   for (let start = 0; start < limit; start += REQUEST_CONCURRENCY) {
     const batch = await Promise.all(
-      projects.slice(start, Math.min(start + REQUEST_CONCURRENCY, limit)).map((project_id) =>
-        run('browse_projects', { action: 'get', project_id }).catch((error: unknown) => {
-          const message = error instanceof Error ? error.message : String(error);
-          if (parseGitLabApiError(message)?.status === 404) return undefined;
-          throw error;
-        }),
-      ),
+      projects
+        .slice(start, Math.min(start + REQUEST_CONCURRENCY, limit))
+        .map((project_id) => readScopeProject(run, project_id)),
     );
     matching.push(...batch.filter((project) => matchesScopeProject(project, search)));
   }
@@ -749,16 +729,6 @@ async function listScopeProjects(
   return result;
 }
 
-function matchesScopeProject(project: unknown, search: string): boolean {
-  if (project === undefined) return false;
-  const { name, path_with_namespace, description, archived } = project as Args;
-  if (archived === true) return false;
-  if (!search) return true;
-  return [name, path_with_namespace, description].some(
-    (value) => typeof value === 'string' && value.toLowerCase().includes(search),
-  );
-}
-
 /** Sort the owned match array without copying it; false means GitLab omitted the required field. */
 function orderScopeProjects(matching: unknown[], requested: Args): boolean {
   // Search API basic ordering: created_at/descending when that part is omitted.
@@ -775,14 +745,6 @@ function orderScopeProjects(matching: unknown[], requested: Args): boolean {
     return requested.sort === 'asc' ? order : -order;
   });
   return true;
-}
-
-function simpleProject(project: unknown): unknown {
-  return Object.fromEntries(
-    Object.entries(project as Record<string, unknown>).filter(([key]) =>
-      SIMPLE_PROJECT_FIELDS.has(key),
-    ),
-  );
 }
 
 /**

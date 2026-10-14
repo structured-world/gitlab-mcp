@@ -3220,7 +3220,7 @@ describe('handlers', () => {
         { sessionId: 'sess-1' },
       );
       expect(result.isError).toBeFalsy();
-      expect(ids).toHaveBeenCalledWith(
+      expect(ids.mock.calls[0][0]).toEqual(
         expect.not.objectContaining({ group_id: expect.anything() }),
       );
       ids.mockRestore();
@@ -3566,11 +3566,16 @@ describe('handlers', () => {
       });
     });
 
-    // A project search has no projects scope, so a mixed scope's groups and projects cannot
-    // answer a global search of projects together.
-    it('refuses a global search of projects a mixed scope cannot narrow', async () => {
+    // A project search has no projects scope: a mixed scope's groups search their projects,
+    // and its own projects answer when they match.
+    it('composes a global search of projects across a mixed scope', async () => {
       await service().updateSession(staticCaller(), { preset: 'mixed' });
       mockPresets.mixed = { scope: { project: 'team/app', groups: ['other'] } };
+      mockRegistryManager.executeTool.mockImplementation(async (tool: string) =>
+        tool === 'browse_projects'
+          ? { id: 1, name: 'x-app', path_with_namespace: 'team/app', created_at: '2026-01-01' }
+          : { scope: 'projects', results: [] },
+      );
 
       const result = await callToolHandler(
         {
@@ -3582,8 +3587,15 @@ describe('handlers', () => {
         { sessionId: 'sess-1' },
       );
 
-      expect(result.content?.[0].text).toMatch(/search within one of them/);
-      expect(mockRegistryManager.executeTool).not.toHaveBeenCalled();
+      expect(result.isError).toBeFalsy();
+      expect(JSON.parse(result.content?.[0].text ?? '').results).toEqual([
+        { id: 1, name: 'x-app', path_with_namespace: 'team/app', created_at: '2026-01-01' },
+      ]);
+      expect(mockRegistryManager.executeTool).toHaveBeenCalledWith(
+        'browse_search',
+        expect.objectContaining({ action: 'group', group_id: 'other', scope: 'projects' }),
+        'https://gitlab.example.com',
+      );
     });
 
     // Each project of the scope answers an issue search itself, so the global search is

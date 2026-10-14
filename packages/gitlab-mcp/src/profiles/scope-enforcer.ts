@@ -94,7 +94,7 @@ function trimSlashes(path: string): string {
 }
 
 /** A URL-encoded path decoded; a malformed escape is kept as written. */
-function decodePath(path: string): string {
+export function decodePath(path: string): string {
   if (!path.includes('%')) return path;
   try {
     return decodeURIComponent(path);
@@ -306,6 +306,14 @@ export class ScopeEnforcer {
       });
       throw new ScopeViolationError(groupPath, this.scope);
     }
+  }
+
+  /** Whether the scope lists this numeric id itself, as a project or a group it may name. */
+  listsId(id: string, kind: NumericTargetKind): boolean {
+    return (
+      (kind !== 'group' && this.allowedProjectsSet.has(id)) ||
+      (kind !== 'project' && this.allowedGroupsSet.has(id))
+    );
   }
 
   /**

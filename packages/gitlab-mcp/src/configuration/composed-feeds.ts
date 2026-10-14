@@ -11,6 +11,7 @@ import type { ScopeEnforcer } from '../profiles/scope-enforcer';
 import { createHash } from 'node:crypto';
 import { parseGitLabApiError } from '../utils/error-handler';
 import { scopeTargets, type Target } from './scope-targets';
+import { matchesScopeProject, readScopeProject, simpleProject } from './scope-projects';
 
 type Args = Record<string, unknown>;
 type Row = Record<string, unknown>;
@@ -103,12 +104,17 @@ function runnerKey(row: Row): string | undefined {
   return typeof row.id === 'string' || typeof row.id === 'number' ? String(row.id) : undefined;
 }
 
-/** Keep the requested feed's cursor while intersecting it with the union of usable runners. */
+/**
+ * The runners of several targets. The caller's own runners keep their feed's cursor,
+ * intersected with the union of runners available to the targets. All runners are that
+ * union itself: GitLab lists the instance's runners to administrators only.
+ */
 export async function multiTargetRunners(
   run: RunTool,
   requested: Args,
   scope: ScopeConfig,
 ): Promise<unknown> {
+  if (requested.action === 'list_all') return targetRunners(run, requested, scope);
   const ids = new Set<string>();
   const [feed, scan] = await Promise.all([
     run('browse_runners', requested),
@@ -132,6 +138,50 @@ export async function multiTargetRunners(
         message:
           'Runner availability is limited to ten connection requests across the working scope; other usable runners may be omitted.',
       };
+}
+
+/**
+ * The runners available to the scope's targets, each once, newest first as GitLab lists
+ * runners (Ci::RunnersFinder sorts by creation, and IDs grow with it), paged under a cursor
+ * of their own.
+ */
+async function targetRunners(run: RunTool, requested: Args, scope: ScopeConfig): Promise<unknown> {
+  const { offset, prefix } = composedOffset(requested, scope, 'runner');
+  if (offset >= MAX_REQUESTS * PAGE_SIZE) return pastReadBound();
+  const rows: Array<{ row: Row; id: string }> = [];
+  const seen = new Set<string>();
+  let ordered = true;
+  const scan = await scanScopeConnections(run, 'browse_runners', requested, scope, (batch) => {
+    for (const row of batch) {
+      const id = runnerKey(row);
+      if (id === undefined || seen.has(id)) continue;
+      seen.add(id);
+      if (!/^\d+$/.test(id)) ordered = false;
+      rows.push({ row, id });
+    }
+  });
+  if ('answer' in scan) return scan.answer;
+  // Numeric IDs compared as digit strings: a longer one is larger, without Number's limit.
+  if (ordered)
+    rows.sort((a, b) =>
+      a.id.length === b.id.length ? (a.id < b.id ? 1 : -1) : b.id.length - a.id.length,
+    );
+  // The tool schema already holds `first` to an integer from 1 to 100.
+  const first = typeof requested.first === 'number' ? requested.first : 20;
+  const end = offset + first;
+  const hasNextPage = rows.length > end;
+  const result = {
+    nodes: rows.slice(offset, end).map(({ row }) => row),
+    pageInfo: { hasNextPage, endCursor: hasNextPage ? `${prefix}${end}` : null },
+  };
+  if (scan.complete && ordered) return result;
+  return {
+    ...result,
+    partial: true,
+    message: ordered
+      ? 'Runners cover ten connection requests across the scope; runners of unread targets or pages are not listed. Narrow the scope for a complete listing.'
+      : 'GitLab omitted runner IDs needed for ordering; results keep target order.',
+  };
 }
 
 const positiveOr = (value: unknown, fallback: number): number =>
@@ -559,12 +609,16 @@ function snippetSearchMatcher(search: unknown): (row: Row) => boolean {
 type SearchOrdering = { field: string; direction: number };
 
 /**
- * The order GitLab gives a search for every target alike: issues and merge requests by
- * order_by/sort, newest created first by default, milestones newest updated first
- * (lib/gitlab/search_results.rb). Other scopes have no order shared across targets.
+ * The order GitLab gives a search for every target alike: issues, merge requests and
+ * projects by order_by/sort, newest created first by default, milestones newest updated
+ * first (lib/gitlab/search_results.rb). Other scopes have no order shared across targets.
  */
 function searchOrdering(requested: Args): SearchOrdering | undefined {
-  if (requested.scope === 'issues' || requested.scope === 'merge_requests') {
+  if (
+    requested.scope === 'issues' ||
+    requested.scope === 'merge_requests' ||
+    requested.scope === 'projects'
+  ) {
     return {
       field: requested.order_by === 'updated_at' ? 'updated_at' : 'created_at',
       direction: requested.sort === 'asc' ? 1 : -1,
@@ -718,6 +772,9 @@ async function searchTarget(
   { budget, lookups }: { budget: Budget; lookups: Budget },
   enforcer: ScopeEnforcer,
 ): Promise<{ rows: Row[]; bounded: boolean; reason?: string } | { answer: unknown }> {
+  // A project's own search has no projects scope: the project answers it if it matches.
+  if ('project' in target && filters.scope === 'projects')
+    return projectTargetSearch(run, target.project, filters.search, budget);
   const args = targetSearchArgs(filters, target);
   if (!('group' in target) || target.subgroups)
     return readSearchTarget(run, args, wanted, budget, undefined);
@@ -727,6 +784,23 @@ async function searchTarget(
   return {
     ...read,
     reason: `Results of group '${target.group}' are kept to the direct projects read within the lookup bound; results of its other projects are not shown.`,
+  };
+}
+
+/** A project of the scope as the search of projects finds it: itself when it matches. */
+async function projectTargetSearch(
+  run: RunTool,
+  project: string,
+  search: unknown,
+  budget: Budget,
+): Promise<{ rows: Row[]; bounded: boolean }> {
+  if (budget.requests === MAX_REQUESTS) return { rows: [], bounded: true };
+  budget.requests++;
+  const found = await readScopeProject(run, project);
+  const query = typeof search === 'string' ? search.toLowerCase() : '';
+  return {
+    rows: matchesScopeProject(found, query) ? [simpleProject(found) as Row] : [],
+    bounded: false,
   };
 }
 
@@ -769,10 +843,19 @@ function orderingValue(row: Row, field: string): string | number | undefined {
   return Number.isFinite(time) ? time : undefined;
 }
 
+/** The answer to a composed cursor past the rows one call may read, given without reading. */
+const pastReadBound = (): Row => ({
+  nodes: [],
+  pageInfo: { hasNextPage: false, endCursor: null },
+  partial: true,
+  message: 'The composed cursor starts past the 1000-row read bound; narrow the scope.',
+});
+
 /** Scope/query-bound offset cursor; no per-process snapshot or cross-replica mutable state. */
-function vulnerabilityOffset(
+function composedOffset(
   requested: Args,
   scope: ScopeConfig,
+  what: string,
 ): { offset: number; prefix: string } {
   const { first: _first, after, ...filters } = requested;
   const hash = createHash('sha256')
@@ -787,9 +870,7 @@ function vulnerabilityOffset(
     !after.startsWith(prefix) ||
     !/^\d{1,4}$/.test(after.slice(prefix.length))
   ) {
-    throw new Error(
-      'Invalid composed vulnerability cursor; restart pagination for this scope and query',
-    );
+    throw new Error(`Invalid composed ${what} cursor; restart pagination for this scope and query`);
   }
   return { offset: Number(after.slice(prefix.length)), prefix };
 }
@@ -801,14 +882,8 @@ export async function multiTargetVulnerabilities(
   scope: ScopeConfig,
   enforcer: ScopeEnforcer,
 ): Promise<unknown> {
-  const { offset, prefix } = vulnerabilityOffset(requested, scope);
-  if (offset >= MAX_REQUESTS * PAGE_SIZE)
-    return {
-      nodes: [],
-      pageInfo: { hasNextPage: false, endCursor: null },
-      partial: true,
-      message: 'The composed cursor starts past the 1000-row read bound; narrow the scope.',
-    };
+  const { offset, prefix } = composedOffset(requested, scope, 'vulnerability');
+  if (offset >= MAX_REQUESTS * PAGE_SIZE) return pastReadBound();
   const sort = typeof requested.sort === 'string' ? requested.sort : 'severity_desc';
   const split = sort.lastIndexOf('_');
   const field = sort.slice(0, split);

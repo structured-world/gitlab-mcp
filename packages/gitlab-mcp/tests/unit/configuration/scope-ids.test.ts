@@ -107,4 +107,20 @@ describe('withTargetPaths', () => {
       callRestriction(policy, tool, await withTargetPaths({ action: 'list', project_id: 9 }, read)),
     ).toMatch(/other\/api/);
   });
+
+  // A preset may list a project by its numeric id. A call naming that id is checked as the
+  // id, without asking GitLab: its path is not what the scope lists.
+  it('keeps a numeric id the scope lists itself', async () => {
+    const policy = buildPolicy({ scope: { projects: ['7'] } }, {}, {});
+    const tool = { name: 'browse_merge_requests', readOnly: true };
+    const args = await withTargetPaths(
+      { action: 'list', project_id: 7 },
+      read,
+      policy.scopeEnforcer,
+    );
+
+    expect(args).toEqual({ action: 'list', project_id: 7 });
+    expect(read).not.toHaveBeenCalled();
+    expect(callRestriction(policy, tool, args)).toBeNull();
+  });
 });

@@ -75,8 +75,8 @@ describe('executeScoped', () => {
       expect.objectContaining({ project_id: 'team/app', severity: request.severity, first: 100 }),
     );
   });
-  // A multi-target scope intersects the original runner feed with the union of usable runners.
-  it.each(['list_all', 'list_owned'])(
+  // A multi-target scope intersects the caller's own runners with the union of usable runners.
+  it.each(['list_owned'])(
     'keeps %s runners available to any scoped target with its original cursor',
     async (action) => {
       const scope = { projects: ['team/a', 'team/b'] };
@@ -114,6 +114,36 @@ describe('executeScoped', () => {
       );
     },
   );
+  // The instance-wide runner listing is for administrators only, so a scope of several
+  // targets lists the runners available to its targets, newest first, under its own cursor.
+  it('lists all runners of several targets from their own feeds', async () => {
+    const scope = { projects: ['team/a', 'team/b'] };
+    const policy = { ...projectPolicy, scope, scopeEnforcer: new ScopeEnforcer(scope) };
+    const run = jest.fn(async (_tool, args) => ({
+      nodes:
+        args.project_id === 'team/a' ? [{ id: '1' }, { id: '10' }] : [{ id: '2' }, { id: '10' }],
+      pageInfo: { hasNextPage: false },
+    }));
+    const first = (await executeScoped(
+      run,
+      'browse_runners',
+      { action: 'list_all', status: 'ONLINE', first: 2 },
+      policy,
+    )) as { nodes: unknown[]; pageInfo: { hasNextPage: boolean; endCursor: string } };
+    expect(first.nodes).toEqual([{ id: '10' }, { id: '2' }]);
+    expect(first.pageInfo.hasNextPage).toBe(true);
+    expect(run.mock.calls.some(([, args]) => args.action === 'list_all')).toBe(false);
+    const next = await executeScoped(
+      run,
+      'browse_runners',
+      { action: 'list_all', status: 'ONLINE', first: 2, after: first.pageInfo.endCursor },
+      policy,
+    );
+    expect(next).toEqual({
+      nodes: [{ id: '1' }],
+      pageInfo: { hasNextPage: false, endCursor: null },
+    });
+  });
   it('bounds distinct activity lookups and reports omitted rows as partial', async () => {
     // Paging a wide activity feed cannot cause an unbounded project-lookup fan-out.
     const read = jest.mocked(gitlab.get);
@@ -438,6 +468,63 @@ describe('executeScoped', () => {
     ]);
     expect(read).toHaveBeenCalledTimes(2);
     read.mockReset();
+  });
+  it('keeps activity of a project the scope lists by numeric id', async () => {
+    // The preset lists project 1 by id, so its events match the id itself, not a path.
+    const read = jest.mocked(gitlab.get);
+    read.mockImplementation(async () => ({ path_with_namespace: 'outside/app' }));
+    const policy = buildPolicy({ scope: { projects: ['1', 'team/other'] } }, {}, {});
+    const run = jest.fn().mockResolvedValue([
+      { id: 10, project_id: 1 },
+      { id: 11, project_id: 2 },
+    ]);
+    const result = await executeScoped(run, 'browse_events', { action: 'user' }, policy);
+    expect(result).toEqual([{ id: 10, project_id: 1 }]);
+    expect(read).toHaveBeenCalledTimes(1);
+    expect(read).toHaveBeenCalledWith('projects/2');
+    read.mockReset();
+  });
+  it('searches projects across the groups and projects of the scope', async () => {
+    // Each group answers with its own project search; a project of the scope is read and
+    // kept when it matches. The merge is ordered newest created first, as GitLab orders it.
+    const policy = buildPolicy(
+      { scope: { project: 'other/app', groups: ['team', 'ops'] } },
+      {},
+      {},
+    );
+    const project = (path: string, created_at: string, id: number) => ({
+      id,
+      name: path.split('/').pop(),
+      path_with_namespace: path,
+      created_at,
+    });
+    const run = jest.fn(async (tool: string, args: Record<string, unknown>) => {
+      if (tool === 'browse_projects')
+        return { ...project('other/app', '2026-02-01', 3), archived: false };
+      return searchAnswer(
+        'projects',
+        args.group_id === 'team'
+          ? [project('team/app', '2026-01-01', 1)]
+          : [project('ops/app', '2026-03-01', 2)],
+      );
+    });
+    const result = (await executeScoped(
+      run,
+      'browse_search',
+      { action: 'global', scope: 'projects', search: 'app' },
+      policy,
+    )) as { results: Array<{ path_with_namespace: string }>; partial?: boolean };
+    expect(result.results.map((row) => row.path_with_namespace)).toEqual([
+      'ops/app',
+      'other/app',
+      'team/app',
+    ]);
+    expect(result.partial).toBeUndefined();
+    expect(run).toHaveBeenCalledWith('browse_projects', { action: 'get', project_id: 'other/app' });
+    expect(run).toHaveBeenCalledWith(
+      'browse_search',
+      expect.objectContaining({ action: 'group', group_id: 'ops', scope: 'projects' }),
+    );
   });
   it('sorts scoped project-search matches before selecting their page', async () => {
     // Preset order must not decide the contents of a sorted search page.

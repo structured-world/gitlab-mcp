@@ -418,6 +418,21 @@ describe('FileStorageBackend', () => {
       await restarted.close();
     });
 
+    // Two writes of one account's settings in a row: each is read back once it is on disk,
+    // and the later write's in-flight marker is not dropped by the earlier one finishing.
+    it('shows the newest settings after two writes of one account in a row', async () => {
+      await seeded();
+      const first = storage.putAccountSettings('acct', { readOnly: true }, 0);
+      const second = storage.putAccountSettings('acct', { preset: 'developer' }, 1);
+
+      expect(await first).toMatchObject({ version: 1 });
+      expect(await second).toMatchObject({ version: 2 });
+      expect(await storage.getAccountSettings('acct')).toMatchObject({
+        settings: { preset: 'developer' },
+        version: 2,
+      });
+    });
+
     // A settings write that failed was reported as failed: neither this process nor a
     // later write may keep it.
     it('keeps the previous settings when a settings write cannot be written', async () => {

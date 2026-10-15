@@ -202,6 +202,21 @@ describe('callRestriction', () => {
     expect(callRestriction(policy, browse, { project_id: 'team/sub/app' })).toBeNull();
   });
 
+  // A call naming no place that the scope cannot narrow is refused with the reason: a scope
+  // of projects reaches no group, so the account's namespaces cannot be listed under it.
+  it('refuses a targetless call the working scope cannot narrow', () => {
+    const policy = buildPolicy(
+      undefined,
+      { scope: { type: 'project', path: 'team/app', includeSubgroups: false } },
+      {},
+    );
+    const namespaces: ToolFacts = { name: 'browse_namespaces', readOnly: true };
+
+    expect(callRestriction(policy, namespaces, { action: 'list' })).toMatch(
+      /made of projects, which reaches no group/,
+    );
+  });
+
   // The namespace of a created or forked project is the group it goes into: naming the scope
   // group itself is allowed also when its subgroups are not part of the scope.
   it.each([

@@ -300,6 +300,39 @@ describe('ChannelGateway', () => {
     }
   });
 
+  // A newer catalog page decided a tool: an older read answering last cannot undo that
+  // verdict, also when the newer read was only one page of a paginated catalog.
+  it('keeps a newer page verdict when an older catalog answer arrives last', async () => {
+    let answerOlder: (value: unknown) => void = () => {};
+    mockClientListTools
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            answerOlder = resolve;
+          }),
+      )
+      .mockResolvedValueOnce({
+        tools: [{ name: 'run_task', annotations: { readOnlyHint: false } }],
+        nextCursor: 'page-2',
+      });
+    const gw = new ChannelGateway(baseConfig);
+    await gw.start();
+    const older = listTools();
+    await wait(0);
+    await listTools();
+    answerOlder({ tools: [{ name: 'run_task', annotations: { readOnlyHint: true } }] });
+    await older;
+    dropLinkOnNextCall();
+
+    try {
+      await expect(callTool('run_task')).rejects.toThrow();
+      expect(mockClientCallTool).toHaveBeenCalledTimes(1);
+    } finally {
+      mockClientCallTool.mockReset();
+      await gw.stop();
+    }
+  });
+
   // The newer complete catalog no longer lists the tool: an older answer arriving last must
   // not bring its verdict back, the tool is classified by its name again.
   it('ignores a tool from an older catalog answer after a newer complete one', async () => {

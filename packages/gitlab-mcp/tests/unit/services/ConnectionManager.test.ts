@@ -121,6 +121,34 @@ describe('ConnectionManager Unit', () => {
         expect(manager.getInstanceClient()).toBe(startedClient);
       });
     });
+
+    // An instance the caller names is read whatever the current one is, also when it is
+    // written with a trailing slash.
+    it('reads the state of the instance a call names', () => {
+      const manager = ConnectionManager.getInstance();
+      injectInstanceState(manager, started, {
+        isInitialized: true,
+        instanceInfo: {
+          tier: 'ultimate',
+          version: '17.0.0',
+          features: { workItems: true },
+        } as unknown as InstanceState['instanceInfo'],
+        schemaInfo: {
+          workItemWidgetTypes: ['ASSIGNEES'],
+        } as unknown as InstanceState['schemaInfo'],
+        tokenScopeInfo: { scopes: ['api'] } as unknown as InstanceState['tokenScopeInfo'],
+      });
+      injectInstanceState(manager, switched);
+      const named = `${started}/`;
+
+      expect(manager.isConnected(named)).toBe(true);
+      expect(manager.isFeatureAvailable('workItems', named)).toBe(true);
+      expect(manager.getTier(named)).toBe('ultimate');
+      expect(manager.getVersion(named)).toBe('17.0.0');
+      expect(manager.isWidgetAvailable('ASSIGNEES', named)).toBe(true);
+      expect(manager.getTokenScopeInfo(named)).toEqual({ scopes: ['api'] });
+      expect(manager.getTier()).toBe('unknown');
+    });
   });
 
   describe('error handling before initialization', () => {

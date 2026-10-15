@@ -499,10 +499,6 @@ export class FileStorageBackend implements SessionStorageBackend {
     // process's state: file storage serves one process, as for its sessions, and replicas
     // that share storage use PostgreSQL.
     let saving: { saved: AccountSettingsRecord | undefined } | undefined;
-    const done = (): void => {
-      if (saving && this.savingAccountSettings.get(accountKey) === saving)
-        this.savingAccountSettings.delete(accountKey);
-    };
     return this.transition(
       async () => {
         saving = { saved: await this.memory.getAccountSettings(accountKey) };
@@ -511,7 +507,9 @@ export class FileStorageBackend implements SessionStorageBackend {
       },
       isPresent,
       () => this.memory.restoreAccountSettings(accountKey, saving?.saved),
-    ).finally(done);
+      // Writes run one at a time, and the next starts only after this one settled: the
+      // marker is this write's own when it is dropped.
+    ).finally(() => this.savingAccountSettings.delete(accountKey));
   }
 
   // Single-use consumption and refresh rotation: written through before they are

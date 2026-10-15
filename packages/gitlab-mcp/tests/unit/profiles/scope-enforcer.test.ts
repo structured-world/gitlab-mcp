@@ -298,6 +298,23 @@ describe('ScopeEnforcer', () => {
 
       expect(enforcer.isAllowed('12345')).toBe(true);
     });
+
+    // A numeric id the scope lists itself counts only for what it may name: a project id
+    // is not a group, a group id is not a project, and an id that may name either matches
+    // whichever list holds it.
+    it.each([
+      ['12', 'project', true],
+      ['12', 'group', false],
+      ['12', 'either', true],
+      ['34', 'group', true],
+      ['34', 'project', false],
+      ['34', 'either', true],
+      ['56', 'either', false],
+    ] as const)('lists id %s as a %s: %s', (id, kind, expected) => {
+      const enforcer = new ScopeEnforcer({ projects: ['12'], groups: ['34'] });
+
+      expect(enforcer.listsId(id, kind)).toBe(expected);
+    });
   });
 
   describe('enforce()', () => {

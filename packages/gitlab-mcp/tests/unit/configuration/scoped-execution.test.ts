@@ -756,6 +756,76 @@ describe('executeScoped', () => {
     expect((result as { message: string }).message).toMatch(/25 of the 60/);
   });
 
+  // The request bound also stops a target read past its first page: the todos it did not
+  // reach are reported instead of looking done.
+  it('stops reading a target when the request bound runs out on its further pages', async () => {
+    const scope = {
+      groups: Array.from({ length: 25 }, (_, i) => `g${i}`),
+      includeSubgroups: false,
+    };
+    const policy = { ...projectPolicy, scope, scopeEnforcer: new ScopeEnforcer(scope) };
+    const run = jest.fn(async (tool: string, args: Record<string, unknown>) => {
+      if (tool === 'browse_namespaces') return { id: Number(String(args.namespace_id).slice(1)) };
+      if (tool !== 'browse_todos' || args.group_id !== 24) return [];
+      return Array.from({ length: 100 }, (_, id) => ({
+        id,
+        project: { path_with_namespace: 'g24/sub/x' },
+      }));
+    });
+
+    const result = await executeScoped(run, 'manage_todos', { action: 'mark_all_done' }, policy);
+
+    expect(run.mock.calls.length).toBe(50);
+    expect(result).toMatchObject({ marked: 0, partial: true });
+    expect((result as { message: string }).message).toMatch(/read within 50 requests/);
+  });
+
+  // A tool the scope neither rewrites nor filters, and a call without an action, run as given.
+  it('runs a call the scope does not reshape as it came', async () => {
+    const run = jest.fn().mockResolvedValue({ ok: true });
+
+    expect(await executeScoped(run, 'get_users', { usernames: ['a'] }, groupPolicy)).toEqual({
+      ok: true,
+    });
+    expect(run).toHaveBeenCalledWith('get_users', { usernames: ['a'] });
+  });
+
+  // A call the caller already validated is not parsed again: its arguments reach GitLab as
+  // they are, here without the defaults the schema would add.
+  it('does not parse a call that was already validated', async () => {
+    const run = jest.fn().mockResolvedValue([]);
+
+    await executeScoped(run, 'browse_merge_requests', { action: 'list' }, projectPolicy, true);
+
+    expect(run).toHaveBeenCalledWith('browse_merge_requests', {
+      action: 'list',
+      project_id: 'team/app',
+      scope: 'created_by_me',
+    });
+  });
+
+  // A todo that fails with an error is reported with its message; the others are marked.
+  it('reports a todo that fails with an error by its message', async () => {
+    const run = jest.fn(async (tool: string, args: Record<string, unknown>) => {
+      if (tool === 'browse_namespaces') return { id: 5 };
+      if (tool === 'browse_todos')
+        return [
+          { id: 1, project: { path_with_namespace: 'team/app' } },
+          { id: 2, project: { path_with_namespace: 'team/app' } },
+        ];
+      if (args.id === 1) throw new Error('GitLab API error: 500');
+      return {};
+    });
+
+    expect(
+      await executeScoped(run, 'manage_todos', { action: 'mark_all_done' }, groupPolicy),
+    ).toMatchObject({
+      success: false,
+      marked: 1,
+      failed: [{ id: 1, error: 'GitLab API error: 500' }],
+    });
+  });
+
   // A target lookup failing other than not found fails the call instead of skipping it.
   it('fails mark_all_done when a target lookup fails', async () => {
     const run = jest.fn(async (tool: string) => {
@@ -1798,6 +1868,30 @@ describe('executeScoped', () => {
       'team/c',
     ]);
     expect(run.mock.calls.every(([, args]) => args.action === 'get')).toBe(true);
+  });
+
+  // Similarity is GitLab's own ranking of one listing: the scope's projects keep scope order
+  // and the page says so rather than claiming an order it did not apply.
+  it('keeps scope order for a similarity ordering and says so', async () => {
+    const scope = { projects: ['team/b', 'team/a'] };
+    const policy = { ...projectPolicy, scope, scopeEnforcer: new ScopeEnforcer(scope) };
+    const run = jest.fn(async (_tool: string, args: Record<string, unknown>) => ({
+      id: 1,
+      path_with_namespace: args.project_id,
+    }));
+
+    const result = await executeScoped(
+      run,
+      'browse_projects',
+      { action: 'list', order_by: 'similarity' },
+      policy,
+    );
+
+    expect(result).toMatchObject({
+      items: [{ path_with_namespace: 'team/b' }, { path_with_namespace: 'team/a' }],
+      partial: true,
+      message: expect.stringContaining("similarity order is GitLab's own ranking"),
+    });
   });
 
   // Ordered by update time, projects updated at the same moment keep scope order.

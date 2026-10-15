@@ -214,6 +214,16 @@ describe('composed scope feeds', () => {
     expect(await multiTargetRunners(failing, { action: 'list_all' }, scope)).toBe(answer);
   });
 
+  // A runner row without a usable ID cannot be told apart from the others or ordered, so it
+  // is left out of the union rather than listed under a guessed identity.
+  it('leaves out a runner row without an ID', async () => {
+    const run = jest.fn().mockResolvedValue(connection([{ name: 'no id' }, { id: 7 }]));
+
+    expect(await multiTargetRunners(run, { action: 'list_all' }, scope)).toMatchObject({
+      nodes: [{ id: 7 }],
+    });
+  });
+
   // Each target lists newest first, so a page needs only its first rows from each one: a
   // target with more runners than the request bound must not crowd the others out.
   it('reads each target only as far as the page needs', async () => {
@@ -811,6 +821,46 @@ describe('multiTargetSearch', () => {
       enforcer,
     )) as { results: Array<{ project_id: number }> };
     expect(result.results.map(({ project_id }) => project_id)).toEqual([1, 2]);
+  });
+
+  // In a search of projects each project of the scope answers itself: when it matches the
+  // search (any project without one), and only within the shared request bound, past which
+  // the result says projects were left unread.
+  it('searches the scope projects themselves within the request bound', async () => {
+    let next = 0;
+    const run = jest.fn(async (_tool: string, args: Record<string, unknown>) => ({
+      id: ++next,
+      name: String(args.project_id),
+      path_with_namespace: args.project_id,
+      created_at: '2026-01-01T00:00:00Z',
+    }));
+    const wide = { projects: Array.from({ length: 11 }, (_, i) => `team/p${i}`) };
+
+    const unbounded = (await multiTargetSearch(
+      run,
+      { action: 'global', scope: 'projects' },
+      scope,
+      enforcer,
+    )) as { results: unknown[] };
+    const unmatched = (await multiTargetSearch(
+      run,
+      { action: 'global', scope: 'projects', search: 'nothing' },
+      scope,
+      enforcer,
+    )) as { results: unknown[] };
+    const bounded = await multiTargetSearch(
+      run,
+      { action: 'global', scope: 'projects', search: 'team' },
+      wide,
+      new ScopeEnforcer(wide),
+    );
+
+    expect(unbounded.results).toHaveLength(2);
+    expect(unmatched.results).toEqual([]);
+    expect(bounded).toMatchObject({
+      partial: true,
+      message: expect.stringContaining('limited to 10 requests'),
+    });
   });
 
   // A page past the read bound is answered without GitLab; a failed search is passed on.

@@ -197,10 +197,10 @@ async function targetRunners(run: RunTool, requested: Args, scope: ScopeConfig):
   );
   if ('answer' in scan) return scan.answer;
   // Numeric IDs compared as digit strings: a longer one is larger, without Number's limit.
+  // The IDs are unique (repeats were dropped above), so two of them never compare equal.
   if (ordered)
     rows.sort((a, b) => {
       if (a.id.length !== b.id.length) return b.id.length - a.id.length;
-      if (a.id === b.id) return 0;
       return a.id < b.id ? 1 : -1;
     });
   const hasNextPage = rows.length > end || scan.more === true;

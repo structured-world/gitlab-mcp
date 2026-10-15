@@ -61,12 +61,14 @@ describe('Namespace Utils Coverage Tests', () => {
     // Malformed successful responses must identify the namespace and retain the parsing cause.
     it('adds numeric namespace context to a malformed JSON response', async () => {
       const cause = new SyntaxError('invalid JSON');
-      mockEnhancedFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => {
-          throw cause;
-        },
-      } as unknown as Response);
+      mockEnhancedFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => {
+            throw cause;
+          },
+        } as unknown as Response)
+        .mockResolvedValueOnce({ ok: false, status: 404 } as Response);
       const found = jest.fn();
       await expect(findNamespaceType('123', found)).rejects.toMatchObject({
         message: "Could not resolve canonical namespace path for group '123'",
@@ -88,14 +90,14 @@ describe('Namespace Utils Coverage Tests', () => {
     it.each([undefined, '', 123])(
       'rejects a numeric scope with canonical path %s',
       async (full_path) => {
-        mockEnhancedFetch.mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({ full_path }),
-        } as Response);
+        mockEnhancedFetch
+          .mockResolvedValueOnce({ ok: true, json: async () => ({ full_path }) } as Response)
+          .mockResolvedValueOnce({ ok: false, status: 404 } as Response);
         const found = jest.fn();
         await expect(findNamespaceType('123', found)).rejects.toThrow('canonical namespace path');
         expect(found).not.toHaveBeenCalled();
-        expect(mockEnhancedFetch).toHaveBeenCalledTimes(1);
+        // The group and the project are asked together, once each.
+        expect(mockEnhancedFetch).toHaveBeenCalledTimes(2);
       },
     );
     it.each([

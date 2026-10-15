@@ -66,10 +66,15 @@ async function findNumericNamespaceType(
   id: string,
   resolvedPath?: (path: string) => void,
 ): Promise<'project' | 'group' | null> {
-  const found: Array<{ type: 'project' | 'group'; path: string }> = [];
-  for (const type of ['group', 'project'] as const) {
-    await verifyNamespaceType(id, type, (path) => found.push({ type, path }));
-  }
+  // Both answers are needed whatever the other one is, so they are asked together.
+  const probe = async (type: 'project' | 'group') => {
+    let path: string | undefined;
+    await verifyNamespaceType(id, type, (resolved) => {
+      path = resolved;
+    });
+    return path === undefined ? [] : [{ type, path }];
+  };
+  const found = (await Promise.all([probe('group'), probe('project')])).flat();
   if (found.length > 1) {
     throw new Error(
       `'${id}' is the ID of both group '${found[0].path}' and project '${found[1].path}'; name the one you mean by its path`,

@@ -61,6 +61,12 @@ function validRecord(key: string, record: unknown): AccountSettingsRecord | unde
   return settings.success ? { accountKey, settings: settings.data, version, updatedAt } : undefined;
 }
 
+/** A record from a list keyed by its own account, checked as {@link validRecord} does. */
+export function validStoredRecord(record: unknown): AccountSettingsRecord | undefined {
+  if (!isPlainObject(record) || typeof record.accountKey !== 'string') return undefined;
+  return validRecord(record.accountKey, record);
+}
+
 /** Whether a stored record is this write: the same version with the same settings. */
 function holds(stored: AccountSettingsRecord | undefined, written: AccountSettingsRecord): boolean {
   return (

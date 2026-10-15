@@ -30,6 +30,7 @@ import {
 } from './types';
 import { MemoryStorageBackend } from './memory';
 import type { AccountSettings, AccountSettingsRecord } from '../../configuration/types';
+import { validStoredRecord } from '../../configuration/settings-store';
 import { logInfo, logDebug, logError, logWarn } from '../../logger';
 import { syncDirectory } from '../../utils/sync-directory';
 
@@ -153,6 +154,18 @@ export class FileStorageBackend implements SessionStorageBackend {
       const validAuthCodeFlows = data.authCodeFlows.filter((a) => a.flow.expiresAt > now);
       const validAuthCodes = data.authCodes.filter((a) => a.expiresAt > now);
 
+      // A damaged settings record is dropped, not loaded: settings of the wrong shape would
+      // break resolving every tool of the account, the one that repairs them included.
+      const stored: unknown = data.accountSettings;
+      const listed = Array.isArray(stored);
+      const storedSettings: unknown[] = Array.isArray(stored) ? stored : [];
+      const accountSettings = storedSettings.map(validStoredRecord).filter(isPresent);
+      if (accountSettings.length !== storedSettings.length || (!listed && stored !== undefined)) {
+        logWarn('Skipped invalid account settings in the storage file', {
+          skipped: listed ? storedSettings.length - accountSettings.length : 'all',
+        });
+      }
+
       // Import into memory
       this.memory.importData({
         sessions: validSessions,
@@ -161,7 +174,7 @@ export class FileStorageBackend implements SessionStorageBackend {
         authCodes: validAuthCodes,
         mcpSessionMappings: data.mcpSessionMappings,
         clients: data.clients,
-        accountSettings: data.accountSettings,
+        accountSettings,
       });
 
       const stats = await this.memory.getStats();

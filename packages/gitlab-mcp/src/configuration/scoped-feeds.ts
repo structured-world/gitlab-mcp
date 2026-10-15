@@ -8,6 +8,7 @@ import type { ScopeEnforcer } from '../profiles/scope-enforcer';
 import type { ScopeConfig } from '../profiles/types';
 import type { RunTool } from './scoped-execution';
 import { singleTarget } from './scope-targets';
+import { gitlab } from '../utils/gitlab-api';
 
 type Args = Record<string, unknown>;
 type Row = Record<string, unknown>;
@@ -40,8 +41,7 @@ export async function directGroupSearchRows(
   enforcer: ScopeEnforcer,
   lookups: { requests: number },
 ): Promise<{ keep: KeepRows; complete: boolean }> {
-  if (searchScope === 'users')
-    return { keep: (rows) => groupMembers(run, group, rows), complete: true };
+  if (searchScope === 'users') return { keep: (rows) => groupMembers(group, rows), complete: true };
   if (searchScope === 'groups') {
     const keep = (rows: unknown[]): unknown[] =>
       rows.filter((row) => {
@@ -82,16 +82,14 @@ export async function directGroupSearchRows(
  * The users of a search page who are members of the group, its own or inherited from its
  * parents. GitLab's group user search also lists members of its subgroups
  * (lib/gitlab/group_search_results.rb); one member lookup filtered to the page's users, at
- * most a page, leaves those out.
+ * most a page, leaves those out. GitLab is read directly: the member tools may be switched
+ * off while the search stays on, and the lookup only narrows rows the search returned.
  */
-async function groupMembers(run: RunTool, group: string, rows: unknown[]): Promise<unknown[]> {
+async function groupMembers(group: string, rows: unknown[]): Promise<unknown[]> {
   const ids = rows.map((row) => (row as Row).id).filter((id) => typeof id === 'number');
   if (ids.length === 0) return [];
-  const members = await run('browse_members', {
-    action: 'list_all_group',
-    group_id: group,
-    user_ids: ids.map(String),
-    per_page: PAGE_SIZE,
+  const members = await gitlab.get(`groups/${encodeURIComponent(group)}/members/all`, {
+    query: { user_ids: ids.map(String), per_page: PAGE_SIZE },
   });
   if (!Array.isArray(members)) return [];
   const memberIds = new Set((members as Row[]).map((member) => member.id));

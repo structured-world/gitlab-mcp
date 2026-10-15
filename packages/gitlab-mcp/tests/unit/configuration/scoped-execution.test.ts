@@ -1626,13 +1626,21 @@ describe('executeScoped', () => {
     },
   );
 
+  // The member tool may be switched off (USE_MEMBERS=false): the filter must not depend on it.
+  const searchOnly = (answer: (args: Record<string, unknown>) => unknown) =>
+    jest.fn(async (tool: string, args: Record<string, unknown>) => {
+      if (tool !== 'browse_search') throw new Error(`Tool '${tool}' not found in any registry`);
+      return answer(args);
+    });
+
   // GitLab's group user search covers members of the whole hierarchy; without its subgroups
   // only the group's members (its own and those inherited from its parents) are kept, read in
-  // one request per search page.
+  // one request per search page, whether or not the member tool is registered.
   it('keeps users of a group search without subgroups to the group members', async () => {
-    const run = jest.fn(async (tool: string) =>
-      tool === 'browse_members' ? [{ id: 1 }] : searchAnswer('users', [{ id: 1 }, { id: 2 }]),
-    );
+    const read = jest.mocked(gitlab.get);
+    read.mockReset();
+    read.mockResolvedValue([{ id: 1 }]);
+    const run = searchOnly(() => searchAnswer('users', [{ id: 1 }, { id: 2 }]));
 
     const result = await executeScoped(
       run,
@@ -1642,11 +1650,9 @@ describe('executeScoped', () => {
     );
 
     expect(result).toEqual(searchAnswer('users', [{ id: 1 }]));
-    expect(run).toHaveBeenCalledWith('browse_members', {
-      action: 'list_all_group',
-      group_id: 'team',
-      user_ids: ['1', '2'],
-      per_page: 100,
+    expect(read).toHaveBeenCalledTimes(1);
+    expect(read).toHaveBeenCalledWith('groups/team/members/all', {
+      query: { user_ids: ['1', '2'], per_page: 100 },
     });
   });
 
@@ -1656,9 +1662,10 @@ describe('executeScoped', () => {
     ['no user IDs', [{ username: 'x' }], [{ id: 1 }], 0],
     ['an unreadable member listing', [{ id: 1 }], { error: 'forbidden' }, 1],
   ])('keeps no users for %s', async (_case, rows, members, lookups) => {
-    const run = jest.fn(async (tool: string) =>
-      tool === 'browse_members' ? members : searchAnswer('users', rows),
-    );
+    const read = jest.mocked(gitlab.get);
+    read.mockReset();
+    read.mockResolvedValue(members);
+    const run = searchOnly(() => searchAnswer('users', rows));
 
     const result = await executeScoped(
       run,
@@ -1668,17 +1675,21 @@ describe('executeScoped', () => {
     );
 
     expect(result).toEqual(searchAnswer('users', []));
-    expect(run.mock.calls.filter(([tool]) => tool === 'browse_members')).toHaveLength(lookups);
+    expect(read).toHaveBeenCalledTimes(lookups);
   });
 
   // A multi-target search keeps each direct group's users to its members the same way.
   it('keeps users of a direct group to its members in a multi-target search', async () => {
     const scope = { groups: ['team', 'other'], includeSubgroups: false };
     const policy = { ...groupOnlyPolicy, scope, scopeEnforcer: new ScopeEnforcer(scope) };
-    const run = jest.fn(async (tool: string, args: Record<string, unknown>) => {
-      if (tool === 'browse_members') return args.group_id === 'team' ? [{ id: 1 }] : [{ id: 3 }];
-      return searchAnswer('users', args.group_id === 'team' ? [{ id: 1 }, { id: 2 }] : [{ id: 3 }]);
-    });
+    const read = jest.mocked(gitlab.get);
+    read.mockReset();
+    read.mockImplementation(async (path) =>
+      path.startsWith('groups/team/') ? [{ id: 1 }] : [{ id: 3 }],
+    );
+    const run = searchOnly((args) =>
+      searchAnswer('users', args.group_id === 'team' ? [{ id: 1 }, { id: 2 }] : [{ id: 3 }]),
+    );
 
     const result = (await executeScoped(
       run,

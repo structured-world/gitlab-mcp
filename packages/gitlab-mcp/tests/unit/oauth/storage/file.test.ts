@@ -839,6 +839,63 @@ describe('FileStorageBackend', () => {
       expect(await storage.getAuthCode('valid-code')).toBeDefined();
     });
 
+    // A hand-edited or damaged record must not reach the configuration: settings that are
+    // not the documented shape broke resolving every tool of the account, update_settings
+    // included, so the account could not repair them.
+    it('loads only account settings records that are valid', async () => {
+      const valid = {
+        accountKey: 'acct-valid',
+        settings: { disabledToolGroups: ['wiki'] },
+        version: 2,
+        updatedAt: Date.now(),
+      };
+      const existingData = {
+        version: STORAGE_DATA_VERSION,
+        exportedAt: Date.now(),
+        sessions: [],
+        deviceFlows: [],
+        authCodeFlows: [],
+        authCodes: [],
+        mcpSessionMappings: [],
+        accountSettings: [
+          { ...valid, accountKey: 'acct-bad-settings', settings: { disabledToolGroups: 'wiki' } },
+          { accountKey: 'acct-no-version', settings: {}, updatedAt: Date.now() },
+          { ...valid, accountKey: 'acct-unknown-field', settings: { extra: true } },
+          null,
+          valid,
+        ],
+      };
+      fs.writeFileSync(filePath, JSON.stringify(existingData), 'utf-8');
+
+      storage = new FileStorageBackend({ filePath });
+      await storage.initialize();
+
+      expect(await storage.getAccountSettings('acct-bad-settings')).toBeUndefined();
+      expect(await storage.getAccountSettings('acct-no-version')).toBeUndefined();
+      expect(await storage.getAccountSettings('acct-unknown-field')).toBeUndefined();
+      expect(await storage.getAccountSettings('acct-valid')).toEqual(valid);
+    });
+
+    it('ignores account settings that are not a list', async () => {
+      const existingData = {
+        version: STORAGE_DATA_VERSION,
+        exportedAt: Date.now(),
+        sessions: [createTestSession({ id: 'kept-session' })],
+        deviceFlows: [],
+        authCodeFlows: [],
+        authCodes: [],
+        mcpSessionMappings: [],
+        accountSettings: { 'acct-1': { settings: {} } },
+      };
+      fs.writeFileSync(filePath, JSON.stringify(existingData), 'utf-8');
+
+      storage = new FileStorageBackend({ filePath });
+      await storage.initialize();
+
+      expect(await storage.getAccountSettings('acct-1')).toBeUndefined();
+      expect(await storage.getSession('kept-session')).toBeDefined();
+    });
+
     it('should handle corrupted file gracefully', async () => {
       // Write invalid JSON
       fs.writeFileSync(filePath, 'not valid json', 'utf-8');

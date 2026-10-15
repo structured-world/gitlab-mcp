@@ -99,27 +99,19 @@ describe('tool handler', () => {
     ]);
   });
 
-  it.each(['list_presets', 'list_profiles'])(
-    'validates %s arrays inside the object output envelope',
-    async (action) => {
-      // MCP outputSchema has an object root even when the domain result is an array.
-      const tool = contextToolRegistry.get('manage_context');
-      if (!tool) throw new Error('Missing context tool');
-      const original = process.env.OAUTH_ENABLED;
-      process.env.OAUTH_ENABLED = 'true';
-      try {
-        const result = formatToolResult(await tool.handler({ action }), tool);
-        expect(result.structuredContent?.action).toBe(action);
-        expect(Array.isArray(result.structuredContent?.data)).toBe(true);
-        expect(result.content).toEqual([
-          { type: 'text', text: JSON.stringify(result.structuredContent?.data, null, 2) },
-        ]);
-      } finally {
-        if (original === undefined) delete process.env.OAUTH_ENABLED;
-        else process.env.OAUTH_ENABLED = original;
-      }
-    },
-  );
+  it('validates list_presets arrays inside the object output envelope', async () => {
+    // MCP outputSchema has an object root even when the domain result is an array.
+    const tool = contextToolRegistry.get('manage_context');
+    if (!tool) throw new Error('Missing context tool');
+
+    const result = formatToolResult(await tool.handler({ action: 'list_presets' }), tool);
+
+    expect(result.structuredContent?.action).toBe('list_presets');
+    expect(Array.isArray(result.structuredContent?.data)).toBe(true);
+    expect(result.content).toEqual([
+      { type: 'text', text: JSON.stringify(result.structuredContent?.data, null, 2) },
+    ]);
+  });
 
   it('should throw error for invalid action', async () => {
     const tool = contextToolRegistry.get('manage_context');

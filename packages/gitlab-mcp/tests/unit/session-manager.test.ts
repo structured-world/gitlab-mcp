@@ -79,9 +79,22 @@ describe('SessionManager', () => {
       manager.start();
       await manager.createSession('session-1', mockTransport);
 
+      // The native settings page is advertised with the tools that serve it, and the
+      // settings panel with the resources capability and the negotiated MCP Apps extension.
       expect(Server).toHaveBeenCalledWith(
         { name: 'test-package', version: '1.0.0' },
-        { capabilities: { tools: { listChanged: true } } },
+        {
+          capabilities: {
+            tools: { listChanged: true },
+            resources: {},
+            extensions: {
+              'io.modelcontextprotocol/ui': { mimeTypes: ['text/html;profile=mcp-app'] },
+            },
+            experimental: {
+              'openai/settings': { readTool: 'get_settings', updateTool: 'update_settings' },
+            },
+          },
+        },
       );
       expect(manager.activeSessionCount).toBe(1);
     });
@@ -245,6 +258,30 @@ describe('SessionManager', () => {
     });
   });
 
+  // A settings change re-lists tools only in the sessions it affects.
+  describe('notifyToolsListChanged', () => {
+    it('notifies the named sessions and no others', async () => {
+      manager.start();
+      const server1 = await manager.createSession('session-1', mockTransport);
+      const server2 = await manager.createSession('session-2', mockTransport);
+
+      await manager.notifyToolsListChanged(['session-1', 'closed-elsewhere']);
+
+      expect(server1.notification).toHaveBeenCalledWith({
+        method: 'notifications/tools/list_changed',
+      });
+      expect(server2.notification).not.toHaveBeenCalled();
+    });
+
+    it('does not fail when a session cannot be notified', async () => {
+      manager.start();
+      const server1 = await manager.createSession('session-1', mockTransport);
+      (server1.notification as jest.Mock).mockRejectedValueOnce(new Error('Disconnected'));
+
+      await expect(manager.notifyToolsListChanged(['session-1'])).resolves.toBeUndefined();
+    });
+  });
+
   describe('per-session instance URL tracking (#398)', () => {
     it('should default instanceUrl to GITLAB_BASE_URL on session creation', async () => {
       manager.start();
@@ -271,6 +308,26 @@ describe('SessionManager', () => {
       manager.setSessionInstanceUrl('session-1', 'https://other.gitlab.com');
 
       expect(manager.getSessionInstanceUrl('session-1')).toBe('https://other.gitlab.com');
+    });
+
+    // A switch of the shared static-token instance moves every session; the caller notifies
+    // them once afterwards, so pinning itself sends nothing.
+    it('pins every session to an instance without notifying them', async () => {
+      manager.start();
+      const first = await manager.createSession('session-1', mockTransport);
+      const second = await manager.createSession(
+        'session-2',
+        mockTransport,
+        'https://a.example.com',
+      );
+
+      manager.pinAllSessions('https://other.gitlab.com/');
+
+      expect(manager.getSessionInstanceUrl('session-1')).toBe('https://other.gitlab.com');
+      expect(manager.getSessionInstanceUrl('session-2')).toBe('https://other.gitlab.com');
+      await Promise.resolve();
+      expect(first.notification).not.toHaveBeenCalled();
+      expect(second.notification).not.toHaveBeenCalled();
     });
 
     it('should send tools/list_changed notification when instanceUrl changes', async () => {

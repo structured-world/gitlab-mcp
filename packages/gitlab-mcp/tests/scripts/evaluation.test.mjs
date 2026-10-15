@@ -171,11 +171,11 @@ test('resolves Windows npm shims to absolute paths and rejects missing executabl
 });
 
 test('context changes count as mutations in both installed-client event formats', () => {
-  // A read scenario must fail on profile/preset/scope changes, including a missing action.
+  // A read scenario must fail on preset/scope changes, including a missing action.
   for (const action of [
-    'switch_profile',
     'switch_preset',
     'set_scope',
+    'clear_scope',
     'reset',
     'unknown',
     undefined,
@@ -183,7 +183,7 @@ test('context changes count as mutations in both installed-client event formats'
     assert.equal(isMutationCall({ tool: 'manage_context', arguments: { action } }), true);
     assert.equal(isMutationCall({ name: 'mcp__gitlab__manage_context', input: { action } }), true);
   }
-  for (const action of ['show', 'whoami', 'list_profiles', 'list_presets']) {
+  for (const action of ['show', 'whoami', 'list_presets']) {
     assert.equal(
       isMutationCall({ tool: 'manage_context', arguments: JSON.stringify({ action }) }),
       false,

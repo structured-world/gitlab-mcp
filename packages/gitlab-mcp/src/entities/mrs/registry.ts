@@ -196,12 +196,13 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
         switch (input.action) {
           case 'list': {
             // TypeScript knows: input has state, order_by, sort, milestone, etc. (all optional)
-            const { action: _action, project_id, ...rest } = input;
+            const { action: _action, project_id, group_id, ...rest } = input;
             const query = toQuery(rest, []);
 
-            const path = project_id
-              ? `projects/${normalizeProjectId(project_id)}/merge_requests`
-              : `merge_requests`;
+            // A group's listing covers its subgroups (lib/api/merge_requests.rb, GitLab 16.0).
+            let path = 'merge_requests';
+            if (project_id) path = `projects/${normalizeProjectId(project_id)}/merge_requests`;
+            else if (group_id) path = `groups/${normalizeProjectId(group_id)}/merge_requests`;
 
             return gitlab.get(path, { query });
           }

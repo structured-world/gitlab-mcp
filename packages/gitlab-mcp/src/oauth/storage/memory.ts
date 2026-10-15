@@ -13,6 +13,7 @@ import {
   RegisteredOAuthClient,
 } from '../types';
 import { SessionStorageBackend, SessionStorageStats } from './types';
+import type { AccountSettings, AccountSettingsRecord } from '../../configuration/types';
 import { logInfo, logWarn, logError, logDebug, truncateId } from '../../logger';
 
 export interface MemoryStorageOptions {
@@ -43,6 +44,7 @@ export class MemoryStorageBackend implements SessionStorageBackend {
   private refreshTokenToSession = new Map<string, string>();
   private mcpSessionToOAuthSession = new Map<string, string>();
   private clients = new Map<string, RegisteredOAuthClient>();
+  private accountSettings = new Map<string, AccountSettingsRecord>();
   /** Session id -> end of its GitLab refresh lease (transient, not exported). */
   private gitlabRefreshLeases = new Map<string, number>();
   private cleanupIntervalId: ReturnType<typeof setInterval> | null = null;
@@ -230,6 +232,38 @@ export class MemoryStorageBackend implements SessionStorageBackend {
     return count;
   }
 
+  // Account settings: records are copied in and out, so a caller changing what it holds
+  // never changes the stored settings.
+  async getAccountSettings(accountKey: string): Promise<AccountSettingsRecord | undefined> {
+    const record = this.accountSettings.get(accountKey);
+    return record ? structuredClone(record) : undefined;
+  }
+
+  // Compare and write run without an await in between: of concurrent writes of one
+  // version in this process exactly one succeeds.
+  async putAccountSettings(
+    accountKey: string,
+    settings: AccountSettings,
+    expectedVersion: number,
+  ): Promise<AccountSettingsRecord | undefined> {
+    const current = this.accountSettings.get(accountKey)?.version ?? 0;
+    if (current !== expectedVersion) return undefined;
+    const record: AccountSettingsRecord = {
+      accountKey,
+      settings: structuredClone(settings),
+      version: current + 1,
+      updatedAt: Date.now(),
+    };
+    this.accountSettings.set(accountKey, record);
+    return structuredClone(record);
+  }
+
+  /** Restore the record a failed write replaced (undefined: there was none). */
+  restoreAccountSettings(accountKey: string, previous: AccountSettingsRecord | undefined): void {
+    if (previous) this.accountSettings.set(accountKey, previous);
+    else this.accountSettings.delete(accountKey);
+  }
+
   // Single-use consumption: lookup and removal run without an await in between, so in
   // this process exactly one caller gets the record.
   async consumeAuthCode(code: string): Promise<AuthorizationCode | undefined> {
@@ -375,9 +409,11 @@ export class MemoryStorageBackend implements SessionStorageBackend {
     authCodes: AuthorizationCode[];
     mcpSessionMappings: Array<{ mcpSessionId: string; oauthSessionId: string }>;
     clients: RegisteredOAuthClient[];
+    accountSettings: AccountSettingsRecord[];
   } {
     return {
       clients: Array.from(this.clients.values()),
+      accountSettings: Array.from(this.accountSettings.values()),
       sessions: Array.from(this.sessions.values()),
       deviceFlows: Array.from(this.deviceFlows.entries()).map(([state, flow]) => ({ state, flow })),
       authCodeFlows: Array.from(this.authCodeFlows.entries()).map(([internalState, flow]) => ({
@@ -399,11 +435,16 @@ export class MemoryStorageBackend implements SessionStorageBackend {
     authCodes?: AuthorizationCode[];
     mcpSessionMappings?: Array<{ mcpSessionId: string; oauthSessionId: string }>;
     clients?: RegisteredOAuthClient[];
+    accountSettings?: AccountSettingsRecord[];
   }): void {
     // Clear existing data
     this.clients.clear();
     for (const client of data.clients ?? []) {
       this.clients.set(client.clientId, client);
+    }
+    this.accountSettings.clear();
+    for (const record of data.accountSettings ?? []) {
+      this.accountSettings.set(record.accountKey, record);
     }
     this.sessions.clear();
     this.deviceFlows.clear();

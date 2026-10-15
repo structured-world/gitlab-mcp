@@ -376,6 +376,9 @@ describe('TokenScopeDetector', () => {
       expect(isToolAvailableForScopes('browse_projects', scopes)).toBe(false);
       expect(isToolAvailableForScopes('browse_merge_requests', scopes)).toBe(false);
       expect(isToolAvailableForScopes('manage_project', scopes)).toBe(false);
+      // Scope search reads /projects and /groups, which need api or read_api
+      expect(isToolAvailableForScopes('find_scope_targets', scopes)).toBe(false);
+      expect(isToolAvailableForScopes('find_scope_targets', ['read_api'])).toBe(true);
     });
 
     it('should allow browse_files with read_repository scope', () => {

@@ -6,6 +6,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { config } from 'dotenv';
+import './isolatedSettings';
 
 // Check if .env.test exists and load it
 const envTestPath = path.resolve(__dirname, '../../.env.test');
@@ -27,9 +28,4 @@ if (fs.existsSync(envTestPath)) {
 } else {
   console.log('⚠️  .env.test not found - Integration tests disabled');
   console.log('   Create .env.test with GitLab credentials to enable integration tests');
-}
-
-// Global test timeout for integration tests
-if (process.env.INTEGRATION_TESTS_ENABLED === 'true') {
-  jest.setTimeout(30000);
 }

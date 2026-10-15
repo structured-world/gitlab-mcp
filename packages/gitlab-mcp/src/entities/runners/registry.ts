@@ -8,6 +8,16 @@ import { cleanGidsFromObject } from '../../utils/idConversion';
 import { getGitLabApiUrlFromContext } from '../../oauth/token-context';
 import { gitlab, toQuery } from '../../utils/gitlab-api';
 import { graphqlSupports } from '../instance-version';
+import { GITLAB_ALLOWED_PROJECT_IDS } from '../../config';
+import type { GraphQLClient } from '../../graphql/client';
+import {
+  assertRunnerAllowed,
+  assertRunnerProjectAllowed,
+  filterAllowedRunners,
+  keepAllowedRunners,
+  runnerProjectAllowed,
+  runnerProjectsRestricted,
+} from './project-access';
 import {
   LIST_RUNNERS,
   LIST_OWNED_RUNNERS,
@@ -15,6 +25,7 @@ import {
   LIST_PROJECT_RUNNERS,
   GET_RUNNER,
   LIST_RUNNER_JOBS,
+  LIST_SCOPED_RUNNER_JOBS,
   RESOLVE_GROUP_ID,
   RESOLVE_PROJECT_ID,
   RUNNER_CREATE,
@@ -56,6 +67,7 @@ function listVars(input: {
     search: input.search ?? null,
     first: input.first ?? 20,
     after: input.after ?? null,
+    restricted: runnerProjectsRestricted(),
   };
 }
 
@@ -192,6 +204,59 @@ async function listOwnedRunnersViaRest(
   };
 }
 
+type BrowseRunnersInput = z.infer<typeof BrowseRunnersSchema>;
+
+/** Runners available to a project, refused for a project outside the allowlist. */
+async function listProjectRunners(
+  client: GraphQLClient,
+  input: Extract<BrowseRunnersInput, { action: 'list_project' }>,
+): Promise<unknown> {
+  if (runnerProjectsRestricted() && !GITLAB_ALLOWED_PROJECT_IDS.includes(input.project_id)) {
+    const project = await client.request(RESOLVE_PROJECT_ID, { fullPath: input.project_id });
+    if (!project.project)
+      throw new Error(`Project "${input.project_id}" not found or not accessible`);
+    assertRunnerProjectAllowed(input.project_id, project.project.id);
+  }
+  const res = await client.request(LIST_PROJECT_RUNNERS, {
+    fullPath: input.project_id,
+    ...listVars(input),
+  });
+  if (!res.project) {
+    throw new Error(`Project "${input.project_id}" not found or not accessible`);
+  }
+  return cleanGidsFromObject(keepAllowedRunners(res.project.runners));
+}
+
+/**
+ * Jobs a runner has executed, kept to allowed projects under a project allowlist. Each job is
+ * checked by its own project, so a group or instance runner lists the allowed projects' jobs
+ * instead of being refused as a whole.
+ */
+async function listRunnerJobs(
+  client: GraphQLClient,
+  input: Extract<BrowseRunnersInput, { action: 'list_jobs' }>,
+): Promise<unknown> {
+  const res = await client.request(
+    runnerProjectsRestricted() ? LIST_SCOPED_RUNNER_JOBS : LIST_RUNNER_JOBS,
+    {
+      id: runnerGid(input.runner_id),
+      statuses: input.statuses ?? null,
+      first: input.first ?? 20,
+      after: input.after ?? null,
+    },
+  );
+  if (!res.runner) {
+    throw new Error(`Runner ${input.runner_id} not found`);
+  }
+  const jobs = res.runner.jobs ?? { nodes: [] };
+  if (runnerProjectsRestricted()) {
+    jobs.nodes = jobs.nodes
+      .filter((job) => job.project && runnerProjectAllowed(job.project))
+      .map(({ project: _project, ...job }) => job);
+  }
+  return cleanGidsFromObject(jobs);
+}
+
 /** Throw on a non-empty GraphQL mutation `errors` array. */
 function assertNoErrors(errors: string[] | undefined): void {
   if (errors && errors.length > 0) {
@@ -222,27 +287,21 @@ export const runnersToolRegistry: ToolRegistry = new Map<string, EnhancedToolDef
         switch (input.action) {
           case 'list_all': {
             const res = await client.request(LIST_RUNNERS, listVars(input));
-            return cleanGidsFromObject(res.runners);
+            return cleanGidsFromObject(keepAllowedRunners(res.runners));
           }
 
           case 'list_owned': {
             if (!graphqlSupports('CurrentUser', 'runners')) {
-              return listOwnedRunnersViaRest(input);
+              return filterAllowedRunners(client, await listOwnedRunnersViaRest(input));
             }
             const res = await client.request(LIST_OWNED_RUNNERS, listVars(input));
-            return cleanGidsFromObject(res.currentUser?.runners ?? { nodes: [] });
+            return cleanGidsFromObject(
+              keepAllowedRunners(res.currentUser?.runners ?? { nodes: [] }),
+            );
           }
 
-          case 'list_project': {
-            const res = await client.request(LIST_PROJECT_RUNNERS, {
-              fullPath: input.project_id,
-              ...listVars(input),
-            });
-            if (!res.project) {
-              throw new Error(`Project "${input.project_id}" not found or not accessible`);
-            }
-            return cleanGidsFromObject(res.project.runners);
-          }
+          case 'list_project':
+            return listProjectRunners(client, input);
 
           case 'list_group': {
             const res = await client.request(LIST_GROUP_RUNNERS, {
@@ -252,10 +311,11 @@ export const runnersToolRegistry: ToolRegistry = new Map<string, EnhancedToolDef
             if (!res.group) {
               throw new Error(`Group "${input.group_id}" not found or not accessible`);
             }
-            return cleanGidsFromObject(res.group.runners);
+            return cleanGidsFromObject(keepAllowedRunners(res.group.runners));
           }
 
           case 'get': {
+            await assertRunnerAllowed(client, input.runner_id);
             const res = await client.request(GET_RUNNER, { id: runnerGid(input.runner_id) });
             if (!res.runner) {
               throw new Error(`Runner ${input.runner_id} not found`);
@@ -263,18 +323,8 @@ export const runnersToolRegistry: ToolRegistry = new Map<string, EnhancedToolDef
             return cleanGidsFromObject(res.runner);
           }
 
-          case 'list_jobs': {
-            const res = await client.request(LIST_RUNNER_JOBS, {
-              id: runnerGid(input.runner_id),
-              statuses: input.statuses ?? null,
-              first: input.first ?? 20,
-              after: input.after ?? null,
-            });
-            if (!res.runner) {
-              throw new Error(`Runner ${input.runner_id} not found`);
-            }
-            return cleanGidsFromObject(res.runner.jobs ?? { nodes: [] });
-          }
+          case 'list_jobs':
+            return listRunnerJobs(client, input);
 
           /* istanbul ignore next -- unreachable with Zod discriminatedUnion */
           default:
@@ -303,6 +353,17 @@ export const runnersToolRegistry: ToolRegistry = new Map<string, EnhancedToolDef
 
         const client = ConnectionManager.getInstance().getClient(getGitLabApiUrlFromContext());
 
+        if ('runner_id' in input) await assertRunnerAllowed(client, input.runner_id);
+        if (
+          input.action === 'create_authentication_token' &&
+          runnerProjectsRestricted() &&
+          input.runner_type !== 'PROJECT_TYPE'
+        ) {
+          throw new Error(
+            'Group and instance runner creation is not allowed by GITLAB_ALLOWED_PROJECT_IDS',
+          );
+        }
+
         switch (input.action) {
           case 'create_authentication_token': {
             const createInput: {
@@ -325,6 +386,7 @@ export const runnersToolRegistry: ToolRegistry = new Map<string, EnhancedToolDef
               }
               const p = await client.request(RESOLVE_PROJECT_ID, { fullPath: input.project_id });
               if (!p.project) throw new Error(`Project "${input.project_id}" not found`);
+              assertRunnerProjectAllowed(input.project_id, p.project.id);
               createInput.projectId = p.project.id;
             }
 

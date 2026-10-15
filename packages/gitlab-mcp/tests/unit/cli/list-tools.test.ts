@@ -1342,6 +1342,37 @@ describe('list-tools script', () => {
       expect(mockConsoleLog).toHaveBeenCalledWith(expect.stringContaining('| 1 |'));
     });
 
+    // The whitelist overrides the deny pattern, as at runtime: a broad pattern with explicit
+    // exceptions keeps the exceptions.
+    it('counts a whitelisted tool its deny pattern matches', async () => {
+      mockManager.getAllToolDefinitionsUnfiltered.mockReturnValue([
+        { name: 'browse_projects', description: 'Browse', inputSchema: { type: 'object' } },
+        { name: 'browse_wiki', description: 'Wiki', inputSchema: { type: 'object' } },
+        { name: 'manage_files', description: 'Files', inputSchema: { type: 'object' } },
+      ]);
+      mockProfileLoader.listProfiles.mockResolvedValue([
+        {
+          name: 'exceptions',
+          readOnly: false,
+          isBuiltIn: true,
+          isPreset: true,
+          description: 'Exceptions',
+        },
+      ]);
+      mockProfileLoader.loadPreset.mockResolvedValue({
+        description: 'Exceptions',
+        read_only: false,
+        denied_tools_regex: '^browse_',
+        allowed_tools: ['browse_projects', 'browse_wiki'],
+      });
+      process.argv = ['node', 'list-tools.ts', '--presets'];
+
+      const { main } = await import('../../../src/cli/list-tools');
+      await main();
+
+      expect(mockConsoleLog).toHaveBeenCalledWith(expect.stringContaining('| 2 |'));
+    });
+
     it('should count tools correctly for preset with feature flags', async () => {
       mockManager.getAllToolDefinitionsUnfiltered.mockReturnValue([
         { name: 'browse_projects', description: 'Browse', inputSchema: { type: 'object' } },

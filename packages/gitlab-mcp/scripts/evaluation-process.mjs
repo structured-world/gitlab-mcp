@@ -80,5 +80,5 @@ export function isMutationCall(call) {
   if (!name.endsWith('manage_context')) return name.includes('manage_');
   const raw = call.arguments ?? call.input;
   const args = typeof raw === 'string' ? JSON.parse(raw) : raw;
-  return !['show', 'whoami', 'list_profiles', 'list_presets'].includes(args?.action);
+  return !['show', 'whoami', 'list_presets'].includes(args?.action);
 }

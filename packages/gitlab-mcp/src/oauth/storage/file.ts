@@ -29,7 +29,9 @@ import {
   STORAGE_DATA_VERSION,
 } from './types';
 import { MemoryStorageBackend } from './memory';
+import type { AccountSettings, AccountSettingsRecord } from '../../configuration/types';
 import { logInfo, logDebug, logError, logWarn } from '../../logger';
+import { syncDirectory } from '../../utils/sync-directory';
 
 export interface FileStorageOptions {
   /** Path to the storage file */
@@ -42,20 +44,6 @@ export interface FileStorageOptions {
 
 function isPresent<T>(record: T | undefined): record is T {
   return record !== undefined;
-}
-
-/**
- * Flush a directory entry change (the rename) to disk. Windows cannot open a directory
- * for syncing; NTFS journals the rename itself.
- */
-async function syncDirectory(dir: string): Promise<void> {
-  if (process.platform === 'win32') return;
-  const handle = await fs.promises.open(dir, 'r');
-  try {
-    await handle.sync();
-  } finally {
-    await handle.close();
-  }
 }
 
 export class FileStorageBackend implements SessionStorageBackend {
@@ -71,6 +59,11 @@ export class FileStorageBackend implements SessionStorageBackend {
   private initialized = false;
   /** Tail of the serialized file writes */
   private writeQueue: Promise<void> = Promise.resolve();
+  /** Per account being written: its settings as saved before the write. */
+  private readonly savingAccountSettings = new Map<
+    string,
+    { saved: AccountSettingsRecord | undefined }
+  >();
 
   constructor(options: FileStorageOptions) {
     // Use memory backend internally as cache, but suppress its logging
@@ -168,6 +161,7 @@ export class FileStorageBackend implements SessionStorageBackend {
         authCodes: validAuthCodes,
         mcpSessionMappings: data.mcpSessionMappings,
         clients: data.clients,
+        accountSettings: data.accountSettings,
       });
 
       const stats = await this.memory.getStats();
@@ -243,7 +237,7 @@ export class FileStorageBackend implements SessionStorageBackend {
   private transition<T, Changed extends T>(
     change: () => Promise<T>,
     changed: (result: T) => result is Changed,
-    undo: (result: Changed) => Promise<unknown>,
+    undo: (result: Changed) => unknown,
   ): Promise<T> {
     this.cancelPendingSave();
     return this.enqueue(async () => {
@@ -276,6 +270,7 @@ export class FileStorageBackend implements SessionStorageBackend {
       authCodes: exportedData.authCodes,
       mcpSessionMappings: exportedData.mcpSessionMappings,
       clients: exportedData.clients,
+      accountSettings: exportedData.accountSettings,
     };
 
     // Atomic write: write to temp file, then rename. Both are flushed to disk, so a power
@@ -292,7 +287,14 @@ export class FileStorageBackend implements SessionStorageBackend {
       await file.close();
     }
     await fs.promises.rename(tempPath, this.filePath);
-    await syncDirectory(path.dirname(this.filePath));
+    // The rename is the commit: a restart already reads this state, so a failed flush only
+    // leaves it at risk from a power loss and must not report the write as failed.
+    await syncDirectory(path.dirname(this.filePath)).catch((error: unknown) =>
+      logWarn('Saved sessions may not survive a power loss: the directory could not be synced', {
+        filePath: this.filePath,
+        err: error as Error,
+      }),
+    );
     logDebug('Saved sessions to file', {
       sessions: data.sessions.length,
       deviceFlows: data.deviceFlows.length,
@@ -477,6 +479,37 @@ export class FileStorageBackend implements SessionStorageBackend {
 
   async countClientsRegisteredSince(registeredFrom: string, since: number): Promise<number> {
     return this.memory.countClientsRegisteredSince(registeredFrom, since);
+  }
+
+  // Account settings
+  async getAccountSettings(accountKey: string): Promise<AccountSettingsRecord | undefined> {
+    // While a write of this account's settings is in flight its saved record is the one
+    // before it: an edit is enforced only once it is on disk.
+    const saving = this.savingAccountSettings.get(accountKey);
+    return saving ? saving.saved : this.memory.getAccountSettings(accountKey);
+  }
+
+  putAccountSettings(
+    accountKey: string,
+    settings: AccountSettings,
+    expectedVersion: number,
+  ): Promise<AccountSettingsRecord | undefined> {
+    // Written through and undone when the write fails: settings reported as not saved
+    // must not apply now or after a restart. The compare-and-set runs against this
+    // process's state: file storage serves one process, as for its sessions, and replicas
+    // that share storage use PostgreSQL.
+    let saving: { saved: AccountSettingsRecord | undefined } | undefined;
+    return this.transition(
+      async () => {
+        saving = { saved: await this.memory.getAccountSettings(accountKey) };
+        this.savingAccountSettings.set(accountKey, saving);
+        return this.memory.putAccountSettings(accountKey, settings, expectedVersion);
+      },
+      isPresent,
+      () => this.memory.restoreAccountSettings(accountKey, saving?.saved),
+      // Writes run one at a time, and the next starts only after this one settled: the
+      // marker is this write's own when it is dropped.
+    ).finally(() => this.savingAccountSettings.delete(accountKey));
   }
 
   // Single-use consumption and refresh rotation: written through before they are

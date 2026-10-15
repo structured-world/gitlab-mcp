@@ -29,6 +29,7 @@ const VULN_FIELDS = `
   dismissedAt
   vulnerabilityPath
   webUrl
+  project { fullPath }
 `;
 
 export interface VulnerabilityNode {
@@ -45,6 +46,8 @@ export interface VulnerabilityNode {
   dismissedAt: string | null;
   vulnerabilityPath: string | null;
   webUrl: string | null;
+  /** The project the vulnerability was found in; a working scope keeps it by this path. */
+  project: { fullPath: string } | null;
 }
 
 interface PageInfo {

@@ -5,7 +5,7 @@
  * the current session context at runtime.
  */
 
-import { ProfileInfo, Preset, ScopeConfig } from '../../profiles/types';
+import { Preset, ScopeConfig } from '../../profiles/types';
 
 /**
  * Runtime scope information with detection metadata
@@ -34,12 +34,12 @@ export interface SessionContext {
   host: string;
   /** Full GitLab API URL */
   apiUrl: string;
-  /** Current profile name (OAuth mode only) */
-  profileName?: string;
   /** Current preset name */
   presetName?: string;
   /** Read-only mode status */
   readOnly: boolean;
+  /** Tool groups off for this session, by the account or its preset */
+  disabledToolGroups?: string[];
   /** Current scope restriction */
   scope?: RuntimeScope;
   /** OAuth mode indicator */
@@ -61,7 +61,7 @@ export interface SetScopeResult {
 }
 
 /**
- * Result of a switch operation (preset or profile)
+ * Result of a preset switch
  */
 export interface SwitchResult {
   /** Whether the operation succeeded */
@@ -111,11 +111,6 @@ export interface ContextState {
   /** Initial state snapshot */
   initialState?: ContextState;
 }
-
-/**
- * Re-export ProfileInfo for use in context handlers
- */
-export type { ProfileInfo };
 
 // ============================================================================
 // Whoami Types
@@ -255,8 +250,6 @@ export interface WhoamiRecommendation {
 export interface WhoamiContextInfo {
   /** Currently active preset name */
   activePreset: string | null;
-  /** Currently active OAuth profile name */
-  activeProfile: string | null;
   /** Current scope restriction */
   scope: RuntimeScope | null;
 }
@@ -267,6 +260,11 @@ export interface WhoamiContextInfo {
 export interface WhoamiResult {
   /** Current user identity (null if token invalid or user info inaccessible) */
   user: WhoamiUserInfo | null;
+  /**
+   * How the user lookup ended: `rejected` when GitLab refused the credentials (401/403),
+   * `failed` when it did not answer usefully (unreachable, timeout, server error).
+   */
+  userLookup: 'ok' | 'rejected' | 'failed';
   /** Token information (null if detection failed) */
   token: WhoamiTokenInfo | null;
   /** Server configuration */

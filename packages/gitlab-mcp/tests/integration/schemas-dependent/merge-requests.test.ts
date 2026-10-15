@@ -71,7 +71,11 @@ describe('Merge Requests Schema - Using Lifecycle Data', () => {
         title: issue.title,
         state: 'opened',
       });
-      expect(page[0].web_url).toBe(`${testProject.web_url}/-/issues/${issue.iid}`);
+      // GitLab's own link to the issue: /-/issues/N before 19.0, /-/work_items/N from 19.0.
+      expect([
+        `${testProject.web_url}/-/issues/${issue.iid}`,
+        `${testProject.web_url}/-/work_items/${issue.iid}`,
+      ]).toContain(page[0].web_url);
       await expect(
         helper.executeTool('browse_merge_requests', {
           action: 'closing_issues',
@@ -85,6 +89,48 @@ describe('Merge Requests Schema - Using Lifecycle Data', () => {
         action: 'update',
         ...params,
         description: mr.description,
+      });
+    }
+  });
+
+  // A working scope narrows a cross-project listing to a project's own listing and keeps the
+  // caller-only default as `scope`: the project listing must apply it rather than ignore it.
+  // One lifecycle MR is unassigned for the check, so assigned_to_me and all must differ.
+  it("applies the scope filter to a project's merge request listing", async () => {
+    const mr = testData.mergeRequests?.[0] as
+      { iid: number; assignee?: { id: number } | null } | undefined;
+    expect(mr?.assignee?.id).toBeDefined();
+    if (!mr?.assignee) throw new Error('Lifecycle must create an MR assigned to the test user');
+
+    const helper = new IntegrationTestHelper();
+    await helper.initialize();
+    const project_id = testProject.path_with_namespace as string;
+    const list = async (scope: 'assigned_to_me' | 'all'): Promise<number[]> =>
+      (
+        (await helper.executeTool('browse_merge_requests', {
+          action: 'list',
+          project_id,
+          scope,
+          state: 'all',
+          per_page: 100,
+        })) as { iid: number }[]
+      ).map((row) => row.iid);
+    try {
+      await helper.executeTool('manage_merge_request', {
+        action: 'update',
+        project_id,
+        merge_request_iid: String(mr.iid),
+        assignee_id: '0',
+      });
+
+      expect(await list('all')).toContain(mr.iid);
+      expect(await list('assigned_to_me')).not.toContain(mr.iid);
+    } finally {
+      await helper.executeTool('manage_merge_request', {
+        action: 'update',
+        project_id,
+        merge_request_iid: String(mr.iid),
+        assignee_id: String(mr.assignee.id),
       });
     }
   });

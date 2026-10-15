@@ -4,6 +4,7 @@
  */
 
 import { ConnectionManager, type InstanceState } from '../../../src/services/ConnectionManager';
+import { runWithCaller } from '../../../src/configuration/caller';
 
 // Mock isOAuthEnabled and getGitLabApiUrlFromContext
 const mockIsOAuthEnabled = jest.fn();
@@ -93,6 +94,60 @@ describe('ConnectionManager Unit', () => {
       instances.forEach((instance) => {
         expect(instance).toBe(instances[0]);
       });
+    });
+  });
+
+  // A tool call keeps the instance it started with: when another chat switches the shared
+  // token's instance meanwhile, its GraphQL client must not follow the switch, as REST
+  // requests do not.
+  describe('instance of the running call', () => {
+    const started = 'https://started.example.com';
+    const switched = 'https://switched.example.com';
+    const caller = {
+      accountKey: `token:${started}`,
+      sessionKey: 'chat',
+      accountLabel: 'Configured access token',
+      instanceUrl: started,
+      oauth: false,
+    };
+
+    it('resolves the client of the instance the call started with', () => {
+      const manager = ConnectionManager.getInstance();
+      const startedClient = {} as unknown as InstanceState['client'];
+      injectInstanceState(manager, started, { client: startedClient });
+      injectInstanceState(manager, switched);
+      runWithCaller(caller, () => {
+        expect(manager.getClient()).toBe(startedClient);
+        expect(manager.getInstanceClient()).toBe(startedClient);
+      });
+    });
+
+    // An instance the caller names is read whatever the current one is, also when it is
+    // written with a trailing slash.
+    it('reads the state of the instance a call names', () => {
+      const manager = ConnectionManager.getInstance();
+      injectInstanceState(manager, started, {
+        isInitialized: true,
+        instanceInfo: {
+          tier: 'ultimate',
+          version: '17.0.0',
+          features: { workItems: true },
+        } as unknown as InstanceState['instanceInfo'],
+        schemaInfo: {
+          workItemWidgetTypes: ['ASSIGNEES'],
+        } as unknown as InstanceState['schemaInfo'],
+        tokenScopeInfo: { scopes: ['api'] } as unknown as InstanceState['tokenScopeInfo'],
+      });
+      injectInstanceState(manager, switched);
+      const named = `${started}/`;
+
+      expect(manager.isConnected(named)).toBe(true);
+      expect(manager.isFeatureAvailable('workItems', named)).toBe(true);
+      expect(manager.getTier(named)).toBe('ultimate');
+      expect(manager.getVersion(named)).toBe('17.0.0');
+      expect(manager.isWidgetAvailable('ASSIGNEES', named)).toBe(true);
+      expect(manager.getTokenScopeInfo(named)).toEqual({ scopes: ['api'] });
+      expect(manager.getTier()).toBe('unknown');
     });
   });
 

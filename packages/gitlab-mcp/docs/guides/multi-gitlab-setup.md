@@ -1,6 +1,6 @@
 ---
 title: Multi-GitLab Setup
-description: "Connect GitLab MCP Server to multiple GitLab instances — profiles for work and personal accounts"
+description: 'Connect GitLab MCP Server to multiple GitLab instances — profiles for work and personal accounts'
 head:
   - - meta
     - name: keywords
@@ -20,6 +20,7 @@ Many organizations use multiple GitLab instances — a self-hosted instance for 
 ## Understanding Context
 
 The context system manages your current session configuration:
+
 - **Host** — Which GitLab instance you're connected to
 - **Preset** — Predefined configuration profiles
 - **Scope** — Restrict operations to a specific namespace
@@ -120,32 +121,11 @@ All subsequent `browse_*` and `manage_*` operations will be limited to this name
 }
 ```
 
-## OAuth Profiles (OAuth Mode)
+## Accounts in OAuth Mode
 
-When using OAuth authentication, you can manage multiple user profiles.
-
-### List OAuth Profiles
-
-> "Show me available OAuth profiles"
-
-```json
-// manage_context
-{
-  "action": "list_profiles"
-}
-```
-
-### Switch OAuth Profile
-
-> "Switch to the ops team profile"
-
-```json
-// manage_context
-{
-  "action": "switch_profile",
-  "profile": "ops-team"
-}
-```
+With OAuth, a connection works as the GitLab user who signed in, on that user's instance:
+calls and the tool list stay there. To work as another user or on another instance, sign in
+to it; to narrow what a chat may do, switch its preset or scope as shown above.
 
 ## Workflow: Switching Between Instances
 
@@ -178,11 +158,11 @@ When using OAuth authentication, you can manage multiple user profiles.
 
 ### Environment Variables
 
-| Variable | Purpose |
-|----------|---------|
-| `GITLAB_API_URL` | API endpoint for the instance |
-| `GITLAB_TOKEN` | Personal access token |
-| `GITLAB_PROJECT_ID` | Default project scope |
+| Variable                     | Purpose                       |
+| ---------------------------- | ----------------------------- |
+| `GITLAB_API_URL`             | API endpoint for the instance |
+| `GITLAB_TOKEN`               | Personal access token         |
+| `GITLAB_PROJECT_ID`          | Default project scope         |
 | `GITLAB_ALLOWED_PROJECT_IDS` | Restrict to specific projects |
 
 ### Security Considerations

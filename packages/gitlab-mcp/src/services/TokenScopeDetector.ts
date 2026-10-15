@@ -98,6 +98,8 @@ const TOOL_SCOPE_REQUIREMENTS: Record<string, GitLabScope[]> = {
   manage_todos: ['api'],
   // manage_context is intentionally excluded — it manages local session state
   // and never calls GitLab API, so it's available with any token scope.
+  // Scope search for the settings panel reads /projects and /groups.
+  find_scope_targets: ['api', 'read_api'],
 
   // Labels
   browse_labels: ['api', 'read_api'],

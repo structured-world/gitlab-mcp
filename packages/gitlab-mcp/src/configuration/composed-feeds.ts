@@ -163,9 +163,11 @@ async function targetRunners(run: RunTool, requested: Args, scope: ScopeConfig):
   if ('answer' in scan) return scan.answer;
   // Numeric IDs compared as digit strings: a longer one is larger, without Number's limit.
   if (ordered)
-    rows.sort((a, b) =>
-      a.id.length === b.id.length ? (a.id < b.id ? 1 : -1) : b.id.length - a.id.length,
-    );
+    rows.sort((a, b) => {
+      if (a.id.length !== b.id.length) return b.id.length - a.id.length;
+      if (a.id === b.id) return 0;
+      return a.id < b.id ? 1 : -1;
+    });
   // The tool schema already holds `first` to an integer from 1 to 100.
   const first = typeof requested.first === 'number' ? requested.first : 20;
   const end = offset + first;

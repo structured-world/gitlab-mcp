@@ -281,6 +281,9 @@ async function resyncSessionAfterSwitchProfile(
   if (toolName !== 'manage_context' || !sessionId) return;
   const action =
     toolArguments && typeof toolArguments.action === 'string' ? toolArguments.action : undefined;
+  // `reset` needs no re-pin: the reset call itself pins the session to the OAuth
+  // context URL before it runs (see the per-call pin in the CallTool handler), so a
+  // profile it drops is already off the session when the call returns.
   if (action !== 'switch_profile') return;
 
   try {

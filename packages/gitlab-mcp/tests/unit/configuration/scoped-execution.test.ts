@@ -1832,3 +1832,174 @@ describe('executeScoped', () => {
     ).rejects.toBe('connection reset');
   });
 });
+
+describe('executeScoped multi-target listings', () => {
+  const policyFor = (scope: Record<string, unknown>) => ({
+    ...projectPolicy,
+    scope,
+    scopeEnforcer: new ScopeEnforcer(scope),
+  });
+  const project = (id: number, path: string, created_at: string) => ({
+    id,
+    path_with_namespace: path,
+    created_at,
+  });
+  const mergeRequest = (id: number, path: string, created_at: string) => ({
+    id,
+    references: { full: `${path}!${id}` },
+    created_at,
+  });
+
+  // Several groups list their own projects: the instance-wide feed, whose first 1000 rows
+  // may all lie outside the scope, is never read, and projects only shared into a group stay
+  // out. The groups' listings are merged newest first and paged after the merge.
+  it('lists the projects of several groups from their own listings', async () => {
+    const run = jest.fn(async (_tool: string, args: Record<string, unknown>) => {
+      if (args.group_id === 'team')
+        return [
+          project(1, 'team/a', '2026-01-01T00:00:00Z'),
+          project(9, 'elsewhere/shared', '2026-03-01T00:00:00Z'),
+        ];
+      if (args.group_id === 'other') return [project(2, 'other/b', '2026-02-01T00:00:00Z')];
+      return [];
+    });
+
+    const result = await executeScoped(
+      run,
+      'browse_projects',
+      { action: 'list' },
+      policyFor({ groups: ['team', 'other'] }),
+    );
+
+    expect(
+      (result as Array<{ path_with_namespace: string }>).map((row) => row.path_with_namespace),
+    ).toEqual(['other/b', 'team/a']);
+    expect(run.mock.calls.every(([, args]) => args.group_id !== undefined)).toBe(true);
+    expect(run).toHaveBeenCalledWith(
+      'browse_projects',
+      expect.objectContaining({ group_id: 'team', include_subgroups: true, active: true }),
+    );
+  });
+
+  // A project of the scope beside a group answers the listing itself when it matches, in the
+  // simple representation the listing returns, ordered with the group's projects.
+  it('lists a project of the scope with the projects of its group', async () => {
+    const run = jest.fn(async (_tool: string, args: Record<string, unknown>) => {
+      if (args.action === 'get')
+        return {
+          ...project(5, 'solo/app', '2026-02-01T00:00:00Z'),
+          archived: false,
+          open_issues_count: 3,
+        };
+      if (args.group_id === 'team') return [project(1, 'team/a', '2026-01-01T00:00:00Z')];
+      return [];
+    });
+
+    const result = await executeScoped(
+      run,
+      'browse_projects',
+      { action: 'list', order_by: 'created_at', sort: 'asc' },
+      policyFor({ project: 'solo/app', groups: ['team'] }),
+    );
+
+    expect(result).toEqual([
+      project(1, 'team/a', '2026-01-01T00:00:00Z'),
+      project(5, 'solo/app', '2026-02-01T00:00:00Z'),
+    ]);
+  });
+
+  // The merge requests of several projects are read per project with the default of the
+  // targetless listing (the caller's own), merged newest first and paged after the merge.
+  it('lists the merge requests of several projects from their own listings', async () => {
+    const run = jest.fn(async (_tool: string, args: Record<string, unknown>) => {
+      if (args.project_id === 'team/a') return [mergeRequest(1, 'team/a', '2026-01-01T00:00:00Z')];
+      if (args.project_id === 'other/b')
+        return [mergeRequest(2, 'other/b', '2026-02-01T00:00:00Z')];
+      return [];
+    });
+
+    const result = await executeScoped(
+      run,
+      'browse_merge_requests',
+      { action: 'list', per_page: 1 },
+      policyFor({ projects: ['team/a', 'other/b'] }),
+    );
+
+    expect(result).toEqual([mergeRequest(2, 'other/b', '2026-02-01T00:00:00Z')]);
+    expect(run).toHaveBeenCalledWith(
+      'browse_merge_requests',
+      expect.objectContaining({ project_id: 'team/a', scope: 'created_by_me' }),
+    );
+    expect(run.mock.calls.every(([, args]) => args.project_id !== undefined)).toBe(true);
+  });
+
+  // A group of the scope lists its merge requests itself; without its subgroups, theirs are
+  // kept out of the merge.
+  it('lists the merge requests of a group without its subgroups', async () => {
+    const run = jest.fn(async (_tool: string, args: Record<string, unknown>) => {
+      if (args.group_id === 'team')
+        return [
+          mergeRequest(1, 'team/a', '2026-01-01T00:00:00Z'),
+          mergeRequest(3, 'team/sub/x', '2026-03-01T00:00:00Z'),
+        ];
+      if (args.project_id === 'other/b')
+        return [mergeRequest(2, 'other/b', '2026-02-01T00:00:00Z')];
+      return [];
+    });
+
+    const result = await executeScoped(
+      run,
+      'browse_merge_requests',
+      { action: 'list', scope: 'all' },
+      policyFor({ groups: ['team'], project: 'other/b', includeSubgroups: false }),
+    );
+
+    expect(result).toEqual([
+      mergeRequest(2, 'other/b', '2026-02-01T00:00:00Z'),
+      mergeRequest(1, 'team/a', '2026-01-01T00:00:00Z'),
+    ]);
+    expect(run).toHaveBeenCalledWith(
+      'browse_merge_requests',
+      expect.objectContaining({ group_id: 'team', scope: 'all' }),
+    );
+  });
+
+  // Priority is GitLab's own per-listing ranking with no field to merge by: the targets keep
+  // their order and the page says so.
+  it('keeps target order for an ordering the merge cannot reproduce', async () => {
+    const run = jest.fn(async (_tool: string, args: Record<string, unknown>) =>
+      args.project_id === 'team/a'
+        ? [mergeRequest(1, 'team/a', '2026-01-01T00:00:00Z')]
+        : [mergeRequest(2, 'other/b', '2026-02-01T00:00:00Z')],
+    );
+
+    const result = await executeScoped(
+      run,
+      'browse_merge_requests',
+      { action: 'list', order_by: 'priority' },
+      policyFor({ projects: ['team/a', 'other/b'] }),
+    );
+
+    expect(result).toEqual({
+      items: [
+        mergeRequest(1, 'team/a', '2026-01-01T00:00:00Z'),
+        mergeRequest(2, 'other/b', '2026-02-01T00:00:00Z'),
+      ],
+      partial: true,
+      message: expect.stringContaining('target order'),
+    });
+  });
+
+  // A single project scope reads the project's merge requests with the default of the
+  // targetless listing, so narrowing does not widen it to everyone's.
+  it('keeps the caller-only default when a project scope narrows the listing', async () => {
+    const run = jest.fn().mockResolvedValue([]);
+
+    await executeScoped(run, 'browse_merge_requests', { action: 'list' }, projectPolicy);
+
+    expect(run).toHaveBeenCalledWith(
+      'browse_merge_requests',
+      expect.objectContaining({ action: 'list', project_id: 'team/app', scope: 'created_by_me' }),
+    );
+  });
+});

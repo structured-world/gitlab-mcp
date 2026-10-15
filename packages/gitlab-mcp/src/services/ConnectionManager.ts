@@ -17,6 +17,7 @@ import {
 import { isOAuthEnabled, getGitLabApiUrlFromContext } from '../oauth/index';
 import { enhancedFetch } from '../utils/fetch';
 import { setActiveInstanceSource } from '../utils/gitlab-base-url';
+import { currentCaller } from '../configuration/caller';
 import { logInfo, logDebug, logError } from '../logger';
 import { InstanceRegistry } from './InstanceRegistry';
 import { CachedIntrospection } from '../config/instances-schema';
@@ -56,7 +57,7 @@ export class ConnectionManager {
   private static instance: ConnectionManager | null = null;
   /** Per-URL isolated state — each initialize(url) creates its own entry */
   private instances = new Map<string, InstanceState>();
-  /** The "active" instance URL — used as default for no-arg getClient()/getInstanceInfo() */
+  /** The instance the shared token works with now; no-arg accessors default to it outside a tool call. */
   private currentInstanceUrl: string | null = null;
   /** Deduplication map: prevents thundering herd on concurrent ensureIntrospected() calls */
   private introspectionPromises = new Map<string, Promise<void>>();
@@ -451,7 +452,7 @@ export class ConnectionManager {
     // Use explicit URL if provided (handler knows the effective URL),
     // otherwise fall back to OAuth context / current instance
     const instanceUrl = normalizeInstanceUrl(
-      explicitUrl ?? getGitLabApiUrlFromContext() ?? this.currentInstanceUrl ?? GITLAB_BASE_URL,
+      explicitUrl ?? getGitLabApiUrlFromContext() ?? this.callInstanceUrl() ?? GITLAB_BASE_URL,
     );
 
     const state = this.instances.get(instanceUrl);
@@ -607,7 +608,7 @@ export class ConnectionManager {
   private resolveState(instanceUrl?: string): [InstanceState, string] {
     // Empty string is falsy → falls to currentInstanceUrl (same as undefined/null).
     // This is intentional: callers pass either a real URL or nothing.
-    const url = instanceUrl ? normalizeInstanceUrl(instanceUrl) : this.currentInstanceUrl;
+    const url = instanceUrl ? normalizeInstanceUrl(instanceUrl) : this.callInstanceUrl();
     if (!url) {
       throw new Error('Connection not initialized. Call initialize() first.');
     }
@@ -622,6 +623,14 @@ export class ConnectionManager {
     // getSchemaInfo) null-check their respective fields independently.
     this.touchInstance(url); // Update LRU access time on every read.
     return [state, url];
+  }
+
+  /**
+   * The instance a call that names none works with: the one its tool call started with,
+   * so a switch_instance from another chat does not move it, else the current one.
+   */
+  private callInstanceUrl(): string | null {
+    return currentCaller()?.instanceUrl ?? this.currentInstanceUrl;
   }
 
   public getClient(instanceUrl?: string): GraphQLClient {
@@ -646,7 +655,7 @@ export class ConnectionManager {
     const registry = InstanceRegistry.getInstance();
 
     // Determine which instance to use — normalize all sources for consistent Map keys
-    const rawTargetUrl = instanceUrl ?? getGitLabApiUrlFromContext() ?? this.currentInstanceUrl;
+    const rawTargetUrl = instanceUrl ?? getGitLabApiUrlFromContext() ?? this.callInstanceUrl();
     const targetUrl = rawTargetUrl ? normalizeInstanceUrl(rawTargetUrl) : null;
 
     // If registry is initialized and instance is registered, use per-instance client
@@ -751,7 +760,7 @@ export class ConnectionManager {
    * derives degraded state from getInstanceInfo().version after this check.
    */
   public isConnected(instanceUrl?: string): boolean {
-    const url = instanceUrl ? normalizeInstanceUrl(instanceUrl) : this.currentInstanceUrl;
+    const url = instanceUrl ? normalizeInstanceUrl(instanceUrl) : this.callInstanceUrl();
     if (!url) return false;
     const state = this.instances.get(url);
     if (state) this.touchInstance(url); // Keep entry alive in LRU window.
@@ -762,7 +771,7 @@ export class ConnectionManager {
     feature: keyof GitLabInstanceInfo['features'],
     instanceUrl?: string,
   ): boolean {
-    const url = instanceUrl ? normalizeInstanceUrl(instanceUrl) : this.currentInstanceUrl;
+    const url = instanceUrl ? normalizeInstanceUrl(instanceUrl) : this.callInstanceUrl();
     if (!url) return false;
     const state = this.instances.get(url);
     if (!state?.instanceInfo) return false;
@@ -771,7 +780,7 @@ export class ConnectionManager {
   }
 
   public getTier(instanceUrl?: string): string {
-    const url = instanceUrl ? normalizeInstanceUrl(instanceUrl) : this.currentInstanceUrl;
+    const url = instanceUrl ? normalizeInstanceUrl(instanceUrl) : this.callInstanceUrl();
     if (!url) return 'unknown';
     const state = this.instances.get(url);
     if (!state?.instanceInfo) return 'unknown';
@@ -780,7 +789,7 @@ export class ConnectionManager {
   }
 
   public getVersion(instanceUrl?: string): string {
-    const url = instanceUrl ? normalizeInstanceUrl(instanceUrl) : this.currentInstanceUrl;
+    const url = instanceUrl ? normalizeInstanceUrl(instanceUrl) : this.callInstanceUrl();
     if (!url) return 'unknown';
     const state = this.instances.get(url);
     if (!state?.instanceInfo) return 'unknown';
@@ -789,7 +798,7 @@ export class ConnectionManager {
   }
 
   public isWidgetAvailable(widgetType: string, instanceUrl?: string): boolean {
-    const url = instanceUrl ? normalizeInstanceUrl(instanceUrl) : this.currentInstanceUrl;
+    const url = instanceUrl ? normalizeInstanceUrl(instanceUrl) : this.callInstanceUrl();
     if (!url) return false;
     const state = this.instances.get(url);
     if (state) this.touchInstance(url); // Keep entry alive in LRU window.
@@ -802,7 +811,7 @@ export class ConnectionManager {
    * Get detected token scope info (null if detection was skipped or failed)
    */
   public getTokenScopeInfo(instanceUrl?: string): TokenScopeInfo | null {
-    const url = instanceUrl ? normalizeInstanceUrl(instanceUrl) : this.currentInstanceUrl;
+    const url = instanceUrl ? normalizeInstanceUrl(instanceUrl) : this.callInstanceUrl();
     if (!url) return null;
     const state = this.instances.get(url);
     if (state) this.touchInstance(url); // Keep entry alive in LRU window.
@@ -811,7 +820,7 @@ export class ConnectionManager {
 
   /** Admin role + elevation for the (static-token) session, or null if unprobed. */
   public getAdminInfo(instanceUrl?: string): AdminInfo | null {
-    const url = instanceUrl ? normalizeInstanceUrl(instanceUrl) : this.currentInstanceUrl;
+    const url = instanceUrl ? normalizeInstanceUrl(instanceUrl) : this.callInstanceUrl();
     if (!url) return null;
     const state = this.instances.get(url);
     if (state) this.touchInstance(url); // Keep entry alive in LRU window.
@@ -830,7 +839,7 @@ export class ConnectionManager {
       return false;
     }
 
-    const url = this.currentInstanceUrl;
+    const url = this.callInstanceUrl();
     if (!url) return false;
     const state = this.instances.get(url);
     if (!state) return false;

@@ -798,6 +798,21 @@ describe('multiTargetSearch', () => {
     expect(run).toHaveBeenCalledTimes(1);
   });
 
+  // A commit lives in every fork of its project: hits with one SHA in two projects are two
+  // results, as GitLab tells search hits apart by ID and project.
+  it('keeps one commit found in two projects', async () => {
+    const run = jest.fn(async (_tool: string, args: Record<string, unknown>) =>
+      search([{ id: 'abc123', project_id: args.project_id === 'team/a' ? 1 : 2 }]),
+    );
+    const result = (await multiTargetSearch(
+      run,
+      { action: 'global', scope: 'commits', search: 'x' },
+      scope,
+      enforcer,
+    )) as { results: Array<{ project_id: number }> };
+    expect(result.results.map(({ project_id }) => project_id)).toEqual([1, 2]);
+  });
+
   // A page past the read bound is answered without GitLab; a failed search is passed on.
   it('answers past the read bound and passes on a failed search', async () => {
     const idle = jest.fn();

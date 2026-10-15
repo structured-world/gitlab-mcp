@@ -20,6 +20,7 @@ import {
   scopeProjectSnippets,
   scopeSnippetTitleSearch,
 } from './composed-feeds';
+import { isComposedListing, multiTargetListing } from './composed-listings';
 import type { ZodType } from 'zod';
 import {
   BrowseEventsSchema,
@@ -327,6 +328,13 @@ function emulateMultiTarget(
   }
   if (isScopeKeyListing(tool, requested)) {
     return scopeDeployKeys(run, requested, scope, enforcer);
+  }
+  // A scope made of projects lists its projects itself, with the options it can apply.
+  if (
+    !(tool === 'browse_projects' && scopeProjectsOnly(scope)) &&
+    isComposedListing(tool, requested, scope)
+  ) {
+    return multiTargetListing(run, tool, requested, scope, enforcer);
   }
   return undefined;
 }

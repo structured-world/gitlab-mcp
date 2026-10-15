@@ -218,10 +218,14 @@ const NARROWERS: Record<string, (args: Args, target: Target) => Args | null> = {
           ...(hasValue(args.active) || hasValue(args.archived) ? {} : { active: true }),
         }
       : null,
-  browse_merge_requests: (args, target) =>
-    args.action === 'list' && !hasValue(args.project_id) && 'project' in target
-      ? { ...args, project_id: target.project }
-      : null,
+  // The targetless listing shows the caller's own merge requests unless asked otherwise, while
+  // a project's or group's shows everyone's (lib/api/helpers/merge_requests_helpers.rb), so
+  // that default is kept. A group's listing covers its subgroups; without them it is filtered.
+  browse_merge_requests: (args, target) => {
+    if (!isTargetlessList(args)) return null;
+    const place = 'project' in target ? { project_id: target.project } : { group_id: target.group };
+    return { ...args, ...place, scope: args.scope ?? 'created_by_me' };
+  },
   // The caller's own activity spans every project; a project scope shows that project's.
   browse_events: (args, target) =>
     args.action === 'user' && 'project' in target
@@ -286,9 +290,13 @@ const NARROWERS: Record<string, (args: Args, target: Target) => Args | null> = {
 /** The call's arguments with the scope as its filter, where the tool takes one. */
 export function scopedArgs(tool: string, args: Args, scope: ScopeConfig): Args {
   const target = singleTarget(scope);
-  const narrow = NARROWERS[tool];
-  if (!target || !narrow) return args;
-  return narrow(args, target) ?? args;
+  if (!target) return args;
+  return targetArgs(tool, args, target) ?? args;
+}
+
+/** The call's arguments kept to one target of the scope, or null when the tool has no such form. */
+export function targetArgs(tool: string, args: Args, target: Target): Args | null {
+  return NARROWERS[tool]?.(args, target) ?? null;
 }
 
 /** Project path of a listed project or merge request, as each listing reports it. */

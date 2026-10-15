@@ -92,6 +92,12 @@ const ListMergeRequestsSchema = z
       .string()
       .optional()
       .describe('Project ID or URL-encoded path. Optional for cross-project search.'),
+    group_id: z.coerce
+      .string()
+      .optional()
+      .describe(
+        "Group ID or path: lists the merge requests of the group's projects and its subgroups'. Ignored when project_id is given.",
+      ),
     state: z
       .enum(['opened', 'closed', 'locked', 'merged', 'all'])
       .optional()
@@ -257,6 +263,7 @@ const BrowseMergeRequestsBaseSchema = z.discriminatedUnion('action', [
 
 // Action-specific field sets for strict validation
 const listOnlyFields = [
+  'group_id',
   'state',
   'order_by',
   'sort',

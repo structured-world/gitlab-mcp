@@ -179,10 +179,20 @@ describe('scopedArgs', () => {
     expect(scopedArgs(tool, args, scope)).toEqual(expected);
   });
 
+  // The targetless listing shows the caller's own merge requests by default; a project's or
+  // group's shows everyone's, so the narrowed call keeps that default unless one is named.
   it('lists the merge requests of the scope project', () => {
     expect(
       scopedArgs('browse_merge_requests', { action: 'list', state: 'opened' }, project),
-    ).toEqual({ action: 'list', state: 'opened', project_id: 'team/app' });
+    ).toEqual({ action: 'list', state: 'opened', project_id: 'team/app', scope: 'created_by_me' });
+  });
+
+  it('lists the merge requests of the scope group with the scope the call names', () => {
+    expect(scopedArgs('browse_merge_requests', { action: 'list', scope: 'all' }, group)).toEqual({
+      action: 'list',
+      scope: 'all',
+      group_id: 'team',
+    });
   });
 
   // A call that names its target is checked against the scope, not rewritten.
@@ -191,7 +201,7 @@ describe('scopedArgs', () => {
     ['browse_merge_requests', { action: 'list', project_id: 'team/app' }, project],
     ['browse_search', { action: 'project', project_id: 'team/app' }, project],
     ['browse_projects', { action: 'list' }, project],
-    ['browse_merge_requests', { action: 'list' }, group],
+    ['browse_merge_requests', { action: 'list', group_id: 'team' }, group],
     ['browse_projects', { action: 'list' }, several],
     ['browse_projects', { action: 'list' }, { project: 'team/app', group: 'other' }],
     ['browse_issues', { action: 'list' }, group],

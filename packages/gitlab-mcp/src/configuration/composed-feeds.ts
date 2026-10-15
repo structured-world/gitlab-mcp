@@ -15,11 +15,11 @@ import { matchesScopeProject, readScopeProject, simpleProject } from './scope-pr
 
 type Args = Record<string, unknown>;
 type Row = Record<string, unknown>;
-const MAX_REQUESTS = 10;
-const PAGE_SIZE = 100;
+export const MAX_REQUESTS = 10;
+export const PAGE_SIZE = 100;
 
 /** Requests made so far for one call, shared by all of its targets. */
-interface Budget {
+export interface Budget {
   requests: number;
 }
 /** `more`: a target was read only as far as the page needs and has further rows. */
@@ -385,13 +385,18 @@ function newestFirst(rows: Row[], timeField?: string): Row[] | undefined {
 }
 
 /** The requested page, partial with the reasons it may be incomplete. */
-function composedPage(rows: Row[], start: number, wanted: number, reasons: string[]): unknown {
+export function composedPage(
+  rows: Row[],
+  start: number,
+  wanted: number,
+  reasons: string[],
+): unknown {
   const items = rows.slice(start, wanted);
   return reasons.length === 0 ? items : { items, partial: true, message: reasons.join(' ') };
 }
 
 /** The page bounds of a composed listing, or the answer for a page past what it can read. */
-function composedBounds(
+export function composedBounds(
   requested: Args,
   what: string,
 ): { start: number; wanted: number } | { answer: unknown } {
@@ -676,9 +681,14 @@ function orderSearchRows(rows: Row[], { field, direction }: SearchOrdering): Row
   return keyed.map(({ row }) => row);
 }
 
-/** A search row's identity across targets: its ID, else the whole row (code and wiki hits). */
+/**
+ * A search row's identity across targets: its project and ID (a commit SHA repeats in every
+ * fork), else the whole row (code and wiki hits).
+ */
 const searchRowKey = (row: Row): string =>
-  typeof row.id === 'number' || typeof row.id === 'string' ? `id:${row.id}` : JSON.stringify(row);
+  typeof row.id === 'number' || typeof row.id === 'string'
+    ? `id:${String(row.project_id ?? '')}:${row.id}`
+    : JSON.stringify(row);
 
 /**
  * One target's search, appended until it holds `wanted` kept rows or ends: the first

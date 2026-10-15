@@ -803,6 +803,30 @@ describe('handlers', () => {
       });
     });
 
+    // A reset drops the session's profile: the session must work with the OAuth token's
+    // instance again, so an immediate tool list is built for it, not the profile's.
+    it('pins the session to the account instance when reset drops a profile', async () => {
+      const oauth = await import('../../src/oauth/index');
+      (oauth.isOAuthEnabled as jest.Mock).mockReturnValue(true);
+      (oauth.getGitLabApiUrlFromContext as jest.Mock).mockReturnValue(
+        'https://account.example.com',
+      );
+      mockSessionManager.getSessionInstanceUrl.mockReturnValue('https://profile.example.com');
+
+      await callToolHandler(
+        { params: { name: 'manage_context', arguments: { action: 'reset' } } },
+        { sessionId: 'sess-reset' },
+      );
+
+      const pins = mockSessionManager.setSessionInstanceUrl.mock.calls.filter(
+        (c) => c[0] === 'sess-reset',
+      );
+      expect(pins.at(-1)).toEqual(['sess-reset', 'https://account.example.com']);
+
+      (oauth.isOAuthEnabled as jest.Mock).mockReturnValue(false);
+      (oauth.getGitLabApiUrlFromContext as jest.Mock).mockReturnValue(undefined);
+    });
+
     it('should NOT re-pin session URL for switch_preset action (#407)', async () => {
       // Only switch_profile triggers re-pin; switch_preset never changes the host.
       mockContextManager.getCurrentProfileUrl.mockResolvedValue(

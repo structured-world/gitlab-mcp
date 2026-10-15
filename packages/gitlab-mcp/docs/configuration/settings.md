@@ -53,7 +53,8 @@ A listing or search that names no project or group reads the working scope inste
 everything the account can see: a global search becomes a search of the scope's group or
 project, a project listing lists the scope's group (or the scope's own projects, leaving
 archived ones out as a plain listing does), a cross-project merge request listing and a
-vulnerability listing name the scope's target. A preset scope of one project or group,
+vulnerability listing name the scope's target (the merge request listing still shows your
+own merge requests, as the cross-project one does, unless `scope` names another set). A preset scope of one project or group,
 whether named alone, as a list of one or as a namespace, is that single target.
 Results that cannot be filtered at GitLab (project listings and searches, including
 projects only shared with the scope's group, todos, merge requests under a group scope,
@@ -70,6 +71,15 @@ instance audit events the trails of the scope's projects and groups (see below),
 all runners those available to the scope's project or group, and your own runners those of
 yours the scope's project or group can use; where the scope has no such form, the listing is
 refused. A namespace listing is refused under a scope of projects, which reaches no group.
+
+Under several targets, a project listing and a cross-project merge request listing read each
+target's own listing, merge them without repeats in GitLab's order (newest created first
+unless `order_by`/`sort` name another) and page the result, within ten requests; a page left
+short by that bound is marked `partial`. A project of the scope answers a project listing
+itself when the call uses only `search`, `simple`, `order_by` and `sort`; with other options
+the account's project listing is filtered to the scope instead. A `similarity` or `priority`
+order ranks rows within one listing only, so the targets keep their order and the page is
+marked `partial`.
 
 For several project/group targets, runner feeds keep their original filters and cursor,
 intersected with the union of runners available to those targets. The availability scan

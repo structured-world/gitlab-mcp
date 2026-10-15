@@ -96,7 +96,7 @@ const ListMergeRequestsSchema = z
       .string()
       .optional()
       .describe(
-        "Group ID or path: lists the merge requests of the group's projects and its subgroups'. Ignored when project_id is given.",
+        "Group ID or path: lists the merge requests of the group's projects and its subgroups'. Not combined with project_id.",
       ),
     state: z
       .enum(['opened', 'closed', 'locked', 'merged', 'all'])
@@ -325,6 +325,16 @@ export const BrowseMergeRequestsSchema = BrowseMergeRequestsBaseSchema.refine(
   },
 ).superRefine((data, ctx) => {
   const input = data as Record<string, unknown>;
+
+  // A listing reads one project or one group; naming both would have the scope check read a
+  // group the listing never uses.
+  if (data.action === 'list' && data.project_id !== undefined && data.group_id !== undefined) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "'group_id' cannot be combined with 'project_id'",
+      path: ['group_id'],
+    });
+  }
 
   // Check for list-only fields used in non-list actions
   if (data.action !== 'list') {

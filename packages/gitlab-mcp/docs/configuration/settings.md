@@ -106,8 +106,9 @@ answers an empty page, as those events are in no trail of the scope.
 A numeric project or group identifier selected as a scope is saved as its canonical
 GitLab path. A project listing or search under a scope made of projects is ordered as GitLab
 orders it (newest created first unless `sort`/`order_by` name another order) before
-pagination, reading at most 1000 scope projects; missing ordering metadata or unread
-projects are reported as partial rather than implying a complete ordered page.
+pagination, reading at most 1000 scope projects; missing ordering metadata, a `similarity`
+order (GitLab's own ranking) or unread projects are reported as partial rather than
+implying a complete ordered page.
 A project snippet listing that names no project lists the scope project's snippets, or under a
 group or several targets the snippets of the scope's projects, merged newest first within the
 same ten requests and marked `partial` when some were not read; public
@@ -139,7 +140,10 @@ mark_all_done` marks only the scope's pending todos done and leaves the others p
 the todos of each project and group of the scope. One call marks at most 100 of them; when
 more remain the result is marked `partial`, and calling it again continues. A group without
 its subgroups also reads its subgroups' todos; past each group's first page at most 1000 more
-are read, shared by all such groups, and the rest is marked `partial`. A project created or forked without a namespace goes into the scope's
+are read, shared by all such groups, and the rest is marked `partial`. One call reads the
+projects and groups of the scope one after another within 50 requests (each costs a lookup
+and at least one page of todos); those it did not reach are named in a `partial` result, to
+be narrowed. A project created or forked without a namespace goes into the scope's
 group; with no single group to put it in, and for a group without a parent, the call is
 refused. A snippet created without a project goes into the scope's project; under any other
 scope it would be a personal snippet, and the call is refused.

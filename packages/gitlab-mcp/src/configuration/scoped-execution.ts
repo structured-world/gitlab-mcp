@@ -20,7 +20,12 @@ import {
   scopeProjectSnippets,
   scopeSnippetTitleSearch,
 } from './composed-feeds';
-import { isComposedListing, multiTargetListing } from './composed-listings';
+import {
+  isComposedListing,
+  listingOrder,
+  multiTargetListing,
+  orderRows,
+} from './composed-listings';
 import type { ZodType } from 'zod';
 import {
   BrowseEventsSchema,
@@ -66,7 +71,15 @@ const MAX_UPSTREAM_PAGES = 10;
 /** GitLab's own default page size, used when the call names none. */
 const DEFAULT_PAGE_SIZE = 20;
 /** Listing options a scope made of projects can apply to its projects itself. */
-const PROJECT_LIST_OPTIONS = new Set(['action', 'search', 'page', 'per_page', 'simple']);
+const PROJECT_LIST_OPTIONS = new Set([
+  'action',
+  'search',
+  'page',
+  'per_page',
+  'simple',
+  'order_by',
+  'sort',
+]);
 /** The input schemas of the tools whose calls the scope rewrites, filters or emulates. */
 const SCOPED_TOOL_SCHEMAS: Readonly<Record<string, ZodType>> = {
   browse_projects: BrowseProjectsSchema,
@@ -85,6 +98,11 @@ const SCOPED_TOOL_SCHEMAS: Readonly<Record<string, ZodType>> = {
 };
 /** Requests one scoped call keeps in flight, so a large scope stays within rate limits. */
 const REQUEST_CONCURRENCY = 5;
+/**
+ * Target lookups and todo pages one mark_all_done reads, one after another: a scope's
+ * target lists have no size limit, and the call must end within the handler timeout.
+ */
+const TODO_READ_REQUESTS = 50;
 
 /** The selected action's validated arguments, shared by scope preflight and execution. */
 export function parseScopedArguments(tool: string, requested: Args): Args {
@@ -719,16 +737,12 @@ async function listScopeProjects(
     );
     matching.push(...batch.filter((project) => matchesScopeProject(project, search)));
   }
-  const missingSortField = !orderScopeProjects(matching, requested);
-  const listed = matching.slice((page - 1) * perPage, wanted);
+  const { rows, unordered } = orderScopeProjects(matching, requested);
+  const listed = rows.slice((page - 1) * perPage, wanted);
   // A project is read in full; a listing answers with the simple representation unless
   // simple=false, as GitLab does (its schema default is true).
   const result = requested.simple === false ? listed : listed.map(simpleProject);
-  if (missingSortField)
-    return partialPage(
-      result,
-      'GitLab omitted the requested ordering field; results retain scope order.',
-    );
+  if (unordered) return partialPage(result, unordered);
   if (limit < projects.length)
     return partialPage(
       result,
@@ -737,22 +751,29 @@ async function listScopeProjects(
   return result;
 }
 
-/** Sort the owned match array without copying it; false means GitLab omitted the required field. */
-function orderScopeProjects(matching: unknown[], requested: Args): boolean {
-  // Search API basic ordering: created_at/descending when that part is omitted.
-  // https://docs.gitlab.com/api/search/#search-an-instance
-  const field = requested.order_by === 'updated_at' ? 'updated_at' : 'created_at';
+/**
+ * The matches in the order the listing or search names (newest created first by default),
+ * or in scope order with the reason when that order cannot be reproduced.
+ */
+function orderScopeProjects(
+  matching: unknown[],
+  requested: Args,
+): { rows: unknown[]; unordered?: string } {
   // A single match is in order whatever GitLab reported for it.
-  if (matching.length < 2) return true;
-  if (matching.some((row) => typeof (row as Args)[field] !== 'string')) return false;
-  matching.sort((a, b) => {
-    const left = (a as Args)[field] as string,
-      right = (b as Args)[field] as string;
-    if (left === right) return 0;
-    const order = left < right ? -1 : 1;
-    return requested.sort === 'asc' ? order : -order;
-  });
-  return true;
+  if (matching.length < 2) return { rows: matching };
+  const ordering = listingOrder('browse_projects', requested);
+  if (!ordering)
+    return {
+      rows: matching,
+      unordered: `The ${String(requested.order_by)} order is GitLab's own ranking and cannot be reproduced for the scope's projects; results retain scope order.`,
+    };
+  const ordered = orderRows(matching as Args[], ordering);
+  return ordered
+    ? { rows: ordered }
+    : {
+        rows: matching,
+        unordered: 'GitLab omitted the requested ordering field; results retain scope order.',
+      };
 }
 
 /**
@@ -768,20 +789,25 @@ async function markScopeTodosDone(
   scope: ScopeConfig,
   enforcer: ScopeEnforcer,
 ): Promise<unknown> {
-  const filters = await mapBounded(uniqueTargets(scope), REQUEST_CONCURRENCY, (target) =>
-    todoFilter(run, target),
-  );
+  const targets = uniqueTargets(scope);
   // Collected before marking: a todo marked done leaves the pending pages being read.
   const ids = new Set<unknown>();
-  // Every target's first page is read, so each call reaches every target; only a group
-  // without its subgroups, whose filter also lists theirs, needs pages past its first.
+  // Only a group without its subgroups, whose filter also lists theirs, needs pages past its
+  // first; those share a bound of their own.
   const furtherPages = { left: MAX_UPSTREAM_PAGES };
+  const requests = { left: TODO_READ_REQUESTS };
   let reason: string | undefined;
   // Targets are read one after another: whether the next one is needed depends on this one.
-  for (const filter of filters) {
+  for (let read = 0; read < targets.length && !reason; read++) {
+    // A target costs its lookup and at least its first page of todos.
+    if (requests.left < 2) {
+      reason = `Todos were read for ${read} of the ${targets.length} projects and groups of the working scope within ${TODO_READ_REQUESTS} requests; todos of the others are still pending. Narrow the scope to reach them.`;
+      break;
+    }
+    requests.left--;
+    const filter = await todoFilter(run, targets[read]);
     if (filter === undefined) continue;
-    reason = await collectTargetTodos(run, filter, enforcer, ids, furtherPages);
-    if (reason) break;
+    reason = await collectTargetTodos(run, filter, enforcer, ids, furtherPages, requests);
   }
   // A few requests at a time, so a large scope does not run into GitLab's rate limits;
   // a todo that fails is reported and the rest are still marked.
@@ -815,11 +841,14 @@ async function collectTargetTodos(
   enforcer: ScopeEnforcer,
   ids: Set<unknown>,
   furtherPages: { left: number },
+  requests: { left: number },
 ): Promise<string | undefined> {
   // Pages are read one after another: whether the next one is needed depends on this one.
   for (let page = 1; ; page++) {
     if (page > 1 && furtherPages.left-- === 0)
       return `Todos of subgroups outside the working scope filled the ${MAX_UPSTREAM_PAGES * UPSTREAM_PAGE_SIZE} pending todos read past each group's first page; any scope todos after them are still pending.`;
+    if (requests.left-- === 0)
+      return `Todos of the working scope were read within ${TODO_READ_REQUESTS} requests; any scope todos after them are still pending. Narrow the scope to reach them.`;
     const todos = await run('browse_todos', {
       action: 'list',
       state: 'pending',

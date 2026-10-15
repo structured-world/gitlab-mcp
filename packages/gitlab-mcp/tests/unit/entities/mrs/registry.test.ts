@@ -779,6 +779,16 @@ describe('MRS Registry', () => {
           });
         });
 
+        // A call naming both a project and a group is ambiguous: the scope check would read
+        // the group the listing never uses, so the combination is refused up front.
+        it('should refuse project_id together with group_id', async () => {
+          const tool = mrsToolRegistry.get('browse_merge_requests')!;
+          await expect(
+            tool.handler({ action: 'list', project_id: 'a/b', group_id: 'other' }),
+          ).rejects.toThrow("'group_id' cannot be combined with 'project_id'");
+          expect(mockGitlab.get).not.toHaveBeenCalled();
+        });
+
         it('should refuse group_id outside the list action', async () => {
           const tool = mrsToolRegistry.get('browse_merge_requests')!;
           await expect(

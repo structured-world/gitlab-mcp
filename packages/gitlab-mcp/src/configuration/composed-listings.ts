@@ -21,7 +21,7 @@ import { matchesScopeProject, readScopeProject, simpleProject } from './scope-pr
 type Args = Record<string, unknown>;
 type Row = Record<string, unknown>;
 type Read = { rows: Row[]; bounded: boolean } | { answer: unknown };
-type Ordering = { field: string; direction: number };
+export type Ordering = { field: string; direction: number };
 
 /** Project listing options a project of the scope answers itself, read on its own. */
 const PROJECT_TARGET_OPTIONS: ReadonlySet<string> = new Set([
@@ -179,7 +179,7 @@ async function readProjectTarget(
  * The order of the listing, newest created first unless the call names one (lib/api/projects.rb,
  * lib/api/helpers/merge_requests_helpers.rb), or undefined for a ranking within one listing.
  */
-function listingOrder(tool: string, requested: Args): Ordering | undefined {
+export function listingOrder(tool: string, requested: Args): Ordering | undefined {
   const field = typeof requested.order_by === 'string' ? requested.order_by : 'created_at';
   if (!MERGEABLE_ORDER[tool]?.has(field)) return undefined;
   return { field, direction: requested.sort === 'asc' ? 1 : -1 };
@@ -197,7 +197,7 @@ function orderValue(row: Row, field: string): number | string | undefined {
 }
 
 /** The rows in the given order, equal values by ID the same way; undefined when one lacks it. */
-function orderRows(rows: Row[], { field, direction }: Ordering): Row[] | undefined {
+export function orderRows(rows: Row[], { field, direction }: Ordering): Row[] | undefined {
   const keyed = rows.map((row) => ({
     row,
     value: orderValue(row, field),

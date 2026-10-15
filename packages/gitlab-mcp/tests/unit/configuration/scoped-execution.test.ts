@@ -741,6 +741,21 @@ describe('executeScoped', () => {
     expect(run.mock.calls.filter(([tool]) => tool === 'browse_todos')).toHaveLength(2);
   });
 
+  // A scope's target lists have no size limit, so one call reads targets one at a time
+  // within a request bound and ends within the handler timeout; targets it did not reach
+  // are reported instead of looking done.
+  it('reads the targets of a wide scope within a request bound', async () => {
+    const scope = { projects: Array.from({ length: 60 }, (_, i) => `team/p${i}`) };
+    const policy = { ...projectPolicy, scope, scopeEnforcer: new ScopeEnforcer(scope) };
+    const run = jest.fn(async (tool: string) => (tool === 'browse_projects' ? { id: 7 } : []));
+
+    const result = await executeScoped(run, 'manage_todos', { action: 'mark_all_done' }, policy);
+
+    expect(run.mock.calls.length).toBeLessThanOrEqual(50);
+    expect(result).toMatchObject({ success: true, marked: 0, partial: true });
+    expect((result as { message: string }).message).toMatch(/25 of the 60/);
+  });
+
   // A target lookup failing other than not found fails the call instead of skipping it.
   it('fails mark_all_done when a target lookup fails', async () => {
     const run = jest.fn(async (tool: string) => {
@@ -1756,6 +1771,33 @@ describe('executeScoped', () => {
       partial: true,
       message: expect.stringContaining('first 1000 scope projects'),
     });
+  });
+
+  // A scope made of projects lists them itself also when the call names an order, in that
+  // order: the account's project listing, filtered afterwards, could fill its first 1000
+  // rows with projects outside the scope.
+  it('lists the projects of a scope made of projects in the order the call names', async () => {
+    const scope = { projects: ['team/b', 'team/a', 'team/c'] };
+    const policy = { ...projectPolicy, scope, scopeEnforcer: new ScopeEnforcer(scope) };
+    const run = jest.fn(async (_tool: string, args: Record<string, unknown>) =>
+      args.action === 'get'
+        ? { id: 1, path_with_namespace: args.project_id, name: String(args.project_id) }
+        : [],
+    );
+
+    const result = (await executeScoped(
+      run,
+      'browse_projects',
+      { action: 'list', order_by: 'name', sort: 'asc' },
+      policy,
+    )) as Array<{ path_with_namespace: string }>;
+
+    expect(result.map((project) => project.path_with_namespace)).toEqual([
+      'team/a',
+      'team/b',
+      'team/c',
+    ]);
+    expect(run.mock.calls.every(([, args]) => args.action === 'get')).toBe(true);
   });
 
   // Ordered by update time, projects updated at the same moment keep scope order.

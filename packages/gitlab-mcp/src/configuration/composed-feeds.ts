@@ -22,8 +22,11 @@ const PAGE_SIZE = 100;
 interface Budget {
   requests: number;
 }
-type ScanResult = { complete: boolean; answer?: unknown };
+/** `more`: a target was read only as far as the page needs and has further rows. */
+type ScanResult = { complete: boolean; more?: boolean; answer?: unknown };
 type PageInfo = { hasNextPage?: boolean; endCursor?: unknown };
+/** Counts the rows of a page that rank in the composed listing. */
+type Visit = (rows: Row[]) => number;
 
 /** The listing action a target's connection is read with. */
 function connectionAction(tool: string, target: Args): string {
@@ -44,15 +47,20 @@ function nextCursor(
   return cursor;
 }
 
-/** Page one target's connection to its end; the stopping result when it cannot be. */
+/**
+ * Page one target's connection until it ends or `wanted` of its rows rank; the stopping result
+ * when it cannot be read that far.
+ */
 async function scanTargetConnection(
   run: RunTool,
   tool: string,
   args: Args,
-  budget: Budget,
-  visit: (rows: Row[]) => void,
+  budget: Budget & { more: boolean },
+  visit: Visit,
+  wanted: number,
 ): Promise<ScanResult | undefined> {
   let after: string | undefined;
+  let ranked = 0;
   for (;;) {
     if (budget.requests === MAX_REQUESTS) return { complete: false };
     budget.requests++;
@@ -65,38 +73,49 @@ async function scanTargetConnection(
     if (!Array.isArray(connection?.nodes)) return { complete: false, answer };
     if (connection.nodes.length > PAGE_SIZE)
       throw new Error('GitLab returned an oversized scoped connection page');
-    visit(connection.nodes as Row[]);
+    ranked += visit(connection.nodes as Row[]);
     const cursor = nextCursor(connection.nodes, connection.pageInfo, after);
     if (cursor === null) return undefined;
+    // The target lists in the composed order: its later rows rank after those the page needs.
+    if (ranked >= wanted) {
+      budget.more = true;
+      return undefined;
+    }
     if (cursor === undefined) return { complete: false };
     after = cursor;
   }
 }
 
-/** Visit at most ten connection pages across the entire scope; upstream errors propagate. */
+/**
+ * Visit at most ten connection pages across the entire scope; upstream errors propagate. With
+ * `wanted`, each target is read only until that many of its rows rank: the first `wanted` rows
+ * of a merge of listings in one order include at most `wanted` from each listing.
+ */
 export async function scanScopeConnections(
   run: RunTool,
   tool: string,
   requested: Args,
   scope: ScopeConfig,
-  visit: (rows: Row[]) => void,
+  visit: Visit,
+  wanted = Number.POSITIVE_INFINITY,
 ): Promise<ScanResult> {
   const { after: _after, first: _first, ...filters } = requested;
   const seen = new Set<string>();
-  const budget: Budget = { requests: 0 };
+  const budget = { requests: 0, more: false };
+  const result = (scan: ScanResult): ScanResult => (budget.more ? { ...scan, more: true } : scan);
   // Targets are read in turn: they share one request budget.
   for (const configured of scopeTargets(scope)) {
     const target =
       'project' in configured ? { project_id: configured.project } : { group_id: configured.group };
     const key = JSON.stringify(target);
     if (seen.has(key)) continue;
-    if (budget.requests === MAX_REQUESTS) return { complete: false };
+    if (budget.requests === MAX_REQUESTS) return result({ complete: false });
     seen.add(key);
     const args = { ...filters, ...target, action: connectionAction(tool, target) };
-    const stopped = await scanTargetConnection(run, tool, args, budget, visit);
-    if (stopped) return stopped;
+    const stopped = await scanTargetConnection(run, tool, args, budget, visit, wanted);
+    if (stopped) return 'answer' in stopped ? stopped : result(stopped);
   }
-  return { complete: true };
+  return result({ complete: true });
 }
 
 /** A runner row's ID as a set key, or undefined for a row without a usable one. */
@@ -118,11 +137,13 @@ export async function multiTargetRunners(
   const ids = new Set<string>();
   const [feed, scan] = await Promise.all([
     run('browse_runners', requested),
+    // The owned feed has its own order, so the union of the targets is read in full.
     scanScopeConnections(run, 'browse_runners', requested, scope, (rows) => {
       for (const row of rows) {
         const key = runnerKey(row);
         if (key !== undefined) ids.add(key);
       }
+      return rows.length;
     }),
   ]);
   if ('answer' in scan) return scan.answer;
@@ -148,18 +169,32 @@ export async function multiTargetRunners(
 async function targetRunners(run: RunTool, requested: Args, scope: ScopeConfig): Promise<unknown> {
   const { offset, prefix } = composedOffset(requested, scope, 'runner');
   if (offset >= MAX_REQUESTS * PAGE_SIZE) return pastReadBound();
+  // The tool schema already holds `first` to an integer from 1 to 100.
+  const first = typeof requested.first === 'number' ? requested.first : 20;
+  const end = offset + first;
   const rows: Array<{ row: Row; id: string }> = [];
   const seen = new Set<string>();
   let ordered = true;
-  const scan = await scanScopeConnections(run, 'browse_runners', requested, scope, (batch) => {
-    for (const row of batch) {
-      const id = runnerKey(row);
-      if (id === undefined || seen.has(id)) continue;
-      seen.add(id);
-      if (!/^\d+$/.test(id)) ordered = false;
-      rows.push({ row, id });
-    }
-  });
+  const scan = await scanScopeConnections(
+    run,
+    'browse_runners',
+    requested,
+    scope,
+    (batch) => {
+      let ranked = 0;
+      for (const row of batch) {
+        const id = runnerKey(row);
+        if (id === undefined) continue;
+        ranked++;
+        if (seen.has(id)) continue;
+        seen.add(id);
+        if (!/^\d+$/.test(id)) ordered = false;
+        rows.push({ row, id });
+      }
+      return ranked;
+    },
+    end,
+  );
   if ('answer' in scan) return scan.answer;
   // Numeric IDs compared as digit strings: a longer one is larger, without Number's limit.
   if (ordered)
@@ -168,10 +203,7 @@ async function targetRunners(run: RunTool, requested: Args, scope: ScopeConfig):
       if (a.id === b.id) return 0;
       return a.id < b.id ? 1 : -1;
     });
-  // The tool schema already holds `first` to an integer from 1 to 100.
-  const first = typeof requested.first === 'number' ? requested.first : 20;
-  const end = offset + first;
-  const hasNextPage = rows.length > end;
+  const hasNextPage = rows.length > end || scan.more === true;
   const result = {
     nodes: rows.slice(offset, end).map(({ row }) => row),
     pageInfo: { hasNextPage, endCursor: hasNextPage ? `${prefix}${end}` : null },
@@ -886,6 +918,9 @@ export async function multiTargetVulnerabilities(
 ): Promise<unknown> {
   const { offset, prefix } = composedOffset(requested, scope, 'vulnerability');
   if (offset >= MAX_REQUESTS * PAGE_SIZE) return pastReadBound();
+  // The tool schema already holds `first` to an integer from 1 to 100.
+  const first = typeof requested.first === 'number' ? requested.first : 20;
+  const end = offset + first;
   const sort = typeof requested.sort === 'string' ? requested.sort : 'severity_desc';
   const split = sort.lastIndexOf('_');
   const field = sort.slice(0, split);
@@ -900,6 +935,7 @@ export async function multiTargetVulnerabilities(
     requested,
     scope,
     (batch) => {
+      let ranked = 0;
       for (const row of batch) {
         if (!keep(row)) continue;
         const id = String(row.id);
@@ -907,13 +943,16 @@ export async function multiTargetVulnerabilities(
           ordered = false;
           continue;
         }
+        ranked++;
         if (seen.has(id)) continue;
         seen.add(id);
         const value = orderingValue(row, field);
         if (value === undefined) ordered = false;
         rows.push({ row, id, value });
       }
+      return ranked;
     },
+    end,
   );
   if ('answer' in scan) return scan.answer;
   if (ordered)
@@ -927,10 +966,7 @@ export async function multiTargetVulnerabilities(
       if (a.id.length !== b.id.length) return b.id.length - a.id.length;
       return a.id < b.id ? 1 : -1;
     });
-  // The tool schema already holds `first` to an integer from 1 to 100.
-  const first = typeof requested.first === 'number' ? requested.first : 20;
-  const end = offset + first;
-  const hasNextPage = rows.length > end;
+  const hasNextPage = rows.length > end || scan.more === true;
   const nodes: Row[] = [];
   for (let index = offset; index < end && index < rows.length; index++) nodes.push(rows[index].row);
   const result = {

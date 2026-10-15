@@ -224,6 +224,10 @@ const SCRIPT = String.raw`
     if (check.authenticated) {
       status.className = 'status-ok';
       text(status, 'Connected');
+    } else if (check.reachable === false) {
+      // GitLab did not answer: an outage, so no reconnect is suggested.
+      status.className = 'status-error';
+      text(status, 'GitLab is not reachable right now. Your saved settings still apply; try again in a moment.');
     } else {
       status.className = 'status-error';
       text(status, 'GitLab did not accept the current sign-in');

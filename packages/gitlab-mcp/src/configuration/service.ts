@@ -188,11 +188,10 @@ export class ConfigurationService {
       if (!next.success) throw new ConfigurationError(next.error.issues[0].message);
       const stored = await store.put(caller.accountKey, next.data, current?.version ?? 0);
       if (stored) {
-        // Only this process's sessions are told to re-list. Every process reads the settings
-        // from the shared storage on each request, so no channel between processes is needed:
-        // a session served by another process may show its old tool list until its host lists
-        // again, but each call it makes runs under the stored settings and is refused with the
-        // reason when they no longer allow it.
+        // Each process tells the sessions it serves to re-list. Processes share only the
+        // settings storage, read on every request, and by design have no channel between them:
+        // every call runs under the stored settings wherever it lands, and a host connected to
+        // another process gets the new catalog the next time it lists tools.
         await this.notify([...this.track(caller)]);
         return stored;
       }

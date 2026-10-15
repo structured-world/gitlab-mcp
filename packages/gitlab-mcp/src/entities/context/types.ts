@@ -269,6 +269,11 @@ export interface WhoamiContextInfo {
 export interface WhoamiResult {
   /** Current user identity (null if token invalid or user info inaccessible) */
   user: WhoamiUserInfo | null;
+  /**
+   * How the user lookup ended: `rejected` when GitLab refused the credentials (401/403),
+   * `failed` when it did not answer usefully (unreachable, timeout, server error).
+   */
+  userLookup: 'ok' | 'rejected' | 'failed';
   /** Token information (null if detection failed) */
   token: WhoamiTokenInfo | null;
   /** Server configuration */

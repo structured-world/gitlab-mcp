@@ -50,11 +50,13 @@ function getHost(): string {
   }
 }
 
+type UserLookup = { user: WhoamiUserInfo | null; lookup: WhoamiResult['userLookup'] };
+
 /**
  * Fetch current user information from GitLab API
  * Works with any valid token including read_user scope
  */
-async function fetchCurrentUser(): Promise<WhoamiUserInfo | null> {
+async function fetchCurrentUser(): Promise<UserLookup> {
   try {
     const response = await enhancedFetch(`${getGitLabBaseUrl()}/api/v4/user`, {
       retry: false,
@@ -62,7 +64,9 @@ async function fetchCurrentUser(): Promise<WhoamiUserInfo | null> {
 
     if (!response.ok) {
       logDebug('Failed to fetch current user', { status: response.status });
-      return null;
+      // Only these mean the credentials were refused; any other status says nothing about them.
+      const refused = response.status === 401 || response.status === 403;
+      return { user: null, lookup: refused ? 'rejected' : 'failed' };
     }
 
     const data = (await response.json()) as {
@@ -76,19 +80,22 @@ async function fetchCurrentUser(): Promise<WhoamiUserInfo | null> {
     };
 
     return {
-      id: data.id,
-      username: data.username,
-      name: data.name,
-      email: data.email,
-      avatarUrl: data.avatar_url,
-      isAdmin: data.is_admin,
-      state: data.state as 'active' | 'blocked' | 'deactivated',
+      user: {
+        id: data.id,
+        username: data.username,
+        name: data.name,
+        email: data.email,
+        avatarUrl: data.avatar_url,
+        isAdmin: data.is_admin,
+        state: data.state as 'active' | 'blocked' | 'deactivated',
+      },
+      lookup: 'ok',
     };
   } catch (error) {
     logDebug('Error fetching current user', {
       error: error instanceof Error ? error.message : String(error),
     });
-    return null;
+    return { user: null, lookup: 'failed' };
   }
 }
 
@@ -406,7 +413,7 @@ export async function executeWhoami(): Promise<WhoamiResult> {
   }
 
   // Step 2: Fetch all information (AFTER refresh so we get updated data)
-  const [userInfo, tokenInfo] = await Promise.all([
+  const [{ user: userInfo, lookup: userLookup }, tokenInfo] = await Promise.all([
     fetchCurrentUser(),
     Promise.resolve(buildTokenInfo()),
   ]);
@@ -464,6 +471,7 @@ export async function executeWhoami(): Promise<WhoamiResult> {
 
   return {
     user: userInfo,
+    userLookup,
     token: tokenInfo,
     server: serverInfo,
     capabilities,

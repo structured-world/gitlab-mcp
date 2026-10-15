@@ -39,11 +39,17 @@ describe('composed scope feeds', () => {
         String(++page),
       ),
     );
+    // The last page under the read bound needs 1000 rows of the first target.
+    const filters = { action: 'list', sort: 'detected_desc' };
+    const hash = createHash('sha256')
+      .update(JSON.stringify(scope))
+      .update(JSON.stringify(filters))
+      .digest('hex');
     const parse = jest.spyOn(Date, 'parse');
     try {
       const result = (await multiTargetVulnerabilities(
         run,
-        { action: 'list', sort: 'detected_desc', first: 100 },
+        { ...filters, first: 100, after: `scope:${hash}:900` },
         scope,
         enforcer,
       )) as { nodes: unknown[]; partial: boolean };
@@ -206,6 +212,52 @@ describe('composed scope feeds', () => {
     const answer = { error: 'forbidden' };
     const failing = jest.fn().mockResolvedValue(answer);
     expect(await multiTargetRunners(failing, { action: 'list_all' }, scope)).toBe(answer);
+  });
+
+  // Each target lists newest first, so a page needs only its first rows from each one: a
+  // target with more runners than the request bound must not crowd the others out.
+  it('reads each target only as far as the page needs', async () => {
+    const run = jest.fn(async (_tool, args) => {
+      if (args.project_id === 'team/b') return connection([{ id: '5000' }]);
+      const page = Number(args.after ?? 0);
+      const ids = Array.from({ length: 100 }, (_, i) => ({ id: String(4000 - page * 100 - i) }));
+      return connection(ids, true, String(page + 1));
+    });
+    const result = (await multiTargetRunners(run, { action: 'list_all', first: 20 }, scope)) as {
+      nodes: Array<{ id: string }>;
+      pageInfo: { hasNextPage: boolean };
+      partial?: boolean;
+    };
+
+    expect(result.nodes.map((node) => node.id).slice(0, 2)).toEqual(['5000', '4000']);
+    expect(result.nodes).toHaveLength(20);
+    expect(result.pageInfo.hasNextPage).toBe(true);
+    expect(result.partial).toBeUndefined();
+    expect(run).toHaveBeenCalledTimes(2);
+  });
+
+  // The same holds for vulnerabilities, each target sorted as requested.
+  it('reads each target only as far as a vulnerability page needs', async () => {
+    const run = jest.fn(async (_tool, args) => {
+      if (args.project_id === 'team/b')
+        return connection([vulnerability('7', { severity: 'CRITICAL' })]);
+      const page = Number(args.after ?? 0);
+      const rows = Array.from({ length: 100 }, (_, i) =>
+        vulnerability(String(5000 - page * 100 - i)),
+      );
+      return connection(rows, true, String(page + 1));
+    });
+    const result = (await multiTargetVulnerabilities(
+      run,
+      { action: 'list', first: 1 },
+      scope,
+      enforcer,
+    )) as { nodes: Array<{ id: string }>; pageInfo: { hasNextPage: boolean }; partial?: boolean };
+
+    expect(result.nodes.map((node) => node.id)).toEqual(['7']);
+    expect(result.pageInfo.hasNextPage).toBe(true);
+    expect(result.partial).toBeUndefined();
+    expect(run).toHaveBeenCalledTimes(2);
   });
 
   // Sort values are normalized once; enum priorities and timestamp offsets must be respected.

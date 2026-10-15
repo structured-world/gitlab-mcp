@@ -18,6 +18,11 @@ export interface ConnectionCheck {
   tier: string;
   /** Whether GitLab identified the account with the current credentials. */
   authenticated: boolean;
+  /**
+   * Whether GitLab answered the account lookup. When it did not, `authenticated` is false
+   * without the credentials having been refused.
+   */
+  reachable: boolean;
   readOnly: boolean;
   preset: string | null;
   scope: string | null;
@@ -34,6 +39,7 @@ export const CONNECTION_CHECK_OUTPUT_SCHEMA = {
     gitlabVersion: { type: 'string' },
     tier: { type: 'string' },
     authenticated: { type: 'boolean' },
+    reachable: { type: 'boolean' },
     readOnly: { type: 'boolean' },
     preset: { type: ['string', 'null'] },
     scope: { type: ['string', 'null'] },
@@ -47,6 +53,7 @@ export const CONNECTION_CHECK_OUTPUT_SCHEMA = {
     'gitlabVersion',
     'tier',
     'authenticated',
+    'reachable',
     'readOnly',
     'preset',
     'scope',
@@ -80,6 +87,12 @@ export async function checkConnection(): Promise<ConnectionCheck> {
   }).length;
   const warnings = [...whoami.warnings];
   const recommendations = whoami.recommendations.map((r) => r.message);
+  // This check runs also while GitLab is marked unreachable: an outage is not a refused sign-in.
+  const reachable = whoami.userLookup !== 'failed';
+  if (!reachable)
+    warnings.push(
+      'GitLab did not answer the account lookup, so the sign-in could not be checked; try again in a moment.',
+    );
   if (resolved.presetUnavailable) {
     warnings.push(
       `The saved preset '${resolved.presetUnavailable}' no longer exists on this server; tools that change GitLab are off until another preset is chosen.`,
@@ -92,6 +105,7 @@ export async function checkConnection(): Promise<ConnectionCheck> {
     gitlabVersion: whoami.server.version,
     tier: whoami.server.tier,
     authenticated: whoami.user !== null,
+    reachable,
     readOnly: whoami.server.readOnlyMode || resolved.policy.readOnly,
     preset: resolved.policy.presetName ?? null,
     scope: scopeLabel(scope) ?? null,

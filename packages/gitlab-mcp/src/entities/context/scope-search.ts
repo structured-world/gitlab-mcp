@@ -80,8 +80,9 @@ export async function findScopeTargets(query: string): Promise<{ targets: ScopeT
         order_by: 'last_activity_at',
       },
     }),
+    // A non-administrator is listed only its member groups unless all_available is set.
     gitlab.get<GitLabGroup[]>('groups', {
-      query: { search, per_page: String(PER_KIND) },
+      query: { search, all_available: 'true', per_page: String(PER_KIND) },
     }),
   ]);
   return {

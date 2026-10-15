@@ -63,6 +63,7 @@ const whoami = z.object({
       state: z.string(),
     })
     .nullable(),
+  userLookup: z.enum(['ok', 'rejected', 'failed']),
   token: z
     .object({
       type: z.enum([

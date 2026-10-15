@@ -27,6 +27,7 @@ jest.mock('../../../../src/entities/context/connection-check', () => ({
     gitlabVersion: '17.4.0',
     tier: 'premium',
     authenticated: true,
+    reachable: true,
     readOnly: false,
     preset: null,
     scope: null,

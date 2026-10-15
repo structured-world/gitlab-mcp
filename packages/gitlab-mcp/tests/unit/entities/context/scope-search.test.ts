@@ -48,7 +48,11 @@ describe('findScopeTargets', () => {
         order_by: 'last_activity_at',
       },
     });
-    expect(mockGet).toHaveBeenCalledWith('groups', { query: { search: 'team', per_page: '10' } });
+    // Without all_available GitLab lists a non-administrator only the groups it is a member of,
+    // not the public and internal groups it can also see.
+    expect(mockGet).toHaveBeenCalledWith('groups', {
+      query: { search: 'team', all_available: 'true', per_page: '10' },
+    });
   });
 
   it.each(['a', ' b ', 'x'.repeat(101)])(

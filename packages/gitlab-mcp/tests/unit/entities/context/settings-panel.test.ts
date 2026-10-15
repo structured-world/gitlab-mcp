@@ -42,6 +42,7 @@ const HEALTH = {
   gitlabVersion: '17.4.0',
   tier: 'premium',
   authenticated: true,
+  reachable: true,
   readOnly: false,
   preset: null,
   scope: null,
@@ -557,6 +558,22 @@ describe('settings panel', () => {
     await panel.idle();
 
     expect(panel.byId('health-status').textContent).toBe('Connected');
+  });
+
+  // The check answered, but GitLab did not answer its account lookup: an outage, so the
+  // panel does not claim the sign-in was refused.
+  it('reports an outage, not a refused sign-in, when GitLab did not answer the check', async () => {
+    const panel = startPanel({
+      tools: {
+        check_connection: () => ({ ...HEALTH, authenticated: false, reachable: false }),
+      },
+    });
+    await panel.idle();
+
+    expect(panel.byId('health-status').textContent).toBe(
+      'GitLab is not reachable right now. Your saved settings still apply; try again in a moment.',
+    );
+    expect(panel.byId('health-status').className).toBe('status-error');
   });
 
   it('lists warnings and recommendations as what to check', async () => {

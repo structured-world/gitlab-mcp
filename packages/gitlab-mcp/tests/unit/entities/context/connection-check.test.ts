@@ -59,6 +59,7 @@ const alice: Caller = {
 function whoami(overrides: Record<string, unknown> = {}) {
   return {
     user: { username: 'alice' },
+    userLookup: 'ok',
     server: {
       apiUrl: 'https://gitlab.example.com',
       version: '17.4.0',
@@ -118,6 +119,7 @@ describe('checkConnection', () => {
       gitlabVersion: '17.4.0',
       tier: 'premium',
       authenticated: true,
+      reachable: true,
       readOnly: true,
       preset: 'readonly',
       scope: 'team',
@@ -200,15 +202,29 @@ describe('checkConnection', () => {
 
   // GitLab did not identify anyone with the credentials: shown as not signed in.
   it('reports credentials GitLab does not accept', async () => {
-    mockWhoami.mockResolvedValue(whoami({ user: null }));
+    mockWhoami.mockResolvedValue(whoami({ user: null, userLookup: 'rejected' }));
 
     const check = await runWithCaller(alice, () => checkConnection());
 
     expect(check).toMatchObject({
       authenticated: false,
+      reachable: true,
       account: 'alice@gitlab.example.com',
       scope: null,
     });
+  });
+
+  // GitLab did not answer the account lookup: an outage, not refused credentials, so the
+  // user is not sent to reconnect.
+  it('reports an outage apart from refused credentials', async () => {
+    mockWhoami.mockResolvedValue(whoami({ user: null, userLookup: 'failed' }));
+
+    const check = await runWithCaller(alice, () => checkConnection());
+
+    expect(check).toMatchObject({ authenticated: false, reachable: false });
+    expect(check.warnings).toContain(
+      'GitLab did not answer the account lookup, so the sign-in could not be checked; try again in a moment.',
+    );
   });
 
   it('checks the server connection outside a tool call', async () => {

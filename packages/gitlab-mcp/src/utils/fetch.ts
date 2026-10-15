@@ -21,7 +21,6 @@ import {
   HTTPS_PROXY,
   NODE_TLS_REJECT_UNAUTHORIZED,
   GITLAB_TOKEN,
-  GITLAB_BASE_URL,
   CONNECT_TIMEOUT_MS,
   HEADERS_TIMEOUT_MS,
   BODY_TIMEOUT_MS,
@@ -30,7 +29,8 @@ import {
   API_RETRY_BASE_DELAY_MS,
   API_RETRY_MAX_DELAY_MS,
 } from '../config';
-import { isOAuthEnabled, getTokenContext, getGitLabApiUrlFromContext } from '../oauth/index';
+import { isOAuthEnabled, getTokenContext } from '../oauth/index';
+import { getGitLabBaseUrl } from './gitlab-base-url';
 import { getRequestTracker } from '../logging/index';
 import { InstanceRegistry } from '../services/InstanceRegistry.js';
 
@@ -222,24 +222,6 @@ function getGitLabToken(): string | undefined {
     return context?.gitlabToken;
   }
   return GITLAB_TOKEN;
-}
-
-/**
- * Get GitLab base URL from context or fallback to global config.
- * In OAuth mode, uses apiUrl from token context.
- * In static mode, uses GITLAB_BASE_URL from config.
- *
- * @returns The GitLab base URL (e.g., "https://gitlab.com")
- */
-export function getGitLabBaseUrl(): string {
-  if (isOAuthEnabled()) {
-    const apiUrl = getGitLabApiUrlFromContext();
-    if (apiUrl) {
-      return apiUrl;
-    }
-    logWarn('OAuth mode: no API URL in context, falling back to global config');
-  }
-  return GITLAB_BASE_URL ?? 'https://gitlab.com';
 }
 
 /**

@@ -4,6 +4,7 @@
  */
 
 import { ConnectionManager, type InstanceState } from '../../../src/services/ConnectionManager';
+import { runWithCaller } from '../../../src/configuration/caller';
 
 // Mock isOAuthEnabled and getGitLabApiUrlFromContext
 const mockIsOAuthEnabled = jest.fn();
@@ -92,6 +93,32 @@ describe('ConnectionManager Unit', () => {
       // All instances should be the same object
       instances.forEach((instance) => {
         expect(instance).toBe(instances[0]);
+      });
+    });
+  });
+
+  // A tool call keeps the instance it started with: when another chat switches the shared
+  // token's instance meanwhile, its GraphQL client must not follow the switch, as REST
+  // requests do not.
+  describe('instance of the running call', () => {
+    const started = 'https://started.example.com';
+    const switched = 'https://switched.example.com';
+    const caller = {
+      accountKey: `token:${started}`,
+      sessionKey: 'chat',
+      accountLabel: 'Configured access token',
+      instanceUrl: started,
+      oauth: false,
+    };
+
+    it('resolves the client of the instance the call started with', () => {
+      const manager = ConnectionManager.getInstance();
+      const startedClient = {} as unknown as InstanceState['client'];
+      injectInstanceState(manager, started, { client: startedClient });
+      injectInstanceState(manager, switched);
+      runWithCaller(caller, () => {
+        expect(manager.getClient()).toBe(startedClient);
+        expect(manager.getInstanceClient()).toBe(startedClient);
       });
     });
   });

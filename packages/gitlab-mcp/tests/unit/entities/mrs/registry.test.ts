@@ -765,6 +765,41 @@ describe('MRS Registry', () => {
             expect.objectContaining({ query: expect.any(Object) }),
           );
         });
+
+        // A group's merge requests come from the group endpoint, not from the global listing
+        // filtered afterwards, and the group is not sent on as a query filter.
+        it('should use the group endpoint for group_id', async () => {
+          mockGitlab.get.mockResolvedValueOnce([]);
+
+          const tool = mrsToolRegistry.get('browse_merge_requests')!;
+          await tool.handler({ action: 'list', group_id: 'team/sub', state: 'opened' });
+
+          expect(mockGitlab.get).toHaveBeenCalledWith('groups/team%2Fsub/merge_requests', {
+            query: expect.not.objectContaining({ group_id: expect.anything() }),
+          });
+        });
+
+        // A call naming both a project and a group is ambiguous: the scope check would read
+        // the group the listing never uses, so the combination is refused up front.
+        it('should refuse project_id together with group_id', async () => {
+          const tool = mrsToolRegistry.get('browse_merge_requests')!;
+          await expect(
+            tool.handler({ action: 'list', project_id: 'a/b', group_id: 'other' }),
+          ).rejects.toThrow("'group_id' cannot be combined with 'project_id'");
+          expect(mockGitlab.get).not.toHaveBeenCalled();
+        });
+
+        it('should refuse group_id outside the list action', async () => {
+          const tool = mrsToolRegistry.get('browse_merge_requests')!;
+          await expect(
+            tool.handler({
+              action: 'get',
+              project_id: 'a/b',
+              merge_request_iid: '1',
+              group_id: 'x',
+            }),
+          ).rejects.toThrow("'group_id' is only valid for 'list' action");
+        });
       });
 
       describe('action: get', () => {

@@ -71,7 +71,11 @@ describe('Merge Requests Schema - Using Lifecycle Data', () => {
         title: issue.title,
         state: 'opened',
       });
-      expect(page[0].web_url).toBe(`${testProject.web_url}/-/issues/${issue.iid}`);
+      // GitLab's own link to the issue: /-/issues/N before 19.0, /-/work_items/N from 19.0.
+      expect([
+        `${testProject.web_url}/-/issues/${issue.iid}`,
+        `${testProject.web_url}/-/work_items/${issue.iid}`,
+      ]).toContain(page[0].web_url);
       await expect(
         helper.executeTool('browse_merge_requests', {
           action: 'closing_issues',

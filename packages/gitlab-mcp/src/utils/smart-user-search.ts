@@ -1,5 +1,6 @@
 import * as z from 'zod';
 import { enhancedFetch } from './fetch';
+import { getGitLabBaseUrl } from './gitlab-base-url';
 import { transliterate } from 'transliteration';
 import { instanceAtLeast } from '../entities/instance-version';
 import { GITLAB_DEFAULT_PER_PAGE, GITLAB_MAX_PER_PAGE } from '../entities/utils';
@@ -131,7 +132,7 @@ async function fetchUsersPage(query: Record<string, unknown>) {
   Object.entries(query).forEach(([key, value]) => {
     if (value !== undefined) queryParams.set(key, String(value));
   });
-  const response = await enhancedFetch(`${process.env.GITLAB_API_URL}/api/v4/users?${queryParams}`);
+  const response = await enhancedFetch(`${getGitLabBaseUrl()}/api/v4/users?${queryParams}`);
   if (!response.ok) {
     throw new Error(`GitLab API error: ${response.status} ${response.statusText}`);
   }

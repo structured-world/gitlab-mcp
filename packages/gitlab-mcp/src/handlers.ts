@@ -1,5 +1,18 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
-import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
+import {
+  CallToolRequestSchema,
+  ErrorCode,
+  ListResourcesRequestSchema,
+  ListToolsRequestSchema,
+  McpError,
+  ReadResourceRequestSchema,
+} from '@modelcontextprotocol/sdk/types.js';
+import {
+  SETTINGS_PANEL_RESOURCE_META,
+  SETTINGS_PANEL_URI,
+  settingsPanelHtml,
+} from './entities/context/settings-panel';
+import { MCP_APP_MIME_TYPE } from './mcp-apps';
 import { ConnectionManager } from './services/ConnectionManager';
 import { HealthMonitor } from './services/HealthMonitor';
 import { normalizeInstanceUrl } from './utils/url';
@@ -16,11 +29,34 @@ import {
 } from './utils/error-handler';
 import { GitLabTimeoutError } from './utils/fetch';
 import { getRequestTracker, getConnectionTracker, getCurrentRequestId } from './logging/index';
-import { LOG_FORMAT, HANDLER_TIMEOUT_MS, GITLAB_BASE_URL } from './config';
+import { LOG_FORMAT, HANDLER_TIMEOUT_MS, GITLAB_BASE_URL, GITLAB_READ_ONLY_MODE } from './config';
 import { getSchemaMode } from './utils/schema-utils';
 import { formatToolResult, errorToolResult } from './utils/tool-result';
-import { OAUTH_SECURITY_SCHEMES, toolScopeRejection, withReauthChallenge } from './oauth/tool-auth';
+import {
+  APP_PANEL_SECURITY_SCHEMES,
+  OAUTH_SECURITY_SCHEMES,
+  resourceScopeRejection,
+  toolScopeRejection,
+  withReauthChallenge,
+} from './oauth/tool-auth';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import {
+  getConfigurationService,
+  resolveCaller,
+  runWithCaller,
+  type Caller,
+} from './configuration';
+import {
+  CONFIGURATION_TOOLS,
+  callRestriction,
+  isExemptFromSettings,
+  listedToolSchema,
+  scopeLabel,
+  withoutScope,
+  type EffectivePolicy,
+} from './configuration/policy';
+import { executeScoped, parseScopedArguments } from './configuration/scoped-execution';
+import { withTargetPaths } from './configuration/scope-ids';
 
 interface JsonSchemaProperty {
   type?: string;
@@ -191,8 +227,8 @@ interface BootstrapContext {
  * Return a CONNECTION_FAILED response if the target instance is unreachable for
  * non-context tools, or null to proceed normally.
  *
- * manage_context always passes through — it operates on local state and can
- * surface the disconnected status to the caller.
+ * Configuration tools always pass through: they work on local state and are how the
+ * caller finds out about, and recovers from, the disconnected state.
  */
 function checkUnreachableInstance(
   toolName: string,
@@ -200,7 +236,10 @@ function checkUnreachableInstance(
   effectiveInstanceUrl: string,
   healthMonitor: HealthMonitor,
 ): CallToolResult | null {
-  if (healthMonitor.isInstanceReachable(effectiveInstanceUrl) || toolName === 'manage_context') {
+  if (
+    healthMonitor.isInstanceReachable(effectiveInstanceUrl) ||
+    CONFIGURATION_TOOLS.has(toolName)
+  ) {
     return null;
   }
   const action =
@@ -225,59 +264,15 @@ function checkUnreachableInstance(
 }
 
 /**
- * Proactively re-pin per-session instance URL after a successful
- * manage_context/switch_profile dispatch (issue #407). Without this, the
- * session keeps the pre-switch URL until the next CallTool request resolves
- * the new OAuth context — so an immediate tools/list would return a stale
- * tool catalog for the previous instance.
- *
- * No-ops for any tool/action other than manage_context+switch_profile, for
- * missing sessionId, or when the new profile resolves to the same URL.
- */
-async function resyncSessionAfterSwitchProfile(
-  toolName: string,
-  toolArguments: Record<string, unknown> | undefined,
-  sessionId: string | undefined,
-): Promise<void> {
-  if (toolName !== 'manage_context' || !sessionId) return;
-  const action =
-    toolArguments && typeof toolArguments.action === 'string' ? toolArguments.action : undefined;
-  if (action !== 'switch_profile') return;
-
-  try {
-    const { getContextManager } = await import('./entities/context/context-manager');
-    const newProfileUrl = await getContextManager().getCurrentProfileUrl();
-    if (!newProfileUrl) return;
-    const normalized = normalizeInstanceUrl(newProfileUrl);
-
-    // Compare against the session's *actual* pinned URL, not the request URL:
-    // in OAuth mode without context the session is intentionally NOT pre-pinned,
-    // so comparing against the request fallback (GITLAB_BASE_URL) would skip the
-    // re-pin even when the session still holds a stale instance.
-    const { getSessionManager } = await import('./session-manager');
-    const sessionManager = getSessionManager();
-    const pinnedUrl = sessionManager.getSessionInstanceUrl(sessionId);
-    if (pinnedUrl && normalizeInstanceUrl(pinnedUrl) === normalized) return;
-
-    sessionManager.setSessionInstanceUrl(sessionId, normalized);
-  } catch (err) {
-    // Re-pin is best-effort: a load failure should not turn a successful
-    // switch_profile into an error response. The next CallTool will resolve
-    // the URL from OAuth context as before.
-    logWarn('Failed to re-pin session after switch_profile', {
-      error: err instanceof Error ? err.message : String(err),
-    });
-  }
-}
-
-/**
- * Fast-path for manage_context when the instance is unreachable: bypass connection
+ * Fast-path for configuration tools when the instance is unreachable: bypass connection
  * bootstrap and health reporting. Returns a tool response if handled, or null to
  * fall through to the normal bootstrap path.
  *
  * Bypasses bootstrap intentionally — context tools mostly operate on local state
- * (cached scopes, config, instance registry). Health reporting is skipped because
- * the fast-path bypasses bootstrap — there is no connection lifecycle to report on.
+ * (cached scopes, config, instance registry). Some of them read GitLab too (check_connection,
+ * find_scope_targets, scope checks), and a caller runs them to check or recover the
+ * connection; their own success says nothing about GitLab, so instead of reporting it the
+ * monitor is asked to probe GitLab again, which lets other tools recover at once.
  */
 async function tryManageContextFastPath(
   toolName: string,
@@ -285,8 +280,12 @@ async function tryManageContextFastPath(
   effectiveInstanceUrl: string,
   healthMonitor: HealthMonitor,
   sessionId: string | undefined,
+  requestScopes: readonly string[] | undefined,
 ): Promise<CallToolResult | null> {
-  if (toolName !== 'manage_context' || healthMonitor.isInstanceReachable(effectiveInstanceUrl)) {
+  if (
+    !CONFIGURATION_TOOLS.has(toolName) ||
+    healthMonitor.isInstanceReachable(effectiveInstanceUrl)
+  ) {
     return null;
   }
   if (LOG_FORMAT === 'condensed') {
@@ -302,14 +301,27 @@ async function tryManageContextFastPath(
   // this is benign: executeTool() falls through with undefined and we re-enter the
   // bootstrap path below. A full atomic getTool() refactor is tracked separately.
   if (registryManager.hasToolHandler(toolName, effectiveInstanceUrl)) {
-    const result = await registryManager.executeTool(toolName, toolArguments, effectiveInstanceUrl);
+    // The request's grants apply here too: a token without the tool's scopes is refused
+    // exactly as on the connected path, whatever GitLab's reachability.
+    const result = await registryManager.executeTool(
+      toolName,
+      toolArguments,
+      effectiveInstanceUrl,
+      requestScopes,
+    );
     // If executeTool returns undefined (TOCTOU: cache was refreshed between hasToolHandler and
     // executeTool), fall through to the bootstrap path instead of returning {text: "undefined"}.
     if (result === undefined) {
       return null;
     }
-    await resyncSessionAfterSwitchProfile(toolName, toolArguments, sessionId);
-    return formatToolResult(result, registryManager.getTool(toolName, effectiveInstanceUrl));
+    // Not rate-limited: only a user's settings call while GitLab is unreachable asks for this
+    // probe, the monitor drops it while one is running, and a cooldown would keep the other
+    // tools down after GitLab answers again, which is what the probe is for.
+    healthMonitor.forceReconnect(effectiveInstanceUrl);
+    return formatToolResult(
+      result,
+      registryManager.getTool(toolName, effectiveInstanceUrl, requestScopes),
+    );
   }
   return null; // tool not yet cached — fall through to bootstrap
 }
@@ -423,15 +435,133 @@ function formatBootstrapFailure(ctx: BootstrapContext, initError: unknown): Call
   return withReauthChallenge(errorToolResult(connError), initError);
 }
 
-function recordCallContext(
-  sessionContext: import('./entities/context/types').SessionContext,
-): void {
+/**
+ * The instance a request works with, normalized: the OAuth token's (the configured one
+ * without a request context), else the instance the static token works with now.
+ */
+function activeInstanceUrl(oauthEnabled: boolean, oauthContextUrl: string | undefined): string {
+  const raw = oauthEnabled
+    ? (oauthContextUrl ?? GITLAB_BASE_URL)
+    : (ConnectionManager.getInstance().getCurrentInstanceUrl() ?? GITLAB_BASE_URL);
+  // Normalized so CONNECTION_FAILED instance_url and HealthMonitor keys are consistent.
+  return normalizeInstanceUrl(raw);
+}
+
+/**
+ * The tool list narrowed by the caller's settings: restricted tools and the actions the
+ * preset denies are left out. When the settings cannot be read the list stays as the
+ * registry built it: listing is only visibility, and every call is still checked (and
+ * refused while the settings cannot be read).
+ */
+async function withoutRestrictedTools<
+  T extends { name: string; inputSchema: Record<string, unknown> },
+>(
+  tools: T[],
+  caller: Caller,
+  registryManager: import('./registry-manager').RegistryManager,
+): Promise<T[]> {
+  let policy: EffectivePolicy;
+  try {
+    policy = (await getConfigurationService().resolve(caller)).policy;
+  } catch (error: unknown) {
+    logWarn('Could not read the caller settings for the tool list', { err: error as Error });
+    return tools;
+  }
+  const listed: T[] = [];
+  for (const tool of tools) {
+    const inputSchema = listedToolSchema(
+      policy,
+      registryManager.getToolFacts(tool.name),
+      tool.inputSchema,
+    );
+    if (inputSchema)
+      listed.push(inputSchema === tool.inputSchema ? tool : { ...tool, inputSchema });
+  }
+  return listed;
+}
+
+/**
+ * A refusal for a call the caller's settings do not allow, or null when it may run. Tool,
+ * group, read-only and action limits come first: they need nothing from GitLab, so a call
+ * they refuse reaches nothing. Then the scope, which holds paths: numeric ids are checked
+ * as the paths they stand for.
+ */
+async function prepareScopedCall(
+  toolName: string,
+  args: Record<string, unknown>,
+  policy: EffectivePolicy,
+  registryManager: import('./registry-manager').RegistryManager,
+): Promise<{ rejection: CallToolResult | null; args: Record<string, unknown> }> {
+  const unscoped = settingsRejection(toolName, args, withoutScope(policy), registryManager);
+  if (unscoped || !policy.scopeEnforcer || isExemptFromSettings(toolName))
+    return { rejection: unscoped, args };
+  const selected = parseScopedArguments(toolName, args);
+  // The tool's parse keeps only the selected action's arguments, so only those are held to
+  // the scope.
+  const action = typeof args.action === 'string' ? args.action : undefined;
+  const declared =
+    selected === args ? registryManager.getDeclaredArguments(toolName, action) : undefined;
+  const own = declared
+    ? Object.fromEntries(Object.entries(selected).filter(([name]) => declared.has(name)))
+    : selected;
+  return {
+    rejection: settingsRejection(
+      toolName,
+      await withTargetPaths(own, undefined, policy.scopeEnforcer),
+      policy,
+      registryManager,
+    ),
+    args: selected,
+  };
+}
+
+/** A refusal for a call the given policy does not allow, or null when it may run. */
+function settingsRejection(
+  toolName: string,
+  args: Record<string, unknown>,
+  policy: EffectivePolicy,
+  registryManager: import('./registry-manager').RegistryManager,
+): CallToolResult | null {
+  const reason = callRestriction(policy, registryManager.getToolFacts(toolName), args);
+  if (reason === null) return null;
+  const action = typeof args.action === 'string' ? args.action : undefined;
+  const call = action ? `${toolName} ${action}` : toolName;
+  const message =
+    `'${call}' is not allowed by the current settings: ` +
+    `${reason}. The account settings are changed with update_settings, this session's ` +
+    'with manage_context.';
+  recordEarlyReturnError(toolName, action, message);
+  return errorToolResult({ error: message });
+}
+
+/**
+ * Runs the tool through the registry (per-URL cache). A listing that names no target
+ * reads the working scope instead of everything the account sees.
+ */
+async function executeInScope(
+  registryManager: import('./registry-manager').RegistryManager,
+  toolName: string,
+  requested: Record<string, unknown>,
+  policy: EffectivePolicy,
+  instanceUrl: string | undefined,
+  requestScopes: readonly string[] | undefined,
+): Promise<unknown> {
+  // executeScoped wraps this runner so every call it makes in place of the requested one is
+  // held to the preset's denied actions; the operator's are checked by each tool itself.
+  const run = (tool: string, toolArgs: Record<string, unknown>): Promise<unknown> =>
+    requestScopes === undefined
+      ? registryManager.executeTool(tool, toolArgs, instanceUrl)
+      : registryManager.executeTool(tool, toolArgs, instanceUrl, requestScopes);
+  return executeScoped(run, toolName, requested, policy, true);
+}
+
+function recordCallContext(scopePath: string | undefined, readOnly: boolean): void {
   const requestTracker = getRequestTracker();
   // Capture current context and read-only state for access logging
-  if (sessionContext.scope?.path) {
-    requestTracker.setContextForCurrentRequest(sessionContext.scope.path);
+  if (scopePath) {
+    requestTracker.setContextForCurrentRequest(scopePath);
   }
-  requestTracker.setReadOnlyForCurrentRequest(sessionContext.readOnly);
+  requestTracker.setReadOnlyForCurrentRequest(readOnly);
 
   // Increment tool count for connection tracking
   const currentRequestId = getCurrentRequestId();
@@ -570,6 +700,42 @@ export async function setupHandlers(server: Server): Promise<void> {
     // No authentication configured - server will respond to tools/list but tool calls will fail
     logInfo('Skipping connection initialization - no authentication configured');
   }
+
+  // The settings panel is the server's one resource: an MCP App document. It holds no
+  // account data; everything it shows comes from tool calls made with the caller's own
+  // authorization.
+  server.setRequestHandler(ListResourcesRequestSchema, () => {
+    const rejection = resourceScopeRejection();
+    if (rejection) throw rejection;
+    return {
+      resources: [
+        {
+          uri: SETTINGS_PANEL_URI,
+          name: 'GitLab connection panel',
+          mimeType: MCP_APP_MIME_TYPE,
+          _meta: SETTINGS_PANEL_RESOURCE_META,
+        },
+      ],
+    };
+  });
+  server.setRequestHandler(ReadResourceRequestSchema, (request) => {
+    const rejection = resourceScopeRejection();
+    if (rejection) throw rejection;
+    if (request.params.uri !== SETTINGS_PANEL_URI) {
+      throw new McpError(ErrorCode.InvalidParams, `Unknown resource: ${request.params.uri}`);
+    }
+    return {
+      contents: [
+        {
+          uri: SETTINGS_PANEL_URI,
+          mimeType: MCP_APP_MIME_TYPE,
+          text: settingsPanelHtml(),
+          _meta: SETTINGS_PANEL_RESOURCE_META,
+        },
+      ],
+    };
+  });
+
   // List tools handler
   // Uses per-session instance URL tracking so each session receives the tool list
   // filtered for its target GitLab instance (#398). The sessionId from RequestHandlerExtra
@@ -601,16 +767,29 @@ export async function setupHandlers(server: Server): Promise<void> {
     const { RegistryManager } = await import('./registry-manager');
     const registryManager = RegistryManager.getInstance();
     const mode = getSchemaMode(server.getClientVersion()?.name);
-    const { getTokenContext: getCatalogContext, isOAuthEnabled: isCatalogOAuth } =
-      await import('./oauth/index');
+    const {
+      getTokenContext: getCatalogContext,
+      isOAuthEnabled: isCatalogOAuth,
+      getGitLabApiUrlFromContext: getCatalogUrl,
+    } = await import('./oauth/index');
     const scopes = getCatalogContext()?.gitlabScopes;
     // OAuth deployments declare the token every tool needs; static-token mode keeps
     // the descriptors as before.
     const securitySchemes = isCatalogOAuth() ? OAUTH_SECURITY_SCHEMES : undefined;
-    const tools =
+    const catalog =
       scopes === undefined
         ? registryManager.getAllToolDefinitions(sessionInstanceUrl, mode)
         : registryManager.getAllToolDefinitions(sessionInstanceUrl, mode, scopes);
+    // A sessionless client (stdio) is listed with the settings of the instance its calls run
+    // against, which follows switch_instance.
+    const callerInstanceUrl =
+      sessionInstanceUrl ??
+      activeInstanceUrl(isCatalogOAuth(), isCatalogOAuth() ? getCatalogUrl() : undefined);
+    const tools = await withoutRestrictedTools(
+      catalog,
+      resolveCaller(listToolsSessionId, callerInstanceUrl),
+      registryManager,
+    );
 
     logInfo('Returning tools list', { toolCount: tools.length });
 
@@ -699,12 +878,14 @@ export async function setupHandlers(server: Server): Promise<void> {
       if (!securitySchemes || tool._meta?.securitySchemes !== undefined) {
         return { ...tool, inputSchema };
       }
-      // Mirrored in _meta for clients whose descriptor schema drops unknown top-level fields.
+      // A tool that opens an app panel also needs the panel resource read. Mirrored in _meta
+      // for clients whose descriptor schema drops unknown top-level fields.
+      const schemes = tool._meta?.ui ? APP_PANEL_SECURITY_SCHEMES : securitySchemes;
       return {
         ...tool,
         inputSchema,
-        securitySchemes,
-        _meta: { ...tool._meta, securitySchemes },
+        securitySchemes: schemes,
+        _meta: { ...tool._meta, securitySchemes: schemes },
       };
     });
 
@@ -745,11 +926,7 @@ export async function setupHandlers(server: Server): Promise<void> {
     // getGitLabApiUrlFromContext() returns string | undefined; use undefined (not null)
     // so that strict equality checks below correctly detect "no OAuth context".
     const oauthContextUrl = oauthEnabled ? getUrlFromCtx() : undefined;
-    const rawInstanceUrl = oauthEnabled
-      ? (oauthContextUrl ?? GITLAB_BASE_URL)
-      : (ConnectionManager.getInstance().getCurrentInstanceUrl() ?? GITLAB_BASE_URL);
-    // Normalize so CONNECTION_FAILED instance_url and HealthMonitor keys are consistent
-    const requestInstanceUrl = normalizeInstanceUrl(rawInstanceUrl);
+    const requestInstanceUrl = activeInstanceUrl(oauthEnabled, oauthContextUrl);
 
     // Keep per-session instance URL in sync so ListTools requests reflect the correct
     // instance. In OAuth mode only update when we have a real OAuth context URL —
@@ -758,17 +935,17 @@ export async function setupHandlers(server: Server): Promise<void> {
     // transport; persisting the fallback would reset multi-tenant tool filtering).
     // In static-token mode always track the active instance URL.
     //
-    // NOTE: manage_context/switch_profile is handled separately via
-    // resyncSessionAfterSwitchProfile() called after executeTool succeeds — the new
-    // profile's URL is resolved from ProfileLoader and the session is re-pinned
-    // immediately so an immediate ListTools reflects the new instance (issue #407).
-    // switch_preset (static) does not need re-pin (presets change tool filtering,
-    // not the GitLab host).
+    // The session lists tools of the instance its calls go to and of no other: in OAuth
+    // mode that is the token's instance whatever profile the chat chose, as calls never
+    // follow a profile's host. switch_profile, switch_preset and reset therefore need
+    // no re-pin of their own.
     const callSessionId = extra?.sessionId;
     if (callSessionId && (!oauthEnabled || oauthContextUrl !== undefined)) {
       const { getSessionManager: getSessionMgrForCall } = await import('./session-manager');
       getSessionMgrForCall().setSessionInstanceUrl(callSessionId, requestInstanceUrl);
     }
+    // Whose settings apply, from the authenticated request only.
+    const caller = resolveCaller(callSessionId, requestInstanceUrl);
 
     // Flag to prevent late reportSuccess/reportError from a timed-out handlerWork()
     // overwriting the timeout signal already sent to HealthMonitor.
@@ -816,7 +993,20 @@ export async function setupHandlers(server: Server): Promise<void> {
       const connectionManager = ConnectionManager.getInstance();
       const healthMonitor = HealthMonitor.getInstance();
       const toolName = request.params.name;
-      const toolArguments = request.params.arguments;
+      let toolArguments = request.params.arguments;
+
+      // The caller's settings, checked before anything reaches GitLab. A call is refused
+      // when they cannot be read: allowing it could bypass a restriction.
+      const { RegistryManager: CallRegistry } = await import('./registry-manager');
+      const configuration = await getConfigurationService().resolve(caller);
+      const prepared = await prepareScopedCall(
+        toolName,
+        toolArguments ?? {},
+        configuration.policy,
+        CallRegistry.getInstance(),
+      );
+      if (prepared.rejection) return prepared.rejection;
+      toolArguments = prepared.args;
 
       // Early return: instance unreachable for non-context tools
       // (isInstanceReachable treats untracked URLs as reachable before HealthMonitor.initialize)
@@ -835,6 +1025,7 @@ export async function setupHandlers(server: Server): Promise<void> {
         effectiveInstanceUrl,
         healthMonitor,
         callSessionId,
+        requestScopes,
       );
       if (fastPathResult) return fastPathResult;
 
@@ -861,8 +1052,10 @@ export async function setupHandlers(server: Server): Promise<void> {
       if (LOG_FORMAT === 'condensed') {
         const requestTracker = getRequestTracker();
         requestTracker.setToolForCurrentRequest(toolName, action);
-        const { getContextManager } = await import('./entities/context/context-manager');
-        recordCallContext(getContextManager().getContext());
+        recordCallContext(
+          scopeLabel(configuration.policy.scope),
+          GITLAB_READ_ONLY_MODE || configuration.policy.readOnly,
+        );
       }
 
       try {
@@ -897,17 +1090,14 @@ export async function setupHandlers(server: Server): Promise<void> {
           });
         }
 
-        // Execute the tool using the registry manager (per-URL cache)
-        const args = request.params.arguments ?? {};
-        const result =
-          requestScopes === undefined
-            ? await registryManager.executeTool(toolName, args, effectiveInstanceUrl)
-            : await registryManager.executeTool(
-                toolName,
-                args,
-                effectiveInstanceUrl,
-                requestScopes,
-              );
+        const result = await executeInScope(
+          registryManager,
+          toolName,
+          toolArguments,
+          configuration.policy,
+          effectiveInstanceUrl,
+          requestScopes,
+        );
 
         // Guard against TOCTOU cache miss: hasToolHandler returned true but a
         // concurrent refreshCache swapped the lookup table before executeTool ran.
@@ -917,9 +1107,6 @@ export async function setupHandlers(server: Server): Promise<void> {
         if (result === undefined) {
           throw new Error(`Tool '${toolName}' is not available or has been filtered out`);
         }
-
-        // Re-pin per-session instance URL if this was switch_profile (#407)
-        await resyncSessionAfterSwitchProfile(toolName, request.params.arguments, callSessionId);
 
         // Report success — skip if handler already timed out (late completion
         // must not overwrite the timeout error already sent to HealthMonitor)
@@ -939,7 +1126,7 @@ export async function setupHandlers(server: Server): Promise<void> {
       // complete — but the alternative (no timeout) leaves bootstrap unbounded
       // if the instance is hung. The timedOut flag prevents late reportSuccess/
       // reportError from overwriting the timeout health signal.
-      const result = await Promise.race([handlerWork(), timeoutPromise]);
+      const result = await Promise.race([runWithCaller(caller, handlerWork), timeoutPromise]);
 
       if (result === HANDLER_TIMEOUT_SYMBOL) {
         // timedOut already set in timer callback — handler is still running but we respond

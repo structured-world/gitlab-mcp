@@ -10,6 +10,7 @@ import { ContextManager } from '../../../../src/entities/context/context-manager
 // Mock dependencies
 jest.mock('../../../../src/utils/namespace', () => ({
   detectNamespaceType: jest.fn().mockResolvedValue('group'),
+  findNamespaceType: jest.fn().mockResolvedValue('group'),
 }));
 
 jest.mock('../../../../src/profiles/loader', () => ({
@@ -146,6 +147,24 @@ describe('handleManageContext', () => {
       expect(result).toHaveProperty('success', true);
 
       expect((result as any).scope.includeSubgroups).toBe(false);
+    });
+  });
+
+  describe('action: clear_scope', () => {
+    it('drops the scope and keeps the preset of the session', async () => {
+      await handleManageContext({ action: 'switch_preset', preset: 'readonly' });
+      await handleManageContext({
+        action: 'set_scope',
+        namespace: 'my-group',
+        includeSubgroups: true,
+      });
+
+      const result = await handleManageContext({ action: 'clear_scope' });
+
+      expect(result).toMatchObject({
+        success: true,
+        context: { presetName: 'readonly', scope: undefined },
+      });
     });
   });
 

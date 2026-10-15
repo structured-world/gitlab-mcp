@@ -44,6 +44,21 @@ When `GITLAB_ALLOWED_PROJECT_IDS` is set:
 - **Single value** (e.g., `123`): Acts as default project, restricts to that project only
 - **Multiple values** (e.g., `123,456,789`): Restricts access to listed projects, requires explicit project ID
 
+Runner tools enforce this operator restriction separately from the chat's working
+scope. A project path is checked against its resolved GitLab ID; configured full
+paths are also accepted. Runner lists retain only project runners whose complete
+set of associated projects is allowed. The upstream cursor is preserved, so a
+filtered page may be empty while a later page contains allowed runners.
+
+Operations by `runner_id` require the same complete association check before
+reading details, listing jobs, changing settings, deleting, or rotating a token.
+Hidden associations, missing ownership evidence, or more than 100 associated
+projects fail closed. Jobs are additionally filtered by their own project, including
+historical jobs from before a runner was reassigned. Group and instance runners
+cannot be confined to this project allowlist; their registration and ID-based
+operations are refused. Project runner registration checks its project first.
+Without an allowlist, runner tools make no additional ownership requests.
+
 ## Access Control
 
 | Variable | Description | Default |

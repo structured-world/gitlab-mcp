@@ -63,6 +63,7 @@ jest.mock('../../../../src/server', () => ({
 
 // Mock isOAuthEnabled to check process.env at runtime
 jest.mock('../../../../src/oauth/index.js', () => ({
+  ...jest.requireActual('../../../../src/oauth/index.js'),
   isOAuthEnabled: () => process.env.OAUTH_ENABLED === 'true',
 }));
 
@@ -171,6 +172,22 @@ describe('whoami handler', () => {
       const result = (await handleManageContext({ action: 'whoami' })) as WhoamiResult;
 
       expect(result.user).toBeNull();
+      expect(result.userLookup).toBe('rejected');
+    });
+
+    // Only 401 and 403 mean GitLab refused the credentials; a server error says nothing
+    // about them.
+    it.each([
+      [403, 'rejected'],
+      [500, 'failed'],
+      [503, 'failed'],
+    ])('classifies a %s answer to the user lookup as %s', async (status, lookup) => {
+      mockEnhancedFetch.mockResolvedValue({ ok: false, status });
+
+      const result = (await handleManageContext({ action: 'whoami' })) as WhoamiResult;
+
+      expect(result.user).toBeNull();
+      expect(result.userLookup).toBe(lookup);
     });
 
     it('should return token info from ConnectionManager', async () => {
@@ -518,8 +535,10 @@ describe('whoami handler', () => {
 
       const result = (await handleManageContext({ action: 'whoami' })) as WhoamiResult;
 
-      // User should be null when network error occurs
+      // User should be null when network error occurs, and the lookup failed rather than
+      // the credentials being refused
       expect(result.user).toBeNull();
+      expect(result.userLookup).toBe('failed');
       // Other fields should still be populated
       expect(result.server).toBeDefined();
       expect(result.capabilities).toBeDefined();

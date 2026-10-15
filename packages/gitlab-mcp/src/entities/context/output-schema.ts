@@ -13,6 +13,7 @@ const baseContext = z.object({
   profileName: z.string().optional(),
   presetName: z.string().optional(),
   readOnly: z.boolean(),
+  disabledToolGroups: z.array(z.string()).optional(),
   scope: scope.optional(),
   oauthMode: z.boolean(),
 });
@@ -62,6 +63,7 @@ const whoami = z.object({
       state: z.string(),
     })
     .nullable(),
+  userLookup: z.enum(['ok', 'rejected', 'failed']),
   token: z
     .object({
       type: z.enum([
@@ -137,6 +139,10 @@ const success = z.discriminatedUnion('action', [
   z.object({
     action: z.literal('set_scope'),
     data: z.object({ success: z.boolean(), scope, message: z.string() }),
+  }),
+  z.object({
+    action: z.literal('clear_scope'),
+    data: z.object({ success: z.boolean(), message: z.string(), context }),
   }),
   z.object({
     action: z.literal('reset'),

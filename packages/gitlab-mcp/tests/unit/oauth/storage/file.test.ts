@@ -403,6 +403,117 @@ describe('FileStorageBackend', () => {
       await restarted.close();
     });
 
+    // Settings saved by an account survive a restart, with their version, so the
+    // compare-and-set of the next edit still refuses a stale one.
+    it('keeps account settings across a restart', async () => {
+      await seeded();
+      await storage.putAccountSettings('acct', { readOnly: true }, 0);
+      const restarted = await reloadAfterCrash();
+
+      expect(await restarted.getAccountSettings('acct')).toMatchObject({
+        settings: { readOnly: true },
+        version: 1,
+      });
+      expect(await restarted.putAccountSettings('acct', { readOnly: false }, 0)).toBeUndefined();
+      await restarted.close();
+    });
+
+    // A settings write that failed was reported as failed: neither this process nor a
+    // later write may keep it.
+    it('keeps the previous settings when a settings write cannot be written', async () => {
+      await seeded();
+      await storage.putAccountSettings('acct', { preset: 'developer' }, 0);
+      const open = failNextWrite();
+      try {
+        await expect(storage.putAccountSettings('acct', { preset: 'readonly' }, 1)).rejects.toThrow(
+          'EACCES',
+        );
+      } finally {
+        open.mockRestore();
+      }
+      await storage.createSession(createTestSession({ id: 'later-write' }));
+      const restarted = await reloadAfterCrash();
+
+      expect(await storage.getAccountSettings('acct')).toMatchObject({
+        settings: { preset: 'developer' },
+        version: 1,
+      });
+      expect((await restarted.getAccountSettings('acct'))?.settings).toEqual({
+        preset: 'developer',
+      });
+      await restarted.close();
+    });
+
+    // A settings write in progress is not saved yet: a concurrent read keeps the previous
+    // settings, so an edit whose write then fails is never enforced, not even briefly.
+    it('keeps the previous settings visible while a settings write is in progress', async () => {
+      await seeded();
+      await storage.putAccountSettings('acct', { readOnly: true }, 0);
+      let fail: ((error: Error) => void) | undefined;
+      const open = jest.spyOn(fs.promises, 'open').mockImplementationOnce(
+        () =>
+          new Promise<never>((_resolve, reject) => {
+            fail = reject;
+          }),
+      );
+      const write = storage.putAccountSettings('acct', { readOnly: false }, 1);
+      const failed = expect(write).rejects.toThrow('EACCES');
+      try {
+        for (let tick = 0; tick < 100 && !fail; tick++)
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        expect(fail).toBeDefined();
+
+        expect((await storage.getAccountSettings('acct'))?.settings).toEqual({ readOnly: true });
+      } finally {
+        fail?.(Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' }));
+        await failed;
+        open.mockRestore();
+      }
+      expect((await storage.getAccountSettings('acct'))?.settings).toEqual({ readOnly: true });
+    });
+
+    // A first settings write that failed leaves the account without settings.
+    it('drops first settings that cannot be written', async () => {
+      await seeded();
+      const open = failNextWrite();
+      try {
+        await expect(storage.putAccountSettings('acct', { readOnly: true }, 0)).rejects.toThrow(
+          'EACCES',
+        );
+      } finally {
+        open.mockRestore();
+      }
+
+      expect(await storage.getAccountSettings('acct')).toBeUndefined();
+    });
+
+    // Once the file is renamed into place a restart reads the new state, so a failed
+    // directory flush must not report the write as failed and undo it in this process only.
+    it('keeps a write whose directory flush fails after the rename', async () => {
+      if (process.platform === 'win32') return;
+      await seeded();
+      const realOpen = fs.promises.open.bind(fs.promises);
+      const open = jest
+        .spyOn(fs.promises, 'open')
+        .mockImplementation(async (file: fs.PathLike, flags?: string | number, mode?: fs.Mode) => {
+          if (String(file) === tempDir)
+            throw Object.assign(new Error('EIO: i/o error'), { code: 'EIO' });
+          return realOpen(file, flags, mode);
+        });
+      try {
+        expect(await storage.putAccountSettings('acct', { readOnly: true }, 0)).toMatchObject({
+          version: 1,
+        });
+      } finally {
+        open.mockRestore();
+      }
+      const restarted = await reloadAfterCrash();
+
+      expect((await storage.getAccountSettings('acct'))?.settings).toEqual({ readOnly: true });
+      expect((await restarted.getAccountSettings('acct'))?.settings).toEqual({ readOnly: true });
+      await restarted.close();
+    });
+
     // A session whose creation could not be written was never returned to anyone.
     it('drops a session whose creation cannot be written', async () => {
       await seeded();

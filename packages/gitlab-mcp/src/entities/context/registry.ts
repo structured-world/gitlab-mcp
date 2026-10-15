@@ -32,16 +32,15 @@ import {
 } from './scope-search';
 
 /**
- * Context tools registry - 1 CQRS tool with 8 actions
+ * Context tools registry - 1 CQRS tool with 7 actions
  *
  * manage_context: Runtime context management
  *   - show: Display current context (Query)
  *   - list_presets: List available presets (Query)
- *   - list_profiles: List available profiles - OAuth only (Query)
  *   - whoami: Token introspection and capability discovery (Query)
  *   - switch_preset: Change active preset (Command)
- *   - switch_profile: Change active profile - OAuth only (Command)
  *   - set_scope: Set namespace scope with auto-detection (Command)
+ *   - clear_scope: Work everywhere in this session (Command)
  *   - reset: Restore initial context (Command)
  */
 export const contextToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinition>([
@@ -50,7 +49,7 @@ export const contextToolRegistry: ToolRegistry = new Map<string, EnhancedToolDef
     {
       name: 'manage_context',
       description:
-        'View and manage runtime session configuration. Actions: show (current host/preset/scope/mode), list_presets (available tool configurations), list_profiles (OAuth users), whoami (token introspection with live refresh - detects permission changes and updates available tools), switch_preset (change active preset), switch_profile (change OAuth user), set_scope (restrict to namespace), clear_scope (work everywhere in this session, keeping its preset and read-only mode), reset (restore initial state). Use whoami to diagnose access issues and verify token permissions.',
+        'View and manage runtime session configuration. Actions: show (current host/preset/scope/mode), list_presets (available tool configurations), whoami (token introspection with live refresh - detects permission changes and updates available tools), switch_preset (change active preset), set_scope (restrict to namespace), clear_scope (work everywhere in this session, keeping its preset and read-only mode), reset (restore initial state). Use whoami to diagnose access issues and verify token permissions.',
       inputSchema: z.toJSONSchema(ManageContextSchema),
       outputSchema: ToolSchema.shape.outputSchema.parse({
         ...z.toJSONSchema(ContextOutputSchema, { target: 'draft-7' }),
@@ -103,7 +102,7 @@ export const contextToolRegistry: ToolRegistry = new Map<string, EnhancedToolDef
       name: SETTINGS_READ_TOOL,
       title: 'GitLab settings',
       description:
-        "Show this connection's settings for new chats: working preset, read-only mode, default project or group, and which tool groups are on, with what each can be set to.",
+        "Show this account's settings, which apply to all of its chats except where a chat chose otherwise: working preset, read-only mode, default project or group, and which tool groups are on, with what each can be set to.",
       inputSchema: { type: 'object', properties: {}, additionalProperties: false },
       outputSchema: SETTINGS_READ_OUTPUT_SCHEMA,
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
@@ -117,7 +116,7 @@ export const contextToolRegistry: ToolRegistry = new Map<string, EnhancedToolDef
       name: SETTINGS_UPDATE_TOOL,
       title: 'Change GitLab settings',
       description:
-        "Change this connection's settings for new chats. Pass only the settings to change, by the names get_settings lists; the others keep their value. Nothing is saved when any value is invalid. Returns the saved values.",
+        "Change this account's settings, at once for all of its chats except where a chat chose otherwise. Pass only the settings to change, by the names get_settings lists; the others keep their value. Nothing is saved when any value is invalid. Returns the saved values.",
       inputSchema: SETTINGS_UPDATE_INPUT_SCHEMA,
       outputSchema: SETTINGS_UPDATE_OUTPUT_SCHEMA,
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
@@ -148,7 +147,7 @@ export const contextToolRegistry: ToolRegistry = new Map<string, EnhancedToolDef
       name: SETTINGS_PANEL_TOOL,
       title: 'GitLab connection panel',
       description:
-        'Open the GitLab connection panel to search projects and groups, choose where this chat or new chats work, and check the connection.',
+        'Open the GitLab connection panel to search projects and groups, choose where this chat or all chats of the account work, and check the connection.',
       inputSchema: { type: 'object', properties: {}, additionalProperties: false },
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
       _meta: {

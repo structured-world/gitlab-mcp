@@ -10,7 +10,7 @@
 import { GITLAB_BASE_URL, GITLAB_READ_ONLY_MODE } from '../../config';
 import { logInfo, logError } from '../../logger';
 import { ProfileLoader } from '../../profiles/loader';
-import { ProfileInfo, ScopeConfig } from '../../profiles/types';
+import { ScopeConfig } from '../../profiles/types';
 import { findNamespaceType } from '../../utils/namespace';
 import {
   currentCaller,
@@ -116,7 +116,6 @@ export class ContextManager {
       readOnly: operator.readOnly || resolved.policy.readOnly,
       presetName: resolved.policy.presetName,
       disabledToolGroups: [...resolved.policy.disabledGroups].sort((a, b) => a.localeCompare(b)),
-      profileName: resolved.session.profile,
       scope: scope
         ? runtimeScopeOf(
             scope,
@@ -145,14 +144,6 @@ export class ContextManager {
       }));
   }
 
-  async listProfiles(): Promise<ProfileInfo[]> {
-    if (!isOAuthMode()) {
-      throw new Error('list_profiles is only available in OAuth mode');
-    }
-    const profiles = await this.profileLoader.listProfiles();
-    return profiles.filter((p) => !p.isPreset);
-  }
-
   /** Use a preset in the current session; the account default stays as it is. */
   async switchPreset(presetName: string): Promise<SwitchResult> {
     const caller = this.caller();
@@ -171,30 +162,6 @@ export class ContextManager {
       previous,
       current: presetName,
       message: `Switched this session to preset '${presetName}'`,
-    };
-  }
-
-  async switchProfile(profileName: string): Promise<SwitchResult> {
-    if (!isOAuthMode()) {
-      throw new Error('switch_profile is only available in OAuth mode');
-    }
-    const caller = this.caller();
-    const service = getConfigurationService();
-    const previous = (await service.resolve(caller)).session.profile;
-    try {
-      await this.profileLoader.loadProfile(profileName);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      logError('Failed to switch profile', { error: message, profile: profileName });
-      throw new Error(`Failed to switch to profile '${profileName}': ${message}`, { cause: error });
-    }
-    await service.updateSession(caller, { profile: profileName });
-    logInfo('Switched profile', { previous, current: profileName });
-    return {
-      success: true,
-      previous,
-      current: profileName,
-      message: `Switched to profile '${profileName}'`,
     };
   }
 

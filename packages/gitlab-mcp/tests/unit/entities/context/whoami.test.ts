@@ -224,9 +224,7 @@ describe('whoami handler', () => {
       const result = (await handleManageContext({ action: 'whoami' })) as WhoamiResult;
 
       expect(result.context).toBeDefined();
-      expect(result.context.activePreset).toBeNull();
-      expect(result.context.activeProfile).toBeNull();
-      expect(result.context.scope).toBeNull();
+      expect(result.context).toEqual({ activePreset: null, scope: null });
     });
 
     it('should generate no warnings with full access', async () => {

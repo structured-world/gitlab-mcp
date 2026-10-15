@@ -83,15 +83,6 @@ jest.mock('../../../../src/profiles/loader', () => ({
       },
     ]),
     loadPreset: (name: string) => mockLoadPreset(name),
-    loadProfile: jest.fn().mockImplementation((name: string) => {
-      if (name === 'invalid-profile') {
-        return Promise.reject(new Error('Profile not found: invalid-profile'));
-      }
-      return Promise.resolve({
-        host: 'gitlab.example.com',
-        auth: { type: 'pat', token_env: 'GITLAB_TOKEN' },
-      });
-    }),
   })),
 }));
 
@@ -258,25 +249,12 @@ describe('ContextManager', () => {
     });
   });
 
-  describe('listPresets and listProfiles', () => {
+  describe('listPresets', () => {
+    // Presets only: full profiles carry a host and credentials, which a chat cannot switch to.
     it('lists the presets', async () => {
       const presets = await getContextManager().listPresets();
 
       expect(presets.map((p) => p.name)).toEqual(['readonly', 'developer']);
-    });
-
-    it('refuses to list profiles outside OAuth mode', async () => {
-      await expect(getContextManager().listProfiles()).rejects.toThrow(
-        'only available in OAuth mode',
-      );
-    });
-
-    it('lists only full profiles in OAuth mode', async () => {
-      process.env.OAUTH_ENABLED = 'true';
-
-      const profiles = await getContextManager().listProfiles();
-
-      expect(profiles.map((p) => p.name)).toEqual(['production']);
     });
   });
 
@@ -337,36 +315,6 @@ describe('ContextManager', () => {
       await runWithCaller(alice1, () => manager.switchPreset('readonly'));
 
       expect((await runWithCaller(alice1, () => manager.getContext())).scope).toBeUndefined();
-    });
-  });
-
-  describe('switchProfile', () => {
-    it('refuses to switch profiles outside OAuth mode', async () => {
-      await expect(getContextManager().switchProfile('production')).rejects.toThrow(
-        'only available in OAuth mode',
-      );
-    });
-
-    // The profile belongs to the chat that chose it; another chat of the account keeps none.
-    it('switches the session profile in OAuth mode', async () => {
-      process.env.OAUTH_ENABLED = 'true';
-      const manager = getContextManager();
-
-      const result = await runWithCaller(alice1, () => manager.switchProfile('production'));
-
-      expect(result).toMatchObject({ success: true, current: 'production' });
-      expect((await runWithCaller(alice1, () => manager.getContext())).profileName).toBe(
-        'production',
-      );
-      expect((await runWithCaller(alice2, () => manager.getContext())).profileName).toBeUndefined();
-    });
-
-    it('refuses an unknown profile', async () => {
-      process.env.OAUTH_ENABLED = 'true';
-
-      await expect(getContextManager().switchProfile('invalid-profile')).rejects.toThrow(
-        "Failed to switch to profile 'invalid-profile'",
-      );
     });
   });
 

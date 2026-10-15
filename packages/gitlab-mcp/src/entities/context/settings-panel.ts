@@ -372,7 +372,7 @@ const SCRIPT = String.raw`
       if (applied) {
         announce(where === 'chat'
           ? 'This chat now works in ' + describeScope(state.context.scope) + '.'
-          : 'New chats will work in ' + target.path + '.', 'ok');
+          : 'Your chats now work in ' + target.path + ', except chats that chose otherwise.', 'ok');
         state.selected = null;
         renderResults();
       } else {
@@ -386,8 +386,8 @@ const SCRIPT = String.raw`
   function workEverywhere() {
     setBusy(true);
     announce('Saving…');
-    // Only this chat's scope changes; its preset, read-only mode and the default for new
-    // chats stay as they are.
+    // Only this chat's scope changes; its preset, read-only mode and the account's default
+    // stay as they are.
     callTool('manage_context', { action: 'clear_scope' })
       .then(reload)
       .then(function () {
@@ -453,7 +453,7 @@ const BODY = `
     <h2 id="where-title">Where to work</h2>
     <dl>
       <dt>This chat</dt><dd id="chat-scope"></dd>
-      <dt>New chats</dt><dd id="default-scope"></dd>
+      <dt>All chats</dt><dd id="default-scope"></dd>
     </dl>
     <div style="margin-top:12px">
       <label for="search">Find a project or group</label>
@@ -468,7 +468,7 @@ const BODY = `
     </div>
     <div class="row" style="margin-top:8px">
       <button id="use-chat" class="primary" type="button">Use in this chat</button>
-      <button id="save-default" type="button">Save for new chats</button>
+      <button id="save-default" type="button">Save for all chats</button>
       <button id="cancel" type="button">Cancel</button>
       <button id="work-everywhere" type="button">Work everywhere in this chat</button>
     </div>

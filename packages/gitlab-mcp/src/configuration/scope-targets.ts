@@ -219,8 +219,11 @@ const NARROWERS: Record<string, (args: Args, target: Target) => Args | null> = {
         }
       : null,
   // The targetless listing shows the caller's own merge requests unless asked otherwise, while
-  // a project's or group's shows everyone's (lib/api/helpers/merge_requests_helpers.rb), so
-  // that default is kept. A group's listing covers its subgroups; without them it is filtered.
+  // a project's or group's shows everyone's, so that default is kept. Both of those listings
+  // take `scope` too: it is declared in merge_requests_base_params, which they use, and only
+  // its created_by_me default is the targetless listing's own (merge_requests_helpers.rb,
+  // applied by IssuableFinder#by_scope). A group's listing covers its subgroups; without
+  // them it is filtered.
   browse_merge_requests: (args, target) => {
     if (!isTargetlessList(args)) return null;
     const place = 'project' in target ? { project_id: target.project } : { group_id: target.group };

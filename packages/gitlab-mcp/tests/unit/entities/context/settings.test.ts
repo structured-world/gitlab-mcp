@@ -147,7 +147,7 @@ describe('native settings', () => {
 
       expect(page.layout.map((g) => g.title)).toEqual([
         'Connection: alice on gitlab.example.com',
-        'Defaults for new chats',
+        'Defaults for all chats (a chat can choose otherwise)',
         'Tool groups (groups the server administrator turned off are not listed)',
       ]);
       const properties = page.layout.flatMap((g) =>

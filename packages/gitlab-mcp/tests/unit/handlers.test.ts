@@ -607,15 +607,14 @@ describe('handlers', () => {
       (oauth.getGitLabApiUrlFromContext as jest.Mock).mockReturnValue(undefined);
     });
 
-    // In OAuth mode every call goes to the token's instance, whatever profile the chat
-    // chose. The session's tool list must describe that instance: a profile on another
-    // host must not move the session there, or the client would list tools of an instance
-    // none of its calls reach.
+    // In OAuth mode every call goes to the token's instance. The session's tool list must
+    // describe that instance after a context change too, also while GitLab is unreachable,
+    // or the client would list tools of an instance none of its calls reach.
     it.each([
       ['connected', true],
       ['unreachable', false],
     ])(
-      'keeps the session on the token instance after switch_profile (%s)',
+      'keeps the session on the token instance after a context change (%s)',
       async (_, reachable) => {
         const oauth = await import('../../src/oauth/index');
         (oauth.isOAuthEnabled as jest.Mock).mockReturnValue(true);
@@ -629,7 +628,7 @@ describe('handlers', () => {
           {
             params: {
               name: 'manage_context',
-              arguments: { action: 'switch_profile', profile: 'eu' },
+              arguments: { action: 'switch_preset', preset: 'readonly' },
             },
           },
           { sessionId: 'sess-switch' },
@@ -646,15 +645,16 @@ describe('handlers', () => {
       },
     );
 
-    // A reset drops the session's profile: the session must work with the OAuth token's
-    // instance again, so an immediate tool list is built for it, not the profile's.
-    it('pins the session to the account instance when reset drops a profile', async () => {
+    // A session pinned to another instance (from an earlier connection of the chat) is moved
+    // to the OAuth token's instance by the next call, a reset as well, so an immediate tool
+    // list is built for the instance the calls reach.
+    it('pins the session to the account instance on reset', async () => {
       const oauth = await import('../../src/oauth/index');
       (oauth.isOAuthEnabled as jest.Mock).mockReturnValue(true);
       (oauth.getGitLabApiUrlFromContext as jest.Mock).mockReturnValue(
         'https://account.example.com',
       );
-      mockSessionManager.getSessionInstanceUrl.mockReturnValue('https://profile.example.com');
+      mockSessionManager.getSessionInstanceUrl.mockReturnValue('https://previous.example.com');
 
       await callToolHandler(
         { params: { name: 'manage_context', arguments: { action: 'reset' } } },

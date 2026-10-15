@@ -209,7 +209,6 @@ async function buildContextInfo(): Promise<WhoamiContextInfo> {
 
   return {
     activePreset: context.presetName ?? null,
-    activeProfile: context.profileName ?? null,
     scope: context.scope ?? null,
   };
 }

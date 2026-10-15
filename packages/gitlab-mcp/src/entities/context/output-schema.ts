@@ -10,7 +10,6 @@ const scope = z.object({
 const baseContext = z.object({
   host: z.string(),
   apiUrl: z.string(),
-  profileName: z.string().optional(),
   presetName: z.string().optional(),
   readOnly: z.boolean(),
   disabledToolGroups: z.array(z.string()).optional(),
@@ -34,15 +33,6 @@ const preset = z.object({
     })
     .optional(),
   features: z.record(z.string(), z.boolean()).optional(),
-});
-const profile = z.object({
-  name: z.string(),
-  host: z.string().optional(),
-  authType: z.enum(['pat', 'oauth', 'cookie']).optional(),
-  readOnly: z.boolean(),
-  isBuiltIn: z.boolean(),
-  isPreset: z.boolean(),
-  description: z.string().optional(),
 });
 const switched = z.object({
   success: z.boolean(),
@@ -106,7 +96,6 @@ const whoami = z.object({
   }),
   context: z.object({
     activePreset: z.string().nullable(),
-    activeProfile: z.string().nullable(),
     scope: scope.nullable(),
   }),
   warnings: z.array(z.string()),
@@ -132,10 +121,8 @@ const whoami = z.object({
 const success = z.discriminatedUnion('action', [
   z.object({ action: z.literal('show'), data: context }),
   z.object({ action: z.literal('list_presets'), data: z.array(preset) }),
-  z.object({ action: z.literal('list_profiles'), data: z.array(profile) }),
   z.object({ action: z.literal('whoami'), data: whoami }),
   z.object({ action: z.literal('switch_preset'), data: switched }),
-  z.object({ action: z.literal('switch_profile'), data: switched }),
   z.object({
     action: z.literal('set_scope'),
     data: z.object({ success: z.boolean(), scope, message: z.string() }),

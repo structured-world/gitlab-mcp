@@ -29,16 +29,14 @@ describe('ManageContextSchema', () => {
     });
   });
 
-  describe('action: list_profiles', () => {
-    it('should parse valid list_profiles action', () => {
-      const input = { action: 'list_profiles' };
-      const result = ManageContextSchema.safeParse(input);
-      expect(result.success).toBe(true);
-      if (result.success) {
-        expect(result.data.action).toBe('list_profiles');
-      }
-    });
-  });
+  // A chat cannot change the account or instance its connection signed in with, so the
+  // profile actions, which only recorded a profile's name, are not offered.
+  it.each([{ action: 'list_profiles' }, { action: 'switch_profile', profile: 'production' }])(
+    'rejects the removed action %j',
+    (input) => {
+      expect(ManageContextSchema.safeParse(input).success).toBe(false);
+    },
+  );
 
   describe('action: switch_preset', () => {
     it('should parse valid switch_preset action with preset name', () => {
@@ -59,30 +57,6 @@ describe('ManageContextSchema', () => {
 
     it('should reject switch_preset with empty preset name', () => {
       const input = { action: 'switch_preset', preset: '' };
-      const result = ManageContextSchema.safeParse(input);
-      expect(result.success).toBe(false);
-    });
-  });
-
-  describe('action: switch_profile', () => {
-    it('should parse valid switch_profile action with profile name', () => {
-      const input = { action: 'switch_profile', profile: 'production' };
-      const result = ManageContextSchema.safeParse(input);
-      expect(result.success).toBe(true);
-      if (result.success && result.data.action === 'switch_profile') {
-        expect(result.data.action).toBe('switch_profile');
-        expect(result.data.profile).toBe('production');
-      }
-    });
-
-    it('should reject switch_profile without profile name', () => {
-      const input = { action: 'switch_profile' };
-      const result = ManageContextSchema.safeParse(input);
-      expect(result.success).toBe(false);
-    });
-
-    it('should reject switch_profile with empty profile name', () => {
-      const input = { action: 'switch_profile', profile: '' };
       const result = ManageContextSchema.safeParse(input);
       expect(result.success).toBe(false);
     });

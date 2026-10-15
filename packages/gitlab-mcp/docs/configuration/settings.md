@@ -15,11 +15,11 @@ widen it.
 
 ## Three layers
 
-| Layer   | Who sets it                                                              | Applies to                            | Kept                              |
-| ------- | ------------------------------------------------------------------------ | ------------------------------------- | --------------------------------- |
-| Server  | Administrator: environment variables and startup presets                 | Everyone                              | Server configuration              |
-| Account | The user, with `update_settings` or the client's settings page           | Every new chat of that GitLab account | Durably (see [Storage](#storage)) |
-| Chat    | The user or the assistant, with `manage_context` or the connection panel | The current chat only                 | Until the chat ends or is reset   |
+| Layer   | Who sets it                                                              | Applies to                                                                                  | Kept                              |
+| ------- | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------- | --------------------------------- |
+| Server  | Administrator: environment variables and startup presets                 | Everyone                                                                                    | Server configuration              |
+| Account | The user, with `update_settings` or the client's settings page           | Every chat of that GitLab account, open ones at once, except where the chat chose otherwise | Durably (see [Storage](#storage)) |
+| Chat    | The user or the assistant, with `manage_context` or the connection panel | The current chat only                                                                       | Until the chat ends or is reset   |
 
 The account is the GitLab user behind the connection: with OAuth, the user who signed in;
 with a static token, the token's instance. Two users of one server never see each other's
@@ -170,9 +170,10 @@ tool runs; the server declares the `io.modelcontextprotocol/ui` extension for it
 panel you can:
 
 - search your projects and groups and choose where to work, for this chat
-  (**Use in this chat**) or as the default for new chats (**Save for new chats**), or let
-  this chat work everywhere (**Work everywhere in this chat**; the default for new chats and
-  the chat's preset and read-only mode stay);
+  (**Use in this chat**) or as the account's default for all chats (**Save for all chats**;
+  a chat that chose its own place keeps it), or let this chat work everywhere (**Work
+  everywhere in this chat**; the account's default and the chat's preset and read-only mode
+  stay);
 - see what the current chat can do: preset, read-only mode and tool groups that are off;
 - check the connection: account, GitLab version and tier, available tools, and what to do
   about problems such as an expired sign-in.
@@ -190,7 +191,7 @@ panels, and the assistant itself, can use them:
 // get_settings: current values and what each can be set to
 {}
 
-// update_settings: change only the listed settings for new chats
+// update_settings: change only the listed settings, for all chats of the account
 { "set": { "scope": "my-group", "scopeIncludeSubgroups": true, "tools_wiki": false } }
 
 // manage_context: change only this chat

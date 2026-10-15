@@ -61,7 +61,6 @@ export interface SessionOverridesPatch {
   preset?: string | null;
   readOnly?: boolean | null;
   scope?: WorkingScope | typeof EVERYWHERE | null;
-  profile?: string | null;
 }
 
 export interface ResolvedConfiguration {

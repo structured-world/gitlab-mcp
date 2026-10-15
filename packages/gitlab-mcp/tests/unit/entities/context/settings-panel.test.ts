@@ -470,7 +470,9 @@ describe('settings panel', () => {
     );
   });
 
-  it('saves the default for new chats as a settings patch', async () => {
+  // The account's default applies at once to every chat that did not choose its own place,
+  // and the notice says so rather than promising it only for new chats.
+  it("saves the account's default for all chats as a settings patch", async () => {
     let saved: Record<string, unknown> | undefined;
     const panel = startPanel({
       tools: {
@@ -490,11 +492,13 @@ describe('settings panel', () => {
     await panel.idle();
 
     expect(saved).toEqual({ scope: 'team/app', scopeIncludeSubgroups: false });
-    expect(panel.byId('notice').textContent).toBe('New chats will work in team/app.');
+    expect(panel.byId('notice').textContent).toBe(
+      'Your chats now work in team/app, except chats that chose otherwise.',
+    );
   });
 
   // Working everywhere changes this chat's scope only: no reset of its preset or read-only
-  // mode, and no change of the default for new chats.
+  // mode, and no change of the account's default.
   it('clears only the scope of this chat when working everywhere', async () => {
     const panel = startPanel();
     await panel.idle();

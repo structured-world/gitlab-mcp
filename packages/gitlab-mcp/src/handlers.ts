@@ -936,9 +936,8 @@ export async function setupHandlers(server: Server): Promise<void> {
     // In static-token mode always track the active instance URL.
     //
     // The session lists tools of the instance its calls go to and of no other: in OAuth
-    // mode that is the token's instance whatever profile the chat chose, as calls never
-    // follow a profile's host. switch_profile, switch_preset and reset therefore need
-    // no re-pin of their own.
+    // mode that is the token's instance. Context changes (switch_preset, reset) therefore
+    // need no re-pin of their own.
     const callSessionId = extra?.sessionId;
     if (callSessionId && (!oauthEnabled || oauthContextUrl !== undefined)) {
       const { getSessionManager: getSessionMgrForCall } = await import('./session-manager');

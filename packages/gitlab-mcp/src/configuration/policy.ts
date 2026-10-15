@@ -18,8 +18,6 @@ export interface SessionOverrides {
   preset?: string;
   readOnly?: boolean;
   scope?: WorkingScope | typeof EVERYWHERE;
-  /** Local profile chosen with manage_context switch_profile (OAuth mode). */
-  profile?: string;
 }
 
 export interface EffectivePolicy {

@@ -1,8 +1,9 @@
 /**
  * Native settings of the connection (OpenAI structured settings, `openai/settings`).
  *
- * The page shows the account's defaults for new chats: the working preset, read-only
- * mode, the default project or group, and which tool groups are on. Every value goes
+ * The page shows the account's settings, which apply at once to every chat of the account
+ * except where a chat chose otherwise: the working preset, read-only mode, the default
+ * project or group, and which tool groups are on. Every value goes
  * through the configuration service, so the page, manage_context and tool execution agree.
  * Nothing here can loosen what the server's operator configured.
  */
@@ -112,7 +113,7 @@ async function settingsPage(): Promise<SettingsReadResult> {
       title: 'Working preset',
       description: resolved.presetUnavailable
         ? `The saved preset '${resolved.presetUnavailable}' no longer exists; the connection works read-only until you choose another one.`
-        : 'Which tools and actions new chats start with.',
+        : 'Which tools and actions your chats work with.',
       enum: [NO_PRESET, ...presetNames],
     },
     readOnly: {
@@ -126,7 +127,7 @@ async function settingsPage(): Promise<SettingsReadResult> {
       type: 'string',
       title: 'Default project or group',
       description:
-        'A project or group path such as my-group/my-project. New chats work only there; leave empty to work everywhere you have access.',
+        'A project or group path such as my-group/my-project. Your chats work only there; leave empty to work everywhere you have access.',
       maxLength: 255,
     },
     scopeIncludeSubgroups: {
@@ -168,7 +169,7 @@ async function settingsPage(): Promise<SettingsReadResult> {
       },
       {
         kind: 'group',
-        title: 'Defaults for new chats',
+        title: 'Defaults for all chats (a chat can choose otherwise)',
         items: ['preset', 'readOnly', 'scope', 'scopeIncludeSubgroups'].map((property) => ({
           kind: 'property' as const,
           property,

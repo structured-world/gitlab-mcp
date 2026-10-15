@@ -1,13 +1,11 @@
 /**
  * Schema definitions for manage_context tool
  *
- * CQRS pattern with 9 actions:
+ * CQRS pattern with 7 actions:
  * - show: Display current context (Query)
  * - list_presets: List available presets (Query)
- * - list_profiles: List available profiles - OAuth only (Query)
  * - whoami: Token introspection and capability discovery (Query)
  * - switch_preset: Change active preset (Command)
- * - switch_profile: Change active profile - OAuth only (Command)
  * - set_scope: Set namespace scope with auto-detection (Command)
  * - clear_scope: Work everywhere in this session (Command)
  * - reset: Restore initial context (Command)
@@ -36,30 +34,11 @@ const ListPresetsSchema = z.object({
 });
 
 /**
- * List available profiles (OAuth mode only)
- */
-const ListProfilesSchema = z.object({
-  action: z
-    .literal('list_profiles')
-    .describe('List available OAuth profiles - only works in OAuth mode'),
-});
-
-/**
  * Switch to a different preset
  */
 const SwitchPresetSchema = z.object({
   action: z.literal('switch_preset').describe('Switch to a different preset configuration'),
   preset: z.string().min(1).describe('Name of the preset to activate'),
-});
-
-/**
- * Switch to a different profile (OAuth mode only)
- */
-const SwitchProfileSchema = z.object({
-  action: z
-    .literal('switch_profile')
-    .describe('Switch to a different OAuth profile - OAuth mode only'),
-  profile: z.string().min(1).describe('Name of the profile to activate'),
 });
 
 /**
@@ -123,9 +102,7 @@ const WhoamiSchema = z.object({
 export const ManageContextSchema = z.discriminatedUnion('action', [
   ShowContextSchema,
   ListPresetsSchema,
-  ListProfilesSchema,
   SwitchPresetSchema,
-  SwitchProfileSchema,
   SetScopeSchema,
   ClearScopeSchema,
   ResetContextSchema,
@@ -139,9 +116,7 @@ export const ManageContextSchema = z.discriminatedUnion('action', [
 export type ManageContextInput = z.infer<typeof ManageContextSchema>;
 export type ShowContextInput = z.infer<typeof ShowContextSchema>;
 export type ListPresetsInput = z.infer<typeof ListPresetsSchema>;
-export type ListProfilesInput = z.infer<typeof ListProfilesSchema>;
 export type SwitchPresetInput = z.infer<typeof SwitchPresetSchema>;
-export type SwitchProfileInput = z.infer<typeof SwitchProfileSchema>;
 export type SetScopeInput = z.infer<typeof SetScopeSchema>;
 export type ClearScopeInput = z.infer<typeof ClearScopeSchema>;
 export type ResetContextInput = z.infer<typeof ResetContextSchema>;

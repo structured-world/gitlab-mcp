@@ -174,14 +174,6 @@ export class ContextManager {
     };
   }
 
-  /** API URL of the caller's active local profile, or null when none is active. */
-  async getCurrentProfileUrl(): Promise<string | null> {
-    const name = (await getConfigurationService().resolve(this.caller())).session.profile;
-    if (!name) return null;
-    const profile = await this.profileLoader.loadProfile(name);
-    return profile.api_url ?? `https://${profile.host}`;
-  }
-
   async switchProfile(profileName: string): Promise<SwitchResult> {
     if (!isOAuthMode()) {
       throw new Error('switch_profile is only available in OAuth mode');

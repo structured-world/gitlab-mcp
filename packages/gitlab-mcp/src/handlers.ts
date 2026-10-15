@@ -264,55 +264,6 @@ function checkUnreachableInstance(
 }
 
 /**
- * Proactively re-pin per-session instance URL after a successful
- * manage_context/switch_profile dispatch (issue #407). Without this, the
- * session keeps the pre-switch URL until the next CallTool request resolves
- * the new OAuth context — so an immediate tools/list would return a stale
- * tool catalog for the previous instance.
- *
- * No-ops for any tool/action other than manage_context+switch_profile, for
- * missing sessionId, or when the new profile resolves to the same URL.
- */
-async function resyncSessionAfterSwitchProfile(
-  toolName: string,
-  toolArguments: Record<string, unknown> | undefined,
-  sessionId: string | undefined,
-): Promise<void> {
-  if (toolName !== 'manage_context' || !sessionId) return;
-  const action =
-    toolArguments && typeof toolArguments.action === 'string' ? toolArguments.action : undefined;
-  // `reset` needs no re-pin: the reset call itself pins the session to the OAuth
-  // context URL before it runs (see the per-call pin in the CallTool handler), so a
-  // profile it drops is already off the session when the call returns.
-  if (action !== 'switch_profile') return;
-
-  try {
-    const { getContextManager } = await import('./entities/context/context-manager');
-    const newProfileUrl = await getContextManager().getCurrentProfileUrl();
-    if (!newProfileUrl) return;
-    const normalized = normalizeInstanceUrl(newProfileUrl);
-
-    // Compare against the session's *actual* pinned URL, not the request URL:
-    // in OAuth mode without context the session is intentionally NOT pre-pinned,
-    // so comparing against the request fallback (GITLAB_BASE_URL) would skip the
-    // re-pin even when the session still holds a stale instance.
-    const { getSessionManager } = await import('./session-manager');
-    const sessionManager = getSessionManager();
-    const pinnedUrl = sessionManager.getSessionInstanceUrl(sessionId);
-    if (pinnedUrl && normalizeInstanceUrl(pinnedUrl) === normalized) return;
-
-    sessionManager.setSessionInstanceUrl(sessionId, normalized);
-  } catch (err) {
-    // Re-pin is best-effort: a load failure should not turn a successful
-    // switch_profile into an error response. The next CallTool will resolve
-    // the URL from OAuth context as before.
-    logWarn('Failed to re-pin session after switch_profile', {
-      error: err instanceof Error ? err.message : String(err),
-    });
-  }
-}
-
-/**
  * Fast-path for configuration tools when the instance is unreachable: bypass connection
  * bootstrap and health reporting. Returns a tool response if handled, or null to
  * fall through to the normal bootstrap path.
@@ -367,7 +318,6 @@ async function tryManageContextFastPath(
     // probe, the monitor drops it while one is running, and a cooldown would keep the other
     // tools down after GitLab answers again, which is what the probe is for.
     healthMonitor.forceReconnect(effectiveInstanceUrl);
-    await resyncSessionAfterSwitchProfile(toolName, toolArguments, sessionId);
     return formatToolResult(
       result,
       registryManager.getTool(toolName, effectiveInstanceUrl, requestScopes),
@@ -985,12 +935,10 @@ export async function setupHandlers(server: Server): Promise<void> {
     // transport; persisting the fallback would reset multi-tenant tool filtering).
     // In static-token mode always track the active instance URL.
     //
-    // NOTE: manage_context/switch_profile is handled separately via
-    // resyncSessionAfterSwitchProfile() called after executeTool succeeds — the new
-    // profile's URL is resolved from ProfileLoader and the session is re-pinned
-    // immediately so an immediate ListTools reflects the new instance (issue #407).
-    // switch_preset (static) does not need re-pin (presets change tool filtering,
-    // not the GitLab host).
+    // The session lists tools of the instance its calls go to and of no other: in OAuth
+    // mode that is the token's instance whatever profile the chat chose, as calls never
+    // follow a profile's host. switch_profile, switch_preset and reset therefore need
+    // no re-pin of their own.
     const callSessionId = extra?.sessionId;
     if (callSessionId && (!oauthEnabled || oauthContextUrl !== undefined)) {
       const { getSessionManager: getSessionMgrForCall } = await import('./session-manager');
@@ -1159,9 +1107,6 @@ export async function setupHandlers(server: Server): Promise<void> {
         if (result === undefined) {
           throw new Error(`Tool '${toolName}' is not available or has been filtered out`);
         }
-
-        // Re-pin per-session instance URL if this was switch_profile (#407)
-        await resyncSessionAfterSwitchProfile(toolName, request.params.arguments, callSessionId);
 
         // Report success — skip if handler already timed out (late completion
         // must not overwrite the timeout error already sent to HealthMonitor)

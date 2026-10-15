@@ -87,13 +87,6 @@ jest.mock('../../../../src/profiles/loader', () => ({
       if (name === 'invalid-profile') {
         return Promise.reject(new Error('Profile not found: invalid-profile'));
       }
-      if (name === 'override-api-url') {
-        return Promise.resolve({
-          host: 'gitlab.example.com',
-          api_url: 'https://api.example.com',
-          auth: { type: 'pat', token_env: 'GITLAB_TOKEN' },
-        });
-      }
       return Promise.resolve({
         host: 'gitlab.example.com',
         auth: { type: 'pat', token_env: 'GITLAB_TOKEN' },
@@ -347,34 +340,25 @@ describe('ContextManager', () => {
     });
   });
 
-  describe('switchProfile and getCurrentProfileUrl', () => {
+  describe('switchProfile', () => {
     it('refuses to switch profiles outside OAuth mode', async () => {
       await expect(getContextManager().switchProfile('production')).rejects.toThrow(
         'only available in OAuth mode',
       );
     });
 
-    it('switches the session profile in OAuth mode and resolves its URL', async () => {
+    // The profile belongs to the chat that chose it; another chat of the account keeps none.
+    it('switches the session profile in OAuth mode', async () => {
       process.env.OAUTH_ENABLED = 'true';
       const manager = getContextManager();
 
       const result = await runWithCaller(alice1, () => manager.switchProfile('production'));
 
       expect(result).toMatchObject({ success: true, current: 'production' });
-      await expect(runWithCaller(alice1, () => manager.getCurrentProfileUrl())).resolves.toBe(
-        'https://gitlab.example.com',
+      expect((await runWithCaller(alice1, () => manager.getContext())).profileName).toBe(
+        'production',
       );
-      await expect(runWithCaller(alice2, () => manager.getCurrentProfileUrl())).resolves.toBeNull();
-    });
-
-    it('prefers the profile api_url over the host', async () => {
-      process.env.OAUTH_ENABLED = 'true';
-      const manager = getContextManager();
-      await runWithCaller(alice1, () => manager.switchProfile('override-api-url'));
-
-      await expect(runWithCaller(alice1, () => manager.getCurrentProfileUrl())).resolves.toBe(
-        'https://api.example.com',
-      );
+      expect((await runWithCaller(alice2, () => manager.getContext())).profileName).toBeUndefined();
     });
 
     it('refuses an unknown profile', async () => {

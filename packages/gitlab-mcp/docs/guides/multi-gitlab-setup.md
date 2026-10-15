@@ -147,6 +147,8 @@ When using OAuth authentication, you can manage multiple user profiles.
 }
 ```
 
+Calls and the tool list stay on the instance you signed in to; to work with another instance, sign in to it.
+
 ## Workflow: Switching Between Instances
 
 ### Morning: Internal Work

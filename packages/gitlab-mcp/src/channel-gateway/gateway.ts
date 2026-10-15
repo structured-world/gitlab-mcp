@@ -73,6 +73,8 @@ export class ChannelGateway {
    */
   private readonly catalogReads = new Map<string, { read: boolean; generation: number }>();
   private catalogGeneration = 0;
+  /** The newest read that returned the whole catalog: every older answer is superseded. */
+  private completeGeneration = 0;
 
   constructor(private readonly config: GatewayConfig) {
     this.server = new Server(
@@ -157,6 +159,8 @@ export class ChannelGateway {
     generation: number,
     complete: boolean,
   ): void {
+    // A newer complete catalog decided every tool, including the ones it omits.
+    if (generation < this.completeGeneration) return;
     for (const tool of catalog.tools) {
       const known = this.catalogReads.get(tool.name);
       if (known && known.generation > generation) continue;
@@ -167,6 +171,7 @@ export class ChannelGateway {
     // The whole catalog in one answer: a tool it no longer lists loses its verdict. A page
     // of a paginated catalog cannot tell, the tool may be on another page.
     if (!complete) return;
+    this.completeGeneration = generation;
     for (const [name, known] of this.catalogReads) {
       if (known.generation < generation) this.catalogReads.delete(name);
     }

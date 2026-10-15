@@ -287,7 +287,14 @@ export class FileStorageBackend implements SessionStorageBackend {
       await file.close();
     }
     await fs.promises.rename(tempPath, this.filePath);
-    await syncDirectory(path.dirname(this.filePath));
+    // The rename is the commit: a restart already reads this state, so a failed flush only
+    // leaves it at risk from a power loss and must not report the write as failed.
+    await syncDirectory(path.dirname(this.filePath)).catch((error: unknown) =>
+      logWarn('Saved sessions may not survive a power loss: the directory could not be synced', {
+        filePath: this.filePath,
+        err: error as Error,
+      }),
+    );
     logDebug('Saved sessions to file', {
       sessions: data.sessions.length,
       deviceFlows: data.deviceFlows.length,

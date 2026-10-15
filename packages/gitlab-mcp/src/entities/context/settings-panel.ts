@@ -99,7 +99,8 @@ const SCRIPT = String.raw`
   var REQUEST_TIMEOUT_MS = 30000;
   var nextId = 1;
   var pending = {};
-  var state = { settings: null, context: null, selected: null, query: '', results: [], busy: false };
+  // busy: a save is in flight; searching: a search is. A search never ends a save.
+  var state = { settings: null, context: null, selected: null, query: '', results: [], busy: false, searching: false };
 
   function el(id) { return document.getElementById(id); }
   function text(node, value) { node.textContent = value == null ? '' : String(value); }
@@ -244,7 +245,7 @@ const SCRIPT = String.raw`
   function renderResults() {
     var list = el('results');
     clear(list);
-    if (state.query.length >= 2 && state.results.length === 0 && !state.busy) {
+    if (state.query.length >= 2 && state.results.length === 0 && !state.searching) {
       var empty = document.createElement('li');
       empty.setAttribute('role', 'option');
       empty.setAttribute('aria-disabled', 'true');
@@ -331,10 +332,10 @@ const SCRIPT = String.raw`
     state.query = query.trim();
     clearTimeout(searchTimer);
     var generation = ++searchGeneration;
-    if (state.query.length < 2) { state.results = []; state.busy = false; renderResults(); return; }
+    if (state.query.length < 2) { state.results = []; state.searching = false; renderResults(); return; }
     searchTimer = setTimeout(function () {
       var current = function () { return generation === searchGeneration; };
-      state.busy = true;
+      state.searching = true;
       callTool('find_scope_targets', { query: state.query }).then(function (found) {
         if (current()) state.results = found.targets || [];
       }).catch(function (error) {
@@ -343,7 +344,7 @@ const SCRIPT = String.raw`
         announce(explain(error), 'error');
       }).then(function () {
         if (!current()) return;
-        state.busy = false;
+        state.searching = false;
         renderResults();
         renderSelection();
       });

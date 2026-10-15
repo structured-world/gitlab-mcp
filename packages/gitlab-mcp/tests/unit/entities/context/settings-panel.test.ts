@@ -396,6 +396,56 @@ describe('settings panel', () => {
     expect(panel.byId('chat-scope').textContent).toBe('Group team and its subgroups');
   });
 
+  // A search that ends, or is cleared, while a save is in flight must not re-enable the
+  // save buttons: a second save could then finish out of order with the first.
+  it('keeps the save buttons off until the save finishes, whatever the search does', async () => {
+    const tools = defaultTools();
+    let finishSave: () => void = () => {};
+    let finishSearch: () => void = () => {};
+    const panel = startPanel({
+      tools: {
+        manage_context: (args) =>
+          args.action === 'set_scope'
+            ? new Promise((resolve) => {
+                finishSave = () => resolve(tools.manage_context(args));
+              })
+            : tools.manage_context(args),
+        find_scope_targets: (args) =>
+          args.query === 'tea'
+            ? new Promise((resolve) => {
+                finishSearch = () => resolve({ targets: [] });
+              })
+            : tools.find_scope_targets(args),
+      },
+    });
+    await panel.idle();
+    await typeSearch(panel, 'te');
+    panel.byId('result-0').click();
+    const input = panel.byId('search') as HTMLInputElement;
+    input.value = 'tea';
+    input.dispatchEvent(new panel.dom.window.Event('input'));
+    await waitFor(() =>
+      panel.toolCalls.some((c) => c.name === 'find_scope_targets' && c.arguments.query === 'tea'),
+    );
+
+    panel.byId('use-chat').click();
+    await waitFor(() => panel.toolCalls.some((c) => c.arguments.action === 'set_scope'));
+    finishSearch();
+    await waitFor(() => (panel.byId('results').textContent ?? '').includes('No project'));
+    expect((panel.byId('use-chat') as HTMLButtonElement).disabled).toBe(true);
+    expect((panel.byId('save-default') as HTMLButtonElement).disabled).toBe(true);
+
+    input.value = 't';
+    input.dispatchEvent(new panel.dom.window.Event('input'));
+    expect((panel.byId('use-chat') as HTMLButtonElement).disabled).toBe(true);
+
+    finishSave();
+    await panel.idle();
+    expect(panel.byId('notice').textContent).toBe(
+      'This chat now works in Group team and its subgroups.',
+    );
+  });
+
   // The request "succeeded" but the server holds something else: no false success.
   it('reports a change the server did not keep', async () => {
     const tools = defaultTools();

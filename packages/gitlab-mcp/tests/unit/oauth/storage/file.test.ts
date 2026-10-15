@@ -487,6 +487,33 @@ describe('FileStorageBackend', () => {
       expect(await storage.getAccountSettings('acct')).toBeUndefined();
     });
 
+    // Once the file is renamed into place a restart reads the new state, so a failed
+    // directory flush must not report the write as failed and undo it in this process only.
+    it('keeps a write whose directory flush fails after the rename', async () => {
+      if (process.platform === 'win32') return;
+      await seeded();
+      const realOpen = fs.promises.open.bind(fs.promises);
+      const open = jest
+        .spyOn(fs.promises, 'open')
+        .mockImplementation(async (file: fs.PathLike, flags?: string | number, mode?: fs.Mode) => {
+          if (String(file) === tempDir)
+            throw Object.assign(new Error('EIO: i/o error'), { code: 'EIO' });
+          return realOpen(file, flags, mode);
+        });
+      try {
+        expect(await storage.putAccountSettings('acct', { readOnly: true }, 0)).toMatchObject({
+          version: 1,
+        });
+      } finally {
+        open.mockRestore();
+      }
+      const restarted = await reloadAfterCrash();
+
+      expect((await storage.getAccountSettings('acct'))?.settings).toEqual({ readOnly: true });
+      expect((await restarted.getAccountSettings('acct'))?.settings).toEqual({ readOnly: true });
+      await restarted.close();
+    });
+
     // A session whose creation could not be written was never returned to anyone.
     it('drops a session whose creation cannot be written', async () => {
       await seeded();

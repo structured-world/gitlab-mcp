@@ -300,6 +300,36 @@ describe('ChannelGateway', () => {
     }
   });
 
+  // The newer complete catalog no longer lists the tool: an older answer arriving last must
+  // not bring its verdict back, the tool is classified by its name again.
+  it('ignores a tool from an older catalog answer after a newer complete one', async () => {
+    let answerOlder: (value: unknown) => void = () => {};
+    mockClientListTools
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            answerOlder = resolve;
+          }),
+      )
+      .mockResolvedValueOnce({ tools: [{ name: 'other_tool' }] });
+    const gw = new ChannelGateway(baseConfig);
+    await gw.start();
+    const older = listTools();
+    await wait(0);
+    await listTools();
+    answerOlder({ tools: [{ name: 'run_task', annotations: { readOnlyHint: true } }] });
+    await older;
+    dropLinkOnNextCall();
+
+    try {
+      await expect(callTool('run_task')).rejects.toThrow();
+      expect(mockClientCallTool).toHaveBeenCalledTimes(1);
+    } finally {
+      mockClientCallTool.mockReset();
+      await gw.stop();
+    }
+  });
+
   // Settings changes make the downstream catalog change: the host must hear about it.
   it('forwards a downstream tool-list change to the host', async () => {
     const gw = new ChannelGateway(baseConfig);

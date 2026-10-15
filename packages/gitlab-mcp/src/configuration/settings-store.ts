@@ -47,6 +47,20 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 
 const errorCode = (error: unknown): string | undefined => (error as NodeJS.ErrnoException).code;
 
+/**
+ * A stored record as written, or undefined when any field is off: its account, a version
+ * from 1 (every compare-and-set write names it), its update time and valid settings.
+ */
+function validRecord(key: string, record: unknown): AccountSettingsRecord | undefined {
+  if (!isPlainObject(record)) return undefined;
+  const { accountKey, version, updatedAt } = record;
+  if (accountKey !== key) return undefined;
+  if (typeof version !== 'number' || !Number.isInteger(version) || version < 1) return undefined;
+  if (typeof updatedAt !== 'number' || !Number.isFinite(updatedAt)) return undefined;
+  const settings = AccountSettingsSchema.safeParse(record.settings);
+  return settings.success ? { accountKey, settings: settings.data, version, updatedAt } : undefined;
+}
+
 /** Whether a stored record is this write: the same version with the same settings. */
 function holds(stored: AccountSettingsRecord | undefined, written: AccountSettingsRecord): boolean {
   return (
@@ -146,17 +160,9 @@ export class LocalSettingsFile implements SettingsStore {
     for (const [key, record] of Object.entries(stored)) {
       // A hand-edited entry of the wrong shape, or settings the schema refuses, is ignored
       // rather than applied half-valid or failing every call.
-      const settings = isPlainObject(record)
-        ? AccountSettingsSchema.safeParse(record.settings)
-        : undefined;
-      if (settings?.success) {
-        accounts[key] = {
-          ...(record as Omit<AccountSettingsRecord, 'settings'>),
-          settings: settings.data,
-        };
-      } else {
-        logWarn('Ignoring invalid saved settings', { file: filePath });
-      }
+      const valid = validRecord(key, record);
+      if (valid) accounts[key] = valid;
+      else logWarn('Ignoring invalid saved settings', { file: filePath });
     }
     return { version: 1, accounts };
   }

@@ -1,5 +1,6 @@
 import { enhancedFetch } from './fetch';
 import { getGitLabBaseUrl } from './gitlab-base-url';
+import { decodePath } from '../profiles/scope-enforcer';
 
 /**
  * Extract namespace (group path) from a full project path.
@@ -40,18 +41,44 @@ export function isLikelyProjectPath(namespacePath: string): boolean {
 /**
  * Whether GitLab knows the path as a project or a group, or null when it confirms neither
  * (the path does not exist, or GitLab could not be reached). The likelier type is asked first.
+ * A URL-encoded path, as tools accept it, is looked up and reported decoded.
  */
 export async function findNamespaceType(
   namespacePath: string,
   resolvedPath?: (path: string) => void,
 ): Promise<'project' | 'group' | null> {
-  const order: Array<'project' | 'group'> = isLikelyProjectPath(namespacePath)
+  const path = decodePath(namespacePath);
+  if (/^\d+$/.test(path)) return findNumericNamespaceType(path, resolvedPath);
+  const order: Array<'project' | 'group'> = isLikelyProjectPath(path)
     ? ['project', 'group']
     : ['group', 'project'];
   for (const type of order) {
-    if (await verifyNamespaceType(namespacePath, type, resolvedPath)) return type;
+    if (await verifyNamespaceType(path, type, resolvedPath)) return type;
   }
   return null;
+}
+
+/**
+ * Projects and groups are numbered separately, so one id can name a group and an unrelated
+ * project: both are asked, and an id naming both is refused rather than taken as either.
+ */
+async function findNumericNamespaceType(
+  id: string,
+  resolvedPath?: (path: string) => void,
+): Promise<'project' | 'group' | null> {
+  const found: Array<{ type: 'project' | 'group'; path: string }> = [];
+  for (const type of ['group', 'project'] as const) {
+    await verifyNamespaceType(id, type, (path) => found.push({ type, path }));
+  }
+  if (found.length > 1) {
+    throw new Error(
+      `'${id}' is the ID of both group '${found[0].path}' and project '${found[1].path}'; name the one you mean by its path`,
+    );
+  }
+  const [match] = found;
+  if (!match) return null;
+  resolvedPath?.(match.path);
+  return match.type;
 }
 
 /**

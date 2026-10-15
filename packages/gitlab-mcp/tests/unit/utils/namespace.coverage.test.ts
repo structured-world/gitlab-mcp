@@ -102,13 +102,46 @@ describe('Namespace Utils Coverage Tests', () => {
       ['group', { full_path: 'team' }],
       ['project', { path_with_namespace: 'team/app' }],
     ])('returns the canonical numeric %s path from the same lookup', async (type, entity) => {
-      // No second lookup or numeric path is allowed when saving a working scope.
+      // No second lookup or numeric path is allowed when saving a working scope. Both types
+      // are asked: the other one must not have the id too.
       if (type === 'project')
         mockEnhancedFetch.mockResolvedValueOnce({ ok: false, status: 404 } as Response);
       mockEnhancedFetch.mockResolvedValueOnce({ ok: true, json: async () => entity } as Response);
+      if (type === 'group')
+        mockEnhancedFetch.mockResolvedValueOnce({ ok: false, status: 404 } as Response);
       const found = jest.fn();
       expect(await findNamespaceType('123', found)).toBe(type);
       expect(found).toHaveBeenCalledWith(type === 'group' ? 'team' : 'team/app');
+      expect(mockEnhancedFetch).toHaveBeenCalledTimes(2);
+    });
+
+    // Projects and groups have separate ID sequences, so one number can name a group and an
+    // unrelated project: saving either as the scope would be a guess, so the id is refused.
+    it('refuses a numeric id that names both a group and a project', async () => {
+      mockEnhancedFetch
+        .mockResolvedValueOnce({ ok: true, json: async () => ({ full_path: 'team' }) } as Response)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ path_with_namespace: 'other/app' }),
+        } as Response);
+      const found = jest.fn();
+
+      await expect(findNamespaceType('123', found)).rejects.toThrow(
+        "'123' is the ID of both group 'team' and project 'other/app'",
+      );
+      expect(found).not.toHaveBeenCalled();
+    });
+
+    // Tools accept a URL-encoded path; it is looked up encoded once and reported decoded.
+    it('looks up a URL-encoded path encoded once', async () => {
+      mockEnhancedFetch.mockResolvedValueOnce({ ok: true, status: 200 } as Response);
+      const found = jest.fn();
+
+      expect(await findNamespaceType('team%2Fapp', found)).toBe('project');
+      expect(mockEnhancedFetch).toHaveBeenCalledWith(
+        'https://gitlab.example.com/api/v4/projects/team%2Fapp',
+      );
+      expect(found).toHaveBeenCalledWith('team/app');
     });
     it('returns the type GitLab confirms', async () => {
       mockEnhancedFetch

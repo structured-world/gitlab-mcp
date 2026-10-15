@@ -352,9 +352,25 @@ describe('LocalSettingsFile', () => {
   });
 
   // One hand-edited entry of the wrong shape must not fail every call of the server.
+  // Valid settings with broken record fields are skipped too: a record without a positive
+  // version would make every compare-and-set write of the account fail.
   it.each([
     ['an entry that is null', { bad: null }],
     ['an entry that is not an object', { bad: 'readOnly' }],
+    ['an entry without a version', { bad: { accountKey: 'bad', settings: {}, updatedAt: 1 } }],
+    [
+      'an entry with a version below 1',
+      { bad: { accountKey: 'bad', settings: {}, version: 0, updatedAt: 1 } },
+    ],
+    [
+      'an entry with a fractional version',
+      { bad: { accountKey: 'bad', settings: {}, version: 1.5, updatedAt: 1 } },
+    ],
+    ['an entry without its update time', { bad: { accountKey: 'bad', settings: {}, version: 1 } }],
+    [
+      'an entry filed under another account',
+      { bad: { accountKey: 'other', settings: {}, version: 1, updatedAt: 1 } },
+    ],
   ])('skips %s and reads the others', async (_label, broken) => {
     writeGeneration(
       1,

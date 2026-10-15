@@ -104,7 +104,8 @@ project's or group's trail when it is in the scope, and `User` or `Gitlab::Audit
 answers an empty page, as those events are in no trail of the scope.
 
 A numeric project or group identifier selected as a scope is saved as its canonical
-GitLab path. A project listing or search under a scope made of projects is ordered as GitLab
+GitLab path; projects and groups are numbered separately, so an identifier that names both
+is refused, to be given by path. A URL-encoded path is accepted and saved decoded. A project listing or search under a scope made of projects is ordered as GitLab
 orders it (newest created first unless `sort`/`order_by` name another order) before
 pagination, reading at most 1000 scope projects; missing ordering metadata, a `similarity`
 order (GitLab's own ranking) or unread projects are reported as partial rather than

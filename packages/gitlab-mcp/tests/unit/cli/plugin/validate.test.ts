@@ -50,7 +50,7 @@ function manifest(overrides: Record<string, unknown> = {}): Record<string, unkno
       'com.openai': {
         onboardingSkill: './skills/gitlab-setup/SKILL.md',
         interface: {
-          displayName: 'GitLab MCP',
+          displayName: 'GitLab by Example',
           shortDescription: 'GitLab projects, MRs and CI',
           longDescription: 'Work with GitLab.',
           developerName: 'Example',
@@ -241,6 +241,19 @@ describe('validatePackage', () => {
       'plugin.json: interface.shortDescription is required',
     ]);
   });
+
+  it.each(['GitLab MCP', 'GitLab MCP Server', 'GitLab mcp server', 'GitLab Plugin'])(
+    'refuses the display name %s in a public package only',
+    (name) => {
+      // The directory guidelines forbid these suffixes on a product name.
+      const m = manifest();
+      ui(m).displayName = name;
+      expect(issuesOf(packageFiles(m))).toEqual([
+        'plugin.json: interface.displayName must not end with "MCP", "MCP Server" or "Plugin"',
+      ]);
+      expect(issuesOf(packageFiles(m), 'private')).toEqual([]);
+    },
+  );
 
   it('refuses duplicate or too many default prompts', () => {
     const m = manifest();

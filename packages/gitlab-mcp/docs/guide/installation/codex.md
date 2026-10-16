@@ -27,7 +27,7 @@ npx @structured-world/gitlab-mcp plugin build --endpoint https://mcp.example.com
 codex plugin marketplace add ./gitlab-mcp-plugin
 ```
 
-In Codex or the ChatGPT desktop app, open the Plugins Directory, choose the **GitLab MCP** marketplace and install the plugin. Codex opens GitLab in the browser to sign in. Then open the plugin's settings to choose a preset, read-only mode and the projects a chat may use; see [Account settings](/configuration/settings).
+In Codex or the ChatGPT desktop app, open the Plugins Directory, choose the **GitLab by Structured World** marketplace and install the plugin. Codex opens GitLab in the browser to sign in. Then open the plugin's settings to choose a preset, read-only mode and the projects a chat may use; see [Account settings](/configuration/settings).
 
 To update, rebuild into the same directory with the new package version and restart the app. Removing the plugin leaves your account settings on the server; they apply again when you reinstall.
 

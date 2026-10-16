@@ -62,7 +62,7 @@ describe('buildPlugin', () => {
 
     expect(readJson(result.marketplacePath)).toEqual({
       name: 'gitlab-mcp',
-      interface: { displayName: 'GitLab MCP' },
+      interface: { displayName: 'GitLab by Structured World' },
       plugins: [
         {
           name: 'gitlab-mcp',

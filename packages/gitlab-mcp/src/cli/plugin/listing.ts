@@ -30,7 +30,7 @@ export const PLUGIN_KEYWORDS = [
 export const LOGO_SOURCE = 'plugin/assets/logo.png';
 
 export const LISTING = {
-  displayName: 'GitLab MCP',
+  displayName: 'GitLab by Structured World',
   shortDescription: 'GitLab projects, MRs and CI',
   longDescription:
     'Work with GitLab from chat: browse projects and repositories, review and manage merge requests, ' +

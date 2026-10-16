@@ -355,6 +355,17 @@ export function validatePackage(
     ];
     const ui = (openai?.interface ?? {}) as Record<string, unknown>;
     checkText(issues, 'interface.displayName', ui.displayName, 30);
+    // The directory guidelines forbid these suffixes on a company or product name.
+    if (
+      flavor === 'public' &&
+      typeof ui.displayName === 'string' &&
+      /\s(?:mcp(?:\s+server)?|plugin)\s*$/i.test(ui.displayName)
+    ) {
+      issues.push({
+        file: 'plugin.json',
+        message: 'interface.displayName must not end with "MCP", "MCP Server" or "Plugin"',
+      });
+    }
     checkText(issues, 'interface.shortDescription', ui.shortDescription, 30);
     checkText(issues, 'interface.longDescription', ui.longDescription, 4000);
     checkText(issues, 'interface.developerName', ui.developerName, 80);

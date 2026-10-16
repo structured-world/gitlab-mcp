@@ -200,6 +200,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
             const query = toQuery(rest, []);
 
             // A group's listing covers its subgroups (lib/api/merge_requests.rb, GitLab 16.0).
+            // No listing here filters by access level; the schema refuses min_access_level.
             let path = 'merge_requests';
             if (project_id) path = `projects/${normalizeProjectId(project_id)}/merge_requests`;
             else if (group_id) path = `groups/${normalizeProjectId(group_id)}/merge_requests`;

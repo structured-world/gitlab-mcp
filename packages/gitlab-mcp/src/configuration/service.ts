@@ -188,9 +188,9 @@ export class ConfigurationService {
       const stored = await store.put(caller.accountKey, next.data, current?.version ?? 0);
       if (stored) {
         // Each process tells the sessions it serves to re-list. Processes share only the
-        // settings storage, read on every request, and by design have no channel between them:
-        // every call runs under the stored settings wherever it lands, and a host connected to
-        // another process gets the new catalog the next time it lists tools.
+        // settings storage and need nothing more: every request, a tool listing included, is
+        // answered from the stored settings wherever it lands, so a host connected to another
+        // process gets the new catalog the next time it lists tools.
         await this.notify([...this.track(caller)]);
         return stored;
       }

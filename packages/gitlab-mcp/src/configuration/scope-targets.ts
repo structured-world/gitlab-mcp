@@ -195,6 +195,26 @@ const isTargetlessList = (args: Args): boolean =>
   args.action === 'list' && !hasValue(args.project_id) && !hasValue(args.group_id);
 
 /**
+ * Project listing filters GET /groups/:id/projects does not apply: GroupProjectsFinder builds
+ * its own collection and ignores non_public (membership), and the others are not declared
+ * there. A listing naming one stays the instance-wide listing, filtered to the scope.
+ */
+const INSTANCE_ONLY_PROJECT_FILTERS = [
+  'membership',
+  'with_programming_language',
+  'include_deleted',
+  'marked_for_deletion_on',
+] as const;
+
+/** Whether a project listing applies a filter only the instance-wide listing has. */
+export function needsInstanceProjectListing(args: Args): boolean {
+  return INSTANCE_ONLY_PROJECT_FILTERS.some((name) => {
+    const value = args[name];
+    return value !== undefined && value !== null && value !== false && value !== '';
+  });
+}
+
+/**
  * A targetless project listing kept to one group of the scope. The caller's own exclusion of
  * subgroups stays; a scope without them excludes them anyway. A plain listing lists active
  * projects, a group listing only when asked: that default is kept unless the caller chose
@@ -236,7 +256,10 @@ const NARROWERS: Record<string, (args: Args, target: Target) => Args | null> = {
       : { ...args, action: 'project', project_id: target.project };
   },
   browse_projects: (args, target) =>
-    args.action === 'list' && !hasValue(args.group_id) && 'group' in target
+    args.action === 'list' &&
+    !hasValue(args.group_id) &&
+    'group' in target &&
+    !needsInstanceProjectListing(args)
       ? groupProjectsArgs(args, target)
       : null,
   browse_merge_requests: (args, target) =>

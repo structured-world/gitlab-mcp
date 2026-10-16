@@ -58,6 +58,31 @@ describe('scopedArgs', () => {
     expect(scopedArgs('browse_projects', { action: 'list' }, scope)).toEqual(expected);
   });
 
+  // GET /groups/:id/projects does not apply these filters (GroupProjectsFinder ignores
+  // non_public; the others are not declared there), so a listing naming one keeps the
+  // instance-wide listing, which applies it, filtered to the scope.
+  it.each([
+    [{ membership: true }],
+    [{ with_programming_language: 'ruby' }],
+    [{ include_deleted: true }],
+    [{ marked_for_deletion_on: '2026-01-01' }],
+  ])('keeps the instance-wide listing for the %j filter', (filter) => {
+    const args = { action: 'list', ...filter };
+    expect(scopedArgs('browse_projects', args, group)).toEqual(args);
+    expect(isFilteredListing('browse_projects', args)).toBe(true);
+  });
+
+  // A filter set to its no-op value does not need the instance-wide listing.
+  it('lists the scope group when membership is not required', () => {
+    expect(scopedArgs('browse_projects', { action: 'list', membership: false }, group)).toEqual({
+      action: 'list',
+      membership: false,
+      group_id: 'team',
+      include_subgroups: true,
+      active: true,
+    });
+  });
+
   // The caller's own choice of active or archived projects stays as asked.
   it.each([[{ active: false }], [{ archived: true }]])(
     'keeps the requested %j filter when listing the scope group',

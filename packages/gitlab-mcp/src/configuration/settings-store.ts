@@ -61,6 +61,21 @@ function validRecord(key: string, record: unknown): AccountSettingsRecord | unde
   return settings.success ? { accountKey, settings: settings.data, version, updatedAt } : undefined;
 }
 
+/**
+ * A record read from the session storage, whose version is that storage's compare-and-set
+ * token: settings of the wrong shape are read as none, keeping the version, so the account
+ * still resolves and its next write replaces them.
+ */
+export function usableStoredRecord(
+  record: AccountSettingsRecord | undefined,
+): AccountSettingsRecord | undefined {
+  if (!record) return undefined;
+  const settings = AccountSettingsSchema.safeParse(record.settings);
+  if (settings.success) return { ...record, settings: settings.data };
+  logWarn('Ignoring invalid stored account settings', { accountKey: record.accountKey });
+  return { ...record, settings: {} };
+}
+
 /** A record from a list keyed by its own account, checked as {@link validRecord} does. */
 export function validStoredRecord(record: unknown): AccountSettingsRecord | undefined {
   if (!isPlainObject(record) || typeof record.accountKey !== 'string') return undefined;

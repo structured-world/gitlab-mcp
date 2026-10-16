@@ -3086,6 +3086,7 @@ describe('handlers', () => {
       mockRegistryManager.executeTool.mockImplementation(async (_tool, args) => ({
         id: args.project_id === 'team/a' ? 1 : 2,
         name: 'app',
+        name_with_namespace: 'team / app',
         archived: false,
         path_with_namespace: args.project_id,
         created_at: args.project_id === 'team/a' ? '2024-01-01' : '2025-01-01',
@@ -3419,10 +3420,15 @@ describe('handlers', () => {
     it('composes a global search of projects across a mixed scope', async () => {
       await service().updateSession(staticCaller(), { preset: 'mixed' });
       mockPresets.mixed = { scope: { project: 'team/app', groups: ['other'] } };
+      const project = {
+        id: 1,
+        name: 'x-app',
+        name_with_namespace: 'team / x-app',
+        path_with_namespace: 'team/app',
+        created_at: '2026-01-01',
+      };
       mockRegistryManager.executeTool.mockImplementation(async (tool: string) =>
-        tool === 'browse_projects'
-          ? { id: 1, name: 'x-app', path_with_namespace: 'team/app', created_at: '2026-01-01' }
-          : { scope: 'projects', results: [] },
+        tool === 'browse_projects' ? project : { scope: 'projects', results: [] },
       );
 
       const result = await callToolHandler(
@@ -3436,9 +3442,7 @@ describe('handlers', () => {
       );
 
       expect(result.isError).toBeFalsy();
-      expect(JSON.parse(result.content?.[0].text ?? '').results).toEqual([
-        { id: 1, name: 'x-app', path_with_namespace: 'team/app', created_at: '2026-01-01' },
-      ]);
+      expect(JSON.parse(result.content?.[0].text ?? '').results).toEqual([project]);
       expect(mockRegistryManager.executeTool).toHaveBeenCalledWith(
         'browse_search',
         expect.objectContaining({ action: 'group', group_id: 'other', scope: 'projects' }),

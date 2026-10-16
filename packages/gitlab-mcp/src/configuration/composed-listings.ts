@@ -17,6 +17,7 @@ import {
 } from './composed-feeds';
 import {
   groupProjectsArgs,
+  needsInstanceProjectListing,
   scopedResult,
   scopeTargets,
   targetMergeRequestsArgs,
@@ -58,6 +59,7 @@ export function isComposedListing(tool: string, requested: Args, scope: ScopeCon
   if (requested.action !== 'list' || requested.project_id !== undefined) return false;
   if (tool === 'browse_merge_requests') return requested.group_id === undefined;
   if (tool !== 'browse_projects' || requested.group_id !== undefined) return false;
+  if (needsInstanceProjectListing(requested)) return false;
   if (Object.keys(requested).every((key) => PROJECT_TARGET_OPTIONS.has(key))) return true;
   for (const target of scopeTargets(scope)) if ('project' in target) return false;
   return true;
@@ -177,8 +179,7 @@ async function readProjectTarget(
   if (budget.requests === MAX_REQUESTS) return { rows: [], bounded: true };
   budget.requests++;
   const found = await readScopeProject(run, project);
-  const search = typeof filters.search === 'string' ? filters.search.toLowerCase() : '';
-  if (!matchesScopeProject(found, search)) return { rows: [], bounded: false };
+  if (!matchesScopeProject(found, filters.search, 'listing')) return { rows: [], bounded: false };
   // A listing answers with the simple representation unless simple=false, as GitLab does.
   const row = (filters.simple === false ? found : simpleProject(found)) as Row;
   return { rows: [row], bounded: false };

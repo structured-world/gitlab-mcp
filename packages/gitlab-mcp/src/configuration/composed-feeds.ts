@@ -845,9 +845,8 @@ async function projectTargetSearch(
   if (budget.requests === MAX_REQUESTS) return { rows: [], bounded: true };
   budget.requests++;
   const found = await readScopeProject(run, project);
-  const query = typeof search === 'string' ? search.toLowerCase() : '';
   return {
-    rows: matchesScopeProject(found, query) ? [simpleProject(found) as Row] : [],
+    rows: matchesScopeProject(found, search, 'search') ? [simpleProject(found) as Row] : [],
     bounded: false,
   };
 }

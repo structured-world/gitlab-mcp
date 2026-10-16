@@ -1034,13 +1034,9 @@ export class ConnectionManager {
       throw error;
     }
 
-    // Only after successful init: clean up the previous instance state
-    if (previousUrl && previousUrl !== newInstanceUrl) {
-      this.initializePromises.delete(previousUrl);
-      this.introspectionPromises.delete(previousUrl);
-      this.instances.delete(previousUrl);
-      this.instanceAccessTimes.delete(previousUrl);
-    }
+    // The previous instance's state stays: a tool call that started before the switch keeps
+    // working with it, and each of its reads refreshes it. Once idle, the TTL and LRU eviction
+    // reclaim it like any other instance.
 
     const state = this.instances.get(newInstanceUrl);
     logInfo('ConnectionManager re-initialized', {

@@ -8,7 +8,12 @@ import { isOAuthEnabled } from '../oauth/config';
 import { sessionStore } from '../oauth/session-store';
 import { ProfileLoader } from '../profiles/loader';
 import { ConfigurationService } from './service';
-import { LocalSettingsFile, localSettingsDir, type SettingsStore } from './settings-store';
+import {
+  LocalSettingsFile,
+  localSettingsDir,
+  usableStoredRecord,
+  type SettingsStore,
+} from './settings-store';
 
 export { ConfigurationError } from './service';
 export type { ResolvedConfiguration } from './service';
@@ -28,7 +33,8 @@ function storeOfDeployment(): Promise<SettingsStore> {
     if (sessionsStored && sessionStore.keepsAccountSettings()) {
       await sessionStore.initialize();
       return {
-        get: (accountKey) => sessionStore.getAccountSettings(accountKey),
+        get: async (accountKey) =>
+          usableStoredRecord(await sessionStore.getAccountSettings(accountKey)),
         put: (accountKey, settings, expectedVersion) =>
           sessionStore.putAccountSettings(accountKey, settings, expectedVersion),
       };

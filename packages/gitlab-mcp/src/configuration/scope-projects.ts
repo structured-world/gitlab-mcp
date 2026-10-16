@@ -46,17 +46,58 @@ export function readScopeProject(run: RunTool, project_id: string): Promise<unkn
 }
 
 /**
- * Whether a project answers a listing or search: not archived, and its name, path or
- * description holds the lowercased search.
+ * How GitLab matches the text: a listing (`ProjectsFinder` search) against the project's own
+ * path and name, ignoring terms under three characters; a search of projects
+ * (`Gitlab::SearchResults#projects`) against its full path and full name, with every term.
  */
-export function matchesScopeProject(project: unknown, search: string): boolean {
+export type ProjectTextMatch = 'listing' | 'search';
+
+/** Gitlab::SQL::Pattern::MIN_CHARS_FOR_PARTIAL_MATCHING */
+const MIN_PARTIAL_TERM = 3;
+/** Gitlab::SQL::Pattern::REGEX_QUOTED_TERM */
+const QUOTED_TERM = /(?<=^| )"[^"]+"(?= |$)/g;
+
+/** Gitlab::SQL::Pattern.split_query_to_search_terms: words, then quoted phrases. */
+function searchTerms(query: string): string[] {
+  const quoted: string[] = [];
+  const rest = query.replace(QUOTED_TERM, (term) => {
+    quoted.push(term.slice(1, -1));
+    return '';
+  });
+  return [...rest.split(' ').filter(Boolean), ...quoted];
+}
+
+/**
+ * Gitlab::SQL::Pattern#fuzzy_arel_match on one field: every kept term appears in it, case
+ * aside; with no term kept, the field equals the whole query.
+ */
+function matchesField(value: unknown, query: string, terms: string[]): boolean {
+  if (typeof value !== 'string') return false;
+  const field = value.toLowerCase();
+  return terms.length > 0 ? terms.every((term) => field.includes(term)) : field === query;
+}
+
+/**
+ * Whether a project answers a listing or search: not archived, and one of its fields matches
+ * the search as GitLab matches it (the terms all in the same field).
+ */
+export function matchesScopeProject(
+  project: unknown,
+  search: unknown,
+  match: ProjectTextMatch,
+): boolean {
   if (project === undefined) return false;
-  const { name, path_with_namespace, description, archived } = project as Args;
-  if (archived === true) return false;
-  if (!search) return true;
-  return [name, path_with_namespace, description].some(
-    (value) => typeof value === 'string' && value.toLowerCase().includes(search),
-  );
+  const fields = project as Args;
+  if (fields.archived === true) return false;
+  const query = typeof search === 'string' ? search.trim().replace(/\s+/g, ' ').toLowerCase() : '';
+  if (!query) return true;
+  const minLength = match === 'listing' ? MIN_PARTIAL_TERM : 0;
+  const terms = searchTerms(query).filter((term) => term.length >= minLength);
+  const values =
+    match === 'listing'
+      ? [fields.path, fields.name, fields.description]
+      : [fields.path_with_namespace, fields.name_with_namespace, fields.description];
+  return values.some((value) => matchesField(value, query, terms));
 }
 
 /** A project read in full, in the simple representation a listing or search answers with. */

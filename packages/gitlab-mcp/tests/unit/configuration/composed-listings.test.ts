@@ -52,6 +52,19 @@ describe('isComposedListing', () => {
       isComposedListing('browse_projects', requested, { project: 'solo/app', groups: ['team'] }),
     ).toBe(false);
   });
+
+  // A group's project listing does not apply these filters, so a scope of groups keeps the
+  // filtered instance-wide listing for them instead of composing the groups' listings.
+  it.each([
+    [{ membership: true }],
+    [{ with_programming_language: 'ruby' }],
+    [{ include_deleted: true }],
+    [{ marked_for_deletion_on: '2026-01-01' }],
+  ])('does not compose a project listing filtered by %j', (filter) => {
+    expect(
+      isComposedListing('browse_projects', { action: 'list', ...filter }, { groups: ['a', 'b'] }),
+    ).toBe(false);
+  });
 });
 
 describe('multiTargetListing', () => {

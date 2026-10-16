@@ -803,6 +803,8 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
       where: { accountKey },
     })) as PrismaAccountSettingsRow | null;
     if (!row) return undefined;
+    // The server checks the settings' shape where it reads them, for every storage backend;
+    // version and update time are typed columns.
     return {
       accountKey: row.accountKey,
       settings: row.settings as AccountSettings,

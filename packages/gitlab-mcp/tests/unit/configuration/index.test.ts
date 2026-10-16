@@ -19,7 +19,7 @@ const mockSessionStore = {
   getBackendType: () => mockBackendType,
   keepsAccountSettings: () => mockKeepsSettings,
   initialize: jest.fn(async () => undefined),
-  getAccountSettings: jest.fn(async () => undefined),
+  getAccountSettings: jest.fn(async (_accountKey: string): Promise<unknown> => undefined),
   putAccountSettings: jest.fn(async (accountKey: string, settings: object) => ({
     accountKey,
     settings,
@@ -65,6 +65,7 @@ describe('getConfigurationService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockSessionStore.getAccountSettings.mockResolvedValue(undefined);
     resetConfigurationService();
     mockOAuth = false;
     mockBackendType = 'postgresql';
@@ -115,6 +116,31 @@ describe('getConfigurationService', () => {
       0,
     );
     expect(fs.existsSync(mockSettingsDir)).toBe(false);
+  });
+
+  // A stored row edited by hand or written by another version must not break every tool of
+  // the account: its settings are read as none, and its version still lets update_settings
+  // replace them.
+  it('reads settings of the wrong shape from the session storage as none', async () => {
+    mockOAuth = true;
+    mockSessionStore.getAccountSettings.mockResolvedValue({
+      accountKey: alice.accountKey,
+      settings: { disabledToolGroups: 'wiki', readOnly: 'yes' },
+      version: 3,
+      updatedAt: 1,
+    });
+    const service = getConfigurationService();
+
+    const resolved = await service.resolve(alice);
+    await service.updateAccount(alice, { readOnly: true });
+
+    expect(resolved.account).toEqual({});
+    expect(resolved.accountVersion).toBe(3);
+    expect(mockSessionStore.putAccountSettings).toHaveBeenCalledWith(
+      alice.accountKey,
+      { readOnly: true },
+      3,
+    );
   });
 
   // Sessions held in memory (the OAuth default) are gone after a restart; saved settings

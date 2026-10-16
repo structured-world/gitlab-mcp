@@ -537,18 +537,21 @@ describe('executeScoped', () => {
       'team/new': {
         id: 3,
         name: 'app new',
+        name_with_namespace: 'team / app new',
         created_at: '2026-03-01',
         path_with_namespace: 'team/new',
       },
       'team/old': {
         id: 1,
         name: 'app old',
+        name_with_namespace: 'team / app old',
         created_at: '2026-01-01',
         path_with_namespace: 'team/old',
       },
       'team/middle': {
         id: 2,
         name: 'app middle',
+        name_with_namespace: 'team / app middle',
         created_at: '2026-02-01',
         path_with_namespace: 'team/middle',
       },
@@ -1398,6 +1401,66 @@ describe('executeScoped', () => {
     )) as Array<Record<string, unknown>>;
 
     expect(result.map((p) => p.path_with_namespace)).toEqual(['team/app']);
+  });
+
+  // GitLab matches each search term on its own (Gitlab::SQL::Pattern#fuzzy_arel_match), all
+  // in one field: a listing in the project's path, name or description, ignoring terms under
+  // three characters; a search of projects in its full path, full name or description.
+  describe('matches scope projects term by term, as GitLab does', () => {
+    const scoped = buildPolicy(undefined, {}, {});
+    scoped.scope = { projects: ['team/alpha-middle-beta', 'team/alpha', 'beta/other'] };
+    scoped.scopeEnforcer = new ScopeEnforcer(scoped.scope);
+    const projectOf = (projectId: string) => {
+      const [namespace, path] = projectId.split('/');
+      return {
+        id: 1,
+        name: path,
+        path,
+        name_with_namespace: `${namespace} / ${path}`,
+        path_with_namespace: projectId,
+        created_at: '2026-01-01T00:00:00Z',
+        description: null,
+      };
+    };
+    const run = jest.fn(async (_tool: string, toolArgs: Record<string, unknown>) =>
+      projectOf(String(toolArgs.project_id)),
+    );
+    const paths = (result: unknown) =>
+      (
+        (Array.isArray(result) ? result : (result as { results: unknown[] }).results) as Array<
+          Record<string, unknown>
+        >
+      ).map((p) => p.path_with_namespace);
+
+    it.each([
+      ['alpha beta', ['team/alpha-middle-beta']],
+      ['"middle-beta" alpha', ['team/alpha-middle-beta']],
+      // Terms under three characters are dropped; with none left the whole query must match.
+      ['alpha to', ['team/alpha-middle-beta', 'team/alpha']],
+      ['ALPHA', ['team/alpha-middle-beta', 'team/alpha']],
+      ['team', []],
+    ])('lists by %j', async (search, expected) => {
+      const result = await executeScoped(
+        run,
+        'browse_projects',
+        { action: 'list', search },
+        scoped,
+      );
+      expect(paths(result).sort()).toEqual([...expected].sort());
+    });
+
+    it.each([
+      ['team alpha', ['team/alpha-middle-beta', 'team/alpha']],
+      ['beta other', ['beta/other']],
+    ])('searches by %j', async (search, expected) => {
+      const result = await executeScoped(
+        run,
+        'browse_search',
+        { action: 'global', scope: 'projects', search },
+        scoped,
+      );
+      expect(paths(result).sort()).toEqual([...expected].sort());
+    });
   });
 
   // The namespace listing is instance-wide; under a group scope it is read until the page of

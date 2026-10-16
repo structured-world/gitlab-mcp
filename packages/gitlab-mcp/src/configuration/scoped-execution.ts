@@ -11,7 +11,12 @@ import { parseGitLabApiError } from '../utils/error-handler';
 import { mapBounded } from '../utils/bounded-map';
 import { assertActionAllowed } from '../entities/utils';
 import { withTargetPaths } from './scope-ids';
-import { matchesScopeProject, readScopeProject, simpleProject } from './scope-projects';
+import {
+  matchesScopeProject,
+  readScopeProject,
+  simpleProject,
+  type ProjectTextMatch,
+} from './scope-projects';
 import {
   multiTargetRunners,
   multiTargetSearch,
@@ -303,13 +308,14 @@ function emulateScopeProjects(
     requested.action === 'list' &&
     Object.keys(requested).every((key) => PROJECT_LIST_OPTIONS.has(key))
   ) {
-    return listScopeProjects(run, projects, requested);
+    return listScopeProjects(run, projects, requested, 'listing');
   }
   // Project search has no projects scope: search the selected projects themselves.
   if (isProjectSearch(tool, requested)) {
     const { search, page, per_page, sort, order_by } = requested;
-    return listScopeProjects(run, projects, { search, page, per_page, sort, order_by }).then(
-      (found) => searchAnswer(found, { scope: 'projects' }),
+    const searched = { search, page, per_page, sort, order_by };
+    return listScopeProjects(run, projects, searched, 'search').then((found) =>
+      searchAnswer(found, { scope: 'projects' }),
     );
   }
   return undefined;
@@ -720,8 +726,8 @@ async function listScopeProjects(
   run: RunTool,
   projects: string[],
   requested: Args,
+  match: ProjectTextMatch,
 ): Promise<unknown> {
-  const search = typeof requested.search === 'string' ? requested.search.toLowerCase() : '';
   const perPage = numberOr(requested.per_page, DEFAULT_PAGE_SIZE);
   const page = numberOr(requested.page, 1);
   const wanted = page * perPage;
@@ -735,7 +741,9 @@ async function listScopeProjects(
         .slice(start, Math.min(start + REQUEST_CONCURRENCY, limit))
         .map((project_id) => readScopeProject(run, project_id)),
     );
-    matching.push(...batch.filter((project) => matchesScopeProject(project, search)));
+    matching.push(
+      ...batch.filter((project) => matchesScopeProject(project, requested.search, match)),
+    );
   }
   const { rows, unordered } = orderScopeProjects(matching, requested);
   const listed = rows.slice((page - 1) * perPage, wanted);

@@ -1,0 +1,384 @@
+/**
+ * The configuration service keeps each account's settings and each session's overrides
+ * apart, validates before it writes, merges concurrent edits of different fields, and
+ * notifies only the sessions a change affects.
+ */
+
+import type { Caller } from '../../../src/configuration/caller';
+import {
+  ConfigurationError,
+  ConfigurationService,
+  type PresetSource,
+} from '../../../src/configuration/service';
+import type { SettingsStore } from '../../../src/configuration/settings-store';
+import type { AccountSettings, AccountSettingsRecord } from '../../../src/configuration/types';
+import type { Preset } from '../../../src/profiles/types';
+
+/** In-memory compare-and-set store, with a hook to interleave a competing write. */
+class FakeStore implements SettingsStore {
+  records = new Map<string, AccountSettingsRecord>();
+  beforePut?: () => Promise<void>;
+  failPut = false;
+
+  async get(accountKey: string): Promise<AccountSettingsRecord | undefined> {
+    const record = this.records.get(accountKey);
+    return record ? structuredClone(record) : undefined;
+  }
+
+  async put(
+    accountKey: string,
+    settings: AccountSettings,
+    expectedVersion: number,
+  ): Promise<AccountSettingsRecord | undefined> {
+    const hook = this.beforePut;
+    this.beforePut = undefined;
+    await hook?.();
+    if (this.failPut) throw new Error('database down');
+    const version = this.records.get(accountKey)?.version ?? 0;
+    if (version !== expectedVersion) return undefined;
+    const record = { accountKey, settings, version: version + 1, updatedAt: 1 };
+    this.records.set(accountKey, record);
+    return structuredClone(record);
+  }
+}
+
+const PRESETS: Record<string, Preset> = {
+  readonly: { read_only: true },
+  developer: { features: { wiki: false } },
+};
+
+const presets: PresetSource = {
+  load: async (name) => {
+    const preset = PRESETS[name];
+    if (!preset) throw new Error('not found');
+    return preset;
+  },
+};
+
+function caller(accountKey: string, sessionKey: string): Caller {
+  return {
+    accountKey,
+    sessionKey,
+    accountLabel: accountKey,
+    instanceUrl: 'https://gitlab.example.com',
+    oauth: true,
+  };
+}
+
+describe('ConfigurationService', () => {
+  let store: FakeStore;
+  let notified: string[][];
+  let service: ConfigurationService;
+
+  beforeEach(() => {
+    store = new FakeStore();
+    notified = [];
+    service = new ConfigurationService(
+      async () => store,
+      presets,
+      async (keys) => {
+        notified.push([...keys].sort());
+      },
+    );
+  });
+
+  it('resolves a caller without settings to an unrestricted policy', async () => {
+    const resolved = await service.resolve(caller('alice', 's1'));
+
+    expect(resolved.account).toEqual({});
+    expect(resolved.accountVersion).toBe(0);
+    expect(resolved.policy.readOnly).toBe(false);
+  });
+
+  it('applies saved account settings to every session of the account', async () => {
+    await service.updateAccount(caller('alice', 's1'), { preset: 'readonly' });
+
+    const other = await service.resolve(caller('alice', 's2'));
+
+    expect(other.policy).toMatchObject({ presetName: 'readonly', readOnly: true });
+  });
+
+  // Two users of one server: one account's settings never reach the other.
+  it('keeps the settings of two accounts apart', async () => {
+    await service.updateAccount(caller('alice', 's1'), { readOnly: true });
+
+    expect((await service.resolve(caller('bob', 's2'))).policy.readOnly).toBe(false);
+  });
+
+  // Two chats of one user: a session override stays in its session.
+  it('keeps a session override in its own session', async () => {
+    await service.updateSession(caller('alice', 's1'), { readOnly: true });
+
+    expect((await service.resolve(caller('alice', 's1'))).policy.readOnly).toBe(true);
+    expect((await service.resolve(caller('alice', 's2'))).policy.readOnly).toBe(false);
+  });
+
+  // A session id is not a capability: another account presenting it gets nothing.
+  it('does not share a session override with another account using the same session id', async () => {
+    await service.updateSession(caller('alice', 'shared'), { preset: 'readonly' });
+
+    expect((await service.resolve(caller('bob', 'shared'))).session).toEqual({});
+  });
+
+  it('keeps fields the patch leaves out and removes fields set to null', async () => {
+    await service.updateAccount(caller('alice', 's1'), {
+      preset: 'developer',
+      disabledToolGroups: ['pipelines'],
+    });
+
+    const stored = await service.updateAccount(caller('alice', 's1'), {
+      readOnly: true,
+      preset: null,
+    });
+
+    expect(stored.settings).toEqual({ disabledToolGroups: ['pipelines'], readOnly: true });
+  });
+
+  // Another session saved a different field between this edit's read and its write:
+  // the edit is re-applied on top, and neither change is lost.
+  it('merges an edit with a concurrent edit of another field', async () => {
+    store.beforePut = async () => {
+      await store.put('alice', { readOnly: true }, 0);
+    };
+
+    const stored = await service.updateAccount(caller('alice', 's1'), { preset: 'developer' });
+
+    expect(stored.settings).toEqual({ readOnly: true, preset: 'developer' });
+    expect(stored.version).toBe(2);
+  });
+
+  // Two chats switch off different tool groups at once: both groups end up off.
+  it('merges a tool-group toggle with a concurrent toggle of another group', async () => {
+    store.beforePut = async () => {
+      await store.put('alice', { disabledToolGroups: ['mrs'] }, 0);
+    };
+
+    const stored = await service.updateAccount(caller('alice', 's1'), {
+      toolGroups: { wiki: false },
+    });
+
+    expect(stored.settings.disabledToolGroups).toEqual(['mrs', 'wiki']);
+  });
+
+  it('turns a tool group back on and clears the list when none is left off', async () => {
+    await service.updateAccount(caller('alice', 's1'), { toolGroups: { wiki: false } });
+
+    const stored = await service.updateAccount(caller('alice', 's1'), {
+      toolGroups: { wiki: true },
+    });
+
+    expect(stored.settings).toEqual({});
+  });
+
+  it('refuses an unknown tool group in a toggle without writing anything', async () => {
+    await expect(
+      service.updateAccount(caller('alice', 's1'), { toolGroups: { bogus: false } }),
+    ).rejects.toThrow('Unknown tool group: bogus');
+    expect(store.records.size).toBe(0);
+  });
+
+  // The subgroup choice applies to the group saved now, not the one the page showed.
+  it('applies a subgroup change to a scope changed concurrently', async () => {
+    await service.updateAccount(caller('alice', 's1'), {
+      scope: { type: 'group', path: 'team', includeSubgroups: true },
+    });
+    store.beforePut = async () => {
+      await store.put(
+        'alice',
+        { scope: { type: 'group', path: 'other', includeSubgroups: true } },
+        1,
+      );
+    };
+
+    const stored = await service.updateAccount(caller('alice', 's1'), {
+      scopeIncludeSubgroups: false,
+    });
+
+    expect(stored.settings.scope).toEqual({
+      type: 'group',
+      path: 'other',
+      includeSubgroups: false,
+    });
+  });
+
+  it('ignores a subgroup change when no group is saved', async () => {
+    const stored = await service.updateAccount(caller('alice', 's1'), {
+      readOnly: true,
+      scopeIncludeSubgroups: false,
+    });
+
+    expect(stored.settings).toEqual({ readOnly: true });
+  });
+
+  it('reports settings that keep changing instead of looping forever', async () => {
+    const put = store.put.bind(store);
+    store.put = async () => undefined;
+
+    await expect(service.updateAccount(caller('alice', 's1'), { readOnly: true })).rejects.toThrow(
+      'The settings kept changing meanwhile; try again',
+    );
+    store.put = put;
+  });
+
+  it.each([
+    [{ preset: 'nonexistent' }, /Unknown preset 'nonexistent'/],
+    [{ disabledToolGroups: ['wiki', 'bogus'] }, /Unknown tool group: bogus/],
+    [{ scope: { type: 'project' as const, path: '', includeSubgroups: false } }, /.+/],
+  ])('refuses %j without writing anything', async (patch, message) => {
+    await expect(service.updateAccount(caller('alice', 's1'), patch)).rejects.toThrow(message);
+
+    expect(store.records.size).toBe(0);
+    expect(notified).toEqual([]);
+  });
+
+  it('refuses an unknown preset for the session without changing it', async () => {
+    await expect(
+      service.updateSession(caller('alice', 's1'), { preset: 'nonexistent' }),
+    ).rejects.toBeInstanceOf(ConfigurationError);
+
+    expect((await service.resolve(caller('alice', 's1'))).session).toEqual({});
+  });
+
+  // A failed write is reported, never as saved settings.
+  it('propagates a failed write without notifying anyone', async () => {
+    store.failPut = true;
+
+    await expect(service.updateAccount(caller('alice', 's1'), { readOnly: true })).rejects.toThrow(
+      'database down',
+    );
+    expect(notified).toEqual([]);
+  });
+
+  it('notifies every session of the account on an account change, and only those', async () => {
+    await service.resolve(caller('alice', 's1'));
+    await service.resolve(caller('alice', 's2'));
+    await service.resolve(caller('bob', 's3'));
+
+    await service.updateAccount(caller('alice', 's1'), { readOnly: true });
+
+    expect(notified).toEqual([['s1', 's2']]);
+  });
+
+  it('notifies only the session a session change affects', async () => {
+    await service.resolve(caller('alice', 's2'));
+
+    await service.updateSession(caller('alice', 's1'), { readOnly: true });
+
+    expect(notified).toEqual([['s1']]);
+  });
+
+  it('drops the session overrides on reset', async () => {
+    await service.updateSession(caller('alice', 's1'), { preset: 'readonly' });
+
+    await service.resetSession(caller('alice', 's1'));
+
+    expect((await service.resolve(caller('alice', 's1'))).session).toEqual({});
+  });
+
+  it('forgets a closed session and its overrides', async () => {
+    await service.updateSession(caller('alice', 's1'), { readOnly: true });
+
+    service.forgetSession('s1');
+    await service.updateAccount(caller('alice', 's2'), { preset: 'developer' });
+
+    expect(notified.at(-1)).toEqual(['s2']);
+    expect((await service.resolve(caller('alice', 's1'))).session).toEqual({});
+  });
+
+  // Closing one chat leaves the account's other chats tracked and their overrides intact.
+  it('keeps the other sessions of the account when one closes', async () => {
+    await service.updateSession(caller('alice', 's1'), { readOnly: true });
+    await service.updateSession(caller('alice', 's2'), { preset: 'readonly' });
+
+    service.forgetSession('s1');
+    await service.updateAccount(caller('alice', 's3'), { preset: 'developer' });
+
+    expect(notified.at(-1)).toEqual(['s2', 's3']);
+    expect((await service.resolve(caller('alice', 's2'))).session).toEqual({ preset: 'readonly' });
+  });
+
+  it('forgets a session whose last override is cleared', async () => {
+    await service.updateSession(caller('alice', 's1'), { readOnly: true });
+
+    const next = await service.updateSession(caller('alice', 's1'), { readOnly: null });
+
+    expect(next).toEqual({});
+    expect((await service.resolve(caller('alice', 's1'))).session).toEqual({});
+  });
+
+  describe('moveSessions', () => {
+    // A tracked session without overrides moves too, so account changes still reach it.
+    it('moves every session of the account, overrides without the scope', async () => {
+      await service.updateSession(caller('old', 's1'), {
+        readOnly: true,
+        scope: { type: 'group', path: 'team', includeSubgroups: true },
+      });
+      await service.updateSession(caller('old', 's2'), {
+        scope: { type: 'group', path: 'team', includeSubgroups: true },
+      });
+      await service.resolve(caller('old', 's3'));
+      notified.length = 0;
+
+      await service.moveSessions('old', 'new');
+      await service.updateAccount(caller('new', 's9'), { readOnly: true });
+
+      expect((await service.resolve(caller('new', 's1'))).session).toEqual({ readOnly: true });
+      expect((await service.resolve(caller('new', 's2'))).session).toEqual({});
+      expect(notified[0]).toEqual(['s1', 's2', 's3']);
+      expect(notified[1]).toEqual(['s1', 's2', 's3', 's9']);
+    });
+
+    it('does nothing when the account key stays the same or has no sessions', async () => {
+      await service.updateSession(caller('same', 's1'), { readOnly: true });
+      notified.length = 0;
+
+      await service.moveSessions('same', 'same');
+      await service.moveSessions('unknown', 'other');
+
+      expect((await service.resolve(caller('same', 's1'))).session).toEqual({ readOnly: true });
+      expect(notified).toEqual([[]]);
+    });
+  });
+
+  // A patch field left undefined means "unchanged", unlike null which clears it.
+  it('ignores patch fields that are undefined', async () => {
+    await service.updateSession(caller('alice', 's1'), { preset: 'readonly' });
+
+    const next = await service.updateSession(caller('alice', 's1'), {
+      preset: undefined,
+      readOnly: true,
+    });
+
+    expect(next).toEqual({ preset: 'readonly', readOnly: true });
+  });
+
+  it('reports a preset loader failure that is not an Error', async () => {
+    const failing = new ConfigurationService(
+      async () => store,
+      {
+        load: () => Promise.reject('preset store offline'),
+      },
+      async () => undefined,
+    );
+
+    await expect(
+      failing.updateAccount(caller('alice', 's1'), { preset: 'readonly' }),
+    ).rejects.toThrow("Unknown preset 'readonly': preset store offline");
+  });
+
+  // The selected preset was deleted after it was saved: the caller keeps working read-only
+  // and can still open the settings to choose another one.
+  it('falls back to read-only when the selected preset is gone', async () => {
+    store.records.set('alice', {
+      accountKey: 'alice',
+      settings: { preset: 'deleted' },
+      version: 1,
+      updatedAt: 1,
+    });
+
+    const resolved = await service.resolve(caller('alice', 's1'));
+
+    expect(resolved.presetUnavailable).toBe('deleted');
+    expect(resolved.policy).toMatchObject({ readOnly: true, presetName: 'deleted' });
+  });
+});

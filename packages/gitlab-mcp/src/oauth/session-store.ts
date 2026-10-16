@@ -23,6 +23,7 @@ import {
   RegisteredOAuthClient,
 } from './types';
 import { SessionStorageBackend, createStorageBackend } from './storage';
+import type { AccountSettings, AccountSettingsRecord } from '../configuration/types';
 import { MemoryStorageBackend } from './storage/memory';
 import { logInfo, logError, logDebug } from '../logger';
 
@@ -315,6 +316,36 @@ export class SessionStore {
   /** How many clients `registeredFrom` registered at or after `since` (epoch ms), used or not. */
   async countClientsRegisteredSince(registeredFrom: string, since: number): Promise<number> {
     return this.backend.countClientsRegisteredSince(registeredFrom, since);
+  }
+
+  // ============================================================
+  // Account Settings
+  // ============================================================
+
+  /**
+   * Whether account settings can live here: the backend survives a restart and has the
+   * settings methods, which a database package older than this server lacks.
+   */
+  keepsAccountSettings(): boolean {
+    const backend = this.backend as Partial<SessionStorageBackend>;
+    return (
+      this.backend.type !== 'memory' &&
+      typeof backend.getAccountSettings === 'function' &&
+      typeof backend.putAccountSettings === 'function'
+    );
+  }
+
+  async getAccountSettings(accountKey: string): Promise<AccountSettingsRecord | undefined> {
+    return this.backend.getAccountSettings(accountKey);
+  }
+
+  /** Compare-and-set write; undefined when another write changed the settings first. */
+  async putAccountSettings(
+    accountKey: string,
+    settings: AccountSettings,
+    expectedVersion: number,
+  ): Promise<AccountSettingsRecord | undefined> {
+    return this.backend.putAccountSettings(accountKey, settings, expectedVersion);
   }
 
   // ============================================================

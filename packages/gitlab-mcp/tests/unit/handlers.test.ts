@@ -4,10 +4,18 @@
  */
 
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
-import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
+import {
+  CallToolRequestSchema,
+  ListResourcesRequestSchema,
+  ListToolsRequestSchema,
+  ReadResourceRequestSchema,
+} from '@modelcontextprotocol/sdk/types.js';
 import { setupHandlers, resetHandlersState } from '../../src/handlers';
+import * as scopeIds from '../../src/configuration/scope-ids';
 import { StructuredToolError, parseGitLabApiError } from '../../src/utils/error-handler';
 import { GitLabTimeoutError } from '../../src/utils/fetch';
+import { ConfigurationService } from '../../src/configuration/service';
+import { resolveCaller } from '../../src/configuration/caller';
 
 // Mock ConnectionManager
 const mockConnectionManager = {
@@ -49,7 +57,34 @@ const mockRegistryManager = {
   executeTool: jest.fn(),
   refreshCache: jest.fn(),
   getTool: jest.fn(),
+  getToolRegistryKey: jest.fn().mockReturnValue(undefined),
+  isReadOnlyTool: jest.fn().mockReturnValue(true),
+  /** Argument names a tool declares; undefined when unknown, so every argument is checked. */
+  getDeclaredArguments: jest.fn().mockReturnValue(undefined),
+  // Built from the two mocks above, as the real registry builds it from its tables.
+  getToolFacts: (name: string) => ({
+    name,
+    group: jest
+      .requireActual('../../src/configuration/groups')
+      .groupOfRegistry(mockRegistryManager.getToolRegistryKey(name)),
+    readOnly: mockRegistryManager.isReadOnlyTool(name) as boolean,
+  }),
 };
+
+// A real configuration service over an in-memory store, so the caller's settings are
+// applied exactly as in production; the home directory is never touched.
+const mockSettings = new Map<
+  string,
+  { accountKey: string; settings: Record<string, unknown>; version: number; updatedAt: number }
+>();
+const mockSettingsRead = jest.fn();
+/** Presets the configuration service loads by name; empty preset when absent. */
+const mockPresets: Record<string, Record<string, unknown>> = {};
+let mockConfigurationService: unknown;
+jest.mock('../../src/configuration', () => ({
+  ...jest.requireActual('../../src/configuration/caller'),
+  getConfigurationService: () => mockConfigurationService,
+}));
 
 jest.mock('../../src/registry-manager', () => ({
   RegistryManager: {
@@ -63,6 +98,8 @@ jest.mock('../../src/config', () => ({
   HANDLER_TIMEOUT_MS: 100,
   GITLAB_BASE_URL: 'https://gitlab.example.com',
   GITLAB_SCHEMA_MODE: 'flat',
+  // No action is denied by the operator here; scoped calls check the requested action.
+  isActionDenied: () => false,
 }));
 
 // Mock HealthMonitor
@@ -74,6 +111,7 @@ const mockHealthMonitor = {
   isInstanceReachable: jest.fn().mockReturnValue(true),
   reportSuccess: jest.fn(),
   reportError: jest.fn(),
+  forceReconnect: jest.fn(),
   getMonitoredInstances: jest.fn().mockReturnValue(['https://gitlab.example.com']),
   shutdown: jest.fn(),
 };
@@ -116,17 +154,6 @@ jest.mock('../../src/logging/index', () => ({
   getCurrentRequestId: jest.fn(() => mockGetCurrentRequestId()),
 }));
 
-// Mock ContextManager — returns default context (no scope.path by default).
-// Tests that need scope.path coverage override mockContextManager.getContext directly.
-const mockContextManager = {
-  getContext: jest.fn().mockReturnValue({ readOnly: false }),
-  getCurrentProfileUrl: jest.fn().mockResolvedValue(null),
-};
-
-jest.mock('../../src/entities/context/context-manager', () => ({
-  getContextManager: jest.fn(() => mockContextManager),
-}));
-
 // Mock SessionManager — needed by the ListToolsRequestSchema and CallToolRequestSchema handlers
 // for per-session instance URL tracking (#398).
 const mockSessionManager = {
@@ -158,7 +185,11 @@ type McpHandler = (
  *  This decouples tests from the registration order inside setupHandlers(). */
 function getRegisteredHandler(
   mockServer: jest.Mocked<Server>,
-  schema: typeof ListToolsRequestSchema | typeof CallToolRequestSchema,
+  schema:
+    | typeof ListToolsRequestSchema
+    | typeof CallToolRequestSchema
+    | typeof ListResourcesRequestSchema
+    | typeof ReadResourceRequestSchema,
 ): McpHandler {
   // Use findLast to get the latest registered handler (not a stale pre-retry one)
   const calls = (mockServer.setRequestHandler as jest.Mock).mock.calls;
@@ -177,6 +208,26 @@ describe('handlers', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     resetHandlersState();
+
+    mockSettings.clear();
+    for (const name of Object.keys(mockPresets)) delete mockPresets[name];
+    mockSettingsRead.mockImplementation(async (key: string) => mockSettings.get(key));
+    mockRegistryManager.getToolRegistryKey.mockReturnValue(undefined);
+    mockRegistryManager.isReadOnlyTool.mockReturnValue(true);
+    mockConfigurationService = new ConfigurationService(
+      async () => ({
+        get: mockSettingsRead,
+        put: async (key: string, settings: Record<string, unknown>, expected: number) => {
+          const version = mockSettings.get(key)?.version ?? 0;
+          if (version !== expected) return undefined;
+          const record = { accountKey: key, settings, version: version + 1, updatedAt: 1 };
+          mockSettings.set(key, record);
+          return record;
+        },
+      }),
+      { load: async (name: string) => mockPresets[name] ?? {} },
+      async () => undefined,
+    );
 
     // Create mock server
     mockServer = {
@@ -217,10 +268,6 @@ describe('handlers', () => {
     // SessionManager mock defaults for per-session instance URL tracking (#398)
     mockSessionManager.getSessionInstanceUrl.mockReturnValue('https://gitlab.example.com');
     mockSessionManager.setSessionInstanceUrl.mockReturnValue(undefined);
-
-    // ContextManager default: no scope path (most tests don't need it)
-    mockContextManager.getContext.mockReturnValue({ readOnly: false });
-    mockContextManager.getCurrentProfileUrl.mockResolvedValue(null);
   });
 
   describe('setupHandlers', () => {
@@ -231,8 +278,16 @@ describe('handlers', () => {
       expect(mockHealthMonitor.initialize).toHaveBeenCalledTimes(1);
       expect(mockHealthMonitor.onStateChange).toHaveBeenCalledTimes(1);
 
-      // Should set up both handlers
-      expect(mockServer.setRequestHandler).toHaveBeenCalledTimes(2);
+      // Tools, plus the resources serving the settings panel
+      expect(mockServer.setRequestHandler).toHaveBeenCalledTimes(4);
+      expect(mockServer.setRequestHandler).toHaveBeenCalledWith(
+        ListResourcesRequestSchema,
+        expect.any(Function),
+      );
+      expect(mockServer.setRequestHandler).toHaveBeenCalledWith(
+        ReadResourceRequestSchema,
+        expect.any(Function),
+      );
       expect(mockServer.setRequestHandler).toHaveBeenCalledWith(
         ListToolsRequestSchema,
         expect.any(Function),
@@ -269,7 +324,7 @@ describe('handlers', () => {
       await setupHandlers(mockServer);
 
       // Should still set up handlers — tools/list returns context-only tools
-      expect(mockServer.setRequestHandler).toHaveBeenCalledTimes(2);
+      expect(mockServer.setRequestHandler).toHaveBeenCalledTimes(4);
       // refreshCache IS called even when disconnected (applies disconnected-mode filter)
       // setupHandlers calls refreshCache() without URL — the per-URL variant is
       // used only in the state-change callback, not during initial setup.
@@ -552,208 +607,67 @@ describe('handlers', () => {
       (oauth.getGitLabApiUrlFromContext as jest.Mock).mockReturnValue(undefined);
     });
 
-    it('should re-pin session URL after successful switch_profile (#407)', async () => {
-      // Regression guard: after manage_context/switch_profile, the next ListTools must
-      // see the new profile's instance URL. Without proactive re-pin, the session keeps
-      // the pre-switch URL until the next CallTool resolves the OAuth context.
-      const newProfileUrl = 'https://different-instance.example.com';
-      mockContextManager.getCurrentProfileUrl.mockResolvedValue(newProfileUrl);
+    // In OAuth mode every call goes to the token's instance. The session's tool list must
+    // describe that instance after a context change too, also while GitLab is unreachable,
+    // or the client would list tools of an instance none of its calls reach.
+    it.each([
+      ['connected', true],
+      ['unreachable', false],
+    ])(
+      'keeps the session on the token instance after a context change (%s)',
+      async (_, reachable) => {
+        const oauth = await import('../../src/oauth/index');
+        (oauth.isOAuthEnabled as jest.Mock).mockReturnValue(true);
+        (oauth.getGitLabApiUrlFromContext as jest.Mock).mockReturnValue(
+          'https://account.example.com',
+        );
+        mockHealthMonitor.isInstanceReachable.mockReturnValue(reachable);
+        mockSessionManager.getSessionInstanceUrl.mockReturnValue('https://account.example.com');
 
-      await callToolHandler(
-        {
-          params: {
-            name: 'manage_context',
-            arguments: { action: 'switch_profile', profile: 'eu' },
+        await callToolHandler(
+          {
+            params: {
+              name: 'manage_context',
+              arguments: { action: 'switch_preset', preset: 'readonly' },
+            },
           },
-        },
-        { sessionId: 'sess-switch' },
-      );
+          { sessionId: 'sess-switch' },
+        );
 
-      // setSessionInstanceUrl is called twice: once pre-dispatch with the request URL,
-      // once post-dispatch with the resolved new-profile URL.
-      expect(mockSessionManager.setSessionInstanceUrl).toHaveBeenCalledWith(
-        'sess-switch',
-        newProfileUrl,
-      );
-    });
+        const pins = mockSessionManager.setSessionInstanceUrl.mock.calls.filter(
+          (c) => c[0] === 'sess-switch',
+        );
+        expect(pins).toEqual([['sess-switch', 'https://account.example.com']]);
 
-    it('should NOT re-pin session URL when switch_profile resolves to same URL (#407)', async () => {
-      // No-op when new profile URL matches the session's currently pinned URL —
-      // avoid spurious notifications/tools/list_changed broadcasts.
-      mockContextManager.getCurrentProfileUrl.mockResolvedValue('https://gitlab.example.com');
-      mockSessionManager.getSessionInstanceUrl.mockReturnValue('https://gitlab.example.com');
+        mockHealthMonitor.isInstanceReachable.mockReturnValue(true);
+        (oauth.isOAuthEnabled as jest.Mock).mockReturnValue(false);
+        (oauth.getGitLabApiUrlFromContext as jest.Mock).mockReturnValue(undefined);
+      },
+    );
 
-      await callToolHandler(
-        {
-          params: { name: 'manage_context', arguments: { action: 'switch_profile', profile: 'x' } },
-        },
-        { sessionId: 'sess-same' },
-      );
-
-      // Only the pre-dispatch call (with the request URL) should occur — no
-      // post-dispatch re-pin when the resolved profile URL equals the pinned URL.
-      const calls = mockSessionManager.setSessionInstanceUrl.mock.calls.filter(
-        (c) => c[0] === 'sess-same',
-      );
-      expect(calls).toHaveLength(1);
-      expect(calls[0]).toEqual(['sess-same', 'https://gitlab.example.com']);
-    });
-
-    it('should re-pin session URL when previously pinned URL differs from new profile URL even if equals request URL (#407)', async () => {
-      // Regression guard for the OAuth-no-context fallback: pre-dispatch re-pin is
-      // skipped (oauthContextUrl is undefined), so effectiveInstanceUrl is the
-      // GITLAB_BASE_URL fallback. The session is still pinned to its previous
-      // instance. resyncSessionAfterSwitchProfile must compare against the actual
-      // pinned URL (not the request fallback) so the switch is not silently dropped.
+    // A session pinned to another instance (from an earlier connection of the chat) is moved
+    // to the OAuth token's instance by the next call, a reset as well, so an immediate tool
+    // list is built for the instance the calls reach.
+    it('pins the session to the account instance on reset', async () => {
       const oauth = await import('../../src/oauth/index');
       (oauth.isOAuthEnabled as jest.Mock).mockReturnValue(true);
-      (oauth.getGitLabApiUrlFromContext as jest.Mock).mockReturnValue(undefined);
-
-      // New profile resolves to the same URL as effectiveInstanceUrl (GITLAB_BASE_URL),
-      // but the session was previously pinned to a different host.
-      mockContextManager.getCurrentProfileUrl.mockResolvedValue('https://gitlab.example.com');
-      mockSessionManager.getSessionInstanceUrl.mockReturnValue(
-        'https://stale-instance.example.com',
+      (oauth.getGitLabApiUrlFromContext as jest.Mock).mockReturnValue(
+        'https://account.example.com',
       );
+      mockSessionManager.getSessionInstanceUrl.mockReturnValue('https://previous.example.com');
 
       await callToolHandler(
-        {
-          params: { name: 'manage_context', arguments: { action: 'switch_profile', profile: 'x' } },
-        },
-        { sessionId: 'sess-fallback' },
+        { params: { name: 'manage_context', arguments: { action: 'reset' } } },
+        { sessionId: 'sess-reset' },
       );
 
-      // Must re-pin to the new profile URL even though it matches the request fallback.
-      expect(mockSessionManager.setSessionInstanceUrl).toHaveBeenCalledWith(
-        'sess-fallback',
-        'https://gitlab.example.com',
+      const pins = mockSessionManager.setSessionInstanceUrl.mock.calls.filter(
+        (c) => c[0] === 'sess-reset',
       );
+      expect(pins.at(-1)).toEqual(['sess-reset', 'https://account.example.com']);
 
-      // Restore defaults
       (oauth.isOAuthEnabled as jest.Mock).mockReturnValue(false);
       (oauth.getGitLabApiUrlFromContext as jest.Mock).mockReturnValue(undefined);
-    });
-
-    it('should re-pin via disconnected manage_context fast-path (#407)', async () => {
-      // Coverage for the unreachable-instance fast-path: when the instance is down,
-      // tryManageContextFastPath bypasses bootstrap but still runs the re-pin so
-      // switch_profile keeps working even with a disconnected target.
-      mockHealthMonitor.isInstanceReachable.mockReturnValue(false);
-      mockContextManager.getCurrentProfileUrl.mockResolvedValue(
-        'https://disconnected-new.example.com',
-      );
-      mockSessionManager.getSessionInstanceUrl.mockReturnValue('https://gitlab.example.com');
-
-      await callToolHandler(
-        {
-          params: {
-            name: 'manage_context',
-            arguments: { action: 'switch_profile', profile: 'eu' },
-          },
-        },
-        { sessionId: 'sess-switch-disconnected' },
-      );
-
-      expect(mockSessionManager.setSessionInstanceUrl).toHaveBeenCalledWith(
-        'sess-switch-disconnected',
-        'https://disconnected-new.example.com',
-      );
-
-      // Restore reachable default
-      mockHealthMonitor.isInstanceReachable.mockReturnValue(true);
-    });
-
-    it('should handle non-Error rejection from getCurrentProfileUrl gracefully (#407)', async () => {
-      // Defensive branch: re-pin catch path uses `err instanceof Error ? .message : String(err)`.
-      // Cover the String(err) side with a non-Error rejection (e.g. raw string).
-      mockContextManager.getCurrentProfileUrl.mockRejectedValue('raw string failure');
-
-      const result = await callToolHandler(
-        {
-          params: { name: 'manage_context', arguments: { action: 'switch_profile', profile: 'x' } },
-        },
-        { sessionId: 'sess-string-err' },
-      );
-
-      expect(result).toEqual({
-        content: [{ type: 'text', text: JSON.stringify({ result: 'success' }, null, 2) }],
-      });
-    });
-
-    it('should re-pin when session has no pinned URL yet (#407)', async () => {
-      // Edge: first switch_profile on a fresh session (no prior pin).
-      // pinnedUrl is undefined → falsy short-circuit must skip the equality check
-      // and fall through to setSessionInstanceUrl.
-      mockContextManager.getCurrentProfileUrl.mockResolvedValue('https://new.example.com');
-      mockSessionManager.getSessionInstanceUrl.mockReturnValue(undefined);
-
-      await callToolHandler(
-        {
-          params: { name: 'manage_context', arguments: { action: 'switch_profile', profile: 'x' } },
-        },
-        { sessionId: 'sess-fresh' },
-      );
-
-      expect(mockSessionManager.setSessionInstanceUrl).toHaveBeenCalledWith(
-        'sess-fresh',
-        'https://new.example.com',
-      );
-    });
-
-    it('should silently skip re-pin when getCurrentProfileUrl returns null (#407)', async () => {
-      // Edge: switch_profile succeeded but no profile is active (initial state).
-      // resyncSessionAfterSwitchProfile must NOT call setSessionInstanceUrl.
-      mockContextManager.getCurrentProfileUrl.mockResolvedValue(null);
-
-      await callToolHandler(
-        {
-          params: { name: 'manage_context', arguments: { action: 'switch_profile', profile: 'x' } },
-        },
-        { sessionId: 'sess-null-profile' },
-      );
-
-      const calls = mockSessionManager.setSessionInstanceUrl.mock.calls.filter(
-        (c) => c[0] === 'sess-null-profile',
-      );
-      // Only the pre-dispatch call (with the request URL) should occur.
-      expect(calls).toHaveLength(1);
-    });
-
-    it('should swallow errors from getCurrentProfileUrl without failing the request (#407)', async () => {
-      // Re-pin is best-effort: a profile-load failure must not turn a successful
-      // switch_profile into an error response.
-      mockContextManager.getCurrentProfileUrl.mockRejectedValue(new Error('profile load failed'));
-
-      const result = await callToolHandler(
-        {
-          params: { name: 'manage_context', arguments: { action: 'switch_profile', profile: 'x' } },
-        },
-        { sessionId: 'sess-err' },
-      );
-
-      // executeTool's payload still flows back unchanged.
-      expect(result).toEqual({
-        content: [{ type: 'text', text: JSON.stringify({ result: 'success' }, null, 2) }],
-      });
-    });
-
-    it('should NOT re-pin session URL for switch_preset action (#407)', async () => {
-      // Only switch_profile triggers re-pin; switch_preset never changes the host.
-      mockContextManager.getCurrentProfileUrl.mockResolvedValue(
-        'https://should-not-be-used.example.com',
-      );
-
-      await callToolHandler(
-        {
-          params: {
-            name: 'manage_context',
-            arguments: { action: 'switch_preset', preset: 'readonly' },
-          },
-        },
-        { sessionId: 'sess-preset' },
-      );
-
-      expect(mockContextManager.getCurrentProfileUrl).not.toHaveBeenCalled();
     });
 
     it('should execute tool and return result', async () => {
@@ -1219,6 +1133,7 @@ describe('handlers', () => {
         'manage_context',
         { action: 'whoami' },
         'https://gitlab.example.com',
+        undefined,
       );
 
       // Restore
@@ -2218,8 +2133,8 @@ describe('handlers', () => {
       });
 
       await setupHandlers(mockServer);
-      // Both handlers should still be registered despite cache failure
-      expect(mockServer.setRequestHandler).toHaveBeenCalledTimes(2);
+      // All handlers should still be registered despite cache failure
+      expect(mockServer.setRequestHandler).toHaveBeenCalledTimes(4);
       // Cache failure is logged as a warning
       expect(logWarn).toHaveBeenCalledWith(
         'Failed to refresh registry cache during handler setup',
@@ -2317,6 +2232,34 @@ describe('handlers', () => {
         'https://gitlab.example.com',
         ['read_api'],
       );
+    });
+
+    it('checks request grants on the disconnected configuration fast path', async () => {
+      // A token without api/read_api must not reach find_scope_targets just because
+      // GitLab is marked unreachable: the fast path passes the grants like normal dispatch.
+      const oauth = require('../../src/oauth/index');
+      oauth.getTokenContext.mockReturnValue({
+        gitlabToken: 'fixture-only',
+        gitlabScopes: ['read_user'],
+      });
+      mockHealthMonitor.isInstanceReachable.mockReturnValue(false);
+      mockHealthMonitor.getState.mockReturnValue('disconnected');
+      mockRegistryManager.executeTool.mockResolvedValue({ targets: [] });
+      try {
+        await callToolHandler({
+          params: { name: 'find_scope_targets', arguments: { query: 'grp' } },
+        });
+        expect(mockRegistryManager.executeTool).toHaveBeenCalledWith(
+          'find_scope_targets',
+          { query: 'grp' },
+          'https://gitlab.example.com',
+          ['read_user'],
+        );
+        expect(mockConnectionManager.initialize).not.toHaveBeenCalled();
+      } finally {
+        mockHealthMonitor.isInstanceReachable.mockReturnValue(true);
+        mockHealthMonitor.getState.mockReturnValue('healthy');
+      }
     });
 
     it('should log OAuth context check before tool execution (lines 612-614)', async () => {
@@ -2441,6 +2384,29 @@ describe('handlers', () => {
       mockHealthMonitor.getState.mockReturnValue('healthy');
       (oauth.getGitLabApiUrlFromContext as jest.Mock).mockReturnValue(undefined);
     });
+
+    // A configuration tool answered while GitLab is marked unreachable is how a caller checks
+    // or recovers the connection: the monitor probes GitLab again itself, so other tools
+    // recover as soon as GitLab answers instead of waiting for the next scheduled attempt.
+    it('has the monitor probe GitLab again after a configuration tool answers', async () => {
+      mockHealthMonitor.isInstanceReachable.mockReturnValue(false);
+      mockHealthMonitor.getState.mockReturnValue('disconnected');
+      mockRegistryManager.hasToolHandler.mockReturnValue(true);
+      mockRegistryManager.executeTool.mockResolvedValueOnce({ success: true });
+
+      try {
+        const result = await callToolHandler({
+          params: { name: 'check_connection', arguments: {} },
+        });
+
+        expect(result.isError).toBeFalsy();
+        expect(mockHealthMonitor.forceReconnect).toHaveBeenCalledWith('https://gitlab.example.com');
+        expect(mockHealthMonitor.reportSuccess).not.toHaveBeenCalled();
+      } finally {
+        mockHealthMonitor.isInstanceReachable.mockReturnValue(true);
+        mockHealthMonitor.getState.mockReturnValue('healthy');
+      }
+    });
   });
 
   describe('connection tracker integration via logging mock', () => {
@@ -2519,13 +2485,12 @@ describe('handlers', () => {
       expect(mockConnectionTracker.recordError).not.toHaveBeenCalled();
     });
 
-    it('should set context path when sessionContext.scope.path is present (line 713)', async () => {
-      // Line 713: requestTracker.setContextForCurrentRequest is called only when
-      // contextManager.getContext() returns a context with scope.path set.
-      mockContextManager.getContext.mockReturnValue({
-        scope: { path: 'groups/my-group' },
-        readOnly: false,
-      });
+    // The access log records the caller's working scope.
+    it('records the working scope of the caller in the access log', async () => {
+      await (mockConfigurationService as ConfigurationService).updateAccount(
+        resolveCaller(undefined, 'https://gitlab.example.com'),
+        { scope: { type: 'group', path: 'groups/my-group', includeSubgroups: true } },
+      );
 
       await callToolHandler({
         params: {
@@ -2775,6 +2740,777 @@ describe('handlers', () => {
         'sess-early-001',
         expect.any(String),
       );
+    });
+  });
+
+  // The settings panel is served as an MCP App resource with a CSP that allows no origin.
+  describe('settings panel resource', () => {
+    const PANEL_URI = 'ui://gitlab-mcp/settings-panel-v1.html';
+
+    beforeEach(async () => {
+      await setupHandlers(mockServer);
+    });
+
+    it('lists the panel as an MCP App document', async () => {
+      const list = getRegisteredHandler(mockServer, ListResourcesRequestSchema);
+
+      const result = (await list({ method: 'resources/list', params: {} })) as {
+        resources: Array<Record<string, unknown>>;
+      };
+
+      expect(result.resources).toEqual([
+        {
+          uri: PANEL_URI,
+          name: 'GitLab connection panel',
+          mimeType: 'text/html;profile=mcp-app',
+          _meta: {
+            ui: {
+              csp: { connectDomains: [], resourceDomains: [], frameDomains: [] },
+              prefersBorder: true,
+            },
+          },
+        },
+      ]);
+    });
+
+    it('reads the panel document with its CSP metadata', async () => {
+      const read = getRegisteredHandler(mockServer, ReadResourceRequestSchema);
+
+      const result = (await read({ method: 'resources/read', params: { uri: PANEL_URI } })) as {
+        contents: Array<{ uri: string; mimeType: string; text: string; _meta: unknown }>;
+      };
+
+      expect(result.contents).toHaveLength(1);
+      expect(result.contents[0].uri).toBe(PANEL_URI);
+      expect(result.contents[0].mimeType).toBe('text/html;profile=mcp-app');
+      expect(result.contents[0].text.startsWith('<!doctype html>')).toBe(true);
+      // Self-contained: nothing is loaded from anywhere, which the empty CSP would block.
+      expect(result.contents[0].text).not.toMatch(/<(script|link|img)[^>]+(src|href)=/);
+      expect(result.contents[0]._meta).toEqual({
+        ui: {
+          csp: { connectDomains: [], resourceDomains: [], frameDomains: [] },
+          prefersBorder: true,
+        },
+      });
+    });
+
+    it('rejects an unknown resource', async () => {
+      const read = getRegisteredHandler(mockServer, ReadResourceRequestSchema);
+
+      // The SDK invokes handlers inside a promise chain, so a thrown error answers the request.
+      await expect(
+        Promise.resolve().then(() =>
+          read({ method: 'resources/read', params: { uri: 'ui://gitlab-mcp/other.html' } }),
+        ),
+      ).rejects.toThrow('Unknown resource: ui://gitlab-mcp/other.html');
+    });
+  });
+
+  // The caller's settings take effect in execution, also for direct calls a UI never
+  // offered: a restricted tool is neither listed nor run, and nothing reaches GitLab.
+  describe('caller settings', () => {
+    const staticCaller = () => resolveCaller('sess-1', 'https://gitlab.example.com');
+    const service = () => mockConfigurationService as ConfigurationService;
+
+    beforeEach(async () => {
+      await setupHandlers(mockServer);
+      listToolsHandler = getRegisteredHandler(mockServer, ListToolsRequestSchema);
+      callToolHandler = getRegisteredHandler(mockServer, CallToolRequestSchema);
+      mockRegistryManager.getAllToolDefinitions.mockReturnValue([
+        { name: 'browse_merge_requests', description: '', inputSchema: { type: 'object' } },
+        { name: 'manage_merge_request', description: '', inputSchema: { type: 'object' } },
+        { name: 'manage_context', description: '', inputSchema: { type: 'object' } },
+      ]);
+      mockRegistryManager.isReadOnlyTool.mockImplementation(
+        (name: string) => !name.startsWith('manage_'),
+      );
+      mockRegistryManager.getToolRegistryKey.mockImplementation((name: string) =>
+        name.includes('merge_request') ? 'mrs' : 'context',
+      );
+    });
+
+    it('lists every tool for a caller without settings', async () => {
+      const result = await listToolsHandler({}, { sessionId: 'sess-1' });
+
+      expect(result.tools?.map((t) => t.name)).toEqual([
+        'browse_merge_requests',
+        'manage_merge_request',
+        'manage_context',
+      ]);
+    });
+
+    it('hides write tools from a read-only account and keeps manage_context', async () => {
+      await service().updateAccount(staticCaller(), { readOnly: true });
+
+      const result = await listToolsHandler({}, { sessionId: 'sess-1' });
+
+      expect(result.tools?.map((t) => t.name)).toEqual(['browse_merge_requests', 'manage_context']);
+    });
+
+    it('hides the tools of a group the account switched off', async () => {
+      await service().updateAccount(staticCaller(), { disabledToolGroups: ['mrs'] });
+
+      const result = await listToolsHandler({}, { sessionId: 'sess-1' });
+
+      expect(result.tools?.map((t) => t.name)).toEqual(['manage_context']);
+    });
+
+    // An action the preset denies is refused on every call, so the list does not offer it:
+    // its branch leaves a discriminated schema and its value the enum of a flat one, and a
+    // tool whose every action is denied is not listed.
+    it('leaves the actions a preset denies out of the listed schemas', async () => {
+      const branch = (action: string) => ({
+        type: 'object',
+        properties: { action: { const: action } },
+        required: ['action'],
+      });
+      mockRegistryManager.getAllToolDefinitions.mockReturnValue([
+        {
+          name: 'manage_merge_request',
+          description: '',
+          inputSchema: { oneOf: [branch('merge'), branch('update')] },
+        },
+        {
+          name: 'browse_merge_requests',
+          description: '',
+          inputSchema: {
+            type: 'object',
+            properties: { action: { type: 'string', enum: ['list', 'get'] } },
+          },
+        },
+        {
+          name: 'manage_todos',
+          description: '',
+          inputSchema: { oneOf: [branch('mark_done')] },
+        },
+      ]);
+      mockPresets.guarded = {
+        denied_actions: [
+          'manage_merge_request:merge',
+          'browse_merge_requests:get',
+          'manage_todos:mark_done',
+        ],
+      };
+      await service().updateSession(staticCaller(), { preset: 'guarded' });
+
+      const result = await listToolsHandler({}, { sessionId: 'sess-1' });
+
+      expect(result.tools?.map((t) => t.name)).toEqual([
+        'manage_merge_request',
+        'browse_merge_requests',
+      ]);
+      const [manage, browse] = result.tools as Array<{ inputSchema: Record<string, unknown> }>;
+      expect(manage.inputSchema.oneOf).toEqual([branch('update')]);
+      expect(browse.inputSchema).toMatchObject({
+        properties: { action: { enum: ['list'] } },
+      });
+    });
+
+    // A sessionless static-token client (stdio) after switch_instance: the list is filtered
+    // with the settings of the instance the calls now run against, not the startup one.
+    it('lists a sessionless caller with the settings of the active instance', async () => {
+      const active = 'https://other.example.com';
+      mockConnectionManager.getCurrentInstanceUrl.mockReturnValue(active);
+      try {
+        await service().updateAccount(resolveCaller(undefined, active), { readOnly: true });
+
+        const result = await listToolsHandler({}, {});
+
+        expect(result.tools?.map((t) => t.name)).toEqual([
+          'browse_merge_requests',
+          'manage_context',
+        ]);
+      } finally {
+        mockConnectionManager.getCurrentInstanceUrl.mockReturnValue('https://gitlab.example.com');
+      }
+    });
+
+    // Listing is visibility only: an unreadable settings store does not empty the list.
+    it('keeps the registry list when the settings cannot be read', async () => {
+      mockSettingsRead.mockRejectedValue(new Error('database down'));
+
+      const result = await listToolsHandler({}, { sessionId: 'sess-1' });
+
+      expect(result.tools).toHaveLength(3);
+    });
+
+    it('refuses a direct call to a write tool in read-only mode without running it', async () => {
+      await service().updateSession(staticCaller(), { readOnly: true });
+
+      const result = await callToolHandler(
+        { params: { name: 'manage_merge_request', arguments: { action: 'merge' } } },
+        { sessionId: 'sess-1' },
+      );
+
+      expect(result.isError).toBe(true);
+      expect(result.content?.[0].text).toContain(
+        "'manage_merge_request merge' is not allowed by the current settings: read-only mode is on",
+      );
+      expect(mockRegistryManager.executeTool).not.toHaveBeenCalled();
+      expect(mockConnectionManager.initialize).not.toHaveBeenCalled();
+    });
+
+    // Limits that need no lookup refuse the call before a numeric target is resolved through
+    // GitLab, so a refused call reaches nothing.
+    it('refuses a read-only call with a numeric target without looking the target up', async () => {
+      await service().updateAccount(staticCaller(), {
+        readOnly: true,
+        scope: { type: 'group', path: 'team', includeSubgroups: true },
+      });
+      const lookup = jest.spyOn(scopeIds, 'withTargetPaths');
+
+      try {
+        const result = await callToolHandler(
+          {
+            params: {
+              name: 'manage_merge_request',
+              arguments: { action: 'merge', project_id: 7, merge_request_iid: 1 },
+            },
+          },
+          { sessionId: 'sess-1' },
+        );
+
+        expect(result.content?.[0].text).toContain('read-only mode is on');
+        expect(lookup).not.toHaveBeenCalled();
+      } finally {
+        lookup.mockRestore();
+      }
+    });
+
+    it('names only the tool when a refused call has no action', async () => {
+      await service().updateSession(staticCaller(), { readOnly: true });
+
+      const result = await callToolHandler(
+        { params: { name: 'manage_merge_request', arguments: {} } },
+        { sessionId: 'sess-1' },
+      );
+
+      expect(result.content?.[0].text).toContain(
+        "'manage_merge_request' is not allowed by the current settings: read-only mode is on",
+      );
+    });
+
+    it('refuses a project outside the working scope and runs one inside it', async () => {
+      await service().updateAccount(staticCaller(), {
+        scope: { type: 'group', path: 'team', includeSubgroups: true },
+      });
+
+      const outside = await callToolHandler(
+        {
+          params: {
+            name: 'browse_merge_requests',
+            arguments: { action: 'list', project_id: 'other/app' },
+          },
+        },
+        { sessionId: 'sess-1' },
+      );
+      const inside = await callToolHandler(
+        {
+          params: {
+            name: 'browse_merge_requests',
+            arguments: { action: 'list', project_id: 'team/app' },
+          },
+        },
+        { sessionId: 'sess-1' },
+      );
+
+      expect(outside.content?.[0].text).toMatch(/outside the allowed scope/);
+      expect(inside.isError).toBeFalsy();
+      expect(mockRegistryManager.executeTool).toHaveBeenCalledTimes(1);
+    });
+
+    // An argument the tool does not take is dropped by its handler, so it is not checked
+    // against the scope: the call runs as it would without one.
+    it('ignores an argument the tool does not declare when checking the scope', async () => {
+      await service().updateAccount(staticCaller(), {
+        scope: { type: 'group', path: 'team', includeSubgroups: true },
+      });
+      mockRegistryManager.getDeclaredArguments.mockReturnValueOnce(new Set(['action', 'user_id']));
+
+      const result = await callToolHandler(
+        {
+          params: {
+            name: 'browse_users',
+            arguments: { action: 'get', user_id: 1, project_id: 'outside/project' },
+          },
+        },
+        { sessionId: 'sess-1' },
+      );
+
+      expect(result.isError).toBeFalsy();
+      expect(mockRegistryManager.executeTool).toHaveBeenCalledTimes(1);
+      // Only the selected action's arguments are declared for the scope check.
+      expect(mockRegistryManager.getDeclaredArguments).toHaveBeenCalledWith('browse_users', 'get');
+    });
+
+    it('strips targets from unselected action branches before resolving scope IDs', async () => {
+      // group_id belongs to the group search variant; project search must not resolve or reject it.
+      await service().updateAccount(staticCaller(), {
+        scope: { type: 'group', path: 'team', includeSubgroups: true },
+      });
+      mockRegistryManager.getDeclaredArguments.mockReturnValueOnce(
+        new Set(['action', 'project_id', 'group_id', 'scope', 'search']),
+      );
+      const ids = jest.spyOn(require('../../src/configuration/scope-ids'), 'withTargetPaths');
+      const result = await callToolHandler(
+        {
+          params: {
+            name: 'browse_search',
+            arguments: {
+              action: 'project',
+              project_id: 'team/app',
+              group_id: 'outside',
+              scope: 'issues',
+              search: 'bug',
+            },
+          },
+        },
+        { sessionId: 'sess-1' },
+      );
+      expect(result.isError).toBeFalsy();
+      expect(ids.mock.calls[0][0]).toEqual(
+        expect.not.objectContaining({ group_id: expect.anything() }),
+      );
+      ids.mockRestore();
+    });
+
+    // Validate the complete entrypoint: multi-project preflight must reach sorted search emulation.
+    it('executes a global project search for a multi-project preset scope', async () => {
+      const resolved = await service().resolve(staticCaller());
+      const scope = { projects: ['team/a', 'team/b'] };
+      const { ScopeEnforcer } = require('../../src/profiles/scope-enforcer');
+      jest.spyOn(service(), 'resolve').mockResolvedValueOnce({
+        ...resolved,
+        policy: { ...resolved.policy, scope, scopeEnforcer: new ScopeEnforcer(scope) },
+      });
+      mockRegistryManager.executeTool.mockImplementation(async (_tool, args) => ({
+        id: args.project_id === 'team/a' ? 1 : 2,
+        name: 'app',
+        name_with_namespace: 'team / app',
+        archived: false,
+        path_with_namespace: args.project_id,
+        created_at: args.project_id === 'team/a' ? '2024-01-01' : '2025-01-01',
+      }));
+      const result = await callToolHandler(
+        {
+          params: {
+            name: 'browse_search',
+            arguments: {
+              action: 'global',
+              scope: 'projects',
+              search: 'app',
+              sort: 'desc',
+              order_by: 'created_at',
+              per_page: 1,
+            },
+          },
+        },
+        { sessionId: 'sess-1' },
+      );
+      expect(result.isError).toBeFalsy();
+      expect(mockRegistryManager.executeTool).toHaveBeenCalledTimes(2);
+      expect(JSON.parse(result.content![0].text)).toMatchObject({ results: [{ id: 2 }] });
+    });
+
+    // A preset naming its group by numeric id: the listing returns paths, so the scope is read
+    // as the group's path before its rows are kept, instead of keeping none of them.
+    it("lists the projects of a preset's numeric group scope", async () => {
+      const resolved = await service().resolve(staticCaller());
+      const scope = { group: '4' };
+      const { ScopeEnforcer } = require('../../src/profiles/scope-enforcer');
+      jest.spyOn(service(), 'resolve').mockResolvedValueOnce({
+        ...resolved,
+        policy: { ...resolved.policy, scope, scopeEnforcer: new ScopeEnforcer(scope) },
+      });
+      const { gitlab } = require('../../src/utils/gitlab-api');
+      const read = jest
+        .spyOn(gitlab, 'get')
+        .mockImplementation(async (path: unknown) =>
+          path === 'namespaces/4' ? { id: 4, full_path: 'team' } : undefined,
+        );
+      mockRegistryManager.executeTool.mockResolvedValue([
+        { id: 1, path_with_namespace: 'team/app' },
+        { id: 2, path_with_namespace: 'elsewhere/shared' },
+      ]);
+
+      try {
+        const result = await callToolHandler(
+          { params: { name: 'browse_projects', arguments: { action: 'list' } } },
+          { sessionId: 'sess-1' },
+        );
+
+        expect(result.isError).toBeFalsy();
+        expect(JSON.parse(result.content![0].text)).toEqual([
+          { id: 1, path_with_namespace: 'team/app' },
+        ]);
+      } finally {
+        read.mockRestore();
+      }
+    });
+
+    // Another chat of the same account keeps its own session settings.
+    it('applies a session override to its own session only', async () => {
+      await service().updateSession(staticCaller(), { readOnly: true });
+
+      const other = await callToolHandler(
+        { params: { name: 'manage_merge_request', arguments: { action: 'merge' } } },
+        { sessionId: 'sess-2' },
+      );
+
+      expect(other.isError).toBeFalsy();
+      expect(mockRegistryManager.executeTool).toHaveBeenCalledTimes(1);
+    });
+
+    // Running a call without knowing the caller's restrictions could bypass them.
+    it('refuses a call when the settings cannot be read', async () => {
+      mockSettingsRead.mockRejectedValue(new Error('database down'));
+
+      const result = await callToolHandler(
+        { params: { name: 'browse_merge_requests', arguments: { action: 'list' } } },
+        { sessionId: 'sess-1' },
+      );
+
+      expect(result.isError).toBe(true);
+      expect(result.content?.[0].text).toContain('database down');
+      expect(mockRegistryManager.executeTool).not.toHaveBeenCalled();
+    });
+
+    it('runs the tool with its caller available to it', async () => {
+      const { currentCaller } = jest.requireActual('../../src/configuration/caller');
+      let seen: unknown;
+      mockRegistryManager.executeTool.mockImplementation(async () => {
+        seen = currentCaller();
+        return { ok: true };
+      });
+
+      await callToolHandler(
+        { params: { name: 'manage_context', arguments: { action: 'show' } } },
+        { sessionId: 'sess-1' },
+      );
+
+      expect(seen).toMatchObject({ sessionKey: 'sess-1', oauth: false });
+    });
+
+    // A listing that names no target reads everything the account sees; in a scoped
+    // chat it reads the scope instead, and what it cannot filter by is left out.
+    it('narrows a targetless listing to the working scope', async () => {
+      await service().updateAccount(staticCaller(), {
+        scope: { type: 'group', path: 'team', includeSubgroups: true },
+      });
+      mockRegistryManager.executeTool.mockResolvedValue([
+        { path_with_namespace: 'team/app' },
+        { path_with_namespace: 'other/api' },
+      ]);
+
+      await callToolHandler(
+        { params: { name: 'browse_projects', arguments: { action: 'list' } } },
+        { sessionId: 'sess-1' },
+      );
+      const search = await callToolHandler(
+        { params: { name: 'browse_projects', arguments: { action: 'search', q: 'app' } } },
+        { sessionId: 'sess-1' },
+      );
+
+      // Read in GitLab's largest pages: the scope filters the rows after GitLab paged them.
+      // Active projects only, as a plain listing lists them; the tool's default simple view.
+      expect(mockRegistryManager.executeTool.mock.calls[0][1]).toEqual({
+        action: 'list',
+        group_id: 'team',
+        include_subgroups: true,
+        active: true,
+        simple: true,
+        page: 1,
+        per_page: 100,
+      });
+      expect(JSON.parse(search.content?.[0].text ?? '')).toEqual([
+        { path_with_namespace: 'team/app' },
+      ]);
+    });
+
+    // A project listing filtered after GitLab paginated it can miss the scope project
+    // entirely; a scope made of projects lists those projects themselves.
+    it('lists the projects of a project scope instead of filtering one page of all', async () => {
+      await service().updateAccount(staticCaller(), {
+        scope: { type: 'project', path: 'team/app', includeSubgroups: false },
+      });
+      mockRegistryManager.executeTool.mockImplementation(
+        async (tool: string, args: Record<string, unknown>) =>
+          tool === 'browse_projects' && args.action === 'get'
+            ? { id: 7, path_with_namespace: args.project_id, name: 'App' }
+            : [{ path_with_namespace: 'other/api' }],
+      );
+
+      const listed = await callToolHandler(
+        { params: { name: 'browse_projects', arguments: { action: 'list' } } },
+        { sessionId: 'sess-1' },
+      );
+      const filtered = await callToolHandler(
+        { params: { name: 'browse_projects', arguments: { action: 'list', search: 'zzz' } } },
+        { sessionId: 'sess-1' },
+      );
+
+      expect(mockRegistryManager.executeTool.mock.calls[0].slice(0, 2)).toEqual([
+        'browse_projects',
+        { action: 'get', project_id: 'team/app' },
+      ]);
+      expect(JSON.parse(listed.content?.[0].text ?? '')).toEqual([
+        { id: 7, path_with_namespace: 'team/app', name: 'App' },
+      ]);
+      expect(JSON.parse(filtered.content?.[0].text ?? '')).toEqual([]);
+    });
+
+    // GitLab paginates before the scope filters: a page of mostly outside rows must not hide
+    // the matching ones on later pages.
+    it('reads further pages until the scoped page is filled', async () => {
+      await service().updateAccount(staticCaller(), {
+        scope: { type: 'group', path: 'team', includeSubgroups: true },
+      });
+      const outside = Array.from({ length: 100 }, (_, i) => ({
+        path_with_namespace: `other/p${i}`,
+      }));
+      mockRegistryManager.executeTool.mockImplementation(
+        async (_tool: string, args: Record<string, unknown>) =>
+          args.page === 1 ? outside : [{ path_with_namespace: 'team/app' }],
+      );
+
+      const result = await callToolHandler(
+        { params: { name: 'browse_projects', arguments: { action: 'search', q: 'app' } } },
+        { sessionId: 'sess-1' },
+      );
+
+      expect(mockRegistryManager.executeTool.mock.calls.map(([, args]) => args)).toEqual([
+        { action: 'search', q: 'app', page: 1, per_page: 100 },
+        { action: 'search', q: 'app', page: 2, per_page: 100 },
+      ]);
+      expect(JSON.parse(result.content?.[0].text ?? '')).toEqual([
+        { path_with_namespace: 'team/app' },
+      ]);
+    });
+
+    it('returns the requested scoped page', async () => {
+      await service().updateAccount(staticCaller(), {
+        scope: { type: 'group', path: 'team', includeSubgroups: true },
+      });
+      const rows = Array.from({ length: 5 }, (_, i) => ({ path_with_namespace: `team/p${i}` }));
+      mockRegistryManager.executeTool.mockResolvedValue(rows);
+
+      const result = await callToolHandler(
+        {
+          params: {
+            name: 'browse_projects',
+            arguments: { action: 'search', q: 'p', page: 2, per_page: 2 },
+          },
+        },
+        { sessionId: 'sess-1' },
+      );
+
+      expect(JSON.parse(result.content?.[0].text ?? '')).toEqual([
+        { path_with_namespace: 'team/p2' },
+        { path_with_namespace: 'team/p3' },
+      ]);
+    });
+
+    // List filters the scope's own projects cannot apply keep GitLab's listing semantics.
+    it('keeps list filters for a project scope by filtering GitLab listing pages', async () => {
+      await service().updateAccount(staticCaller(), {
+        scope: { type: 'project', path: 'team/app', includeSubgroups: false },
+      });
+      mockRegistryManager.executeTool.mockResolvedValue([
+        { path_with_namespace: 'other/api' },
+        { path_with_namespace: 'team/app' },
+      ]);
+
+      const result = await callToolHandler(
+        { params: { name: 'browse_projects', arguments: { action: 'list', archived: true } } },
+        { sessionId: 'sess-1' },
+      );
+
+      expect(mockRegistryManager.executeTool.mock.calls[0].slice(0, 2)).toEqual([
+        'browse_projects',
+        { action: 'list', archived: true, simple: true, page: 1, per_page: 100 },
+      ]);
+      expect(JSON.parse(result.content?.[0].text ?? '')).toEqual([
+        { path_with_namespace: 'team/app' },
+      ]);
+    });
+
+    // A scope project that is gone is left out; any other failure is reported, not hidden
+    // behind a shorter list.
+    it('reports a scope project GitLab failed to return', async () => {
+      await service().updateAccount(staticCaller(), {
+        scope: { type: 'project', path: 'team/app', includeSubgroups: false },
+      });
+      mockRegistryManager.executeTool.mockRejectedValueOnce(
+        new Error('GitLab API error: 503 Service Unavailable'),
+      );
+      const failed = await callToolHandler(
+        { params: { name: 'browse_projects', arguments: { action: 'list' } } },
+        { sessionId: 'sess-1' },
+      );
+      mockRegistryManager.executeTool.mockRejectedValueOnce(
+        new Error('GitLab API error: 404 Not Found'),
+      );
+      const gone = await callToolHandler(
+        { params: { name: 'browse_projects', arguments: { action: 'list' } } },
+        { sessionId: 'sess-1' },
+      );
+
+      expect(failed.isError).toBe(true);
+      expect(failed.content?.[0].text).toContain('503');
+      expect(gone.isError).toBeFalsy();
+      expect(JSON.parse(gone.content?.[0].text ?? '')).toEqual([]);
+    });
+
+    // Marking every todo done would also clear todos outside the scope: in a scoped chat
+    // only the scope's pending todos are marked, one by one, over every page of the scope
+    // group's own todo feed.
+    it('marks only the pending todos of the working scope done', async () => {
+      await service().updateAccount(staticCaller(), {
+        scope: { type: 'group', path: 'team', includeSubgroups: true },
+      });
+      const pages: Record<number, Array<Record<string, unknown>>> = {
+        1: [
+          ...Array.from({ length: 99 }, (_, i) => ({
+            id: 100 + i,
+            project: { path_with_namespace: 'other/api' },
+          })),
+          { id: 1, project: { path_with_namespace: 'team/app' } },
+        ],
+        2: [
+          { id: 2, group: { full_path: 'team/sub' } },
+          { id: 3, project: { path_with_namespace: 'other/api' } },
+        ],
+      };
+      mockRegistryManager.executeTool.mockImplementation(
+        async (tool: string, args: Record<string, unknown>) => {
+          if (tool === 'browse_namespaces') return { id: 9, full_path: 'team' };
+          if (tool === 'browse_todos') return pages[args.page as number] ?? [];
+          return { id: args.id, state: 'done' };
+        },
+      );
+
+      const result = await callToolHandler(
+        { params: { name: 'manage_todos', arguments: { action: 'mark_all_done' } } },
+        { sessionId: 'sess-1' },
+      );
+
+      const calls = mockRegistryManager.executeTool.mock.calls.map(([tool, args]) => [tool, args]);
+      expect(calls).toEqual([
+        ['browse_namespaces', { action: 'get', namespace_id: 'team' }],
+        ['browse_todos', { action: 'list', state: 'pending', per_page: 100, page: 1, group_id: 9 }],
+        ['browse_todos', { action: 'list', state: 'pending', per_page: 100, page: 2, group_id: 9 }],
+        ['manage_todos', { action: 'mark_done', id: 1 }],
+        ['manage_todos', { action: 'mark_done', id: 2 }],
+      ]);
+      expect(JSON.parse(result.content?.[0].text ?? '')).toEqual({
+        success: true,
+        marked: 2,
+        failed: [],
+        message:
+          'Marked 2 of 2 todos of the working scope as done; todos outside it were left pending',
+      });
+    });
+
+    // A failed todo must not hide the ones already marked, and a large scope must not
+    // flood GitLab with every request at once.
+    it('reports the todos it could not mark and keeps the requests bounded', async () => {
+      await service().updateAccount(staticCaller(), {
+        scope: { type: 'group', path: 'team', includeSubgroups: true },
+      });
+      const todos = Array.from({ length: 12 }, (_, i) => ({
+        id: i + 1,
+        project: { path_with_namespace: 'team/app' },
+      }));
+      let inFlight = 0;
+      let peak = 0;
+      mockRegistryManager.executeTool.mockImplementation(
+        async (tool: string, args: Record<string, unknown>) => {
+          if (tool === 'browse_namespaces') return { id: 9, full_path: 'team' };
+          if (tool === 'browse_todos') return args.page === 1 ? todos : [];
+          inFlight++;
+          peak = Math.max(peak, inFlight);
+          await new Promise((resolve) => setTimeout(resolve, 1));
+          inFlight--;
+          if (args.id === 3) throw new Error('GitLab API error: 429 Too Many Requests');
+          return { id: args.id, state: 'done' };
+        },
+      );
+
+      const result = await callToolHandler(
+        { params: { name: 'manage_todos', arguments: { action: 'mark_all_done' } } },
+        { sessionId: 'sess-1' },
+      );
+
+      expect(peak).toBeLessThanOrEqual(5);
+      expect(JSON.parse(result.content?.[0].text ?? '')).toEqual({
+        success: false,
+        marked: 11,
+        failed: [{ id: 3, error: 'GitLab API error: 429 Too Many Requests' }],
+        message:
+          'Marked 11 of 12 todos of the working scope as done; 1 could not be marked; todos outside it were left pending',
+      });
+    });
+
+    // A project search has no projects scope: a mixed scope's groups search their projects,
+    // and its own projects answer when they match.
+    it('composes a global search of projects across a mixed scope', async () => {
+      await service().updateSession(staticCaller(), { preset: 'mixed' });
+      mockPresets.mixed = { scope: { project: 'team/app', groups: ['other'] } };
+      const project = {
+        id: 1,
+        name: 'x-app',
+        name_with_namespace: 'team / x-app',
+        path_with_namespace: 'team/app',
+        created_at: '2026-01-01',
+      };
+      mockRegistryManager.executeTool.mockImplementation(async (tool: string) =>
+        tool === 'browse_projects' ? project : { scope: 'projects', results: [] },
+      );
+
+      const result = await callToolHandler(
+        {
+          params: {
+            name: 'browse_search',
+            arguments: { action: 'global', scope: 'projects', search: 'x' },
+          },
+        },
+        { sessionId: 'sess-1' },
+      );
+
+      expect(result.isError).toBeFalsy();
+      expect(JSON.parse(result.content?.[0].text ?? '').results).toEqual([project]);
+      expect(mockRegistryManager.executeTool).toHaveBeenCalledWith(
+        'browse_search',
+        expect.objectContaining({ action: 'group', group_id: 'other', scope: 'projects' }),
+        'https://gitlab.example.com',
+      );
+    });
+
+    // Each project of the scope answers an issue search itself, so the global search is
+    // composed from their searches instead of refused.
+    it('composes a global issue search across a scope of several projects', async () => {
+      await service().updateSession(staticCaller(), { preset: 'several' });
+      mockPresets.several = { scope: { projects: ['team/app', 'other/api'] } };
+      mockRegistryManager.executeTool.mockResolvedValue({ scope: 'issues', results: [] });
+
+      const result = await callToolHandler(
+        {
+          params: {
+            name: 'browse_search',
+            arguments: { action: 'global', scope: 'issues', search: 'x' },
+          },
+        },
+        { sessionId: 'sess-1' },
+      );
+
+      expect(result.isError).toBeFalsy();
+      for (const project_id of ['team/app', 'other/api']) {
+        expect(mockRegistryManager.executeTool).toHaveBeenCalledWith(
+          'browse_search',
+          expect.objectContaining({ action: 'project', project_id, scope: 'issues' }),
+          'https://gitlab.example.com',
+        );
+      }
     });
   });
 });

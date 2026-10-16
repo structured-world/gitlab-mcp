@@ -10,9 +10,9 @@ const scope = z.object({
 const baseContext = z.object({
   host: z.string(),
   apiUrl: z.string(),
-  profileName: z.string().optional(),
   presetName: z.string().optional(),
   readOnly: z.boolean(),
+  disabledToolGroups: z.array(z.string()).optional(),
   scope: scope.optional(),
   oauthMode: z.boolean(),
 });
@@ -34,15 +34,6 @@ const preset = z.object({
     .optional(),
   features: z.record(z.string(), z.boolean()).optional(),
 });
-const profile = z.object({
-  name: z.string(),
-  host: z.string().optional(),
-  authType: z.enum(['pat', 'oauth', 'cookie']).optional(),
-  readOnly: z.boolean(),
-  isBuiltIn: z.boolean(),
-  isPreset: z.boolean(),
-  description: z.string().optional(),
-});
 const switched = z.object({
   success: z.boolean(),
   previous: z.string().optional(),
@@ -62,6 +53,7 @@ const whoami = z.object({
       state: z.string(),
     })
     .nullable(),
+  userLookup: z.enum(['ok', 'rejected', 'failed']),
   token: z
     .object({
       type: z.enum([
@@ -104,7 +96,6 @@ const whoami = z.object({
   }),
   context: z.object({
     activePreset: z.string().nullable(),
-    activeProfile: z.string().nullable(),
     scope: scope.nullable(),
   }),
   warnings: z.array(z.string()),
@@ -130,13 +121,15 @@ const whoami = z.object({
 const success = z.discriminatedUnion('action', [
   z.object({ action: z.literal('show'), data: context }),
   z.object({ action: z.literal('list_presets'), data: z.array(preset) }),
-  z.object({ action: z.literal('list_profiles'), data: z.array(profile) }),
   z.object({ action: z.literal('whoami'), data: whoami }),
   z.object({ action: z.literal('switch_preset'), data: switched }),
-  z.object({ action: z.literal('switch_profile'), data: switched }),
   z.object({
     action: z.literal('set_scope'),
     data: z.object({ success: z.boolean(), scope, message: z.string() }),
+  }),
+  z.object({
+    action: z.literal('clear_scope'),
+    data: z.object({ success: z.boolean(), message: z.string(), context }),
   }),
   z.object({
     action: z.literal('reset'),

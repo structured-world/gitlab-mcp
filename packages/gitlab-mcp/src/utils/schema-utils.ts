@@ -91,8 +91,15 @@ export function filterDiscriminatedUnionActions(
   toolName: string,
   unavailable: ActionNames = NO_ACTIONS,
 ): JSONSchema {
-  const deniedActions = removedActions(toolName, unavailable);
+  return dropUnionActions(schema, toolName, removedActions(toolName, unavailable));
+}
 
+/** The union without the branches of the given lowercase actions. */
+function dropUnionActions(
+  schema: JSONSchema,
+  toolName: string,
+  deniedActions: ActionNames,
+): JSONSchema {
   // If no oneOf, this isn't a discriminated union - return as-is
   if (!schema.oneOf || deniedActions.size === 0) {
     return schema;
@@ -405,8 +412,15 @@ function filterFlatSchemaActions(
   toolName: string,
   unavailable: ActionNames,
 ): JSONSchema {
-  const deniedActions = removedActions(toolName, unavailable);
+  return dropFlatActions(schema, toolName, removedActions(toolName, unavailable));
+}
 
+/** The flat schema without the given lowercase actions in its action enum. */
+function dropFlatActions(
+  schema: JSONSchema,
+  toolName: string,
+  deniedActions: ActionNames,
+): JSONSchema {
   if (deniedActions.size === 0) {
     return schema;
   }
@@ -511,6 +525,58 @@ export function shouldRemoveTool(
 
   const allowedActions = allActions.filter((action) => !deniedActions.has(action.toLowerCase()));
   return allowedActions.length === 0;
+}
+
+/**
+ * A client schema, discriminated or flat, without the given lowercase actions; undefined when
+ * no action is left. The operator's denials were already applied when the schema was built.
+ */
+export function withoutSchemaActions(
+  toolName: string,
+  schema: Record<string, unknown>,
+  actions: ActionNames,
+): Record<string, unknown> | undefined {
+  const json = schema as JSONSchema;
+  const offered = extractActionsFromSchema(json);
+  if (actions.size === 0 || offered.length === 0) return schema;
+  if (offered.every((action) => actions.has(action.toLowerCase()))) return undefined;
+  return json.oneOf
+    ? dropUnionActions(json, toolName, actions)
+    : dropFlatActions(json, toolName, actions);
+}
+
+/** Whether a union branch serves `action`: true for a branch without an action literal. */
+function branchServesAction(branch: unknown, action: string): boolean {
+  const property = (branch as { properties?: { action?: { const?: unknown; enum?: unknown } } })
+    ?.properties?.action;
+  if (property?.const !== undefined) return property.const === action;
+  if (Array.isArray(property?.enum)) return property.enum.includes(action);
+  return true;
+}
+
+/**
+ * Property names a JSON schema declares. With `action`, a discriminated union contributes
+ * only the branches of that action, as its parse keeps only their fields; without it, every
+ * branch.
+ */
+export function declaredArgumentNames(
+  schema: unknown,
+  action?: string,
+  names = new Set<string>(),
+): Set<string> {
+  if (typeof schema !== 'object' || schema === null) return names;
+  const node = schema as { properties?: unknown; oneOf?: unknown; anyOf?: unknown };
+  if (typeof node.properties === 'object' && node.properties !== null) {
+    for (const name of Object.keys(node.properties)) names.add(name);
+  }
+  for (const branches of [node.oneOf, node.anyOf]) {
+    if (!Array.isArray(branches)) continue;
+    for (const branch of branches) {
+      if (action === undefined || branchServesAction(branch, action))
+        declaredArgumentNames(branch, action, names);
+    }
+  }
+  return names;
 }
 
 /**

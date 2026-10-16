@@ -4,6 +4,9 @@ import { packageName, packageVersion, GITLAB_BASE_URL } from './config';
 import { setupHandlers } from './handlers';
 import { logInfo, logWarn, logError, logDebug } from './logger';
 import { normalizeInstanceUrl } from './utils/url';
+import { getConfigurationService } from './configuration';
+import { SETTINGS_READ_TOOL, SETTINGS_UPDATE_TOOL } from './entities/context/settings';
+import { MCP_APPS_EXTENSION } from './mcp-apps';
 
 /** Default session idle timeout: 30 minutes */
 const DEFAULT_SESSION_TIMEOUT_MS = 30 * 60 * 1000;
@@ -73,7 +76,19 @@ export class SessionManager {
 
     const server = new Server(
       { name: packageName, version: packageVersion },
-      { capabilities: { tools: { listChanged: true } } },
+      {
+        capabilities: {
+          tools: { listChanged: true },
+          // The settings panel (an MCP App) is served as a ui:// resource.
+          resources: {},
+          extensions: MCP_APPS_EXTENSION,
+          // OpenAI structured settings: the host renders a native settings page from these
+          // tools. Up to protocol 2025-11-25 (the SDK's latest) it is advertised here.
+          experimental: {
+            'openai/settings': { readTool: SETTINGS_READ_TOOL, updateTool: SETTINGS_UPDATE_TOOL },
+          },
+        },
+      },
     );
 
     // Register request handlers (idempotent — same logic for every session)
@@ -136,6 +151,15 @@ export class SessionManager {
   }
 
   /**
+   * Point every session at one instance, without notifying them: a switch of the shared
+   * static-token instance moves all sessions, and its caller notifies them once afterwards.
+   */
+  pinAllSessions(url: string): void {
+    const normalizedUrl = normalizeInstanceUrl(url);
+    for (const session of this.sessions.values()) session.instanceUrl = normalizedUrl;
+  }
+
+  /**
    * Get the GitLab instance URL associated with a session.
    * Returns undefined if the session does not exist.
    */
@@ -163,6 +187,7 @@ export class SessionManager {
     if (!session) return;
 
     this.sessions.delete(sessionId);
+    getConfigurationService().forgetSession(sessionId);
 
     try {
       await session.server.close();
@@ -213,6 +238,24 @@ export class SessionManager {
       notifiedCount: promises.length,
       instanceUrl: normalizedFilter ?? 'all',
     });
+  }
+
+  /**
+   * Send tools/list_changed to the given sessions of this process only: a change of one
+   * account's or one session's settings does not make every client re-fetch its tools.
+   */
+  async notifyToolsListChanged(sessionIds: readonly string[]): Promise<void> {
+    await Promise.allSettled(
+      sessionIds.map(async (sessionId) => {
+        const session = this.sessions.get(sessionId);
+        if (!session) return;
+        try {
+          await session.server.notification({ method: 'notifications/tools/list_changed' });
+        } catch (error: unknown) {
+          logDebug('Failed to send tools/list_changed to session', { err: error, sessionId });
+        }
+      }),
+    );
   }
 
   /**

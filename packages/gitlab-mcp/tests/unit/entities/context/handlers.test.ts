@@ -10,6 +10,7 @@ import { ContextManager } from '../../../../src/entities/context/context-manager
 // Mock dependencies
 jest.mock('../../../../src/utils/namespace', () => ({
   detectNamespaceType: jest.fn().mockResolvedValue('group'),
+  findNamespaceType: jest.fn().mockResolvedValue('group'),
 }));
 
 jest.mock('../../../../src/profiles/loader', () => ({
@@ -26,10 +27,6 @@ jest.mock('../../../../src/profiles/loader', () => ({
     loadPreset: jest.fn().mockResolvedValue({
       description: 'Test preset',
       read_only: false,
-    }),
-    loadProfile: jest.fn().mockResolvedValue({
-      host: 'gitlab.example.com',
-      auth: { type: 'pat', token_env: 'GITLAB_TOKEN' },
     }),
   })),
 }));
@@ -72,23 +69,6 @@ describe('handleManageContext', () => {
     });
   });
 
-  describe('action: list_profiles', () => {
-    it('should throw error in non-OAuth mode', async () => {
-      await expect(handleManageContext({ action: 'list_profiles' })).rejects.toThrow(
-        'only available in OAuth mode',
-      );
-    });
-
-    it('should return array in OAuth mode', async () => {
-      process.env.OAUTH_ENABLED = 'true';
-      ContextManager.resetInstance();
-
-      const result = await handleManageContext({ action: 'list_profiles' });
-
-      expect(Array.isArray(result)).toBe(true);
-    });
-  });
-
   describe('action: switch_preset', () => {
     it('should switch to specified preset', async () => {
       const result = await handleManageContext({
@@ -98,27 +78,6 @@ describe('handleManageContext', () => {
 
       expect(result).toHaveProperty('success', true);
       expect(result).toHaveProperty('current', 'readonly');
-    });
-  });
-
-  describe('action: switch_profile', () => {
-    it('should throw error in non-OAuth mode', async () => {
-      await expect(
-        handleManageContext({ action: 'switch_profile', profile: 'production' }),
-      ).rejects.toThrow('only available in OAuth mode');
-    });
-
-    it('should switch profile in OAuth mode', async () => {
-      process.env.OAUTH_ENABLED = 'true';
-      ContextManager.resetInstance();
-
-      const result = await handleManageContext({
-        action: 'switch_profile',
-        profile: 'production',
-      });
-
-      expect(result).toHaveProperty('success', true);
-      expect(result).toHaveProperty('current', 'production');
     });
   });
 
@@ -146,6 +105,24 @@ describe('handleManageContext', () => {
       expect(result).toHaveProperty('success', true);
 
       expect((result as any).scope.includeSubgroups).toBe(false);
+    });
+  });
+
+  describe('action: clear_scope', () => {
+    it('drops the scope and keeps the preset of the session', async () => {
+      await handleManageContext({ action: 'switch_preset', preset: 'readonly' });
+      await handleManageContext({
+        action: 'set_scope',
+        namespace: 'my-group',
+        includeSubgroups: true,
+      });
+
+      const result = await handleManageContext({ action: 'clear_scope' });
+
+      expect(result).toMatchObject({
+        success: true,
+        context: { presetName: 'readonly', scope: undefined },
+      });
     });
   });
 

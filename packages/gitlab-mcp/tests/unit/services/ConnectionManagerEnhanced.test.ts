@@ -1212,6 +1212,18 @@ describe('ConnectionManager Enhanced Tests', () => {
       expect(connectionManager.getClient('https://new-gitlab.example.com')).toBeDefined();
     });
 
+    // A tool call that started before the switch keeps using the instance it started with;
+    // its state must outlive the switch until it goes idle and is evicted.
+    it('keeps the previous instance usable for calls pinned to it', async () => {
+      await connectionManager.initialize();
+      const previousUrl = connectionManager.getCurrentInstanceUrl() as string;
+
+      await connectionManager.reinitialize('https://new-gitlab.example.com');
+
+      expect(() => connectionManager.getClient(previousUrl)).not.toThrow();
+      expect(connectionManager.getInstanceInfo(previousUrl).version).toBe('16.5.0');
+    });
+
     it('should complete reinitialize without errors and restore working state', async () => {
       // Initialize first
       await connectionManager.initialize();

@@ -7,18 +7,15 @@
 import { getContextManager } from './context-manager';
 import {
   ListPresetsInput,
-  ListProfilesInput,
   ManageContextInput,
   ResetContextInput,
   SetScopeInput,
   ShowContextInput,
   SwitchPresetInput,
-  SwitchProfileInput,
   WhoamiInput,
 } from './schema';
 import {
   PresetInfo,
-  ProfileInfo,
   ResetResult,
   SessionContext,
   SetScopeResult,
@@ -44,27 +41,11 @@ export async function handleListPresets(_input: ListPresetsInput): Promise<Prese
 }
 
 /**
- * Handle list_profiles action - return available profiles (OAuth only)
- */
-export async function handleListProfiles(_input: ListProfilesInput): Promise<ProfileInfo[]> {
-  const manager = getContextManager();
-  return manager.listProfiles();
-}
-
-/**
  * Handle switch_preset action - change active preset
  */
 export async function handleSwitchPreset(input: SwitchPresetInput): Promise<SwitchResult> {
   const manager = getContextManager();
   return manager.switchPreset(input.preset);
-}
-
-/**
- * Handle switch_profile action - change active profile (OAuth only)
- */
-export async function handleSwitchProfile(input: SwitchProfileInput): Promise<SwitchResult> {
-  const manager = getContextManager();
-  return manager.switchProfile(input.profile);
 }
 
 /**
@@ -96,27 +77,19 @@ export async function handleWhoami(_input: WhoamiInput): Promise<WhoamiResult> {
 export async function handleManageContext(
   input: ManageContextInput,
 ): Promise<
-  | SessionContext
-  | PresetInfo[]
-  | ProfileInfo[]
-  | SwitchResult
-  | SetScopeResult
-  | ResetResult
-  | WhoamiResult
+  SessionContext | PresetInfo[] | SwitchResult | SetScopeResult | ResetResult | WhoamiResult
 > {
   switch (input.action) {
     case 'show':
       return handleShowContext(input);
     case 'list_presets':
       return handleListPresets(input);
-    case 'list_profiles':
-      return handleListProfiles(input);
     case 'switch_preset':
       return handleSwitchPreset(input);
-    case 'switch_profile':
-      return handleSwitchProfile(input);
     case 'set_scope':
       return handleSetScope(input);
+    case 'clear_scope':
+      return getContextManager().clearScope();
     case 'reset':
       return handleResetContext(input);
     case 'whoami':

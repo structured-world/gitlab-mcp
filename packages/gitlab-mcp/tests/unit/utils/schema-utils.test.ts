@@ -11,7 +11,9 @@ import {
   stripTierRestrictedParameters,
   shouldRemoveTool,
   extractActionsFromSchema,
+  declaredArgumentNames,
   getSchemaMode,
+  withoutSchemaActions,
 } from '../../../src/utils/schema-utils';
 
 // Mock config module
@@ -981,6 +983,68 @@ describe('schema-utils', () => {
       expect(result.oneOf?.[0]?.properties?.action).toBeDefined();
       // Second branch should remain unchanged
       expect(result.oneOf?.[1]?.type).toBe('object');
+    });
+  });
+
+  // The arguments a tool takes, from every action of a discriminated union.
+  describe('declaredArgumentNames', () => {
+    it('collects the properties of the schema and of every union branch', () => {
+      const schema = {
+        type: 'object',
+        properties: { action: { type: 'string' } },
+        oneOf: [
+          { type: 'object', properties: { action: {}, group_id: {} } },
+          { anyOf: [{ properties: { project_id: {} } }, 'not a schema'] },
+        ],
+      };
+
+      expect([...declaredArgumentNames(schema)].sort()).toEqual([
+        'action',
+        'group_id',
+        'project_id',
+      ]);
+    });
+
+    // A call takes only its own action's arguments: a field of another action is dropped by
+    // the tool's parse, so it must not be held to the working scope either.
+    it('keeps to the branch of the requested action', () => {
+      const schema = {
+        oneOf: [
+          { properties: { action: { const: 'list_project' }, project_id: {} } },
+          { properties: { action: { enum: ['list_group'] }, group_id: {} } },
+          { properties: { page: {} } },
+        ],
+      };
+
+      expect([...declaredArgumentNames(schema, 'list_project')].sort()).toEqual([
+        'action',
+        'page',
+        'project_id',
+      ]);
+      expect([...declaredArgumentNames(schema, 'list_group')].sort()).toEqual([
+        'action',
+        'group_id',
+        'page',
+      ]);
+    });
+
+    it('declares nothing for a schema without properties', () => {
+      expect(declaredArgumentNames({ type: 'object' }).size).toBe(0);
+      expect(declaredArgumentNames(null).size).toBe(0);
+    });
+  });
+
+  describe('withoutSchemaActions', () => {
+    // A tool without actions, or nothing denied, keeps its schema as it is: there is no
+    // action to drop and no reason to hide it.
+    it('keeps a schema without actions or with nothing denied', () => {
+      const plain = { type: 'object', properties: { id: { type: 'string' } } };
+      expect(withoutSchemaActions('get_profile', plain, new Set(['get']))).toBe(plain);
+      const listed = {
+        type: 'object',
+        properties: { action: { type: 'string', enum: ['list', 'get'] } },
+      };
+      expect(withoutSchemaActions('browse_wiki', listed, new Set())).toBe(listed);
     });
   });
 });

@@ -75,6 +75,7 @@ export default [
         clearInterval: 'readonly',
         clearTimeout: 'readonly',
         fetch: 'readonly',
+        structuredClone: 'readonly',
         // Node.js CommonJS globals
         __dirname: 'readonly',
         __filename: 'readonly',
@@ -132,6 +133,7 @@ export default [
         clearInterval: 'readonly',
         clearTimeout: 'readonly',
         fetch: 'readonly',
+        structuredClone: 'readonly',
         // Jest globals
         describe: 'readonly',
         it: 'readonly',

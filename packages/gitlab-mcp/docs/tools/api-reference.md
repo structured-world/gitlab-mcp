@@ -1089,7 +1089,6 @@ Find and inspect merge requests. Actions: list (filter by state/author/reviewer/
 | `in` | string | No | Search scope |
 | `labels` | string | string[] | No | Filter by labels |
 | `milestone` | string | No | Filter by milestone title. Use "None" or "Any". |
-| `min_access_level` | number | No | Minimum access level filter (10-50) |
 | `my_reaction_emoji` | string | No | Filter MRs you've reacted to |
 | `not` | object | No | Exclusion filters |
 | `order_by` | string | No | Sort field |

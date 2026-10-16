@@ -76,7 +76,10 @@ In static token mode (using `GITLAB_TOKEN`), instance switching is allowed via `
 2. **Clear namespace cache** - Old tier data is invalid
 3. **Re-introspect** - Fetch version and schema for new instance
 4. **Re-validate tools** - Check tools against new schema
-5. **Notify client** - Send `tools/list_changed` if tools changed
+5. **Keep chat settings** - Read-only mode and presets set with `manage_context` stay with
+   every chat; working scopes are cleared, since they named projects of the previous
+   instance. Account settings are per instance (see [Settings](/configuration/settings))
+6. **Notify client** - Send `tools/list_changed` if tools changed
 
 ### Response Format
 

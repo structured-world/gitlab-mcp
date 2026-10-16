@@ -562,16 +562,8 @@ export class IntegrationTestHelper {
   // ========================================
 
   async manageContext(args: {
-    action:
-      | 'show'
-      | 'list_presets'
-      | 'list_profiles'
-      | 'switch_preset'
-      | 'switch_profile'
-      | 'set_scope'
-      | 'reset';
+    action: 'show' | 'list_presets' | 'switch_preset' | 'set_scope' | 'reset';
     preset?: string;
-    profile?: string;
     namespace?: string;
     includeSubgroups?: boolean;
   }): Promise<unknown> {

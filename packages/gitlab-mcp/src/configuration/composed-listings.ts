@@ -16,6 +16,7 @@ import {
   type Budget,
 } from './composed-feeds';
 import {
+  filteredReadArgs,
   groupProjectsArgs,
   needsInstanceProjectListing,
   scopedResult,
@@ -112,19 +113,20 @@ async function readTargets(
   const targets = new Set<string>();
   const budget: Budget = { requests: 0 };
   // A group's listing also returns projects shared into it, and a group's merge requests
-  // those of subgroups a scope without them leaves out.
-  const keep = (found: Row[]): Row[] =>
-    scopedResult(tool, { action: 'list' }, found, enforcer) as Row[];
+  // those of subgroups a scope without them leaves out. Rows are read in a view that tells
+  // their project and kept in the one the caller asked for.
+  const keep = (found: Row[]): Row[] => scopedResult(tool, filters, found, enforcer) as Row[];
+  const read = filteredReadArgs(tool, filters);
   let contributing = 0;
   // Targets are read in turn: they share one request budget.
   for (const target of scopeTargets(scope)) {
     const key = JSON.stringify(target);
     if (targets.has(key)) continue;
     targets.add(key);
-    const read = await readTarget(run, tool, filters, target, wanted, budget, keep);
-    if ('answer' in read) return read;
+    const answer = await readTarget(run, tool, read, target, wanted, budget, keep);
+    if ('answer' in answer) return answer;
     let added = 0;
-    for (const row of read.rows) {
+    for (const row of answer.rows) {
       const id = row.id ?? JSON.stringify(row);
       if (seen.has(id)) continue;
       seen.add(id);
@@ -132,7 +134,7 @@ async function readTargets(
       added++;
     }
     if (added > 0) contributing++;
-    if (read.bounded) return { rows, bounded: true, contributing };
+    if (answer.bounded) return { rows, bounded: true, contributing };
   }
   return { rows, bounded: false, contributing };
 }

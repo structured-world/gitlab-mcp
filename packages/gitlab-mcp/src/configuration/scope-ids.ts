@@ -1,15 +1,14 @@
 /**
- * A working scope is saved as project and group paths, while GitLab accepts either a path
- * or a numeric id. Numeric ids are read from GitLab and checked as the paths they stand for.
+ * A working scope is checked against project and group paths, while GitLab accepts either a
+ * path or a numeric id, and so does a preset's scope. Numeric ids are read from GitLab and
+ * checked as the paths they stand for.
  */
 
-import {
-  numericTargets,
-  type NumericTargetKind,
-  type ScopeEnforcer,
-} from '../profiles/scope-enforcer';
+import { numericTargets, ScopeEnforcer, type NumericTargetKind } from '../profiles/scope-enforcer';
+import type { ScopeConfig } from '../profiles/types';
 import { gitlab } from '../utils/gitlab-api';
 import { parseGitLabApiError } from '../utils/error-handler';
+import type { EffectivePolicy } from './policy';
 
 type Args = Record<string, unknown>;
 /** Reads one GitLab REST resource with the caller's token and instance. */
@@ -37,6 +36,47 @@ export async function withTargetPaths(
     if (path !== undefined) resolved[field] = path;
   });
   return resolved;
+}
+
+const isNumeric = (value: string | undefined): value is string =>
+  value !== undefined && /^\d+$/.test(value);
+
+/**
+ * The policy with each project and group its scope names by numeric id named by its path: a
+ * preset may name them either way, while scope checks and listed rows compare paths. An id
+ * GitLab does not know stays numeric. No request is made for a scope of paths.
+ */
+export async function withScopePaths(
+  policy: EffectivePolicy,
+  read: ReadResource = readWithCaller,
+): Promise<EffectivePolicy> {
+  const scope = policy.scope;
+  if (!scope) return policy;
+  // One request per distinct id: a preset may name a group both as group and as namespace.
+  const lookups = new Map<string, { id: string; kind: NumericTargetKind }>();
+  for (const id of [scope.project, ...(scope.projects ?? [])])
+    if (isNumeric(id)) lookups.set(`project:${id}`, { id, kind: 'project' });
+  for (const id of [scope.group, scope.namespace, ...(scope.groups ?? [])])
+    if (isNumeric(id)) lookups.set(`group:${id}`, { id, kind: 'group' });
+  if (lookups.size === 0) return policy;
+  const paths = new Map<string, string>();
+  await Promise.all(
+    [...lookups].map(async ([key, { id, kind }]) => {
+      const path = await pathOf(read, id, kind);
+      if (path !== undefined) paths.set(key, path);
+    }),
+  );
+  const project = (id: string): string => paths.get(`project:${id}`) ?? id;
+  const group = (id: string): string => paths.get(`group:${id}`) ?? id;
+  const resolved: ScopeConfig = {
+    ...scope,
+    ...(scope.project ? { project: project(scope.project) } : {}),
+    ...(scope.projects ? { projects: scope.projects.map(project) } : {}),
+    ...(scope.group ? { group: group(scope.group) } : {}),
+    ...(scope.groups ? { groups: scope.groups.map(group) } : {}),
+    ...(scope.namespace ? { namespace: group(scope.namespace) } : {}),
+  };
+  return { ...policy, scope: resolved, scopeEnforcer: new ScopeEnforcer(resolved) };
 }
 
 /**

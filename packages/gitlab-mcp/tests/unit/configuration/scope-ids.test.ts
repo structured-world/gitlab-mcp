@@ -3,8 +3,9 @@
  * id. The ids are read from GitLab and checked as the paths they stand for.
  */
 
-import { withTargetPaths } from '../../../src/configuration/scope-ids';
+import { withScopePaths, withTargetPaths } from '../../../src/configuration/scope-ids';
 import { buildPolicy, callRestriction } from '../../../src/configuration/policy';
+import { scopedResult } from '../../../src/configuration/scope-targets';
 import { gitlab } from '../../../src/utils/gitlab-api';
 
 jest.mock('../../../src/utils/gitlab-api', () => ({ gitlab: { get: jest.fn() } }));
@@ -122,5 +123,73 @@ describe('withTargetPaths', () => {
     expect(args).toEqual({ action: 'list', project_id: 7 });
     expect(read).not.toHaveBeenCalled();
     expect(callRestriction(policy, tool, args)).toBeNull();
+  });
+});
+
+describe('withScopePaths', () => {
+  const listed = [{ path_with_namespace: 'team/app' }, { path_with_namespace: 'other/api' }];
+
+  // A preset may name its group by numeric id, while GitLab lists projects by path: the
+  // scope's ids are read as paths, so the group's projects are kept instead of none.
+  it("keeps a numeric group scope's projects in a listing", async () => {
+    const policy = await withScopePaths(buildPolicy({ scope: { group: '4' } }, {}, {}), read);
+
+    expect(policy.scope).toEqual({ group: 'team' });
+    expect(
+      scopedResult('browse_projects', { action: 'list' }, listed, policy.scopeEnforcer!),
+    ).toEqual([{ path_with_namespace: 'team/app' }]);
+  });
+
+  // Every field naming a project or a group is read; paths stay as written, and an id GitLab
+  // does not know stays numeric, matching nothing it lists.
+  it('reads the numeric projects and groups of every scope field', async () => {
+    const policy = await withScopePaths(
+      buildPolicy(
+        {
+          scope: {
+            project: '7',
+            projects: ['9', 'solo/app', '12'],
+            groups: ['4', 'other'],
+            namespace: '4',
+            includeSubgroups: false,
+          },
+        },
+        {},
+        {},
+      ),
+      read,
+    );
+
+    expect(policy.scope).toEqual({
+      project: 'team/app',
+      projects: ['other/api', 'solo/app', '12'],
+      groups: ['team', 'other'],
+      namespace: 'team',
+      includeSubgroups: false,
+    });
+    expect(policy.scopeEnforcer?.isAllowed('other/api')).toBe(true);
+  });
+
+  it('asks GitLab nothing when the scope names only paths', async () => {
+    const policy = buildPolicy({ scope: { group: 'team', projects: ['other/api'] } }, {}, {});
+
+    expect(await withScopePaths(policy, read)).toBe(policy);
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  it('asks GitLab nothing without a scope', async () => {
+    const policy = buildPolicy(undefined, {}, {});
+
+    expect(await withScopePaths(policy, read)).toBe(policy);
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  // As for a call's own ids: a rejected token fails the call instead of emptying the scope.
+  it('fails when GitLab fails other than not found', async () => {
+    const failing = jest.fn().mockRejectedValue(new Error('GitLab API error: 401 Unauthorized'));
+
+    await expect(
+      withScopePaths(buildPolicy({ scope: { group: '4' } }, {}, {}), failing),
+    ).rejects.toThrow('401');
   });
 });

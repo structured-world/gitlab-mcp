@@ -48,6 +48,7 @@ import { BrowseDeployKeysSchema } from '../entities/deploy-keys/schema-readonly'
 import { BrowseSnippetsSchema } from '../entities/snippets/schema-readonly';
 import {
   COMPOSED_SEARCH_SCOPES,
+  filteredReadArgs,
   isFilteredListing,
   scopedArgs,
   scopedResult,
@@ -148,7 +149,7 @@ export async function executeScoped(
     return fillScopedPage(
       run,
       tool,
-      args,
+      filteredReadArgs(tool, args),
       (rows) => scopedResult(tool, args, rows, scopeEnforcer) as unknown[],
     );
   }

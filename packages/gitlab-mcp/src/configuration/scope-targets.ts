@@ -345,6 +345,37 @@ function projectPathOf(tool: string, item: Record<string, unknown>): string | un
     : undefined;
 }
 
+/**
+ * GitLab's simple view of a merge request (MergeRequestSimple, lib/api/entities) has no
+ * references, which tell its project. A listing filtered by project reads the full view and
+ * returns these fields of each row kept.
+ */
+const SIMPLE_MERGE_REQUEST_FIELDS = [
+  'id',
+  'iid',
+  'project_id',
+  'title',
+  'description',
+  'state',
+  'created_at',
+  'updated_at',
+  'web_url',
+] as const;
+
+/** The arguments a listing filtered to the scope reads GitLab with: rows that tell their place. */
+export function filteredReadArgs(tool: string, args: Args): Args {
+  if (tool !== 'browse_merge_requests' || args.view !== 'simple') return args;
+  const { view: _view, ...full } = args;
+  return full;
+}
+
+/** The fields of a merge request the simple view shows, as GitLab would have returned them. */
+function simpleMergeRequest(row: Record<string, unknown>): Record<string, unknown> {
+  const simple: Record<string, unknown> = {};
+  for (const field of SIMPLE_MERGE_REQUEST_FIELDS) if (field in row) simple[field] = row[field];
+  return simple;
+}
+
 /** A listing of projects or merge requests whose rows are filtered by their project. */
 function isProjectRowListing(tool: string, args: Args): boolean {
   return (
@@ -387,10 +418,14 @@ export function scopedResult(
 ): unknown {
   if (!Array.isArray(result)) return result;
   if (isProjectRowListing(tool, args)) {
-    return result.filter((item: Record<string, unknown>) => {
+    const kept = result.filter((item: Record<string, unknown>) => {
       const path = projectPathOf(tool, item);
       return path !== undefined && enforcer.isAllowed(path);
     });
+    // Read in the full view by filteredReadArgs; returned in the one the caller asked for.
+    return tool === 'browse_merge_requests' && args.view === 'simple'
+      ? kept.map(simpleMergeRequest)
+      : kept;
   }
   if (isScopedTodoListing(tool, args)) {
     return result.filter((todo: Record<string, unknown>) => {

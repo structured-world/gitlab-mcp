@@ -56,7 +56,7 @@ import {
   type EffectivePolicy,
 } from './configuration/policy';
 import { executeScoped, parseScopedArguments } from './configuration/scoped-execution';
-import { withTargetPaths } from './configuration/scope-ids';
+import { withScopePaths, withTargetPaths } from './configuration/scope-ids';
 
 interface JsonSchemaProperty {
   type?: string;
@@ -483,18 +483,24 @@ async function withoutRestrictedTools<
 /**
  * A refusal for a call the caller's settings do not allow, or null when it may run. Tool,
  * group, read-only and action limits come first: they need nothing from GitLab, so a call
- * they refuse reaches nothing. Then the scope, which holds paths: numeric ids are checked
- * as the paths they stand for.
+ * they refuse reaches nothing. Then the scope, which compares paths: numeric ids, the call's
+ * and the scope's own, are checked as the paths they stand for. The returned policy is the
+ * one the call runs under.
  */
 async function prepareScopedCall(
   toolName: string,
   args: Record<string, unknown>,
-  policy: EffectivePolicy,
+  configured: EffectivePolicy,
   registryManager: import('./registry-manager').RegistryManager,
-): Promise<{ rejection: CallToolResult | null; args: Record<string, unknown> }> {
-  const unscoped = settingsRejection(toolName, args, withoutScope(policy), registryManager);
-  if (unscoped || !policy.scopeEnforcer || isExemptFromSettings(toolName))
-    return { rejection: unscoped, args };
+): Promise<{
+  rejection: CallToolResult | null;
+  args: Record<string, unknown>;
+  policy: EffectivePolicy;
+}> {
+  const unscoped = settingsRejection(toolName, args, withoutScope(configured), registryManager);
+  if (unscoped || !configured.scopeEnforcer || isExemptFromSettings(toolName))
+    return { rejection: unscoped, args, policy: configured };
+  const policy = await withScopePaths(configured);
   const selected = parseScopedArguments(toolName, args);
   // The tool's parse keeps only the selected action's arguments, so only those are held to
   // the scope.
@@ -512,6 +518,7 @@ async function prepareScopedCall(
       registryManager,
     ),
     args: selected,
+    policy,
   };
 }
 
@@ -1093,7 +1100,7 @@ export async function setupHandlers(server: Server): Promise<void> {
           registryManager,
           toolName,
           toolArguments,
-          configuration.policy,
+          prepared.policy,
           effectiveInstanceUrl,
           requestScopes,
         );

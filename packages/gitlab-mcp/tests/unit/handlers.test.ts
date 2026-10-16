@@ -3112,6 +3112,42 @@ describe('handlers', () => {
       expect(JSON.parse(result.content![0].text)).toMatchObject({ results: [{ id: 2 }] });
     });
 
+    // A preset naming its group by numeric id: the listing returns paths, so the scope is read
+    // as the group's path before its rows are kept, instead of keeping none of them.
+    it("lists the projects of a preset's numeric group scope", async () => {
+      const resolved = await service().resolve(staticCaller());
+      const scope = { group: '4' };
+      const { ScopeEnforcer } = require('../../src/profiles/scope-enforcer');
+      jest.spyOn(service(), 'resolve').mockResolvedValueOnce({
+        ...resolved,
+        policy: { ...resolved.policy, scope, scopeEnforcer: new ScopeEnforcer(scope) },
+      });
+      const { gitlab } = require('../../src/utils/gitlab-api');
+      const read = jest
+        .spyOn(gitlab, 'get')
+        .mockImplementation(async (path: unknown) =>
+          path === 'namespaces/4' ? { id: 4, full_path: 'team' } : undefined,
+        );
+      mockRegistryManager.executeTool.mockResolvedValue([
+        { id: 1, path_with_namespace: 'team/app' },
+        { id: 2, path_with_namespace: 'elsewhere/shared' },
+      ]);
+
+      try {
+        const result = await callToolHandler(
+          { params: { name: 'browse_projects', arguments: { action: 'list' } } },
+          { sessionId: 'sess-1' },
+        );
+
+        expect(result.isError).toBeFalsy();
+        expect(JSON.parse(result.content![0].text)).toEqual([
+          { id: 1, path_with_namespace: 'team/app' },
+        ]);
+      } finally {
+        read.mockRestore();
+      }
+    });
+
     // Another chat of the same account keeps its own session settings.
     it('applies a session override to its own session only', async () => {
       await service().updateSession(staticCaller(), { readOnly: true });

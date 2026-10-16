@@ -2214,3 +2214,66 @@ describe('executeScoped multi-target listings', () => {
     );
   });
 });
+
+describe('executeScoped simple merge request listings', () => {
+  // GitLab's simple view (MergeRequestSimple) has no references, which tell a merge request's
+  // project; the full view has them. The mock answers as GitLab does for each view.
+  const full = (id: number, path: string) => ({
+    id,
+    iid: id,
+    project_id: id * 10,
+    title: `MR ${id}`,
+    description: 'body',
+    state: 'opened',
+    created_at: `2026-01-${String(id).padStart(2, '0')}T00:00:00Z`,
+    updated_at: `2026-01-${String(id).padStart(2, '0')}T00:00:00Z`,
+    web_url: `https://gitlab.example.com/${path}/-/merge_requests/${id}`,
+    references: { full: `${path}!${id}` },
+    author: { username: 'someone' },
+  });
+  const simple = (row: ReturnType<typeof full>) => {
+    const { references: _references, author: _author, ...fields } = row;
+    return fields;
+  };
+  const answer = (rows: Array<ReturnType<typeof full>>, args: Record<string, unknown>) =>
+    args.view === 'simple' ? rows.map(simple) : rows;
+
+  // A group scope filters the group's merge requests by project: the simple view the caller
+  // asked for is returned for the merge requests of the scope instead of none of them.
+  it('keeps the simple merge requests of a group scope', async () => {
+    const inScope = full(1, 'team/a');
+    const run = jest.fn(async (_tool: string, args: Record<string, unknown>) =>
+      args.group_id === 'team' ? answer([inScope, full(2, 'elsewhere/b')], args) : [],
+    );
+
+    const result = await executeScoped(
+      run,
+      'browse_merge_requests',
+      { action: 'list', view: 'simple' },
+      groupOnlyPolicy,
+    );
+
+    expect(result).toEqual([simple(inScope)]);
+  });
+
+  // Several targets are read on their own and merged: the simple view comes back the same way.
+  it('keeps the simple merge requests of several groups', async () => {
+    const team = full(1, 'team/a');
+    const other = full(2, 'other/b');
+    const run = jest.fn(async (_tool: string, args: Record<string, unknown>) => {
+      if (args.group_id === 'team') return answer([team], args);
+      if (args.group_id === 'other') return answer([other], args);
+      return [];
+    });
+    const scope = { groups: ['team', 'other'] };
+
+    const result = await executeScoped(
+      run,
+      'browse_merge_requests',
+      { action: 'list', view: 'simple' },
+      { ...projectPolicy, scope, scopeEnforcer: new ScopeEnforcer(scope) },
+    );
+
+    expect(result).toEqual([simple(other), simple(team)]);
+  });
+});

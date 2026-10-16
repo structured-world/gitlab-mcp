@@ -7,9 +7,10 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { dirname } from 'path';
 import { spawnSync } from 'child_process';
 import { InstallableClient, InstallResult, CLIENT_METADATA } from './types';
-import { McpServerConfig } from '../init/types';
+import { isRemoteServerConfig, McpServerConfig, StdioServerConfig } from '../init/types';
 import { expandPath, getConfigPath } from './detector';
 import { createBackup } from './backup';
+import { codexConfigPreview, installCodex } from './codex';
 
 /**
  * Server entry for JSON config files
@@ -32,7 +33,7 @@ interface McpJsonConfig {
 /**
  * Build server entry from config
  */
-function buildServerEntry(serverConfig: McpServerConfig): McpServerEntry {
+function buildServerEntry(serverConfig: StdioServerConfig): McpServerEntry {
   const entry: McpServerEntry = {
     command: serverConfig.command,
     args: serverConfig.args,
@@ -79,7 +80,7 @@ function writeJsonConfig(configPath: string, config: McpJsonConfig): void {
  */
 function installJsonConfigClient(
   client: InstallableClient,
-  serverConfig: McpServerConfig,
+  serverConfig: StdioServerConfig,
   force: boolean,
   unavailableError: string,
 ): InstallResult {
@@ -150,7 +151,7 @@ function installJsonConfigClient(
  * Install to Claude Desktop (JSON config)
  */
 export function installClaudeDesktop(
-  serverConfig: McpServerConfig,
+  serverConfig: StdioServerConfig,
   force: boolean = false,
 ): InstallResult {
   return installJsonConfigClient(
@@ -165,7 +166,7 @@ export function installClaudeDesktop(
  * Install to Claude Code (via claude mcp add command)
  */
 export function installClaudeCode(
-  serverConfig: McpServerConfig,
+  serverConfig: StdioServerConfig,
   force: boolean = false,
 ): InstallResult {
   const client: InstallableClient = 'claude-code';
@@ -253,7 +254,7 @@ export function installClaudeCode(
  * Install to Cursor (JSON config)
  */
 export function installCursor(
-  serverConfig: McpServerConfig,
+  serverConfig: StdioServerConfig,
   force: boolean = false,
 ): InstallResult {
   return installJsonConfigClient(
@@ -268,7 +269,7 @@ export function installCursor(
  * Install to VS Code Copilot (JSON config in .vscode/)
  */
 export function installVSCodeCopilot(
-  serverConfig: McpServerConfig,
+  serverConfig: StdioServerConfig,
   force: boolean = false,
 ): InstallResult {
   const client: InstallableClient = 'vscode-copilot';
@@ -340,7 +341,7 @@ export function installVSCodeCopilot(
  * Install to Windsurf (JSON config)
  */
 export function installWindsurf(
-  serverConfig: McpServerConfig,
+  serverConfig: StdioServerConfig,
   force: boolean = false,
 ): InstallResult {
   return installJsonConfigClient(
@@ -354,7 +355,10 @@ export function installWindsurf(
 /**
  * Install to Cline (JSON config)
  */
-export function installCline(serverConfig: McpServerConfig, force: boolean = false): InstallResult {
+export function installCline(
+  serverConfig: StdioServerConfig,
+  force: boolean = false,
+): InstallResult {
   return installJsonConfigClient(
     'cline',
     serverConfig,
@@ -367,7 +371,7 @@ export function installCline(serverConfig: McpServerConfig, force: boolean = fal
  * Install to Roo Code (JSON config)
  */
 export function installRooCode(
-  serverConfig: McpServerConfig,
+  serverConfig: StdioServerConfig,
   force: boolean = false,
 ): InstallResult {
   return installJsonConfigClient(
@@ -379,11 +383,11 @@ export function installRooCode(
 }
 
 /**
- * Client installer registry
+ * Installers of clients configured with a local (stdio) server
  */
-const INSTALLERS: Record<
-  InstallableClient,
-  (serverConfig: McpServerConfig, force: boolean) => InstallResult
+const STDIO_INSTALLERS: Record<
+  Exclude<InstallableClient, 'codex'>,
+  (serverConfig: StdioServerConfig, force: boolean) => InstallResult
 > = {
   'claude-desktop': installClaudeDesktop,
   'claude-code': installClaudeCode,
@@ -402,8 +406,15 @@ export function installToClient(
   serverConfig: McpServerConfig,
   force: boolean = false,
 ): InstallResult {
-  const installer = INSTALLERS[client];
-  return installer(serverConfig, force);
+  if (client === 'codex') return installCodex(serverConfig, force);
+  if (isRemoteServerConfig(serverConfig)) {
+    return {
+      client,
+      success: false,
+      error: `${CLIENT_METADATA[client].name} adds remote MCP servers in its own settings; this installer writes local (stdio) configurations for it`,
+    };
+  }
+  return STDIO_INSTALLERS[client](serverConfig, force);
 }
 
 /**
@@ -424,6 +435,10 @@ export function generateConfigPreview(
   client: InstallableClient,
   serverConfig: McpServerConfig,
 ): string {
+  if (client === 'codex') return codexConfigPreview(serverConfig);
+  if (isRemoteServerConfig(serverConfig)) {
+    return `${CLIENT_METADATA[client].name} adds remote MCP servers in its own settings: ${serverConfig.url}`;
+  }
   const entry = buildServerEntry(serverConfig);
 
   // VS Code uses different key

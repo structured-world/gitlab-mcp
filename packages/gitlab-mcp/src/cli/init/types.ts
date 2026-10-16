@@ -37,6 +37,7 @@ export type McpClient =
   | 'windsurf'
   | 'cline'
   | 'roo-code'
+  | 'codex'
   | 'generic';
 
 /**
@@ -75,12 +76,29 @@ export interface ConnectionTestResult {
 }
 
 /**
- * Generated configuration for MCP client
+ * Server the client starts as a local process over stdio
  */
-export interface McpServerConfig {
+export interface StdioServerConfig {
   command: string;
   args: string[];
   env: Record<string, string>;
+}
+
+/**
+ * Server the client reaches over Streamable HTTP; it signs in through the
+ * server's OAuth, so the configuration holds no credentials
+ */
+export interface RemoteServerConfig {
+  url: string;
+}
+
+/**
+ * Generated configuration for MCP client
+ */
+export type McpServerConfig = StdioServerConfig | RemoteServerConfig;
+
+export function isRemoteServerConfig(config: McpServerConfig): config is RemoteServerConfig {
+  return 'url' in config;
 }
 
 /**
@@ -161,6 +179,11 @@ export const MCP_CLIENT_INFO: Record<
     name: 'Roo Code',
     configPath: '~/.roo/mcp.json',
     supportsCliInstall: false,
+  },
+  codex: {
+    name: 'Codex',
+    configPath: '~/.codex/config.toml',
+    supportsCliInstall: true,
   },
   generic: {
     name: 'Other / Generic',

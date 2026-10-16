@@ -11,8 +11,9 @@ import {
 
 describe('install types', () => {
   describe('INSTALLABLE_CLIENTS', () => {
-    it('should contain all 7 installable clients', () => {
-      expect(INSTALLABLE_CLIENTS).toHaveLength(7);
+    it('should contain all 8 installable clients', () => {
+      expect(INSTALLABLE_CLIENTS).toHaveLength(8);
+      expect(INSTALLABLE_CLIENTS).toContain('codex');
       expect(INSTALLABLE_CLIENTS).toContain('claude-desktop');
       expect(INSTALLABLE_CLIENTS).toContain('claude-code');
       expect(INSTALLABLE_CLIENTS).toContain('cursor');

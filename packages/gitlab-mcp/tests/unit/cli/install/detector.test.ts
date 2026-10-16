@@ -22,8 +22,15 @@ import * as childProcess from 'child_process';
 // Mock modules
 jest.mock('fs');
 jest.mock('child_process');
+jest.mock('../../../../src/cli/install/codex', () => ({
+  CODEX_SERVER_NAME: 'gitlab',
+  codexConfigPath: jest.fn(() => '/home/user/.codex/config.toml'),
+  listCodexServers: jest.fn(() => []),
+}));
+import { listCodexServers } from '../../../../src/cli/install/codex';
 const mockFs = fs as jest.Mocked<typeof fs>;
 const mockChildProcess = childProcess as jest.Mocked<typeof childProcess>;
+const mockListCodex = listCodexServers as jest.MockedFunction<typeof listCodexServers>;
 
 describe('install detector', () => {
   beforeEach(() => {
@@ -283,6 +290,68 @@ describe('install detector', () => {
 
       const result = detectClient('cursor');
       expect(result.configExists).toBe(true);
+    });
+
+    describe('codex', () => {
+      const which = (status: number) =>
+        mockChildProcess.spawnSync.mockReturnValue({
+          status,
+          stdout: '',
+          stderr: '',
+          pid: 1,
+          output: [],
+          signal: null,
+        });
+
+      it('asks the Codex CLI whether its gitlab entry exists', () => {
+        which(0);
+        mockFs.existsSync.mockReturnValue(true);
+        mockListCodex.mockReturnValueOnce([
+          { name: 'gitlab', transport: { type: 'stdio', command: 'npx', args: [] } },
+        ]);
+
+        expect(detectClient('codex')).toEqual({
+          client: 'codex',
+          detected: true,
+          method: 'cli-command',
+          configPath: '/home/user/.codex/config.toml',
+          configExists: true,
+          alreadyConfigured: true,
+        });
+      });
+
+      it('does not count a registration under another name as the entry it would replace', () => {
+        which(0);
+        mockFs.existsSync.mockReturnValue(false);
+        mockListCodex.mockReturnValueOnce([
+          {
+            name: 'gitlab-mcp',
+            transport: { type: 'streamable_http', url: 'https://a.example/mcp' },
+          },
+        ]);
+
+        expect(detectClient('codex').alreadyConfigured).toBe(false);
+      });
+
+      it('reports Codex as absent without asking a CLI that is not installed', () => {
+        which(1);
+        mockFs.existsSync.mockReturnValue(false);
+
+        const result = detectClient('codex');
+        expect(result.detected).toBe(false);
+        expect(result.alreadyConfigured).toBeUndefined();
+        expect(mockListCodex).not.toHaveBeenCalled();
+      });
+
+      it('treats an unreadable Codex listing as not configured', () => {
+        which(0);
+        mockFs.existsSync.mockReturnValue(false);
+        mockListCodex.mockImplementationOnce(() => {
+          throw new Error('codex mcp list failed: bad config');
+        });
+
+        expect(detectClient('codex').alreadyConfigured).toBe(false);
+      });
     });
   });
 

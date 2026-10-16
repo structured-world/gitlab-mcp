@@ -2,7 +2,7 @@
  * Configuration generator for various MCP clients
  */
 
-import { McpServerConfig, WizardConfig, MCP_CLIENT_INFO, ROLE_PRESETS } from './types';
+import { StdioServerConfig, WizardConfig, MCP_CLIENT_INFO, ROLE_PRESETS } from './types';
 
 /**
  * Escape a string for safe use in shell double-quoted context.
@@ -20,7 +20,7 @@ function shellEscape(value: string): string {
 /**
  * Generate MCP server configuration object
  */
-export function generateServerConfig(config: WizardConfig): McpServerConfig {
+export function generateServerConfig(config: WizardConfig): StdioServerConfig {
   // Normalize instance URL to avoid double-appending /api/v4 later
   const normalizedUrl = config.instanceUrl.replace(/\/+$/, '').replace(/\/api\/v4$/i, '');
 

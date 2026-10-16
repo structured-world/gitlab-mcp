@@ -12,6 +12,7 @@ import {
   INSTALLABLE_CLIENTS,
 } from './types';
 import { expandPath } from '../utils/path-utils.js';
+import { CODEX_SERVER_NAME, codexConfigPath, listCodexServers } from './codex';
 
 // Re-export expandPath for backwards compatibility with existing imports
 export { expandPath } from '../utils/path-utils.js';
@@ -110,7 +111,34 @@ export function isAlreadyConfigured(configPath: string): boolean {
 /**
  * Detect a single MCP client
  */
+/**
+ * Codex keeps TOML and also runs servers from installed plugins, so its own
+ * CLI is the only reliable source of what is configured.
+ */
+function detectCodex(): ClientDetectionResult {
+  const configPath = codexConfigPath();
+  const result: ClientDetectionResult = {
+    client: 'codex',
+    detected: commandExists('codex'),
+    method: 'cli-command',
+    configPath,
+    configExists: existsSync(configPath),
+  };
+  if (result.detected) {
+    try {
+      // Only the entry the installer would replace; other registrations are
+      // reported as duplicates by installCodex.
+      result.alreadyConfigured = listCodexServers().some((s) => s.name === CODEX_SERVER_NAME);
+    } catch {
+      // An unreadable listing is reported by the installer itself.
+      result.alreadyConfigured = false;
+    }
+  }
+  return result;
+}
+
 export function detectClient(client: InstallableClient): ClientDetectionResult {
+  if (client === 'codex') return detectCodex();
   const metadata = CLIENT_METADATA[client];
   const configPath = getConfigPath(client);
   const expandedPath = configPath ? expandPath(configPath) : undefined;

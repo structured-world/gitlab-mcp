@@ -1,6 +1,6 @@
 ---
 title: Supported MCP Clients Overview
-description: "Complete guide to all supported MCP clients for GitLab MCP Server. Setup instructions for Claude Desktop, Claude Code, VS Code, Cursor, Windsurf, Cline, and Roo Code with config file locations."
+description: "Complete guide to all supported MCP clients for GitLab MCP Server. Setup instructions for Claude Desktop, Claude Code, VS Code, Cursor, Windsurf, Cline, Roo Code and Codex with config file locations."
 head:
   - - meta
     - name: keywords
@@ -22,6 +22,7 @@ GitLab MCP works with all major AI coding assistants that support the Model Cont
 | [Windsurf](/clients/windsurf) | stdio | Config dir | JSON config |
 | [Cline](/clients/cline) | stdio | Extension dir | JSON config |
 | [Roo Code](/clients/roo-code) | stdio | Config dir | JSON config |
+| [Codex](/guide/installation/codex) | stdio or HTTP | CLI command | Plugin or `codex mcp` |
 
 All clients can also connect via HTTP (StreamableHTTP or SSE) to a [remote server deployment](/deployment/).
 
@@ -56,6 +57,7 @@ npx @structured-world/gitlab-mcp install --claude-desktop --cursor
 | Windsurf | `~/.codeium/windsurf/mcp_config.json` |
 | Cline | `~/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json` |
 | Roo Code | `~/.roo/mcp.json` |
+| Codex | `~/.codex/config.toml` |
 
 ### Windows
 
@@ -68,6 +70,7 @@ npx @structured-world/gitlab-mcp install --claude-desktop --cursor
 | Windsurf | `%USERPROFILE%\.codeium\windsurf\mcp_config.json` |
 | Cline | `%APPDATA%\Code\User\globalStorage\saoudrizwan.claude-dev\settings\cline_mcp_settings.json` |
 | Roo Code | `%USERPROFILE%\.roo\mcp.json` |
+| Codex | `%USERPROFILE%\.codex\config.toml` |
 
 ### Linux
 
@@ -80,6 +83,9 @@ npx @structured-world/gitlab-mcp install --claude-desktop --cursor
 | Windsurf | `~/.codeium/windsurf/mcp_config.json` |
 | Cline | `~/.config/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json` |
 | Roo Code | `~/.roo/mcp.json` |
+| Codex | `~/.codex/config.toml` |
+
+`CODEX_HOME` moves the Codex file on every platform.
 
 ## Next Steps
 

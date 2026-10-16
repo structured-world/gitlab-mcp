@@ -2,8 +2,9 @@
  * `gitlab-mcp plugin build`: packages the plugin for a given MCP endpoint.
  */
 
-import { resolve } from 'path';
+import { resolve } from 'node:path';
 import { buildPlugin, PluginBuildOptions } from './build';
+import { LISTING } from './listing';
 import { PluginValidationError } from './validate';
 
 export const PLUGIN_USAGE = `Usage: gitlab-mcp plugin build --endpoint <url> [options]
@@ -82,7 +83,7 @@ export function runPluginCommand(
       options.flavor === 'public'
         ? 'Upload the ZIP in the OpenAI platform dashboard to submit it to the Plugins Directory.'
         : `Add the marketplace with: codex plugin marketplace add "${options.outDir}"\n` +
-            'then install GitLab MCP from the Plugins Directory.',
+            `then install ${LISTING.displayName} from the Plugins Directory.`,
     );
     return 0;
   } catch (error) {

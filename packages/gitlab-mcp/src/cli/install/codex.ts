@@ -3,11 +3,11 @@
  * Codex itself edits config.toml and keeps every unrelated setting.
  */
 
-import { existsSync } from 'fs';
-import { homedir } from 'os';
-import { join } from 'path';
+import { existsSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { sync as spawnSync } from 'cross-spawn';
-import { InstallResult } from './types';
+import { BackupResult, InstallResult } from './types';
 import { isRemoteServerConfig, McpServerConfig } from '../init/types';
 import { createBackup, restoreBackup } from './backup';
 
@@ -77,7 +77,12 @@ export function listCodexServers(): CodexServer[] {
 function getCodexServer(name: string): CodexServer | undefined {
   const result = runCodex(['mcp', 'get', name, '--json']);
   if (result.status !== 0) return undefined;
-  return JSON.parse(result.stdout) as CodexServer;
+  try {
+    return JSON.parse(result.stdout) as CodexServer;
+  } catch {
+    // Unreadable output proves nothing about what was saved.
+    return undefined;
+  }
 }
 
 /** True when the entry runs GitLab MCP, by name, package, checkout or endpoint. */
@@ -119,6 +124,29 @@ function addArgs(config: McpServerConfig): string[] {
   return ['mcp', 'add', CODEX_SERVER_NAME, ...env, '--', config.command, ...config.args];
 }
 
+function duplicateNotes(servers: CodexServer[], config: McpServerConfig): string[] {
+  return servers
+    .filter((s) => s.name !== CODEX_SERVER_NAME && isGitlabMcpServer(s, config))
+    .map(
+      (s) =>
+        `"${s.name}" also runs GitLab MCP, so Codex lists its tools twice; ` +
+        `remove the one you do not use (codex mcp remove ${s.name}, or disable the plugin).`,
+    );
+}
+
+/** Removes the managed entry; returns the reason when it was left in place. */
+function removeExisting(configPath: string, backup: BackupResult | undefined): string | undefined {
+  // Removing the old entry is undoable only through the backup.
+  if (backup && !backup.created) {
+    return `Could not back up ${configPath}: ${backup.error ?? 'unknown error'}`;
+  }
+  const removed = runCodex(['mcp', 'remove', CODEX_SERVER_NAME]);
+  if (removed.status !== 0) {
+    return `Failed to remove the existing gitlab entry: ${failure(removed)}`;
+  }
+  return undefined;
+}
+
 /**
  * Registers GitLab MCP in Codex. An existing `gitlab` entry is replaced only
  * with `force`; GitLab MCP registered under other names, including by an
@@ -135,13 +163,7 @@ export function installCodex(config: McpServerConfig, force: boolean): InstallRe
   }
 
   const existing = servers.find((s) => s.name === CODEX_SERVER_NAME);
-  const notes = servers
-    .filter((s) => s.name !== CODEX_SERVER_NAME && isGitlabMcpServer(s, config))
-    .map(
-      (s) =>
-        `"${s.name}" also runs GitLab MCP, so Codex lists its tools twice; ` +
-        `remove the one you do not use (codex mcp remove ${s.name}, or disable the plugin).`,
-    );
+  const notes = duplicateNotes(servers, config);
 
   if (existing && !force) {
     return {
@@ -156,29 +178,9 @@ export function installCodex(config: McpServerConfig, force: boolean): InstallRe
 
   const backup = existsSync(configPath) ? createBackup({ configPath }) : undefined;
   const backupPath = backup?.created ? backup.backupPath : undefined;
-  // Removing the old entry is undoable only through the backup.
-  if (existing && backup && !backup.created) {
-    return {
-      client,
-      success: false,
-      error: `Could not back up ${configPath}: ${backup.error ?? 'unknown error'}`,
-      configPath,
-      notes,
-    };
-  }
-
   if (existing) {
-    const removed = runCodex(['mcp', 'remove', CODEX_SERVER_NAME]);
-    if (removed.status !== 0) {
-      return {
-        client,
-        success: false,
-        error: `Failed to remove the existing gitlab entry: ${failure(removed)}`,
-        backupPath,
-        configPath,
-        notes,
-      };
-    }
+    const error = removeExisting(configPath, backup);
+    if (error) return { client, success: false, error, backupPath, configPath, notes };
   }
 
   // A remote server starts the browser sign-in right away; it needs the terminal.
@@ -213,19 +215,25 @@ export function installCodex(config: McpServerConfig, force: boolean): InstallRe
   };
 }
 
+const TOML_SHORT_ESCAPES: Readonly<Record<string, string>> = {
+  '\\': String.raw`\\`,
+  '"': String.raw`\"`,
+  '\n': String.raw`\n`,
+  '\t': String.raw`\t`,
+  '\r': String.raw`\r`,
+};
+
 /** TOML basic string (TOML 1.0, "Basic strings"). */
 export function tomlString(value: string): string {
   let escaped = '';
   for (const char of value) {
-    const code = char.charCodeAt(0);
-    if (char === '\\') escaped += '\\\\';
-    else if (char === '"') escaped += '\\"';
-    else if (char === '\n') escaped += '\\n';
-    else if (char === '\t') escaped += '\\t';
-    else if (char === '\r') escaped += '\\r';
+    const code = char.codePointAt(0) ?? 0;
+    const short = TOML_SHORT_ESCAPES[char];
+    if (short !== undefined) escaped += short;
     // Other control characters have no short escape.
-    else if (code < 0x20 || code === 0x7f) escaped += `\\u${code.toString(16).padStart(4, '0')}`;
-    else escaped += char;
+    else if (code < 0x20 || code === 0x7f) {
+      escaped += String.raw`\u` + code.toString(16).padStart(4, '0');
+    } else escaped += char;
   }
   return `"${escaped}"`;
 }
@@ -237,8 +245,10 @@ export function codexConfigPreview(config: McpServerConfig): string {
     lines.push(`url = ${tomlString(config.url)}`);
     return lines.join('\n');
   }
-  lines.push(`command = ${tomlString(config.command)}`);
-  lines.push(`args = [${config.args.map(tomlString).join(', ')}]`);
+  lines.push(
+    `command = ${tomlString(config.command)}`,
+    `args = [${config.args.map(tomlString).join(', ')}]`,
+  );
   const env = Object.entries(config.env);
   if (env.length > 0) {
     lines.push('', `[mcp_servers.${CODEX_SERVER_NAME}.env]`);

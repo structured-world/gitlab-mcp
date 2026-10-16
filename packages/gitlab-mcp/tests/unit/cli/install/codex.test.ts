@@ -5,10 +5,11 @@
  * CODEX_HOME so backup and rollback act on disk.
  */
 
-import { chmodSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { sync as spawnSync } from 'cross-spawn';
+import * as backup from '../../../../src/cli/install/backup';
 import {
   CodexServer,
   codexConfigPath,
@@ -237,15 +238,20 @@ describe('installCodex', () => {
     // Without a backup a failed add after the remove could not be undone.
     writeFileSync(join(codexHome, 'config.toml'), '[mcp_servers.gitlab]\ncommand = "old"\n');
     fake.servers = [{ name: 'gitlab', transport: { type: 'stdio', command: 'old', args: [] } }];
-    chmodSync(codexHome, 0o500);
+    // Simulated rather than provoked with chmod, which Windows does not honour.
+    const backupSpy = jest
+      .spyOn(backup, 'createBackup')
+      .mockReturnValueOnce({ created: false, error: 'ENOSPC: no space left on device' });
     try {
       const result = installCodex(STDIO, true);
       expect(result.success).toBe(false);
-      expect(result.error).toMatch(/^Could not back up .*config\.toml/);
+      expect(result.error).toBe(
+        `Could not back up ${join(codexHome, 'config.toml')}: ENOSPC: no space left on device`,
+      );
       expect(actions()).toEqual(['list --json']);
       expect(fake.servers[0].transport).toEqual({ type: 'stdio', command: 'old', args: [] });
     } finally {
-      chmodSync(codexHome, 0o700);
+      backupSpy.mockRestore();
     }
   });
 
@@ -284,6 +290,42 @@ describe('installCodex', () => {
       );
     });
     expect(installCodex({ command: 'npx', args: ['x'], env: {} }, false).success).toBe(true);
+  });
+
+  it('reports a failure instead of throwing when the saved entry cannot be read back', () => {
+    mockSpawn.mockImplementation((_c, rawArgs) => {
+      const args = [...(rawArgs ?? [])];
+      if (args[1] === 'list') return reply(0, '[]');
+      if (args[1] === 'add') return reply(0, 'ok');
+      return reply(0, 'gitlab: stdio npx');
+    });
+    expect(installCodex(STDIO, false)).toMatchObject({ success: false });
+  });
+
+  it('names the missing executable when Codex is not installed', () => {
+    mockSpawn.mockImplementation(
+      () =>
+        ({
+          status: null,
+          stdout: null,
+          stderr: null,
+          error: new Error('spawnSync codex ENOENT'),
+        }) as unknown as ReturnType<typeof spawnSync>,
+    );
+    expect(installCodex(STDIO, false)).toMatchObject({
+      success: false,
+      error: 'codex mcp list failed: spawnSync codex ENOENT',
+    });
+  });
+
+  it('falls back to the exit status when Codex prints nothing', () => {
+    mockSpawn.mockImplementation(() => reply(1));
+    expect(installCodex(STDIO, false).error).toBe('codex mcp list failed: codex exited with 1');
+  });
+
+  it('refuses a server list that is not an array', () => {
+    mockSpawn.mockImplementation(() => reply(0, '{"servers":[]}'));
+    expect(installCodex(STDIO, false).error).toBe('codex mcp list returned an unexpected format');
   });
 
   it('fails with the CLI message when the server list cannot be read', () => {

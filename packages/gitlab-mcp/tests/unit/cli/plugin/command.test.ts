@@ -117,6 +117,10 @@ describe('runPluginCommand', () => {
       /^Built gitlab-mcp plugin \d+\.\d+\.\d+ for https:\/\/mcp\.example\.com\/mcp$/,
     );
     expect(lines.join('\n')).toContain(`codex plugin marketplace add "${outDir}"`);
+    // The plugin is listed under its display name, which the hint must match.
+    expect(lines.join('\n')).toContain(
+      'then install GitLab by Structured World from the Plugins Directory.',
+    );
   });
 
   it('tells a public publisher to upload the ZIP', () => {

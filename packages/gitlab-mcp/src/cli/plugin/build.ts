@@ -3,9 +3,9 @@
  * assets, plus a local marketplace and a ZIP for directory submission.
  */
 
-import { createHash } from 'crypto';
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
-import { dirname, join } from 'path';
+import { createHash } from 'node:crypto';
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import {
   LISTING,
   LOGO_SOURCE,
@@ -15,7 +15,7 @@ import {
   PLUGIN_NAME,
 } from './listing';
 import { PluginFlavor, validateEndpoint, validatePackage } from './validate';
-import { createZip } from './zip';
+import { compareCodeUnits, createZip } from './zip';
 
 const PACKAGE_NAME = '@structured-world/gitlab-mcp';
 const PLUGIN_SCHEMA = 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json';
@@ -72,9 +72,10 @@ export function findPackageRoot(start: string = __dirname): string {
 
 /** Splits an npm "Name <email> (url)" author string. */
 export function parseAuthor(author: string): { name: string; email?: string } {
-  const match = /^\s*([^<(]+?)\s*(?:<([^>]+)>)?\s*(?:\([^)]*\))?\s*$/.exec(author);
-  if (!match) return { name: author.trim() };
-  return match[2] ? { name: match[1], email: match[2] } : { name: match[1] };
+  const nameEnd = author.search(/[<(]/);
+  const name = (nameEnd === -1 ? author : author.slice(0, nameEnd)).trim();
+  const email = /<([^>]+)>/.exec(author)?.[1].trim();
+  return email ? { name, email } : { name };
 }
 
 function urlOf(field: PackageJson['repository']): string | undefined {
@@ -184,6 +185,6 @@ export function buildPlugin(options: PluginBuildOptions): PluginBuildResult {
     marketplacePath,
     zipPath,
     sha256: createHash('sha256').update(zip).digest('hex'),
-    files: [...files.keys()].sort(),
+    files: [...files.keys()].sort(compareCodeUnits),
   };
 }

@@ -3,7 +3,15 @@
  * package.json, skills and assets into a temporary directory.
  */
 
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { buildPlugin, findPackageRoot, parseAuthor } from '../../../../src/cli/plugin/build';
@@ -132,6 +140,73 @@ describe('buildPlugin', () => {
     ]);
     expect(existsSync(join(outDir, 'plugins'))).toBe(false);
     expect(existsSync(join(outDir, '.agents'))).toBe(false);
+  });
+});
+
+describe('buildPlugin from a minimal package', () => {
+  let root: string;
+
+  /** A package root with only the files the build reads. */
+  function writePackage(pkg: Record<string, unknown>): void {
+    writeFileSync(join(root, 'package.json'), JSON.stringify(pkg));
+    mkdirSync(join(root, 'plugin', 'assets'), { recursive: true });
+    cpSync(join(ROOT, 'plugin', 'schemas'), join(root, 'plugin', 'schemas'), { recursive: true });
+    cpSync(join(ROOT, 'plugin', 'assets', 'logo.png'), join(root, 'plugin', 'assets', 'logo.png'));
+    mkdirSync(join(root, 'skills', 'gitlab-setup'), { recursive: true });
+    cpSync(
+      join(ROOT, 'skills', 'gitlab-setup', 'SKILL.md'),
+      join(root, 'skills', 'gitlab-setup', 'SKILL.md'),
+    );
+    // Neither a stray file nor a folder without SKILL.md is a skill.
+    writeFileSync(join(root, 'skills', 'README.md'), '# Skills\n');
+    mkdirSync(join(root, 'skills', 'drafts'));
+  }
+
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), 'gitlab-mcp-root-'));
+  });
+
+  afterEach(() => {
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it('takes links from string fields and the npm homepage when there is no mcp block', () => {
+    writePackage({
+      name: '@structured-world/gitlab-mcp',
+      version: '1.2.3',
+      description: 'GitLab tools',
+      author: 'Jane Doe',
+      license: 'Apache-2.0',
+      homepage: 'https://docs.example.com',
+      repository: 'https://github.example.com/acme/gitlab-mcp',
+      bugs: 'https://github.example.com/acme/gitlab-mcp/issues',
+    });
+    const result = buildPlugin({ ...PUBLIC, outDir, packageRoot: root });
+
+    expect(result.files).toEqual([
+      'assets/logo.png',
+      'mcp.json',
+      'plugin.json',
+      'skills/gitlab-setup/SKILL.md',
+    ]);
+    const manifest = readJson(join(result.pluginDir, 'plugin.json'));
+    expect(manifest).toMatchObject({
+      version: '1.2.3',
+      author: { name: 'Jane Doe', url: 'https://docs.example.com' },
+      homepage: 'https://docs.example.com',
+      repository: 'https://github.example.com/acme/gitlab-mcp',
+    });
+    const ui = (manifest.extensions as Record<string, Record<string, Record<string, unknown>>>)[
+      'com.openai'
+    ].interface;
+    expect(ui.supportURL).toBe('https://github.example.com/acme/gitlab-mcp/issues');
+  });
+
+  it('refuses a package.json without a version', () => {
+    writePackage({ name: '@structured-world/gitlab-mcp' });
+    expect(() => buildPlugin({ ...PUBLIC, outDir, packageRoot: root })).toThrow(
+      'package.json has no version',
+    );
   });
 });
 

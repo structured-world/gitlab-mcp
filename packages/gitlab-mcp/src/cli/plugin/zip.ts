@@ -6,7 +6,7 @@
  * hundred kilobytes, so ZIP64 is refused rather than implemented.
  */
 
-import { crc32, deflateRawSync } from 'zlib';
+import { crc32, deflateRawSync } from 'node:zlib';
 
 export interface ZipEntry {
   /** Forward-slash path inside the archive. */
@@ -31,11 +31,20 @@ const UNIX_FILE_ATTRIBUTES = (0o100644 << 16) >>> 0;
 const MAX_UINT16 = 0xffff;
 const MAX_UINT32 = 0xffffffff;
 
+/**
+ * Orders strings by UTF-16 code units. Unlike localeCompare, the order does
+ * not depend on the machine's locale, which keeps the archive reproducible.
+ */
+export function compareCodeUnits(a: string, b: string): number {
+  if (a < b) return -1;
+  return a > b ? 1 : 0;
+}
+
 export function createZip(entries: ZipEntry[]): Buffer {
   if (entries.length > MAX_UINT16) {
     throw new Error(`ZIP holds at most ${MAX_UINT16} entries without ZIP64`);
   }
-  const sorted = [...entries].sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+  const sorted = [...entries].sort((a, b) => compareCodeUnits(a.path, b.path));
   const parts: Buffer[] = [];
   const central: Buffer[] = [];
   let offset = 0;

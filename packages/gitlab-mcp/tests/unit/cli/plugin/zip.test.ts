@@ -5,7 +5,7 @@
  */
 
 import { crc32, inflateRawSync } from 'zlib';
-import { createZip } from '../../../../src/cli/plugin/zip';
+import { compareCodeUnits, createZip } from '../../../../src/cli/plugin/zip';
 
 interface ParsedEntry {
   path: string;
@@ -38,7 +38,7 @@ function parseZip(zip: Buffer): ParsedEntry[] {
     const localExtra = zip.readUInt16LE(localOffset + 28);
     const start = localOffset + 30 + localName + localExtra;
     const data = inflateRawSync(zip.subarray(start, start + compressedSize));
-    expect(data.length).toBe(size);
+    expect(data).toHaveLength(size);
     expect(crc32(data)).toBe(checksum);
 
     entries.push({ path, data, flags, madeBy, externalAttributes });
@@ -73,6 +73,26 @@ describe('createZip', () => {
     const a = { path: 'a.md', data: Buffer.from('first') };
     const b = { path: 'b/c.md', data: Buffer.from('second') };
     expect(createZip([a, b]).equals(createZip([b, a]))).toBe(true);
+  });
+
+  it('orders entries by code unit, independent of the locale', () => {
+    // localeCompare would put "a.md" before "B.md" in most locales.
+    const names = parseZip(
+      createZip([
+        { path: 'a.md', data: Buffer.from('1') },
+        { path: 'B.md', data: Buffer.from('2') },
+        { path: 'a.md.bak', data: Buffer.from('3') },
+      ]),
+    ).map((e) => e.path);
+    expect(names).toEqual(['B.md', 'a.md', 'a.md.bak']);
+    expect(['b', 'a', 'a'].sort(compareCodeUnits)).toEqual(['a', 'a', 'b']);
+  });
+
+  it('refuses more entries than a ZIP without ZIP64 can index', () => {
+    const entry = { path: 'a.md', data: Buffer.from('x') };
+    expect(() => createZip(new Array<typeof entry>(0x10000).fill(entry))).toThrow(
+      'ZIP holds at most 65535 entries without ZIP64',
+    );
   });
 
   it('writes a valid empty archive', () => {

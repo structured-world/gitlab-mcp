@@ -3,7 +3,7 @@
  * OpenAI directory submission rules that can be verified offline.
  */
 
-import { isIP } from 'net';
+import { isIP } from 'node:net';
 import Ajv2020 from 'ajv/dist/2020';
 import { parse as parseYaml } from 'yaml';
 
@@ -39,9 +39,8 @@ export interface ValidationIssue {
 
 export class PluginValidationError extends Error {
   constructor(readonly issues: ValidationIssue[]) {
-    super(
-      `Plugin package is invalid:\n${issues.map((i) => `  ${i.file}: ${i.message}`).join('\n')}`,
-    );
+    const lines = issues.map((i) => '  ' + i.file + ': ' + i.message);
+    super(['Plugin package is invalid:', ...lines].join('\n'));
     this.name = 'PluginValidationError';
   }
 }
@@ -70,8 +69,8 @@ export function isNonPublicHost(hostname: string): boolean {
     // IPv4-mapped (RFC 4291 2.5.5.2), canonicalized by URL to ::ffff:hhhh:hhhh.
     const mapped = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(host);
     if (mapped) {
-      const high = parseInt(mapped[1], 16);
-      const low = parseInt(mapped[2], 16);
+      const high = Number.parseInt(mapped[1], 16);
+      const low = Number.parseInt(mapped[2], 16);
       return isNonPublicHost(`${high >> 8}.${high & 255}.${low >> 8}.${low & 255}`);
     }
     return (
@@ -90,7 +89,7 @@ export function isNonPublicHost(hostname: string): boolean {
 
 function isLoopback(hostname: string): boolean {
   const host = hostname.replace(/^\[|\]$/g, '').toLowerCase();
-  return host === 'localhost' || host === '::1' || /^127\./.test(host);
+  return host === 'localhost' || host === '::1' || host.startsWith('127.');
 }
 
 /**
@@ -166,7 +165,7 @@ function checkText(
 
 function relativeLuminance(hex: string): number {
   const channel = (offset: number): number => {
-    const value = parseInt(hex.slice(offset, offset + 2), 16) / 255;
+    const value = Number.parseInt(hex.slice(offset, offset + 2), 16) / 255;
     return value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
   };
   return 0.2126 * channel(1) + 0.7152 * channel(3) + 0.0722 * channel(5);
@@ -257,171 +256,198 @@ export function validatePackage(
   flavor: PluginFlavor,
 ): void {
   const issues: ValidationIssue[] = [];
-  const json = (path: string): Record<string, unknown> | undefined => {
-    const data = files.get(path);
-    if (!data) {
-      issues.push({ file: path, message: 'missing' });
-      return undefined;
-    }
-    try {
-      return JSON.parse(data.toString('utf8')) as Record<string, unknown>;
-    } catch {
-      issues.push({ file: path, message: 'not valid JSON' });
-      return undefined;
-    }
-  };
+  const manifest = readJson(issues, files, 'plugin.json');
+  const mcp = readJson(issues, files, 'mcp.json');
+  checkSchema(issues, 'plugin.json', schemas.plugin, manifest);
+  checkSchema(issues, 'mcp.json', schemas.mcp, mcp);
+  for (const [path, data] of files) checkFileContent(issues, path, data, flavor);
+  checkSkills(issues, files);
+  if (mcp) checkServers(issues, mcp, flavor);
+  if (manifest) checkManifest(issues, files, manifest, flavor);
+  if (issues.length > 0) throw new PluginValidationError(issues);
+}
 
-  const manifest = json('plugin.json');
-  const mcp = json('mcp.json');
-  for (const [path, schema, value] of [
-    ['plugin.json', schemas.plugin, manifest],
-    ['mcp.json', schemas.mcp, mcp],
-  ] as const) {
-    if (value === undefined) continue;
-    // Ajv registers a compiled schema under its $id and refuses to add it twice.
-    const id = (schema as { $id?: string }).$id;
-    const check = (id ? ajv.getSchema(id) : undefined) ?? ajv.compile(schema);
-    if (!check(value)) {
-      for (const error of check.errors ?? []) {
-        issues.push({ file: path, message: `${error.instancePath || '/'} ${error.message ?? ''}` });
-      }
+type Json = Record<string, unknown>;
+
+function readJson(issues: ValidationIssue[], files: PackageFiles, path: string): Json | undefined {
+  const data = files.get(path);
+  if (!data) {
+    issues.push({ file: path, message: 'missing' });
+    return undefined;
+  }
+  try {
+    return JSON.parse(data.toString('utf8')) as Json;
+  } catch {
+    issues.push({ file: path, message: 'not valid JSON' });
+    return undefined;
+  }
+}
+
+function checkSchema(
+  issues: ValidationIssue[],
+  path: string,
+  schema: object,
+  value: Json | undefined,
+): void {
+  if (value === undefined) return;
+  // Ajv registers a compiled schema under its $id and refuses to add it twice.
+  const id = (schema as { $id?: string }).$id;
+  const check = (id ? ajv.getSchema(id) : undefined) ?? ajv.compile(schema);
+  if (check(value)) return;
+  for (const error of check.errors ?? []) {
+    issues.push({ file: path, message: `${error.instancePath || '/'} ${error.message ?? ''}` });
+  }
+}
+
+/** Forbidden paths, plus secrets, local paths and non-public URLs in text files. */
+function checkFileContent(
+  issues: ValidationIssue[],
+  path: string,
+  data: Buffer,
+  flavor: PluginFlavor,
+): void {
+  if (FORBIDDEN_PATHS.some((pattern) => pattern.test(path))) {
+    issues.push({ file: path, message: 'not allowed in a directory submission' });
+  }
+  if (!/\.(json|md|txt|yaml|yml)$/.test(path)) return;
+  const text = data.toString('utf8');
+  for (const [label, pattern] of SECRET_PATTERNS) {
+    if (pattern.test(text)) issues.push({ file: path, message: `contains a ${label}` });
+  }
+  if (LOCAL_PATH_PATTERN.test(text)) {
+    issues.push({ file: path, message: 'contains a local absolute path' });
+  }
+  if (flavor !== 'public') return;
+  for (const found of text.matchAll(/https?:\/\/[^\s"'`<>)\]]+/g)) {
+    if (isNonPublicUrl(found[0])) {
+      issues.push({ file: path, message: `references a non-public URL: ${found[0]}` });
     }
   }
+}
 
-  for (const path of files.keys()) {
-    if (FORBIDDEN_PATHS.some((pattern) => pattern.test(path))) {
-      issues.push({ file: path, message: 'not allowed in a directory submission' });
-    }
-    if (!/\.(json|md|txt|yaml|yml)$/.test(path)) continue;
-    const text = files.get(path)?.toString('utf8') ?? '';
-    for (const [label, pattern] of SECRET_PATTERNS) {
-      if (pattern.test(text)) issues.push({ file: path, message: `contains a ${label}` });
-    }
-    if (LOCAL_PATH_PATTERN.test(text)) {
-      issues.push({ file: path, message: 'contains a local absolute path' });
-    }
-    if (flavor === 'public') {
-      for (const found of text.matchAll(/https?:\/\/[^\s"'`<>)\]]+/g)) {
-        try {
-          if (isNonPublicHost(new URL(found[0]).hostname)) {
-            issues.push({ file: path, message: `references a non-public URL: ${found[0]}` });
-          }
-        } catch {
-          // Not a URL after all; nothing to check.
-        }
-      }
-    }
+function isNonPublicUrl(text: string): boolean {
+  try {
+    return isNonPublicHost(new URL(text).hostname);
+  } catch {
+    // Not a URL after all; nothing to check.
+    return false;
   }
+}
 
+function checkSkills(issues: ValidationIssue[], files: PackageFiles): void {
   const skills = [...files.keys()].filter((path) => /^skills\/[^/]+\/SKILL\.md$/.test(path));
   if (skills.length === 0) issues.push({ file: 'skills/', message: 'package has no skills' });
   for (const path of skills) checkSkill(issues, path, files.get(path) ?? Buffer.alloc(0));
+}
 
-  if (mcp) {
-    const servers = Object.entries(
-      (mcp.mcpServers ?? {}) as Record<string, Record<string, unknown>>,
-    );
-    // The directory connects exactly one MCP server per plugin.
-    if (servers.length !== 1) {
-      issues.push({ file: 'mcp.json', message: 'must declare exactly one MCP server' });
+function checkServers(issues: ValidationIssue[], mcp: Json, flavor: PluginFlavor): void {
+  const servers = Object.entries((mcp.mcpServers ?? {}) as Record<string, Json>);
+  // The directory connects exactly one MCP server per plugin.
+  if (servers.length !== 1) {
+    issues.push({ file: 'mcp.json', message: 'must declare exactly one MCP server' });
+  }
+  for (const [name, server] of servers) {
+    if (server.headers && Object.keys(server.headers).length > 0) {
+      issues.push({ file: 'mcp.json', message: `${name} must not declare headers` });
     }
-    for (const [name, server] of servers) {
-      if (server.headers && Object.keys(server.headers).length > 0) {
-        issues.push({ file: 'mcp.json', message: `${name} must not declare headers` });
-      }
-      if (typeof server.url === 'string') {
-        try {
-          validateEndpoint(server.url, flavor);
-        } catch (error) {
-          issues.push({ file: 'mcp.json', message: `${name}: ${(error as Error).message}` });
-        }
-      }
+    if (typeof server.url !== 'string') continue;
+    try {
+      validateEndpoint(server.url, flavor);
+    } catch (error) {
+      issues.push({ file: 'mcp.json', message: `${name}: ${(error as Error).message}` });
+    }
+  }
+}
+
+function checkManifest(
+  issues: ValidationIssue[],
+  files: PackageFiles,
+  manifest: Json,
+  flavor: PluginFlavor,
+): void {
+  checkText(issues, 'version', manifest.version, 64);
+  if (typeof manifest.version === 'string' && !/^\d+\.\d+\.\d+$/.test(manifest.version)) {
+    issues.push({ file: 'plugin.json', message: 'version must be an explicit x.y.z version' });
+  }
+  checkText(issues, 'description', manifest.description, 4000);
+  const author = (manifest.author ?? {}) as Json;
+  checkText(issues, 'author.name', author.name, 120);
+  if (author.url !== undefined) checkListingUrl(issues, 'author.url', author.url);
+  if (manifest.homepage !== undefined) checkListingUrl(issues, 'homepage', manifest.homepage);
+
+  const openai = ((manifest.extensions ?? {}) as Record<string, Json | undefined>)['com.openai'];
+  const ui = (openai?.interface ?? {}) as Json;
+  checkInterfaceText(issues, ui, flavor);
+  checkInterfaceLists(issues, ui);
+  checkBrandColor(issues, ui.brandColor);
+  checkImage(issues, files, 'interface.logo', ui.logo, 'icon');
+  checkImage(issues, files, 'interface.composerIcon', ui.composerIcon, 'icon');
+  for (const shot of Array.isArray(ui.screenshots) ? ui.screenshots : []) {
+    checkImage(issues, files, 'interface.screenshots', shot, 'screenshot');
+  }
+  for (const field of ['websiteURL', 'supportURL', 'privacyPolicyURL', 'termsOfServiceURL']) {
+    // The directory requires all four for an MCP review; a private package
+    // may leave out what its operator does not publish.
+    if (flavor === 'public' || ui[field] !== undefined) {
+      checkListingUrl(issues, `interface.${field}`, ui[field]);
     }
   }
 
-  if (manifest) {
-    checkText(issues, 'version', manifest.version, 64);
-    if (typeof manifest.version === 'string' && !/^\d+\.\d+\.\d+$/.test(manifest.version)) {
-      issues.push({ file: 'plugin.json', message: 'version must be an explicit x.y.z version' });
-    }
-    checkText(issues, 'description', manifest.description, 4000);
-    const author = (manifest.author ?? {}) as Record<string, unknown>;
-    checkText(issues, 'author.name', author.name, 120);
-    if (author.url !== undefined) checkListingUrl(issues, 'author.url', author.url);
-    if (manifest.homepage !== undefined) checkListingUrl(issues, 'homepage', manifest.homepage);
-
-    const openai = ((manifest.extensions ?? {}) as Record<string, Record<string, unknown>>)[
-      'com.openai'
-    ];
-    const ui = (openai?.interface ?? {}) as Record<string, unknown>;
-    checkText(issues, 'interface.displayName', ui.displayName, 30);
-    // The directory guidelines forbid these suffixes on a company or product name.
-    if (
-      flavor === 'public' &&
-      typeof ui.displayName === 'string' &&
-      /\s(?:mcp(?:\s+server)?|plugin)\s*$/i.test(ui.displayName)
-    ) {
-      issues.push({
-        file: 'plugin.json',
-        message: 'interface.displayName must not end with "MCP", "MCP Server" or "Plugin"',
-      });
-    }
-    checkText(issues, 'interface.shortDescription', ui.shortDescription, 30);
-    checkText(issues, 'interface.longDescription', ui.longDescription, 4000);
-    checkText(issues, 'interface.developerName', ui.developerName, 80);
-    checkText(issues, 'interface.category', ui.category, 80);
-    const capabilities = ui.capabilities;
-    if (
-      !Array.isArray(capabilities) ||
-      capabilities.length > 20 ||
-      capabilities.some((c) => typeof c !== 'string' || c.length > 120)
-    ) {
-      issues.push({ file: 'plugin.json', message: 'interface.capabilities: up to 20 strings' });
-    }
-    const prompts = ui.defaultPrompt;
-    if (
-      prompts !== undefined &&
-      (!Array.isArray(prompts) ||
-        prompts.length > 3 ||
-        new Set(prompts).size !== prompts.length ||
-        prompts.some((p) => typeof p !== 'string' || p.length > 128))
-    ) {
-      issues.push({
-        file: 'plugin.json',
-        message: 'interface.defaultPrompt: up to 3 unique prompts of 128 characters',
-      });
-    }
-    if (typeof ui.brandColor !== 'string' || !/^#[0-9A-Fa-f]{6}$/.test(ui.brandColor)) {
-      issues.push({ file: 'plugin.json', message: 'interface.brandColor must be #RRGGBB' });
-    } else if (contrastRatio(ui.brandColor, '#FFFFFF') < 2) {
-      issues.push({
-        file: 'plugin.json',
-        message: 'interface.brandColor needs 2:1 contrast against white',
-      });
-    }
-    checkImage(issues, files, 'interface.logo', ui.logo, 'icon');
-    checkImage(issues, files, 'interface.composerIcon', ui.composerIcon, 'icon');
-    for (const shot of Array.isArray(ui.screenshots) ? ui.screenshots : []) {
-      checkImage(issues, files, 'interface.screenshots', shot, 'screenshot');
-    }
-
-    const urlFields = ['websiteURL', 'supportURL', 'privacyPolicyURL', 'termsOfServiceURL'];
-    for (const field of urlFields) {
-      // The directory requires all four for an MCP review; a private package
-      // may leave out what its operator does not publish.
-      if (flavor === 'public' || ui[field] !== undefined) {
-        checkListingUrl(issues, `interface.${field}`, ui[field]);
-      }
-    }
-
-    const onboarding = openai?.onboardingSkill;
-    if (
-      onboarding !== undefined &&
-      (typeof onboarding !== 'string' || !files.has(onboarding.replace(/^\.\//, '')))
-    ) {
-      issues.push({ file: 'plugin.json', message: 'onboardingSkill is not an included skill' });
-    }
+  const onboarding = openai?.onboardingSkill;
+  if (onboarding === undefined) return;
+  if (typeof onboarding !== 'string' || !files.has(onboarding.replace(/^\.\//, ''))) {
+    issues.push({ file: 'plugin.json', message: 'onboardingSkill is not an included skill' });
   }
+}
 
-  if (issues.length > 0) throw new PluginValidationError(issues);
+function checkInterfaceText(issues: ValidationIssue[], ui: Json, flavor: PluginFlavor): void {
+  checkText(issues, 'interface.displayName', ui.displayName, 30);
+  // The directory guidelines forbid these suffixes on a company or product name.
+  if (
+    flavor === 'public' &&
+    typeof ui.displayName === 'string' &&
+    /\s(?:mcp(?:\s+server)?|plugin)\s*$/i.test(ui.displayName)
+  ) {
+    issues.push({
+      file: 'plugin.json',
+      message: 'interface.displayName must not end with "MCP", "MCP Server" or "Plugin"',
+    });
+  }
+  checkText(issues, 'interface.shortDescription', ui.shortDescription, 30);
+  checkText(issues, 'interface.longDescription', ui.longDescription, 4000);
+  checkText(issues, 'interface.developerName', ui.developerName, 80);
+  checkText(issues, 'interface.category', ui.category, 80);
+}
+
+function isStringList(value: unknown, max: number, maxLength: number): value is string[] {
+  return (
+    Array.isArray(value) &&
+    value.length <= max &&
+    value.every((item) => typeof item === 'string' && item.length <= maxLength)
+  );
+}
+
+function checkInterfaceLists(issues: ValidationIssue[], ui: Json): void {
+  if (!isStringList(ui.capabilities, 20, 120)) {
+    issues.push({ file: 'plugin.json', message: 'interface.capabilities: up to 20 strings' });
+  }
+  const prompts = ui.defaultPrompt;
+  if (prompts === undefined) return;
+  if (!isStringList(prompts, 3, 128) || new Set(prompts).size !== prompts.length) {
+    issues.push({
+      file: 'plugin.json',
+      message: 'interface.defaultPrompt: up to 3 unique prompts of 128 characters',
+    });
+  }
+}
+
+function checkBrandColor(issues: ValidationIssue[], color: unknown): void {
+  if (typeof color !== 'string' || !/^#[0-9A-Fa-f]{6}$/.test(color)) {
+    issues.push({ file: 'plugin.json', message: 'interface.brandColor must be #RRGGBB' });
+  } else if (contrastRatio(color, '#FFFFFF') < 2) {
+    issues.push({
+      file: 'plugin.json',
+      message: 'interface.brandColor needs 2:1 contrast against white',
+    });
+  }
 }

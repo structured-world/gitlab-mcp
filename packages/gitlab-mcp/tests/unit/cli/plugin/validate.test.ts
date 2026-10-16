@@ -373,6 +373,61 @@ describe('validatePackage', () => {
     ]);
   });
 
+  it('refuses a listing URL that does not parse or is too long', () => {
+    const m = manifest();
+    ui(m).supportURL = 'not a url';
+    ui(m).websiteURL = `https://example.com/${'a'.repeat(1024)}`;
+    expect(issuesOf(packageFiles(m))).toEqual(
+      expect.arrayContaining([
+        'plugin.json: interface.websiteURL exceeds 1024 characters',
+        'plugin.json: interface.supportURL is not a valid URL',
+      ]),
+    );
+  });
+
+  it('refuses a malformed brand color and invalid capabilities', () => {
+    const m = manifest();
+    ui(m).brandColor = 'purple';
+    ui(m).capabilities = Array.from({ length: 21 }, (_, i) => `c${i}`);
+    expect(issuesOf(packageFiles(m))).toEqual(
+      expect.arrayContaining([
+        'plugin.json: interface.capabilities: up to 20 strings',
+        'plugin.json: interface.brandColor must be #RRGGBB',
+      ]),
+    );
+  });
+
+  it('refuses an icon that is not a PNG, is over 5 MiB or is not named', () => {
+    const notPng = packageFiles();
+    notPng.set('assets/logo.png', Buffer.from('<svg/>'));
+    expect(issuesOf(notPng)).toContain('assets/logo.png: asset must be a PNG');
+
+    const huge = packageFiles();
+    huge.set('assets/logo.png', Buffer.concat([png(420, 420), Buffer.alloc(5 * 1024 * 1024)]));
+    expect(issuesOf(huge)).toContain('assets/logo.png: asset exceeds 5 MiB');
+
+    const m = manifest();
+    delete ui(m).logo;
+    expect(issuesOf(packageFiles(m))).toContain('plugin.json: interface.logo is required');
+  });
+
+  it('reports skill front matter that is not valid YAML', () => {
+    const files = packageFiles();
+    files.set('skills/gitlab-ci/SKILL.md', Buffer.from('---\nname: [unclosed\n---\n'));
+    expect(issuesOf(files)).toEqual([
+      'skills/gitlab-ci/SKILL.md: SKILL.md front matter is not valid YAML',
+    ]);
+  });
+
+  it('skips URL-like text that does not parse as a URL', () => {
+    const files = packageFiles();
+    files.set(
+      'skills/gitlab-setup/SKILL.md',
+      Buffer.from(`${SKILL}See https://[bad for details\n`),
+    );
+    expect(issuesOf(files)).toEqual([]);
+  });
+
   it('reports a missing or unreadable manifest', () => {
     const files = packageFiles();
     files.set('plugin.json', Buffer.from('{not json'));

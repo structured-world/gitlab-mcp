@@ -5,7 +5,7 @@
   "description": "Advanced GitLab MCP server",
   "mcp": {
     "name": "GitLab MCP Server",
-    "description": "Advanced GitLab MCP server - 59 tools across 15 entity types with CQRS architecture, OAuth 2.1, and multiple transport modes",
+    "description": "Advanced GitLab MCP server - 64 tools across 15 entity types with CQRS architecture, OAuth 2.1, and multiple transport modes",
     "repository": "https://github.com/structured-world/gitlab-mcp",
     "homepage": "https://gitlab-mcp.sw.foundation",
     "author": "Dmitry Prudnikov",
@@ -140,6 +140,41 @@
       {
         "name": "get_profile",
         "description": "Identify the GitLab account this connection uses: a stable account id, display name, email when GitLab provides it, and the username with its instance.",
+        "category": "General",
+        "tier": "free",
+        "readOnly": false
+      },
+      {
+        "name": "get_settings",
+        "description": "Show this account's settings, which apply to all of its chats except where a chat chose otherwise: working preset, read-only mode, default project or group, and which tool groups are on, with what ...",
+        "category": "General",
+        "tier": "free",
+        "readOnly": false
+      },
+      {
+        "name": "update_settings",
+        "description": "Change this account's settings, at once for all of its chats except where a chat chose otherwise.",
+        "category": "General",
+        "tier": "free",
+        "readOnly": false
+      },
+      {
+        "name": "check_connection",
+        "description": "Check the GitLab connection: which account it uses, whether GitLab answers, the restrictions in effect, and what to do about problems.",
+        "category": "General",
+        "tier": "free",
+        "readOnly": false
+      },
+      {
+        "name": "open_settings_panel",
+        "description": "Open the GitLab connection panel to search projects and groups, choose where this chat or all chats of the account work, and check the connection.",
+        "category": "General",
+        "tier": "free",
+        "readOnly": false
+      },
+      {
+        "name": "find_scope_targets",
+        "description": "Find projects you are a member of and groups you can see by name or path, to choose a working scope.",
         "category": "General",
         "tier": "free",
         "readOnly": false

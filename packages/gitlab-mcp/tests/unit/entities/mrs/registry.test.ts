@@ -789,6 +789,21 @@ describe('MRS Registry', () => {
           expect(mockGitlab.get).not.toHaveBeenCalled();
         });
 
+        // No merge request listing of GitLab (instance, group or project) applies an access
+        // level filter; it would be dropped silently, and every merge request returned as if
+        // filtered. The call is refused instead of reaching GitLab.
+        it.each([
+          ['the instance', {}],
+          ['a group', { group_id: 'team' }],
+          ['a project', { project_id: 'team/app' }],
+        ])('should refuse min_access_level for %s', async (_, place) => {
+          const tool = mrsToolRegistry.get('browse_merge_requests')!;
+          await expect(
+            tool.handler({ action: 'list', ...place, min_access_level: 30 }),
+          ).rejects.toThrow("'min_access_level' is not a filter of merge request listings");
+          expect(mockGitlab.get).not.toHaveBeenCalled();
+        });
+
         it('should refuse group_id outside the list action', async () => {
           const tool = mrsToolRegistry.get('browse_merge_requests')!;
           await expect(

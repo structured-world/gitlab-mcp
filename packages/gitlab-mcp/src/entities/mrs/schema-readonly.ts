@@ -146,7 +146,6 @@ const ListMergeRequestsSchema = z
     with_api_entity_associations: flexibleBoolean
       .optional()
       .describe('Include extra API associations'),
-    min_access_level: z.number().optional().describe('Minimum access level filter (10-50)'),
     ...paginationFields(),
   })
   .passthrough();
@@ -296,7 +295,6 @@ const listOnlyFields = [
   'reviewer_id',
   'reviewer_username',
   'with_api_entity_associations',
-  'min_access_level',
 ];
 const compareOnlyFields = ['from', 'to', 'straight'];
 const getOnlyFields = ['merge_request_iid', 'branch_name'];
@@ -333,6 +331,18 @@ export const BrowseMergeRequestsSchema = BrowseMergeRequestsBaseSchema.refine(
       code: z.ZodIssueCode.custom,
       message: "'group_id' cannot be combined with 'project_id'",
       path: ['group_id'],
+    });
+  }
+
+  // GitLab's merge request listings take no access level filter (lib/api/merge_requests.rb,
+  // merge_requests_helpers.rb) and drop it silently; passed on, every merge request would
+  // come back as if filtered.
+  if ('min_access_level' in input && input.min_access_level !== undefined) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message:
+        "'min_access_level' is not a filter of merge request listings; GitLab applies it to project listings only",
+      path: ['min_access_level'],
     });
   }
 

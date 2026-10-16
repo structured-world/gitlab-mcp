@@ -179,6 +179,13 @@ describe('isNonPublicHost', () => {
     expect(isNonPublicHost('169.254.1.1')).toBe(true);
     expect(isNonPublicHost('fe80::1')).toBe(true);
   });
+
+  it('judges an IPv4-mapped IPv6 host by the IPv4 address it carries', () => {
+    // URL canonicalizes [::ffff:8.8.8.8] to the hex form [::ffff:808:808].
+    expect(isNonPublicHost(new URL('https://[::ffff:8.8.8.8]/').hostname)).toBe(false);
+    expect(isNonPublicHost(new URL('https://[::ffff:192.168.1.1]/').hostname)).toBe(true);
+    expect(isNonPublicHost(new URL('https://[::ffff:127.0.0.1]/').hostname)).toBe(true);
+  });
 });
 
 describe('contrastRatio and pngSize', () => {

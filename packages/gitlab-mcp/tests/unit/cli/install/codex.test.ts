@@ -5,7 +5,7 @@
  * CODEX_HOME so backup and rollback act on disk.
  */
 
-import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import { chmodSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { sync as spawnSync } from 'cross-spawn';
@@ -217,6 +217,75 @@ describe('installCodex', () => {
     expect(actions()).toEqual(['list --json', 'remove gitlab']);
   });
 
+  it('keeps the duplicate-registration notes when the old entry cannot be removed', () => {
+    fake.servers = [
+      { name: 'gitlab', transport: { type: 'stdio', command: 'old', args: [] } },
+      {
+        name: 'gl',
+        transport: { type: 'stdio', command: 'npx', args: ['@structured-world/gitlab-mcp'] },
+      },
+    ];
+    fake.failRemove = true;
+    const result = installCodex(STDIO, true);
+    expect(result.success).toBe(false);
+    expect(result.notes).toEqual([
+      '"gl" also runs GitLab MCP, so Codex lists its tools twice; remove the one you do not use (codex mcp remove gl, or disable the plugin).',
+    ]);
+  });
+
+  it('leaves the existing entry alone when config.toml cannot be backed up', () => {
+    // Without a backup a failed add after the remove could not be undone.
+    writeFileSync(join(codexHome, 'config.toml'), '[mcp_servers.gitlab]\ncommand = "old"\n');
+    fake.servers = [{ name: 'gitlab', transport: { type: 'stdio', command: 'old', args: [] } }];
+    chmodSync(codexHome, 0o500);
+    try {
+      const result = installCodex(STDIO, true);
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/^Could not back up .*config\.toml/);
+      expect(actions()).toEqual(['list --json']);
+      expect(fake.servers[0].transport).toEqual({ type: 'stdio', command: 'old', args: [] });
+    } finally {
+      chmodSync(codexHome, 0o700);
+    }
+  });
+
+  it('fails when Codex saved the entry without the requested environment', () => {
+    mockSpawn.mockImplementation((_c, rawArgs) => {
+      const args = [...(rawArgs ?? [])];
+      if (args[1] === 'list') return reply(0, '[]');
+      if (args[1] === 'add') return reply(0, 'ok');
+      return reply(
+        0,
+        JSON.stringify({
+          name: 'gitlab',
+          transport: {
+            type: 'stdio',
+            command: STDIO.command,
+            args: STDIO.args,
+            env: { GITLAB_API_URL: 'https://gitlab.example.com' },
+          },
+        }),
+      );
+    });
+    expect(installCodex(STDIO, false)).toMatchObject({ success: false });
+  });
+
+  it('accepts a saved entry without an env table when none was requested', () => {
+    mockSpawn.mockImplementation((_c, rawArgs) => {
+      const args = [...(rawArgs ?? [])];
+      if (args[1] === 'list') return reply(0, '[]');
+      if (args[1] === 'add') return reply(0, 'ok');
+      return reply(
+        0,
+        JSON.stringify({
+          name: 'gitlab',
+          transport: { type: 'stdio', command: 'npx', args: ['x'], env: null },
+        }),
+      );
+    });
+    expect(installCodex({ command: 'npx', args: ['x'], env: {} }, false).success).toBe(true);
+  });
+
   it('fails with the CLI message when the server list cannot be read', () => {
     fake.failList = 'config.toml: invalid TOML';
     expect(installCodex(STDIO, false)).toEqual({
@@ -319,7 +388,32 @@ describe('isGitlabMcpServer', () => {
     ).toBe(true);
   });
 
+  it('recognizes the globally installed executable on every platform', () => {
+    for (const command of [
+      'gitlab-mcp',
+      '/usr/local/bin/gitlab-mcp',
+      'C:\\Users\\dev\\AppData\\Roaming\\npm\\gitlab-mcp.cmd',
+    ]) {
+      expect(
+        isGitlabMcpServer({ name: 'g', transport: { type: 'stdio', command, args: [] } }),
+      ).toBe(true);
+    }
+  });
+
   it('does not claim unrelated servers', () => {
+    // An unscoped package of the same name is another project, run through npx.
+    expect(
+      isGitlabMcpServer({
+        name: 'other',
+        transport: { type: 'stdio', command: 'npx', args: ['-y', 'gitlab-mcp'] },
+      }),
+    ).toBe(false);
+    expect(
+      isGitlabMcpServer({
+        name: 'lite',
+        transport: { type: 'stdio', command: '/usr/local/bin/gitlab-mcp-lite', args: [] },
+      }),
+    ).toBe(false);
     expect(
       isGitlabMcpServer({
         name: 'gitlab-ci-lint',

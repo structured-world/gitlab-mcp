@@ -17,6 +17,9 @@ const CODEX_COMMAND = 'codex';
 const PACKAGE_PATTERN = /@structured-world\/gitlab-mcp(?:@[^\s/]*)?$/;
 const CHECKOUT_PATTERN =
   /gitlab-mcp[\\/](?:packages[\\/]gitlab-mcp[\\/])?dist[\\/]src[\\/]main\.js$/;
+// The executable a global npm install puts on PATH (`.cmd`/`.ps1` shims on Windows).
+// Only the command is matched: `npx gitlab-mcp` runs an unrelated unscoped package.
+const GLOBAL_BIN_PATTERN = /(?:^|[\\/])gitlab-mcp(?:\.cmd|\.ps1|\.exe)?$/i;
 
 /** Transport of a configured server as `codex mcp list --json` reports it. */
 export type CodexTransport =
@@ -82,8 +85,11 @@ export function isGitlabMcpServer(server: CodexServer, target?: McpServerConfig)
   if (server.name === CODEX_SERVER_NAME || server.name.startsWith('gitlab-mcp')) return true;
   const transport = server.transport;
   if (transport.type === 'stdio') {
-    return [transport.command, ...(transport.args ?? [])].some(
-      (part) => PACKAGE_PATTERN.test(part) || CHECKOUT_PATTERN.test(part),
+    return (
+      GLOBAL_BIN_PATTERN.test(transport.command) ||
+      [transport.command, ...(transport.args ?? [])].some(
+        (part) => PACKAGE_PATTERN.test(part) || CHECKOUT_PATTERN.test(part),
+      )
     );
   }
   return target !== undefined && isRemoteServerConfig(target) && transport.url === target.url;
@@ -95,10 +101,15 @@ function matches(server: CodexServer | undefined, config: McpServerConfig): bool
   if (isRemoteServerConfig(config)) {
     return transport.type === 'streamable_http' && transport.url === config.url;
   }
+  if (transport.type !== 'stdio') return false;
+  // Codex writes no env table when none was given, and lists the saved values verbatim.
+  const saved = transport.env ?? {};
+  const wanted = Object.entries(config.env);
   return (
-    transport.type === 'stdio' &&
     transport.command === config.command &&
-    JSON.stringify(transport.args ?? []) === JSON.stringify(config.args)
+    JSON.stringify(transport.args ?? []) === JSON.stringify(config.args) &&
+    Object.keys(saved).length === wanted.length &&
+    wanted.every(([key, value]) => saved[key] === value)
   );
 }
 
@@ -145,6 +156,16 @@ export function installCodex(config: McpServerConfig, force: boolean): InstallRe
 
   const backup = existsSync(configPath) ? createBackup({ configPath }) : undefined;
   const backupPath = backup?.created ? backup.backupPath : undefined;
+  // Removing the old entry is undoable only through the backup.
+  if (existing && backup && !backup.created) {
+    return {
+      client,
+      success: false,
+      error: `Could not back up ${configPath}: ${backup.error ?? 'unknown error'}`,
+      configPath,
+      notes,
+    };
+  }
 
   if (existing) {
     const removed = runCodex(['mcp', 'remove', CODEX_SERVER_NAME]);
@@ -155,6 +176,7 @@ export function installCodex(config: McpServerConfig, force: boolean): InstallRe
         error: `Failed to remove the existing gitlab entry: ${failure(removed)}`,
         backupPath,
         configPath,
+        notes,
       };
     }
   }

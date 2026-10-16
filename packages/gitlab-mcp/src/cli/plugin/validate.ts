@@ -67,12 +67,20 @@ export function isNonPublicHost(hostname: string): boolean {
     );
   }
   if (family === 6) {
+    // IPv4-mapped (RFC 4291 2.5.5.2), canonicalized by URL to ::ffff:hhhh:hhhh.
+    const mapped = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(host);
+    if (mapped) {
+      const high = parseInt(mapped[1], 16);
+      const low = parseInt(mapped[2], 16);
+      return isNonPublicHost(`${high >> 8}.${high & 255}.${low >> 8}.${low & 255}`);
+    }
     return (
       host === '::1' ||
       host === '::' ||
       host.startsWith('fc') ||
       host.startsWith('fd') ||
       /^fe[89ab]/.test(host) ||
+      // Any other ::ffff: spelling is not one URL produces; treat it as local.
       host.startsWith('::ffff:')
     );
   }

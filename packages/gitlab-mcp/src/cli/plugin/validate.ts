@@ -29,8 +29,46 @@ const SECRET_PATTERNS: Array<[string, RegExp]> = [
   ['AWS access key', /\bAKIA[0-9A-Z]{16}\b/],
 ];
 
-// A local absolute path in a published file ties it to one machine.
-const LOCAL_PATH_PATTERN = /(?:\/Users\/|\/home\/|[A-Za-z]:\\Users\\)[^\s"'`]+/;
+// A local absolute path in a published file ties it to one machine. The
+// lookbehind skips the same words as segments of a web URL path.
+const LOCAL_PATH_PATTERN = /(?<![\w.~-])(?:\/Users\/|\/home\/|[A-Za-z]:\\Users\\)[^\s"'`]+/;
+
+// Matches a URL in text, including a bracketed IPv6 host (RFC 3986 3.2.2).
+const URL_IN_TEXT_PATTERN = /https?:\/\/(?:\[[0-9A-Fa-f:.]+\])?[^\s"'`<>)\]]*/g;
+
+/**
+ * IPv4 blocks that never reach a public host, from the IANA special-purpose
+ * registry (RFC 6890) plus multicast (RFC 5771) and the reserved class E
+ * space with limited broadcast (RFC 1112 4, RFC 919 7).
+ */
+const NON_PUBLIC_IPV4: ReadonlyArray<readonly [string, number]> = [
+  ['0.0.0.0', 8], // "this network", RFC 1122 3.2.1.3
+  ['10.0.0.0', 8], // private, RFC 1918
+  ['100.64.0.0', 10], // shared address space, RFC 6598
+  ['127.0.0.0', 8], // loopback, RFC 1122 3.2.1.3
+  ['169.254.0.0', 16], // link-local, RFC 3927
+  ['172.16.0.0', 12], // private, RFC 1918
+  ['192.0.0.0', 24], // IETF protocol assignments, RFC 6890 2.2.2
+  ['192.0.2.0', 24], // documentation TEST-NET-1, RFC 5737
+  ['192.168.0.0', 16], // private, RFC 1918
+  ['198.18.0.0', 15], // benchmarking, RFC 2544
+  ['198.51.100.0', 24], // documentation TEST-NET-2, RFC 5737
+  ['203.0.113.0', 24], // documentation TEST-NET-3, RFC 5737
+  ['224.0.0.0', 4], // multicast, RFC 5771
+  ['240.0.0.0', 4], // reserved and limited broadcast
+];
+
+function ipv4ToNumber(address: string): number {
+  return address.split('.').reduce((value, part) => value * 256 + Number(part), 0);
+}
+
+function isNonPublicIpv4(address: string): boolean {
+  const value = ipv4ToNumber(address);
+  return NON_PUBLIC_IPV4.some(([base, prefix]) => {
+    const size = 2 ** (32 - prefix);
+    return Math.floor(value / size) === Math.floor(ipv4ToNumber(base) / size);
+  });
+}
 
 export interface ValidationIssue {
   file: string;
@@ -53,18 +91,7 @@ export function isNonPublicHost(hostname: string): boolean {
     return true;
   }
   const family = isIP(host);
-  if (family === 4) {
-    const [a, b] = host.split('.').map(Number);
-    return (
-      a === 10 ||
-      a === 127 ||
-      a === 0 ||
-      (a === 169 && b === 254) ||
-      (a === 172 && b >= 16 && b <= 31) ||
-      (a === 192 && b === 168) ||
-      (a === 100 && b >= 64 && b <= 127)
-    );
-  }
+  if (family === 4) return isNonPublicIpv4(host);
   if (family === 6) {
     // IPv4-mapped (RFC 4291 2.5.5.2), canonicalized by URL to ::ffff:hhhh:hhhh.
     const mapped = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(host);
@@ -79,6 +106,9 @@ export function isNonPublicHost(hostname: string): boolean {
       host.startsWith('fc') ||
       host.startsWith('fd') ||
       /^fe[89ab]/.test(host) ||
+      // Multicast (RFC 4291 2.7) and documentation (RFC 3849).
+      host.startsWith('ff') ||
+      /^2001:0?db8:/.test(host) ||
       // Any other ::ffff: spelling is not one URL produces; treat it as local.
       host.startsWith('::ffff:')
     );
@@ -89,7 +119,9 @@ export function isNonPublicHost(hostname: string): boolean {
 
 function isLoopback(hostname: string): boolean {
   const host = hostname.replace(/^\[|\]$/g, '').toLowerCase();
-  return host === 'localhost' || host === '::1' || host.startsWith('127.');
+  // A DNS name such as 127.example.com resolves wherever its owner points it,
+  // so only a literal address in 127.0.0.0/8 counts (RFC 1122 3.2.1.3).
+  return host === 'localhost' || host === '::1' || (isIP(host) === 4 && host.startsWith('127.'));
 }
 
 /**
@@ -275,12 +307,18 @@ function readJson(issues: ValidationIssue[], files: PackageFiles, path: string):
     issues.push({ file: path, message: 'missing' });
     return undefined;
   }
+  let parsed: unknown;
   try {
-    return JSON.parse(data.toString('utf8')) as Json;
+    parsed = JSON.parse(data.toString('utf8'));
   } catch {
     issues.push({ file: path, message: 'not valid JSON' });
     return undefined;
   }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    issues.push({ file: path, message: 'must be a JSON object' });
+    return undefined;
+  }
+  return parsed as Json;
 }
 
 function checkSchema(
@@ -318,7 +356,7 @@ function checkFileContent(
     issues.push({ file: path, message: 'contains a local absolute path' });
   }
   if (flavor !== 'public') return;
-  for (const found of text.matchAll(/https?:\/\/[^\s"'`<>)\]]+/g)) {
+  for (const found of text.matchAll(URL_IN_TEXT_PATTERN)) {
     if (isNonPublicUrl(found[0])) {
       issues.push({ file: path, message: `references a non-public URL: ${found[0]}` });
     }

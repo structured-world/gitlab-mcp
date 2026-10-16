@@ -132,6 +132,15 @@ describe('validateEndpoint', () => {
     );
   });
 
+  it('refuses plain HTTP to a DNS name that only looks like a loopback address', () => {
+    // 127.example.com resolves through DNS to wherever its owner points it.
+    expect(() => validateEndpoint('http://127.example.com/mcp', 'private')).toThrow(
+      'plain HTTP is accepted only on loopback',
+    );
+    expect(validateEndpoint('http://127.1.2.3/mcp', 'private').hostname).toBe('127.1.2.3');
+    expect(validateEndpoint('http://[::1]:3333/mcp', 'private').port).toBe('3333');
+  });
+
   it.each([
     'https://10.1.2.3/mcp',
     'https://192.168.1.10/mcp',
@@ -171,7 +180,37 @@ describe('isNonPublicHost', () => {
   it('treats public names and addresses as public', () => {
     expect(isNonPublicHost('mcp.example.com')).toBe(false);
     expect(isNonPublicHost('8.8.8.8')).toBe(false);
-    expect(isNonPublicHost('2001:db8::1')).toBe(false);
+    expect(isNonPublicHost('2606:4700:4700::1111')).toBe(false);
+  });
+
+  it.each([
+    '192.0.0.1',
+    '192.0.2.1',
+    '198.18.0.1',
+    '198.19.255.254',
+    '198.51.100.7',
+    '203.0.113.9',
+    '224.0.0.1',
+    '239.255.255.250',
+    '240.0.0.1',
+    '255.255.255.255',
+    '2001:db8::1',
+    'ff02::1',
+  ])('treats the reserved address %s as non-public', (host) => {
+    // Documentation, benchmarking, multicast and reserved blocks never reach the internet.
+    expect(isNonPublicHost(host)).toBe(true);
+  });
+
+  it('keeps the public neighbours of reserved blocks public', () => {
+    for (const host of [
+      '192.0.3.1',
+      '198.17.255.1',
+      '198.20.0.1',
+      '203.0.114.1',
+      '223.255.255.1',
+    ]) {
+      expect(isNonPublicHost(host)).toBe(false);
+    }
   });
 
   it('treats carrier-grade NAT and link-local ranges as non-public', () => {
@@ -417,6 +456,39 @@ describe('validatePackage', () => {
     expect(issuesOf(files)).toEqual([
       'skills/gitlab-ci/SKILL.md: SKILL.md front matter is not valid YAML',
     ]);
+  });
+
+  it('finds a bracketed IPv6 loopback URL in shipped text', () => {
+    const files = packageFiles();
+    files.set('skills/gitlab-setup/SKILL.md', Buffer.from(`${SKILL}Open https://[::1]/privacy\n`));
+    expect(issuesOf(files)).toEqual([
+      'skills/gitlab-setup/SKILL.md: references a non-public URL: https://[::1]/privacy',
+    ]);
+  });
+
+  it('accepts listing URLs whose path contains home or Users', () => {
+    // Only a filesystem path ties a file to one machine, not a web path segment.
+    const m = manifest();
+    ui(m).privacyPolicyURL = 'https://operator.example/home/privacy';
+    ui(m).termsOfServiceURL = 'https://operator.example/Users/terms';
+    expect(issuesOf(packageFiles(m))).toEqual([]);
+  });
+
+  it('still finds a local path written after a space, a quote or a file URL', () => {
+    const files = packageFiles();
+    files.set(
+      'skills/gitlab-setup/SKILL.md',
+      Buffer.from(`${SKILL}Logs in "C:\\Users\\dev\\log" and file:///home/dev/log\n`),
+    );
+    expect(issuesOf(files)).toEqual([
+      'skills/gitlab-setup/SKILL.md: contains a local absolute path',
+    ]);
+  });
+
+  it.each(['null', '42', '[]'])('reports a manifest that is %s rather than an object', (text) => {
+    const files = packageFiles();
+    files.set('plugin.json', Buffer.from(text));
+    expect(issuesOf(files)).toEqual(['plugin.json: must be a JSON object']);
   });
 
   it('skips URL-like text that does not parse as a URL', () => {

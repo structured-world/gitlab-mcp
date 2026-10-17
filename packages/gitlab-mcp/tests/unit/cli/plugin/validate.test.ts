@@ -201,6 +201,37 @@ describe('isNonPublicHost', () => {
     expect(isNonPublicHost(host)).toBe(true);
   });
 
+  it.each([
+    '::',
+    '::1',
+    '64:ff9b:1::1',
+    '100::1',
+    '2001:2::1',
+    '2001:10::1',
+    '2001:db8:1::1',
+    '3fff::1',
+    '5f00::1',
+    'fc00::1',
+    'fe80::1',
+    'ff02::1',
+    '::ffff:a00:1',
+    '::ffff:10.0.0.1',
+  ])('treats the IPv6 address %s from the special-purpose registry as non-public', (host) => {
+    // IANA IPv6 Special-Purpose Address Registry: not globally reachable.
+    expect(isNonPublicHost(host)).toBe(true);
+  });
+
+  it.each([
+    '64:ff9b::808:808',
+    '2001::1',
+    '2001:1::1',
+    '2001:3::1',
+    '2001:20::1',
+    '2606:4700::1111',
+  ])('keeps the globally reachable IPv6 address %s public', (host) => {
+    expect(isNonPublicHost(host)).toBe(false);
+  });
+
   it('ignores the trailing root dot of an absolute DNS name', () => {
     // "localhost." and "localhost" name the same host (RFC 1034 3.1).
     expect(isNonPublicHost('localhost.')).toBe(true);
@@ -483,6 +514,26 @@ describe('validatePackage', () => {
     files.set('skills/gitlab-setup/SKILL.md', Buffer.from(`${SKILL}Open https://[::1]/privacy\n`));
     expect(issuesOf(files)).toEqual([
       'skills/gitlab-setup/SKILL.md: references a non-public URL: https://[::1]/privacy',
+    ]);
+  });
+
+  it('finds a non-public URL whatever the case of its scheme', () => {
+    // Schemes are case-insensitive (RFC 3986 3.1); URL parsing accepts HTTPS:// too.
+    const m = manifest();
+    ui(m).privacyPolicyURL = 'HTTPS://localhost/privacy';
+    expect(issuesOf(packageFiles(m))).toContain(
+      'plugin.json: references a non-public URL: HTTPS://localhost/privacy',
+    );
+  });
+
+  it('finds a Windows user path written with JSON-escaped backslashes', () => {
+    const files = packageFiles();
+    files.set(
+      'skills/gitlab-setup/SKILL.md',
+      Buffer.from(`${SKILL}Example: {"log": "C:\\\\Users\\\\dev\\\\log"}\n`),
+    );
+    expect(issuesOf(files)).toEqual([
+      'skills/gitlab-setup/SKILL.md: contains a local absolute path',
     ]);
   });
 

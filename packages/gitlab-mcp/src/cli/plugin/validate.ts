@@ -30,16 +30,19 @@ const SECRET_PATTERNS: Array<[string, RegExp]> = [
 ];
 
 // A local absolute path in a published file ties it to one machine. The
-// lookbehind skips the same words as segments of a web URL path.
-const LOCAL_PATH_PATTERN = /(?<![\w.~-])(?:\/Users\/|\/home\/|[A-Za-z]:\\Users\\)[^\s"'`]+/;
+// lookbehind skips the same words as segments of a web URL path; a Windows
+// path may be written with JSON-escaped backslashes.
+const LOCAL_PATH_PATTERN =
+  /(?<![\w.~-])(?:\/Users\/|\/home\/|[A-Za-z]:\\{1,2}Users\\{1,2})[^\s"'`]+/;
 
 // The grammar published with Semantic Versioning 2.0.0 ("Is there a suggested
 // regular expression"): prerelease and build metadata included.
 const SEMVER_PATTERN =
   /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/;
 
-// Matches a URL in text, including a bracketed IPv6 host (RFC 3986 3.2.2).
-const URL_IN_TEXT_PATTERN = /https?:\/\/(?:\[[0-9A-Fa-f:.]+\])?[^\s"'`<>)\]]*/g;
+// Matches a URL in text, including a bracketed IPv6 host (RFC 3986 3.2.2), in
+// any letter case: schemes are case-insensitive (RFC 3986 3.1).
+const URL_IN_TEXT_PATTERN = /https?:\/\/(?:\[[0-9A-F:.]+\])?[^\s"'`<>)\]]*/gi;
 
 /**
  * IPv4 blocks that never reach a public host, from the IANA special-purpose
@@ -75,6 +78,76 @@ function isNonPublicIpv4(address: string): boolean {
   });
 }
 
+/**
+ * IPv6 blocks the IANA IPv6 Special-Purpose Address Registry marks as not
+ * globally reachable, plus multicast (RFC 4291 2.7) and deprecated site-local
+ * (RFC 3879). IPv4-mapped addresses are judged by their IPv4 address.
+ */
+const NON_PUBLIC_IPV6: ReadonlyArray<readonly [string, number]> = [
+  ['::', 128], // unspecified, RFC 4291 2.5.2
+  ['::1', 128], // loopback, RFC 4291 2.5.3
+  ['64:ff9b:1::', 48], // local-use translation, RFC 8215
+  ['100::', 64], // discard-only, RFC 6666
+  ['100:0:0:1::', 64], // dummy prefix, RFC 9780
+  ['2001::', 23], // IETF protocol assignments, RFC 2928 (exceptions below)
+  ['2001:db8::', 32], // documentation, RFC 3849
+  ['3fff::', 20], // documentation, RFC 9637
+  ['5f00::', 16], // segment routing SIDs, RFC 9602
+  ['fc00::', 7], // unique local, RFC 4193
+  ['fe80::', 10], // link-local, RFC 4291 2.5.6
+  ['fec0::', 10], // site-local, deprecated by RFC 3879
+  ['ff00::', 8], // multicast, RFC 4291 2.7
+];
+
+/** Blocks inside 2001::/23 the registry marks as globally reachable. */
+const GLOBAL_IPV6_EXCEPTIONS: ReadonlyArray<readonly [string, number]> = [
+  ['2001::', 32], // Teredo, RFC 4380
+  ['2001:1::1', 128], // Port Control Protocol anycast, RFC 7723
+  ['2001:1::2', 128], // TURN anycast, RFC 8155
+  ['2001:1::3', 128], // DNS-SD SRP anycast, RFC 9665
+  ['2001:3::', 32], // AMT, RFC 7450
+  ['2001:4:112::', 48], // AS112-v6, RFC 7535
+  ['2001:20::', 28], // ORCHIDv2, RFC 7343
+  ['2001:30::', 28], // drone remote ID, RFC 9374
+];
+
+/** The 128-bit value of an address `isIP` accepted as IPv6. */
+function ipv6ToBigInt(address: string): bigint {
+  let text = address;
+  const tailStart = text.lastIndexOf(':') + 1;
+  const tail = text.slice(tailStart);
+  // A dotted IPv4 tail fills the last two groups (RFC 4291 2.2).
+  if (tail.includes('.')) {
+    const value = ipv4ToNumber(tail);
+    text = `${text.slice(0, tailStart)}${(value >>> 16).toString(16)}:${(value & 0xffff).toString(16)}`;
+  }
+  const [head, rest] = text.split('::');
+  const left = head ? head.split(':') : [];
+  const right = rest ? rest.split(':') : [];
+  const zeros =
+    rest === undefined ? [] : new Array<string>(8 - left.length - right.length).fill('0');
+  return [...left, ...zeros, ...right].reduce(
+    (value, group) => (value << 16n) + BigInt(Number.parseInt(group, 16)),
+    0n,
+  );
+}
+
+function inIpv6Block(value: bigint, [base, prefix]: readonly [string, number]): boolean {
+  const shift = BigInt(128 - prefix);
+  return value >> shift === ipv6ToBigInt(base) >> shift;
+}
+
+function isNonPublicIpv6(address: string): boolean {
+  const value = ipv6ToBigInt(address);
+  // IPv4-mapped, ::ffff:0:0/96 (RFC 4291 2.5.5.2).
+  if (value >> 32n === 0xffffn) {
+    const ipv4 = Number(value & 0xffffffffn);
+    return isNonPublicIpv4([24, 16, 8, 0].map((shift) => (ipv4 >>> shift) & 255).join('.'));
+  }
+  if (GLOBAL_IPV6_EXCEPTIONS.some((block) => inIpv6Block(value, block))) return false;
+  return NON_PUBLIC_IPV6.some((block) => inIpv6Block(value, block));
+}
+
 export interface ValidationIssue {
   file: string;
   message: string;
@@ -101,27 +174,7 @@ export function isNonPublicHost(hostname: string): boolean {
   }
   const family = isIP(host);
   if (family === 4) return isNonPublicIpv4(host);
-  if (family === 6) {
-    // IPv4-mapped (RFC 4291 2.5.5.2), canonicalized by URL to ::ffff:hhhh:hhhh.
-    const mapped = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(host);
-    if (mapped) {
-      const high = Number.parseInt(mapped[1], 16);
-      const low = Number.parseInt(mapped[2], 16);
-      return isNonPublicHost(`${high >> 8}.${high & 255}.${low >> 8}.${low & 255}`);
-    }
-    return (
-      host === '::1' ||
-      host === '::' ||
-      host.startsWith('fc') ||
-      host.startsWith('fd') ||
-      /^fe[89ab]/.test(host) ||
-      // Multicast (RFC 4291 2.7) and documentation (RFC 3849).
-      host.startsWith('ff') ||
-      /^2001:0?db8:/.test(host) ||
-      // Any other ::ffff: spelling is not one URL produces; treat it as local.
-      host.startsWith('::ffff:')
-    );
-  }
+  if (family === 6) return isNonPublicIpv6(host);
   // A single-label name only resolves inside a local network.
   return !host.includes('.');
 }

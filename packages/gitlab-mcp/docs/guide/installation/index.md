@@ -30,7 +30,7 @@ See [Setup Wizard](/guide/installation/wizard) for a detailed walkthrough.
 | [Docker](/guide/installation/docker) | Teams, server deployments | Isolated, scalable |
 | [Claude Desktop](/guide/installation/claude-desktop) | Claude Desktop users | One-click .mcpb extension |
 | [VS Code](/guide/installation/vscode) | VS Code + GitHub Copilot users | One-click install |
-| [Codex](/guide/installation/codex) | OpenAI Codex CLI users | Direct integration |
+| [Codex](/guide/installation/codex) | Codex and ChatGPT desktop users | Plugin or CLI registration |
 | [Manual](/guide/installation/manual) | Custom setups, advanced users | Full control |
 
 ## Optional: PostgreSQL session backend

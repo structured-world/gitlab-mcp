@@ -18,6 +18,7 @@ GitLab MCP provides several CLI commands for setup, installation, and management
 | [`gitlab-mcp setup`](/cli/setup) | Interactive setup wizard | Full environment detection and configuration |
 | [`gitlab-mcp init`](/cli/init) | Quick local setup | Alias for `setup --mode=local` |
 | [`gitlab-mcp install`](/cli/install) | Install to MCP clients | Detect and configure AI coding assistants |
+| [`gitlab-mcp plugin`](/cli/plugin) | Codex plugin package | Build the plugin for an MCP endpoint you operate |
 | [`gitlab-mcp docker`](/cli/docker) | Docker management | Container lifecycle and instance management |
 | [`gitlab-mcp list-tools`](/cli/list-tools) | Tool documentation | Browse and export available tools |
 

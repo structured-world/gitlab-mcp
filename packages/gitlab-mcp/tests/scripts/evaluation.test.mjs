@@ -20,20 +20,23 @@ import {
 } from '../../scripts/evaluation-process.mjs';
 import { startWorkflowGitLab } from '../manual/fixtures/workflow-gitlab.mjs';
 
+// Upper bound for a child Node process to start and finish; a loaded machine needs seconds.
+const CHILD_TIMEOUT_MS = 30_000;
+
 test('evaluation preserves completed results and rejects launch failures', async () => {
   // Moving process ownership must retain transcript/exit codes and release the timeout on spawn errors.
   for (const code of [0, 7]) {
     const result = await runEvaluation(
       process.execPath,
       ['-e', `process.stdout.write('out'); process.stderr.write('err'); process.exitCode=${code};`],
-      { cwd: process.cwd(), timeoutMs: 3000 },
+      { cwd: process.cwd(), timeoutMs: CHILD_TIMEOUT_MS },
     );
     assert.deepEqual(result, { code, stdout: 'out', stderr: 'err' });
   }
   await assert.rejects(
     runEvaluation(join(tmpdir(), 'missing-evaluation-command'), [], {
       cwd: process.cwd(),
-      timeoutMs: 3000,
+      timeoutMs: CHILD_TIMEOUT_MS,
     }),
     /ENOENT/,
   );
@@ -98,7 +101,7 @@ test('evaluator setup failure closes the loopback server and exits', () => {
           Object.entries(process.env).find(([key]) => key.toUpperCase() === 'PATH')[1],
       },
       encoding: 'utf8',
-      timeout: 3000,
+      timeout: CHILD_TIMEOUT_MS,
     });
     assert.equal(result.error, undefined, result.stdout + result.stderr);
     assert.equal(result.status, 1);
@@ -126,7 +129,7 @@ test('the evaluator rejects an executable supplied as a positional argument', ()
       process.execPath,
       [resolve('scripts/evaluate-skills.mjs'), 'codex', executable],
       {
-        timeout: 3000,
+        timeout: CHILD_TIMEOUT_MS,
         encoding: 'utf8',
       },
     );

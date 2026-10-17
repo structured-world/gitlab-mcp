@@ -6,6 +6,7 @@
 import {
   parseInstallFlags,
   getClientsFromFlags,
+  buildServerConfig,
   buildServerConfigFromEnv,
   runInstallCommand,
   runInstallWizard,
@@ -65,6 +66,79 @@ const { installToClients, generateConfigPreview } = jest.requireMock(
 );
 
 describe('install-command', () => {
+  describe('Codex and remote endpoint flags', () => {
+    it('selects Codex with --codex', () => {
+      expect(getClientsFromFlags(parseInstallFlags(['--codex']))).toEqual(['codex']);
+    });
+
+    it('reads the endpoint in both --url forms', () => {
+      expect(parseInstallFlags(['--codex', '--url', 'https://mcp.example.com/mcp']).url).toBe(
+        'https://mcp.example.com/mcp',
+      );
+      expect(parseInstallFlags(['--url=https://mcp.example.com/mcp']).url).toBe(
+        'https://mcp.example.com/mcp',
+      );
+    });
+
+    it('refuses --url without a value instead of swallowing the next flag', () => {
+      expect(() => parseInstallFlags(['--url'])).toThrow('--url needs the MCP endpoint');
+      expect(() => parseInstallFlags(['--url', '--codex'])).toThrow('--url needs the MCP endpoint');
+    });
+
+    it('builds a remote config from --url and a local one otherwise', () => {
+      expect(buildServerConfig({ codex: true, url: 'https://mcp.example.com/mcp' })).toEqual({
+        url: 'https://mcp.example.com/mcp',
+      });
+      expect(buildServerConfig({})).toHaveProperty('command', 'npx');
+    });
+
+    it.each([
+      { url: 'https://mcp.example.com/mcp' },
+      { url: 'https://mcp.example.com/mcp', all: true },
+      { url: 'https://mcp.example.com/mcp', cursor: true },
+      { url: 'https://mcp.example.com/mcp', codex: true, cursor: true },
+    ])('refuses --url unless Codex is the only target: %o', (flags) => {
+      // Every other client takes local servers only, so it would fail after detection.
+      expect(() => buildServerConfig(flags)).toThrow(
+        '--url registers a remote server in Codex only; use it with --codex alone',
+      );
+    });
+
+    it('refuses an endpoint that would send credentials in clear text', () => {
+      expect(() => buildServerConfig({ codex: true, url: 'http://mcp.example.com/mcp' })).toThrow(
+        'plain HTTP is accepted only on loopback',
+      );
+    });
+
+    it('prints notes after a result, including a failed one', async () => {
+      const lines: string[] = [];
+      const errors: string[] = [];
+      const log = jest.spyOn(console, 'log').mockImplementation((line: string) => lines.push(line));
+      const error = jest
+        .spyOn(console, 'error')
+        .mockImplementation((line: string) => errors.push(line));
+      getDetectedClients.mockReturnValueOnce([{ client: 'codex', detected: true }]);
+      installToClients.mockReturnValueOnce([
+        {
+          client: 'codex',
+          success: false,
+          error: 'gitlab-mcp is already configured. Use --force to overwrite.',
+          notes: ['"gl" also runs GitLab MCP'],
+        },
+      ]);
+
+      await runInstallCommand({ url: 'https://mcp.example.com/mcp' }, { codex: true });
+
+      expect(errors).toEqual([
+        '✗ Failed for Codex: gitlab-mcp is already configured. Use --force to overwrite.',
+        '    ! "gl" also runs GitLab MCP',
+      ]);
+      expect(lines).toEqual([]);
+      log.mockRestore();
+      error.mockRestore();
+    });
+  });
+
   describe('parseInstallFlags', () => {
     it('should parse --claude-desktop flag', () => {
       const result = parseInstallFlags(['--claude-desktop']);
@@ -216,22 +290,25 @@ describe('install-command', () => {
       process.env = originalEnv;
     });
 
+    // The server reads its instance from GITLAB_API_URL only; a config written
+    // with any other variable silently connects to the default instance.
     it('should use default gitlab.com URL if not set', () => {
-      delete process.env.GITLAB_URL;
+      delete process.env.GITLAB_API_URL;
       delete process.env.GITLAB_TOKEN;
       delete process.env.GITLAB_MCP_PRESET;
 
       const result = buildServerConfigFromEnv();
 
-      expect(result.env.GITLAB_URL).toBe('https://gitlab.com');
+      expect(result.env).toEqual({ GITLAB_API_URL: 'https://gitlab.com', GITLAB_TOKEN: '' });
     });
 
-    it('should use GITLAB_URL from environment', () => {
-      process.env.GITLAB_URL = 'https://gitlab.example.com';
+    it('should carry GITLAB_API_URL from the environment to the variable the server reads', () => {
+      process.env.GITLAB_API_URL = 'https://gitlab.example.com';
 
       const result = buildServerConfigFromEnv();
 
-      expect(result.env.GITLAB_URL).toBe('https://gitlab.example.com');
+      expect(result.env.GITLAB_API_URL).toBe('https://gitlab.example.com');
+      expect(result.env).not.toHaveProperty('GITLAB_URL');
     });
 
     it('should include GITLAB_TOKEN from environment', () => {
@@ -321,14 +398,55 @@ describe('install-command', () => {
       consoleSpy.mockRestore();
     });
 
-    it('should show error for undetected clients', async () => {
+    // A client the user named but that is not installed is a failed install,
+    // so the command cannot exit as if it had been configured.
+    it('should report each requested client that is not installed as a failure', async () => {
       getDetectedClients.mockReturnValueOnce([]);
       const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
 
       const results = await runInstallCommand(mockServerConfig, { claudeDesktop: true });
 
-      expect(results).toEqual([]);
-      expect(consoleSpy).toHaveBeenCalledWith('No supported MCP clients detected.');
+      expect(results).toEqual([
+        { client: 'claude-desktop', success: false, error: 'Claude Desktop is not installed' },
+      ]);
+      expect(installToClients).not.toHaveBeenCalled();
+      expect(consoleSpy).toHaveBeenCalledWith(
+        '✗ Failed for Claude Desktop: Claude Desktop is not installed',
+      );
+
+      consoleSpy.mockRestore();
+    });
+
+    it('should install the detected clients and fail the missing ones', async () => {
+      getDetectedClients.mockReturnValueOnce([{ client: 'claude-desktop', detected: true }]);
+      const log = jest.spyOn(console, 'log').mockImplementation();
+      const error = jest.spyOn(console, 'error').mockImplementation();
+
+      const results = await runInstallCommand(mockServerConfig, {
+        claudeDesktop: true,
+        codex: true,
+      });
+
+      expect(installToClients).toHaveBeenCalledWith(['claude-desktop'], mockServerConfig, false);
+      expect(
+        results.map((r: { client: string; success: boolean }) => [r.client, r.success]),
+      ).toEqual([
+        ['codex', false],
+        ['claude-desktop', true],
+      ]);
+
+      log.mockRestore();
+      error.mockRestore();
+    });
+
+    it('should say so when --all finds no client', async () => {
+      getDetectedClients.mockReturnValueOnce([]);
+      const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
+
+      // Nothing to install is a failure, so the CLI exits non-zero for automation.
+      await expect(runInstallCommand(mockServerConfig, { all: true })).rejects.toThrow(
+        'No supported MCP clients detected.',
+      );
 
       consoleSpy.mockRestore();
     });

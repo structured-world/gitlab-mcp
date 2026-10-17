@@ -55,9 +55,10 @@ class MockConfigurationError extends Error {
 }
 
 // Helper to run main() with isolated modules
-async function runMain(): Promise<void> {
+async function runMain(extraMocks?: () => void): Promise<void> {
   return new Promise((resolve, _reject) => {
     jest.isolateModules(() => {
+      extraMocks?.();
       // Set up mocks before importing main
       jest.doMock('../../src/server', () => ({
         startServer: mockStartServer,
@@ -164,6 +165,90 @@ describe('main', () => {
       expect(mockConsoleError).toHaveBeenCalledWith(guidance);
       expect(mockLogError).not.toHaveBeenCalled();
       expect(mockExit).toHaveBeenCalledWith(1);
+      mockConsoleError.mockRestore();
+    });
+  });
+
+  describe('install subcommand', () => {
+    const mockRunInstallCommand = jest.fn();
+    const mockParseInstallFlags = jest.fn();
+    const mockBuildServerConfig = jest.fn();
+    const installMocks = () =>
+      jest.doMock('../../src/cli/install', () => ({
+        runInstallCommand: mockRunInstallCommand,
+        parseInstallFlags: mockParseInstallFlags,
+        buildServerConfig: mockBuildServerConfig,
+      }));
+
+    beforeEach(() => {
+      mockParseCliArgs.mockReturnValue({ install: true, installArgs: ['--codex'] });
+      mockParseInstallFlags.mockReturnValue({ codex: true });
+      mockBuildServerConfig.mockReturnValue({ command: 'npx', args: [], env: {} });
+    });
+
+    it('exits 0 when every requested client was installed', async () => {
+      mockRunInstallCommand.mockResolvedValue([{ client: 'codex', success: true }]);
+      await runMain(installMocks);
+      expect(mockParseInstallFlags).toHaveBeenCalledWith(['--codex']);
+      expect(mockRunInstallCommand).toHaveBeenCalledWith(
+        { command: 'npx', args: [], env: {} },
+        { codex: true },
+      );
+      expect(mockExit).toHaveBeenCalledWith(0);
+    });
+
+    it('exits 1 when a requested client failed', async () => {
+      mockRunInstallCommand.mockResolvedValue([
+        { client: 'codex', success: false, error: 'not installed' },
+      ]);
+      await runMain(installMocks);
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
+    it('exits 1 with the message when the install cannot run', async () => {
+      const mockConsoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
+      mockRunInstallCommand.mockRejectedValue(new Error('No supported MCP clients detected.'));
+      await runMain(installMocks);
+      expect(mockConsoleError).toHaveBeenCalledWith('No supported MCP clients detected.');
+      expect(mockExit).toHaveBeenCalledWith(1);
+      mockConsoleError.mockRestore();
+    });
+
+    it('prints a thrown value that is not an Error', async () => {
+      const mockConsoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
+      mockBuildServerConfig.mockImplementation(() => {
+        throw 'bad --url';
+      });
+      mockRunInstallCommand.mockRejectedValue('no clients');
+      await runMain(installMocks);
+      expect(mockConsoleError).toHaveBeenCalledWith('bad --url');
+      expect(mockConsoleError).toHaveBeenCalledWith('no clients');
+      mockConsoleError.mockRestore();
+    });
+
+    it('exits 2 with the message when the arguments are invalid', async () => {
+      const mockConsoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
+      mockBuildServerConfig.mockImplementation(() => {
+        throw new Error('--url must be an absolute URL');
+      });
+      mockRunInstallCommand.mockResolvedValue([]);
+      await runMain(installMocks);
+      expect(mockConsoleError).toHaveBeenCalledWith('--url must be an absolute URL');
+      expect(mockExit).toHaveBeenCalledWith(2);
+      mockConsoleError.mockRestore();
+    });
+  });
+
+  describe('plugin subcommand', () => {
+    it('exits with the code of the plugin command', async () => {
+      const mockConsoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
+      mockParseCliArgs.mockReturnValue({ plugin: true, pluginArgs: ['build'] });
+      await runMain();
+      // `build` without --endpoint is a usage error.
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining('--endpoint is required'),
+      );
+      expect(mockExit).toHaveBeenCalledWith(2);
       mockConsoleError.mockRestore();
     });
   });

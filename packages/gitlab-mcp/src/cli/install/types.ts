@@ -65,6 +65,8 @@ export interface InstallResult {
   configPath?: string;
   /** Whether config was already present */
   wasAlreadyConfigured?: boolean;
+  /** Facts the user must act on, e.g. a duplicate registration or a pending sign-in */
+  notes?: string[];
 }
 
 /**
@@ -195,6 +197,18 @@ export const CLIENT_METADATA: Record<InstallableClient, ClientMetadata> = {
     supportsCliInstall: false,
     detectionMethod: 'config-file',
   },
+  codex: {
+    name: 'Codex',
+    // CODEX_HOME relocates it; the Codex CLI edits it, see codex.ts.
+    configPaths: {
+      darwin: '~/.codex/config.toml',
+      win32: '%USERPROFILE%/.codex/config.toml',
+      linux: '~/.codex/config.toml',
+    },
+    supportsCliInstall: true,
+    cliCommand: 'codex',
+    detectionMethod: 'cli-command',
+  },
 };
 
 /**
@@ -208,4 +222,5 @@ export const INSTALLABLE_CLIENTS: InstallableClient[] = [
   'windsurf',
   'cline',
   'roo-code',
+  'codex',
 ];

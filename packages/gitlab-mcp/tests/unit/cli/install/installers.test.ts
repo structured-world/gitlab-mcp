@@ -4,11 +4,12 @@
  */
 
 import {
+  installCline,
   installToClient,
   installToClients,
   generateConfigPreview,
 } from '../../../../src/cli/install/installers';
-import { McpServerConfig } from '../../../../src/cli/init/types';
+import { McpServerConfig, StdioServerConfig } from '../../../../src/cli/init/types';
 import { CLIENT_METADATA } from '../../../../src/cli/install/types';
 import * as fs from 'fs';
 import * as childProcess from 'child_process';
@@ -38,16 +39,24 @@ jest.mock('../../../../src/cli/install/detector', () => ({
   }),
 }));
 
+jest.mock('../../../../src/cli/install/codex', () => ({
+  installCodex: jest.fn(),
+  codexConfigPreview: jest.fn(),
+}));
+import { codexConfigPreview, installCodex } from '../../../../src/cli/install/codex';
+const mockInstallCodex = installCodex as jest.MockedFunction<typeof installCodex>;
+const mockCodexPreview = codexConfigPreview as jest.MockedFunction<typeof codexConfigPreview>;
+
 const mockFs = fs as jest.Mocked<typeof fs>;
 const mockChildProcess = childProcess as jest.Mocked<typeof childProcess>;
 const mockGetConfigPath = getConfigPath as jest.MockedFunction<typeof getConfigPath>;
 
 describe('install installers', () => {
-  const mockServerConfig: McpServerConfig = {
+  const mockServerConfig: StdioServerConfig = {
     command: 'npx',
     args: ['-y', '@structured-world/gitlab-mcp'],
     env: {
-      GITLAB_URL: 'https://gitlab.com',
+      GITLAB_API_URL: 'https://gitlab.com',
       GITLAB_TOKEN: 'test-token',
     },
   };
@@ -351,7 +360,7 @@ describe('install installers', () => {
 
       expect(mockChildProcess.spawnSync).toHaveBeenCalledWith(
         'claude',
-        expect.arrayContaining(['--env', 'GITLAB_URL=https://gitlab.com']),
+        expect.arrayContaining(['--env', 'GITLAB_API_URL=https://gitlab.com']),
         expect.any(Object),
       );
     });
@@ -527,6 +536,18 @@ describe('install installers', () => {
 
       expect(result.success).toBe(false);
       expect(result.wasAlreadyConfigured).toBe(true);
+    });
+
+    it('keeps an existing entry when installCline is called without force', () => {
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(
+        JSON.stringify({ mcpServers: { gitlab: { command: 'old' } } }),
+      );
+
+      expect(installCline(mockServerConfig)).toMatchObject({
+        success: false,
+        wasAlreadyConfigured: true,
+      });
     });
 
     it('should create backup when config exists', () => {
@@ -758,6 +779,45 @@ describe('install installers', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('config path not available');
+    });
+  });
+
+  describe('Codex and remote endpoints', () => {
+    const remote: McpServerConfig = { url: 'https://mcp.example.com/mcp' };
+
+    it('hands Codex to its CLI installer for both transports', () => {
+      mockInstallCodex.mockReturnValue({ client: 'codex', success: true });
+
+      expect(installToClient('codex', mockServerConfig, true)).toEqual({
+        client: 'codex',
+        success: true,
+      });
+      expect(installToClient('codex', remote)).toEqual({ client: 'codex', success: true });
+      expect(mockInstallCodex.mock.calls).toEqual([
+        [mockServerConfig, true],
+        [remote, false],
+      ]);
+    });
+
+    it('refuses a remote endpoint for clients it only writes local configurations for', () => {
+      const result = installToClient('cursor', remote);
+
+      expect(result).toEqual({
+        client: 'cursor',
+        success: false,
+        error:
+          'Cursor adds remote MCP servers in its own settings; this installer writes local (stdio) configurations for it',
+      });
+      // Nothing is written for a refused client.
+      expect(mockFs.writeFileSync).not.toHaveBeenCalled();
+    });
+
+    it('previews the Codex TOML entry and explains remote previews elsewhere', () => {
+      mockCodexPreview.mockReturnValue('[mcp_servers.gitlab]');
+      expect(generateConfigPreview('codex', remote)).toBe('[mcp_servers.gitlab]');
+      expect(generateConfigPreview('claude-desktop', remote)).toBe(
+        'Claude Desktop adds remote MCP servers in its own settings: https://mcp.example.com/mcp',
+      );
     });
   });
 });

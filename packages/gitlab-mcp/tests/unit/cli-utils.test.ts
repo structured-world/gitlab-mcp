@@ -59,7 +59,24 @@ describe('cli-utils', () => {
         installArgs: [],
         docker: false,
         dockerArgs: [],
+        plugin: false,
+        pluginArgs: [],
       });
+    });
+
+    it('should route the plugin subcommand with its arguments', () => {
+      const result = parseCliArgs([
+        'node',
+        'main.js',
+        'plugin',
+        'build',
+        '--endpoint',
+        'https://mcp.example.com/mcp',
+      ]);
+
+      expect(result.plugin).toBe(true);
+      expect(result.pluginArgs).toEqual(['build', '--endpoint', 'https://mcp.example.com/mcp']);
+      expect(result.install).toBe(false);
     });
 
     it('should parse --profile flag', () => {
@@ -134,6 +151,8 @@ describe('cli-utils', () => {
         installArgs: [],
         docker: false,
         dockerArgs: [],
+        plugin: false,
+        pluginArgs: [],
       });
     });
 

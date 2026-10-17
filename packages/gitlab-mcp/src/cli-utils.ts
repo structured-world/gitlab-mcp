@@ -35,6 +35,10 @@ export interface CliArgs {
   docker: boolean;
   /** Docker command arguments */
   dockerArgs: string[];
+  /** Run plugin command */
+  plugin: boolean;
+  /** Plugin command arguments */
+  pluginArgs: string[];
 }
 
 /**
@@ -55,6 +59,8 @@ export function parseCliArgs(argv: string[] = process.argv): CliArgs {
     installArgs: [],
     docker: false,
     dockerArgs: [],
+    plugin: false,
+    pluginArgs: [],
   };
 
   // Check for subcommands (first positional arg)
@@ -79,6 +85,10 @@ export function parseCliArgs(argv: string[] = process.argv): CliArgs {
       case 'docker':
         result.docker = true;
         result.dockerArgs = args.slice(1);
+        return result;
+      case 'plugin':
+        result.plugin = true;
+        result.pluginArgs = args.slice(1);
         return result;
     }
   }

@@ -43,12 +43,30 @@ async function main(): Promise<void> {
 
   // Handle install subcommand
   if (cliArgs.install) {
-    const { runInstallCommand, parseInstallFlags, buildServerConfigFromEnv } =
+    const { runInstallCommand, parseInstallFlags, buildServerConfig } =
       await import('./cli/install');
-    const flags = parseInstallFlags(cliArgs.installArgs);
-    const serverConfig = buildServerConfigFromEnv();
-    await runInstallCommand(serverConfig, flags);
-    process.exit(0);
+    let flags;
+    let serverConfig;
+    try {
+      flags = parseInstallFlags(cliArgs.installArgs);
+      serverConfig = buildServerConfig(flags);
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error));
+      process.exit(2);
+    }
+    try {
+      const results = await runInstallCommand(serverConfig, flags);
+      process.exit(results.some((result) => !result.success) ? 1 : 0);
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  }
+
+  // Handle plugin subcommand
+  if (cliArgs.plugin) {
+    const { runPluginCommand } = await import('./cli/plugin');
+    process.exit(runPluginCommand(cliArgs.pluginArgs));
   }
 
   // Handle docker subcommand

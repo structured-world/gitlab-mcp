@@ -97,6 +97,47 @@ function collectFiles(root: string, manifest: object, mcp: object): Map<string, 
   return files;
 }
 
+interface Marketplace {
+  name: string;
+  interface?: unknown;
+  plugins: Array<{ name?: unknown }>;
+  [key: string]: unknown;
+}
+
+function readMarketplace(path: string): Marketplace | undefined {
+  if (!existsSync(path)) return undefined;
+  try {
+    const parsed = JSON.parse(readFileSync(path, 'utf8')) as unknown;
+    const plugins = (parsed as { plugins?: unknown } | null)?.plugins;
+    if (typeof parsed !== 'object' || parsed === null || !Array.isArray(plugins)) {
+      throw new Error('expected an object with a plugins list');
+    }
+    return parsed as Marketplace;
+  } catch (error) {
+    throw new Error(`Cannot read the existing marketplace ${path}: ${(error as Error).message}`, {
+      cause: error,
+    });
+  }
+}
+
+/**
+ * Puts the GitLab entry into a marketplace: a new catalog of its own, or an
+ * existing one with the other plugins, its name and its interface kept.
+ */
+function mergeMarketplace(existing: Marketplace | undefined): Marketplace {
+  const entry = {
+    name: PLUGIN_NAME,
+    source: { source: 'local', path: `./plugins/${PLUGIN_NAME}` },
+    policy: { installation: 'AVAILABLE', authentication: 'ON_INSTALL' },
+    category: LISTING.category,
+  };
+  if (!existing) {
+    return { name: PLUGIN_NAME, interface: { displayName: LISTING.displayName }, plugins: [entry] };
+  }
+  const plugins = existing.plugins.filter((plugin) => plugin.name !== PLUGIN_NAME);
+  return { ...existing, plugins: [...plugins, entry] };
+}
+
 export function buildPlugin(options: PluginBuildOptions): PluginBuildResult {
   const root = options.packageRoot ?? findPackageRoot();
   const endpoint = validateEndpoint(options.endpoint, options.flavor);
@@ -150,6 +191,10 @@ export function buildPlugin(options: PluginBuildOptions): PluginBuildResult {
     options.flavor,
   );
 
+  // Read before anything is written, so an unreadable catalog leaves outDir untouched.
+  const marketplacePath = join(options.outDir, '.agents', 'plugins', 'marketplace.json');
+  const marketplace = mergeMarketplace(readMarketplace(marketplacePath));
+
   // Only the generated plugin folder is replaced; the rest of outDir is the caller's.
   const pluginDir = join(options.outDir, 'plugins', PLUGIN_NAME);
   rmSync(pluginDir, { recursive: true, force: true });
@@ -159,19 +204,6 @@ export function buildPlugin(options: PluginBuildOptions): PluginBuildResult {
     writeFileSync(target, data);
   }
 
-  const marketplace = {
-    name: PLUGIN_NAME,
-    interface: { displayName: LISTING.displayName },
-    plugins: [
-      {
-        name: PLUGIN_NAME,
-        source: { source: 'local', path: `./plugins/${PLUGIN_NAME}` },
-        policy: { installation: 'AVAILABLE', authentication: 'ON_INSTALL' },
-        category: LISTING.category,
-      },
-    ],
-  };
-  const marketplacePath = join(options.outDir, '.agents', 'plugins', 'marketplace.json');
   mkdirSync(dirname(marketplacePath), { recursive: true });
   writeFileSync(marketplacePath, `${JSON.stringify(marketplace, null, 2)}\n`);
 

@@ -27,7 +27,7 @@ npx @structured-world/gitlab-mcp plugin build --endpoint <url> [options]
 | `--privacy-url <url>` | Privacy policy of the endpoint operator. Required with `--public`   |
 | `--terms-url <url>`   | Terms of service of the endpoint operator. Required with `--public` |
 
-The endpoint must use HTTPS. Plain HTTP is accepted only on loopback (`localhost`, `127.0.0.1`, `::1`), for a server on the same machine. With `--public` the host must also be publicly reachable.
+The endpoint must use HTTPS. Plain HTTP is accepted only on loopback (`localhost`, `127.0.0.1`, `::1`), for a server on the same machine. With `--public` the host must also be publicly reachable: not a private, reserved or special-purpose address, and not a special-use domain such as `.test`, `.invalid`, `.local` or `.internal`.
 
 ## Output
 
@@ -38,7 +38,7 @@ gitlab-mcp-plugin/
 └── gitlab-mcp-<version>.zip           # the same plugin as one archive
 ```
 
-The version is the version of the installed package. A rebuild replaces only `plugins/gitlab-mcp/` and produces a byte-identical ZIP; the command prints its SHA-256.
+The version is the version of the installed package. A rebuild replaces only `plugins/gitlab-mcp/` and produces a byte-identical ZIP; the command prints its SHA-256. When `--out` already holds a marketplace, the GitLab entry is added to or replaced in its catalog and the other plugins, its name and its display name stay.
 
 Before writing anything the command checks the package against the Agent Plugins 1.0.0 schemas and the directory rules: listing text limits, HTTPS listing links without credentials, square icons of 48 to 4096 px, skill headers, a single MCP server without headers, and no hooks, app references, tokens, private keys, local paths or, with `--public`, private network addresses and a display name ending in "MCP", "MCP Server" or "Plugin". Every problem is listed and nothing is written.
 

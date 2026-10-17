@@ -148,6 +148,25 @@ function isNonPublicIpv6(address: string): boolean {
   return NON_PUBLIC_IPV6.some((block) => inIpv6Block(value, block));
 }
 
+/**
+ * Domains that, with every subdomain, never resolve in public DNS: the IANA
+ * Special-Use Domain Names registry (RFC 6761) plus names reserved for private
+ * networks. example.com, example.net and example.org are not listed: they do
+ * resolve publicly (RFC 6761 6.5).
+ */
+const NON_PUBLIC_DOMAINS = [
+  'localhost', // RFC 6761 6.3
+  'invalid', // RFC 6761 6.4
+  'test', // RFC 6761 6.2
+  'example', // RFC 6761 6.5
+  'local', // multicast DNS, RFC 6762
+  'onion', // Tor, RFC 7686
+  'alt', // non-DNS namespaces, RFC 9476
+  'home.arpa', // residential networks, RFC 8375
+  'internal', // private use, reserved by ICANN
+  'lan', // common private-network suffix
+] as const;
+
 export interface ValidationIssue {
   file: string;
   message: string;
@@ -168,8 +187,7 @@ export function isNonPublicHost(hostname: string): boolean {
     .replace(/^\[|\]$/g, '')
     .replace(/\.$/, '')
     .toLowerCase();
-  if (host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local')) return true;
-  if (host.endsWith('.internal') || host.endsWith('.lan') || host.endsWith('.home.arpa')) {
+  if (NON_PUBLIC_DOMAINS.some((domain) => host === domain || host.endsWith(`.${domain}`))) {
     return true;
   }
   const family = isIP(host);
@@ -241,15 +259,9 @@ function checkListingUrl(issues: ValidationIssue[], field: string, value: unknow
   }
 }
 
-function checkText(
-  issues: ValidationIssue[],
-  field: string,
-  value: unknown,
-  max: number,
-  required = true,
-): void {
+function checkText(issues: ValidationIssue[], field: string, value: unknown, max: number): void {
   if (typeof value !== 'string' || value.trim().length === 0) {
-    if (required) issues.push({ file: 'plugin.json', message: `${field} is required` });
+    issues.push({ file: 'plugin.json', message: `${field} is required` });
     return;
   }
   if (value.length > max) {
@@ -435,9 +447,9 @@ function isNonPublicUrl(text: string): boolean {
 }
 
 function checkSkills(issues: ValidationIssue[], files: PackageFiles): void {
-  const skills = [...files.keys()].filter((path) => /^skills\/[^/]+\/SKILL\.md$/.test(path));
+  const skills = [...files].filter(([path]) => /^skills\/[^/]+\/SKILL\.md$/.test(path));
   if (skills.length === 0) issues.push({ file: 'skills/', message: 'package has no skills' });
-  for (const path of skills) checkSkill(issues, path, files.get(path) ?? Buffer.alloc(0));
+  for (const [path, data] of skills) checkSkill(issues, path, data);
 }
 
 function checkServers(issues: ValidationIssue[], mcp: Json, flavor: PluginFlavor): void {

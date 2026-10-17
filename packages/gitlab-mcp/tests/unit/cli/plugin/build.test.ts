@@ -103,6 +103,65 @@ describe('buildPlugin', () => {
     expect(readFileSync(unrelated, 'utf8')).toBe('{}');
   });
 
+  it('adds its entry to an existing marketplace and keeps the other plugins', () => {
+    // A team marketplace lists several plugins; rebuilding one must not drop the rest.
+    const marketplacePath = join(outDir, '.agents', 'plugins', 'marketplace.json');
+    const other = {
+      name: 'other',
+      source: { source: 'local', path: './plugins/other' },
+      policy: { installation: 'AVAILABLE', authentication: 'ON_INSTALL' },
+      category: 'Productivity',
+    };
+    mkdirSync(join(outDir, '.agents', 'plugins'), { recursive: true });
+    writeFileSync(
+      marketplacePath,
+      JSON.stringify({
+        name: 'team-tools',
+        interface: { displayName: 'Team tools' },
+        plugins: [other, { name: 'gitlab-mcp', source: { source: 'local', path: './old' } }],
+      }),
+    );
+
+    buildPlugin({ ...PUBLIC, outDir });
+    const marketplace = readJson(marketplacePath) as {
+      name: string;
+      interface: unknown;
+      plugins: Array<{ name: string; source: unknown }>;
+    };
+    expect(marketplace.name).toBe('team-tools');
+    expect(marketplace.interface).toEqual({ displayName: 'Team tools' });
+    expect(marketplace.plugins.map((p) => p.name)).toEqual(['other', 'gitlab-mcp']);
+    expect(marketplace.plugins[0]).toEqual(other);
+    expect(marketplace.plugins[1].source).toEqual({
+      source: 'local',
+      path: './plugins/gitlab-mcp',
+    });
+  });
+
+  it('writes nothing when the existing marketplace cannot be read', () => {
+    const marketplacePath = join(outDir, '.agents', 'plugins', 'marketplace.json');
+    mkdirSync(join(outDir, '.agents', 'plugins'), { recursive: true });
+    writeFileSync(marketplacePath, '{not json');
+
+    expect(() => buildPlugin({ ...PUBLIC, outDir })).toThrow(
+      `Cannot read the existing marketplace ${marketplacePath}`,
+    );
+    expect(readFileSync(marketplacePath, 'utf8')).toBe('{not json');
+    expect(existsSync(join(outDir, 'plugins'))).toBe(false);
+  });
+
+  it.each(['null', '{"name":"team-tools"}'])(
+    'refuses an existing marketplace without a plugins list: %s',
+    (text) => {
+      const marketplacePath = join(outDir, '.agents', 'plugins', 'marketplace.json');
+      mkdirSync(join(outDir, '.agents', 'plugins'), { recursive: true });
+      writeFileSync(marketplacePath, text);
+      expect(() => buildPlugin({ ...PUBLIC, outDir })).toThrow(
+        'expected an object with a plugins list',
+      );
+    },
+  );
+
   it('builds a private package for a loopback endpoint without legal links', () => {
     const result = buildPlugin({
       endpoint: 'http://localhost:3333/mcp',

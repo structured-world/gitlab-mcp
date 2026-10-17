@@ -153,6 +153,23 @@ describe('validateEndpoint', () => {
     expect(() => validateEndpoint(url, 'public')).toThrow('not publicly reachable');
   });
 
+  it.each([
+    'https://service.invalid/mcp',
+    'https://mcp.test/mcp',
+    'https://a.b.example/mcp',
+    'https://hidden.onion/mcp',
+    'https://mcp.alt/mcp',
+  ])('refuses the special-use domain of %s for a public package', (url) => {
+    // IANA Special-Use Domain Names: these names and their subdomains never resolve publicly.
+    expect(() => validateEndpoint(url, 'public')).toThrow('not publicly reachable');
+  });
+
+  it('keeps example.com public, since it resolves in public DNS (RFC 6761 6.5)', () => {
+    expect(validateEndpoint('https://mcp.example.com/mcp', 'public').hostname).toBe(
+      'mcp.example.com',
+    );
+  });
+
   it('accepts a private HTTPS host for a private package', () => {
     expect(validateEndpoint('https://mcp.corp.internal/mcp', 'private').hostname).toBe(
       'mcp.corp.internal',
@@ -501,6 +518,34 @@ describe('validatePackage', () => {
     expect(issuesOf(packageFiles(m))).toContain('plugin.json: interface.logo is required');
   });
 
+  it('asks for a name and description when the skill front matter is empty', () => {
+    const files = packageFiles();
+    files.set('skills/gitlab-ci/SKILL.md', Buffer.from('---\n\n---\n# CI\n'));
+    expect(issuesOf(files)).toEqual([
+      'skills/gitlab-ci/SKILL.md: SKILL.md front matter needs a name',
+      'skills/gitlab-ci/SKILL.md: SKILL.md front matter needs a description',
+    ]);
+  });
+
+  it('reports every missing section of a bare manifest and server list', () => {
+    const files = packageFiles();
+    files.set('plugin.json', Buffer.from('{"name":"gitlab-mcp"}'));
+    files.set('mcp.json', Buffer.from('{}'));
+    const issues = issuesOf(files, 'private');
+    expect(issues).toEqual(
+      expect.arrayContaining([
+        'mcp.json: must declare exactly one MCP server',
+        'plugin.json: author.name is required',
+        'plugin.json: interface.displayName is required',
+        'plugin.json: interface.logo is required',
+      ]),
+    );
+    // Optional parts that are absent raise nothing of their own.
+    expect(issues.some((i) => i.includes('defaultPrompt') || i.includes('onboardingSkill'))).toBe(
+      false,
+    );
+  });
+
   it('reports skill front matter that is not valid YAML', () => {
     const files = packageFiles();
     files.set('skills/gitlab-ci/SKILL.md', Buffer.from('---\nname: [unclosed\n---\n'));
@@ -540,8 +585,8 @@ describe('validatePackage', () => {
   it('accepts listing URLs whose path contains home or Users', () => {
     // Only a filesystem path ties a file to one machine, not a web path segment.
     const m = manifest();
-    ui(m).privacyPolicyURL = 'https://operator.example/home/privacy';
-    ui(m).termsOfServiceURL = 'https://operator.example/Users/terms';
+    ui(m).privacyPolicyURL = 'https://operator.example.com/home/privacy';
+    ui(m).termsOfServiceURL = 'https://operator.example.com/Users/terms';
     expect(issuesOf(packageFiles(m))).toEqual([]);
   });
 

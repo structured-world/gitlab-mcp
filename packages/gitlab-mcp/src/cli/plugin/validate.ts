@@ -523,9 +523,16 @@ function checkManifest(
   const ui = (openai?.interface ?? {}) as Json;
   checkInterfaceText(issues, ui, flavor);
   checkInterfaceLists(issues, ui);
-  checkBrandColor(issues, ui.brandColor);
+  checkBrandColor(issues, 'brandColor', ui.brandColor, '#FFFFFF', 'white');
+  if (ui.brandColorDark !== undefined) {
+    checkBrandColor(issues, 'brandColorDark', ui.brandColorDark, '#212121', '#212121');
+  }
   checkImage(issues, files, 'interface.logo', ui.logo, 'icon');
   checkImage(issues, files, 'interface.composerIcon', ui.composerIcon, 'icon');
+  // Dark-theme variants are optional; a listed one meets the same rules.
+  for (const field of ['logoDark', 'composerIconDark']) {
+    if (ui[field] !== undefined) checkImage(issues, files, `interface.${field}`, ui[field], 'icon');
+  }
   for (const shot of Array.isArray(ui.screenshots) ? ui.screenshots : []) {
     checkImage(issues, files, 'interface.screenshots', shot, 'screenshot');
   }
@@ -585,13 +592,20 @@ function checkInterfaceLists(issues: ValidationIssue[], ui: Json): void {
   }
 }
 
-function checkBrandColor(issues: ValidationIssue[], color: unknown): void {
+/** A brand color must read on the theme background it is shown against. */
+function checkBrandColor(
+  issues: ValidationIssue[],
+  field: string,
+  color: unknown,
+  background: string,
+  backgroundName: string,
+): void {
   if (typeof color !== 'string' || !/^#[0-9A-Fa-f]{6}$/.test(color)) {
-    issues.push({ file: 'plugin.json', message: 'interface.brandColor must be #RRGGBB' });
-  } else if (contrastRatio(color, '#FFFFFF') < 2) {
+    issues.push({ file: 'plugin.json', message: `interface.${field} must be #RRGGBB` });
+  } else if (contrastRatio(color, background) < 2) {
     issues.push({
       file: 'plugin.json',
-      message: 'interface.brandColor needs 2:1 contrast against white',
+      message: `interface.${field} needs 2:1 contrast against ${backgroundName}`,
     });
   }
 }

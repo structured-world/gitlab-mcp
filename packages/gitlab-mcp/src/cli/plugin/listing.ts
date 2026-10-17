@@ -29,6 +29,18 @@ export const PLUGIN_KEYWORDS = [
 /** Package-relative path of the logo, shared with the MCPB bundle. */
 export const LOGO_SOURCE = 'plugin/assets/logo.png';
 
+/**
+ * Listing images other than the logo, as package-relative paths; each is packaged under
+ * assets/ with its file name. The logo is a tile with its own background and serves both
+ * themes; the composer icon is a bare glyph and needs one per theme. The PNG files are
+ * rendered by scripts/plugin-assets.mjs.
+ */
+export const LISTING_ASSETS = {
+  composerIcon: 'plugin/assets/composer-icon.png',
+  composerIconDark: 'plugin/assets/composer-icon-dark.png',
+  screenshots: ['plugin/assets/screenshot-1.png', 'plugin/assets/screenshot-2.png'],
+} as const;
+
 export const LISTING = {
   displayName: 'GitLab by Structured World',
   shortDescription: 'GitLab projects, MRs and CI',
@@ -50,4 +62,6 @@ export const LISTING = {
   ],
   // 6.1:1 against white; the directory requires at least 2:1.
   brandColor: '#6B4FBB',
+  // 6.7:1 against the dark theme's #212121; the directory requires at least 2:1.
+  brandColorDark: '#B197FC',
 } as const;

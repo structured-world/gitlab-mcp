@@ -66,7 +66,15 @@ describe('buildPlugin', () => {
     ].interface;
     expect(ui.privacyPolicyURL).toBe('https://example.com/privacy');
     expect(ui.termsOfServiceURL).toBe('https://example.com/terms');
-    expect(ui.logo).toBe('./assets/logo.png');
+    // The logo tile serves both themes; the bare composer glyph has one per theme.
+    expect(ui).toMatchObject({
+      logo: './assets/logo.png',
+      composerIcon: './assets/composer-icon.png',
+      composerIconDark: './assets/composer-icon-dark.png',
+      screenshots: ['./assets/screenshot-1.png', './assets/screenshot-2.png'],
+      brandColor: '#6B4FBB',
+      brandColorDark: '#B197FC',
+    });
 
     expect(readJson(result.marketplacePath)).toEqual({
       name: 'gitlab-mcp',
@@ -208,9 +216,8 @@ describe('buildPlugin from a minimal package', () => {
   /** A package root with only the files the build reads. */
   function writePackage(pkg: Record<string, unknown>): void {
     writeFileSync(join(root, 'package.json'), JSON.stringify(pkg));
-    mkdirSync(join(root, 'plugin', 'assets'), { recursive: true });
     cpSync(join(ROOT, 'plugin', 'schemas'), join(root, 'plugin', 'schemas'), { recursive: true });
-    cpSync(join(ROOT, 'plugin', 'assets', 'logo.png'), join(root, 'plugin', 'assets', 'logo.png'));
+    cpSync(join(ROOT, 'plugin', 'assets'), join(root, 'plugin', 'assets'), { recursive: true });
     mkdirSync(join(root, 'skills', 'gitlab-setup'), { recursive: true });
     cpSync(
       join(ROOT, 'skills', 'gitlab-setup', 'SKILL.md'),
@@ -242,8 +249,13 @@ describe('buildPlugin from a minimal package', () => {
     });
     const result = buildPlugin({ ...PUBLIC, outDir, packageRoot: root });
 
+    // Only the listed images are packaged: the SVG sources stay out.
     expect(result.files).toEqual([
+      'assets/composer-icon-dark.png',
+      'assets/composer-icon.png',
       'assets/logo.png',
+      'assets/screenshot-1.png',
+      'assets/screenshot-2.png',
       'mcp.json',
       'plugin.json',
       'skills/gitlab-setup/SKILL.md',

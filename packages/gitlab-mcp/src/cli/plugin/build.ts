@@ -5,9 +5,10 @@
 
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import {
   LISTING,
+  LISTING_ASSETS,
   LOGO_SOURCE,
   MCP_SERVER_NAME,
   ONBOARDING_SKILL,
@@ -21,6 +22,17 @@ const PACKAGE_NAME = '@structured-world/gitlab-mcp';
 const PLUGIN_SCHEMA = 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json';
 const MCP_SCHEMA = 'https://agent-plugins.org/schemas/1.0.0/mcp.schema.json';
 const LOGO_PATH = 'assets/logo.png';
+
+/** Plugin-relative path of a listing image: assets/ plus its file name. */
+function assetPath(source: string): string {
+  return `assets/${basename(source)}`;
+}
+
+const LISTING_IMAGES = [
+  LISTING_ASSETS.composerIcon,
+  LISTING_ASSETS.composerIconDark,
+  ...LISTING_ASSETS.screenshots,
+];
 
 export interface PluginBuildOptions {
   /** MCP endpoint the package connects to. */
@@ -90,6 +102,9 @@ function collectFiles(root: string, manifest: object, mcp: object): Map<string, 
   files.set('plugin.json', Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`));
   files.set('mcp.json', Buffer.from(`${JSON.stringify(mcp, null, 2)}\n`));
   files.set(LOGO_PATH, readFileSync(join(root, LOGO_SOURCE)));
+  for (const source of LISTING_IMAGES) {
+    files.set(assetPath(source), readFileSync(join(root, source)));
+  }
   const skillsDir = join(root, 'skills');
   for (const entry of readdirSync(skillsDir, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
@@ -170,9 +185,10 @@ export function buildPlugin(options: PluginBuildOptions): PluginBuildResult {
           supportURL: support,
           ...(options.privacyPolicyUrl ? { privacyPolicyURL: options.privacyPolicyUrl } : {}),
           ...(options.termsOfServiceUrl ? { termsOfServiceURL: options.termsOfServiceUrl } : {}),
-          composerIcon: `./${LOGO_PATH}`,
+          composerIcon: `./${assetPath(LISTING_ASSETS.composerIcon)}`,
+          composerIconDark: `./${assetPath(LISTING_ASSETS.composerIconDark)}`,
           logo: `./${LOGO_PATH}`,
-          screenshots: [],
+          screenshots: LISTING_ASSETS.screenshots.map((source) => `./${assetPath(source)}`),
         },
       },
     },

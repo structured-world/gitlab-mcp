@@ -84,8 +84,8 @@ function instanceName(instanceUrl: string, label: string | undefined): string {
  */
 export async function getAccountProfile(): Promise<AccountProfile> {
   const context = getTokenContext();
-  // The linked account's instance, else the one the server's token works with now (it
-  // follows switch_instance).
+  // The OAuth account's instance, else the instance of the server's token or the configured
+  // instance the chat switched to.
   const instanceUrl = normalizeInstanceUrl(getGitLabApiUrlFromContext() ?? getGitLabBaseUrl());
   const user = await fetchCurrentUser(instanceUrl);
 

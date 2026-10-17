@@ -19,6 +19,8 @@ jest.mock('../../../../src/oauth/session-store', () => ({
     getSessionByRefreshToken: jest.fn(),
     getSessionByToken: jest.fn(),
     deleteSession: jest.fn(),
+    linksAccounts: jest.fn(),
+    getLinkedSessions: jest.fn(),
   },
 }));
 jest.mock('../../../../src/oauth/instance-app', () => ({ oauthAppFor: jest.fn() }));
@@ -79,6 +81,8 @@ describe('revokeHandler', () => {
     mockStore.getSessionByRefreshToken.mockResolvedValue(undefined);
     mockStore.getSessionByToken.mockResolvedValue(undefined);
     mockStore.deleteSession.mockResolvedValue(true);
+    mockStore.linksAccounts.mockReturnValue(true);
+    mockStore.getLinkedSessions.mockResolvedValue([]);
     mockAppFor.mockResolvedValue(app);
     mockRevokeGitLab.mockResolvedValue(undefined);
     mockRegistered.mockResolvedValue(undefined);
@@ -302,6 +306,46 @@ describe('revokeHandler', () => {
     await revokeHandler(req, res);
 
     expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  // The linked accounts go with the session in storage; their GitLab grants must end too,
+  // or a disconnected connection would leave live tokens of the other accounts at GitLab.
+  it('revokes the GitLab grants of the accounts linked to the session', async () => {
+    const linked: OAuthSession = {
+      ...session,
+      id: 'linked-1',
+      mcpAccessToken: '',
+      mcpRefreshToken: '',
+      gitlabAccessToken: 'gl-linked',
+      gitlabApiUrl: 'https://gitlab.com',
+      linkedToSessionId: 'session-1',
+    };
+    const otherApp = { baseUrl: 'https://gitlab.com', clientId: 'com-app', scopes: 'api' };
+    mockStore.getSessionByRefreshToken.mockResolvedValue(session);
+    mockStore.getLinkedSessions.mockResolvedValue([linked]);
+    mockAppFor.mockImplementation(async (_config, url) =>
+      url === 'https://gitlab.com' ? otherApp : app,
+    );
+    const { req, res } = revoke({ token: 'refresh-1', client_id: 'client-1' });
+
+    await revokeHandler(req, res);
+
+    expect(mockStore.getLinkedSessions).toHaveBeenCalledWith('session-1');
+    expect(mockStore.deleteSession).toHaveBeenCalledWith('session-1');
+    expect(mockRevokeGitLab).toHaveBeenCalledWith('gl-access', config, app);
+    expect(mockRevokeGitLab).toHaveBeenCalledWith('gl-linked', config, otherApp);
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  it('answers 503 and keeps the session when its linked accounts cannot be read', async () => {
+    mockStore.getSessionByRefreshToken.mockResolvedValue(session);
+    mockStore.getLinkedSessions.mockRejectedValue(new Error('database down'));
+    const { req, res } = revoke({ token: 'refresh-1', client_id: 'client-1' });
+
+    await revokeHandler(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(503);
+    expect(mockStore.deleteSession).not.toHaveBeenCalled();
   });
 
   it('answers 503 when storage is unavailable (RFC 7009 2.2.1)', async () => {

@@ -1,14 +1,18 @@
 /**
  * Schema definitions for manage_context tool
  *
- * CQRS pattern with 7 actions:
+ * CQRS pattern with 11 actions:
  * - show: Display current context (Query)
  * - list_presets: List available presets (Query)
  * - whoami: Token introspection and capability discovery (Query)
+ * - list_accounts: GitLab accounts this connection can use (Query)
  * - switch_preset: Change active preset (Command)
  * - set_scope: Set namespace scope with auto-detection (Command)
  * - clear_scope: Work everywhere in this session (Command)
  * - reset: Restore initial context (Command)
+ * - switch_account: Work with another account in this chat (Command)
+ * - link_account: Sign in with another account and link it (Command)
+ * - unlink_account: Remove a linked account (Command)
  */
 
 import { z } from 'zod';
@@ -92,6 +96,44 @@ const WhoamiSchema = z.object({
     ),
 });
 
+const ListAccountsSchema = z.object({
+  action: z
+    .literal('list_accounts')
+    .describe(
+      'List the GitLab accounts this connection can use, on one or several instances, and which one this chat works with',
+    ),
+});
+
+const SwitchAccountSchema = z.object({
+  action: z
+    .literal('switch_account')
+    .describe(
+      'Work with another of the listed accounts in this chat; other chats keep theirs. Tools, settings and permissions follow that account and its instance',
+    ),
+  account: z.string().min(1).describe('Account id from list_accounts'),
+});
+
+const LinkAccountSchema = z.object({
+  action: z
+    .literal('link_account')
+    .describe(
+      'Sign in with another GitLab account, on this or another configured instance, and link it to this connection. Returns a sign-in link the user opens in the browser',
+    ),
+  instance: z
+    .string()
+    .optional()
+    .describe(
+      "Instance URL of the account to link (e.g. 'https://gitlab.com'); default: this connection's instance",
+    ),
+});
+
+const UnlinkAccountSchema = z.object({
+  action: z
+    .literal('unlink_account')
+    .describe('Remove a linked account from this connection and end its GitLab sign-in'),
+  account: z.string().min(1).describe('Account id from list_accounts'),
+});
+
 // ============================================================================
 // Combined Schema (Discriminated Union)
 // ============================================================================
@@ -107,6 +149,10 @@ export const ManageContextSchema = z.discriminatedUnion('action', [
   ClearScopeSchema,
   ResetContextSchema,
   WhoamiSchema,
+  ListAccountsSchema,
+  SwitchAccountSchema,
+  LinkAccountSchema,
+  UnlinkAccountSchema,
 ]);
 
 // ============================================================================
@@ -121,3 +167,6 @@ export type SetScopeInput = z.infer<typeof SetScopeSchema>;
 export type ClearScopeInput = z.infer<typeof ClearScopeSchema>;
 export type ResetContextInput = z.infer<typeof ResetContextSchema>;
 export type WhoamiInput = z.infer<typeof WhoamiSchema>;
+export type SwitchAccountInput = z.infer<typeof SwitchAccountSchema>;
+export type LinkAccountInput = z.infer<typeof LinkAccountSchema>;
+export type UnlinkAccountInput = z.infer<typeof UnlinkAccountSchema>;

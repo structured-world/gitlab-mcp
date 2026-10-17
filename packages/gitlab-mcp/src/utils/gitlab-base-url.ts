@@ -7,11 +7,11 @@ import { logWarn } from '../logger';
 import { isOAuthEnabled, getGitLabApiUrlFromContext } from '../oauth/index';
 import { normalizeInstanceUrl } from './url';
 import { currentCaller } from '../configuration/caller';
+import { currentTokenAccount } from '../accounts/token-account';
 
 /**
- * The instance the server's own token works with now. The connection manager reports
- * it (it changes on switch_instance); it registers itself because it depends on the
- * HTTP layer that depends on this module.
+ * The instance the server's own token works with. The connection manager reports it; it
+ * registers itself because it depends on the HTTP layer that depends on this module.
  */
 let activeInstanceUrl: () => string | null = () => null;
 
@@ -21,9 +21,9 @@ export function setActiveInstanceSource(source: () => string | null): void {
 
 /**
  * Base URL of the GitLab instance this call goes to (e.g. "https://gitlab.com"): the
- * OAuth token's instance, else the instance the running tool call started with, else the
- * instance the server's own token works with now, else GITLAB_API_URL as configured at the
- * time of the call.
+ * OAuth token's instance, else the configured instance the chat switched to, else the
+ * instance the running tool call started with, else the instance the server's own token
+ * works with, else GITLAB_API_URL as configured at the time of the call.
  */
 export function getGitLabBaseUrl(): string {
   if (isOAuthEnabled()) {
@@ -33,7 +33,8 @@ export function getGitLabBaseUrl(): string {
     }
     logWarn('OAuth mode: no API URL in context, falling back to global config');
   }
-  // A switch_instance from another chat must not move a call already running.
+  const switched = currentTokenAccount()?.instanceUrl;
+  if (switched) return switched;
   const pinned = currentCaller()?.instanceUrl;
   if (pinned) return pinned;
   const active = activeInstanceUrl();

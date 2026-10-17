@@ -628,6 +628,99 @@ describe('PostgreSQLStorageBackend', () => {
     expect(deleteMissing).toBe(false);
   });
 
+  // Linked accounts belong to their session: stored with its id, listed for it oldest first,
+  // and removed with it by the foreign key's cascade.
+  describe('linked accounts', () => {
+    beforeEach(() => {
+      (backend as any).prisma = mockPrisma;
+    });
+
+    it('stores and reads the session an account is linked to', async () => {
+      await backend.createSession({ ...createSession(), id: 'linked', linkedToSessionId: 'session-1' });
+      const data = mockPrisma.oAuthSession.create.mock.calls[0][0].data;
+      expect(data.linkedToSessionId).toBe('session-1');
+
+      mockPrisma.oAuthSession.findUnique.mockResolvedValueOnce({
+        ...data,
+        gitlabApiUrl: null,
+        instanceLabel: null,
+      });
+      expect((await backend.getSession('linked'))?.linkedToSessionId).toBe('session-1');
+    });
+
+    it('stores a session without a link as null and reads it back without one', async () => {
+      await backend.createSession(createSession());
+      const data = mockPrisma.oAuthSession.create.mock.calls[0][0].data;
+      expect(data.linkedToSessionId).toBeNull();
+
+      mockPrisma.oAuthSession.findUnique.mockResolvedValueOnce({
+        ...data,
+        gitlabApiUrl: null,
+        instanceLabel: null,
+      });
+      expect(await backend.getSession('session-1')).not.toHaveProperty(
+        'linkedToSessionId',
+        expect.anything(),
+      );
+    });
+
+    it('lists the accounts linked to a session, oldest first', async () => {
+      mockPrisma.oAuthSession.findMany.mockResolvedValueOnce([
+        {
+          ...createSession(),
+          id: 'linked',
+          linkedToSessionId: 'session-1',
+          mcpTokenExpiry: BigInt(1),
+          gitlabTokenExpiry: BigInt(2),
+          createdAt: BigInt(3),
+          updatedAt: BigInt(4),
+          gitlabApiUrl: 'https://gitlab.com',
+          instanceLabel: null,
+        },
+      ]);
+
+      const linked = await backend.getLinkedSessions('session-1');
+
+      expect(mockPrisma.oAuthSession.findMany).toHaveBeenCalledWith({
+        where: { linkedToSessionId: 'session-1' },
+        orderBy: { createdAt: 'asc' },
+      });
+      expect(linked).toEqual([
+        expect.objectContaining({ id: 'linked', linkedToSessionId: 'session-1' }),
+      ]);
+    });
+
+    it('keeps the account linking step of a flow', async () => {
+      const link = {
+        sessionId: 'session-1',
+        stage: 'verify' as const,
+        instance: 'https://gitlab.com',
+        instanceLabel: 'GitLab.com',
+      };
+      await backend.storeAuthCodeFlow('link-state', { ...createAuthCodeFlow(), link });
+      const call = mockPrisma.authCodeFlowState.upsert.mock.calls[0][0];
+      expect(call.create.link).toEqual(link);
+
+      mockPrisma.authCodeFlowState.findUnique.mockResolvedValueOnce({
+        ...call.create,
+        expiresAt: BigInt(6666),
+      });
+      expect((await backend.getAuthCodeFlow('link-state'))?.link).toEqual(link);
+    });
+
+    it('refuses a corrupt account linking step instead of half-using it', async () => {
+      mockPrisma.authCodeFlowState.findUnique.mockResolvedValueOnce({
+        ...createAuthCodeFlow(),
+        expiresAt: BigInt(6666),
+        link: { sessionId: 'session-1', stage: 'unknown', instance: 'https://gitlab.com' },
+      });
+
+      await expect(backend.getAuthCodeFlow('internal-1')).rejects.toThrow(
+        'Invalid stored account link step',
+      );
+    });
+  });
+
   describe('durable flow and session binding', () => {
     beforeEach(() => {
       (backend as any).prisma = mockPrisma;

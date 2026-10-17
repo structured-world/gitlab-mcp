@@ -39,7 +39,10 @@ import {
   toolScopeRejection,
   withReauthChallenge,
 } from './oauth/tool-auth';
-import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import type { CallToolRequest, CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import { AccountUnavailableError, withChatAccount } from './accounts/chat-accounts';
+import { runWithMcpServer } from './mcp-server-context';
+import { currentTokenAccount } from './accounts/token-account';
 import {
   getConfigurationService,
   resolveCaller,
@@ -440,9 +443,11 @@ function formatBootstrapFailure(ctx: BootstrapContext, initError: unknown): Call
  * without a request context), else the instance the static token works with now.
  */
 function activeInstanceUrl(oauthEnabled: boolean, oauthContextUrl: string | undefined): string {
+  // A static-token chat works with the server's own instance, or the configured one it
+  // switched to; another chat's switch never moves it.
   const raw = oauthEnabled
     ? (oauthContextUrl ?? GITLAB_BASE_URL)
-    : (ConnectionManager.getInstance().getCurrentInstanceUrl() ?? GITLAB_BASE_URL);
+    : (currentTokenAccount()?.instanceUrl ?? GITLAB_BASE_URL);
   // Normalized so CONNECTION_FAILED instance_url and HealthMonitor keys are consistent.
   return normalizeInstanceUrl(raw);
 }
@@ -748,7 +753,7 @@ export async function setupHandlers(server: Server): Promise<void> {
   // filtered for its target GitLab instance (#398). The sessionId from RequestHandlerExtra
   // resolves to the instance URL stored in SessionManager (set on session creation and
   // kept in sync by the CallToolRequestSchema handler on every tool call).
-  server.setRequestHandler(ListToolsRequestSchema, async (_request, extra) => {
+  const listTools = async (extra: { sessionId?: string } | undefined) => {
     logInfo('ListToolsRequest received');
 
     // Resolve the instance URL for this session so the tool list reflects the
@@ -788,7 +793,7 @@ export async function setupHandlers(server: Server): Promise<void> {
         ? registryManager.getAllToolDefinitions(sessionInstanceUrl, mode)
         : registryManager.getAllToolDefinitions(sessionInstanceUrl, mode, scopes);
     // A sessionless client (stdio) is listed with the settings of the instance its calls run
-    // against, which follows switch_instance.
+    // against, which follows the account the chat switched to.
     const callerInstanceUrl =
       sessionInstanceUrl ??
       activeInstanceUrl(isCatalogOAuth(), isCatalogOAuth() ? getCatalogUrl() : undefined);
@@ -899,13 +904,26 @@ export async function setupHandlers(server: Server): Promise<void> {
     return {
       tools: modifiedTools,
     };
+  };
+  // The chat lists the tools of the account it works with. An account it switched to that
+  // cannot be used now lists the connection's own; every call is refused until it switches.
+  server.setRequestHandler(ListToolsRequestSchema, async (_request, extra) => {
+    try {
+      return await withChatAccount(extra?.sessionId, () => listTools(extra));
+    } catch (error) {
+      if (!(error instanceof AccountUnavailableError)) throw error;
+      return listTools(extra);
+    }
   });
 
   // Call tool handler — all tool execution is wrapped with a handler-level timeout
   // using Promise.race() so the client gets a response early on hang. The underlying
   // work may continue running after the timeout fires, but late results are guarded
   // by the timedOut flag to prevent overwriting the timeout error response.
-  server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
+  const callTool = async (
+    request: CallToolRequest,
+    extra: { sessionId?: string } | undefined,
+  ): Promise<CallToolResult> => {
     // Capture instance URL early — used for both handlerWork and timeout reporting.
     // Must be resolved before Promise.race so timeout branch doesn't re-derive a
     // potentially different URL after a concurrent instance change.
@@ -1203,5 +1221,16 @@ export async function setupHandlers(server: Server): Promise<void> {
     } finally {
       clearTimeout(handlerTimeoutId);
     }
-  });
+  };
+  // A call runs as the account its chat works with; one that cannot be used refuses it.
+  server.setRequestHandler(CallToolRequestSchema, (request, extra) =>
+    runWithMcpServer(server, async () => {
+      try {
+        return await withChatAccount(extra?.sessionId, () => callTool(request, extra));
+      } catch (error) {
+        if (!(error instanceof AccountUnavailableError)) throw error;
+        return errorToolResult({ error: error.message });
+      }
+    }),
+  );
 }

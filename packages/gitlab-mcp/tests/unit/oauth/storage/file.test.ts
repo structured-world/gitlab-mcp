@@ -377,6 +377,25 @@ describe('FileStorageBackend', () => {
       expect(await storage.deleteSession(session.id)).toBe(true);
     });
 
+    // The accounts linked to the session go with it; a deletion that could not be written
+    // brings them back too, so the retried revocation still finds and ends their grants.
+    it('keeps the linked accounts of a session whose deletion cannot be written', async () => {
+      const { session } = await seeded();
+      await storage.createSession(
+        createTestSession({ id: 'linked', mcpAccessToken: '', linkedToSessionId: session.id }),
+      );
+      const open = failNextWrite();
+      try {
+        await expect(storage.deleteSession(session.id)).rejects.toThrow('EACCES');
+      } finally {
+        open.mockRestore();
+      }
+
+      expect((await storage.getLinkedSessions(session.id)).map((s) => s.id)).toEqual(['linked']);
+      expect(await storage.deleteSession(session.id)).toBe(true);
+      expect(await storage.getSession('linked')).toBeUndefined();
+    });
+
     // Tokens of an update that could not be written were never handed out: the session
     // keeps its previous tokens, and no later write may persist the failed ones.
     it('keeps the previous tokens when an update cannot be written', async () => {

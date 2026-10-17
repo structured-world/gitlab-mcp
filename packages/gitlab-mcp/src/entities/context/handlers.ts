@@ -23,6 +23,15 @@ import {
   WhoamiResult,
 } from './types';
 import { executeWhoami } from './whoami';
+import {
+  AccountChangeResult,
+  AccountLinkResult,
+  handleLinkAccount,
+  handleListAccounts,
+  handleSwitchAccount,
+  handleUnlinkAccount,
+} from './accounts';
+import type { ChatAccount } from '../../accounts/chat-accounts';
 
 /**
  * Handle show action - return current context
@@ -77,7 +86,15 @@ export async function handleWhoami(_input: WhoamiInput): Promise<WhoamiResult> {
 export async function handleManageContext(
   input: ManageContextInput,
 ): Promise<
-  SessionContext | PresetInfo[] | SwitchResult | SetScopeResult | ResetResult | WhoamiResult
+  | SessionContext
+  | PresetInfo[]
+  | SwitchResult
+  | SetScopeResult
+  | ResetResult
+  | WhoamiResult
+  | ChatAccount[]
+  | AccountChangeResult
+  | AccountLinkResult
 > {
   switch (input.action) {
     case 'show':
@@ -94,6 +111,14 @@ export async function handleManageContext(
       return handleResetContext(input);
     case 'whoami':
       return handleWhoami(input);
+    case 'list_accounts':
+      return handleListAccounts();
+    case 'switch_account':
+      return handleSwitchAccount(input);
+    case 'link_account':
+      return handleLinkAccount(input);
+    case 'unlink_account':
+      return handleUnlinkAccount(input);
     /* istanbul ignore next -- unreachable with Zod discriminatedUnion */
     default:
       throw new Error(`Unknown action: ${(input as { action: string }).action}`);

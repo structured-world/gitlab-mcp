@@ -32,16 +32,7 @@ import {
 } from './scope-search';
 
 /**
- * Context tools registry - 1 CQRS tool with 7 actions
- *
- * manage_context: Runtime context management
- *   - show: Display current context (Query)
- *   - list_presets: List available presets (Query)
- *   - whoami: Token introspection and capability discovery (Query)
- *   - switch_preset: Change active preset (Command)
- *   - set_scope: Set namespace scope with auto-detection (Command)
- *   - clear_scope: Work everywhere in this session (Command)
- *   - reset: Restore initial context (Command)
+ * Context tools registry; manage_context's actions are listed in ./schema.
  */
 export const contextToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinition>([
   [
@@ -49,7 +40,7 @@ export const contextToolRegistry: ToolRegistry = new Map<string, EnhancedToolDef
     {
       name: 'manage_context',
       description:
-        'View and manage runtime session configuration. Actions: show (current host/preset/scope/mode), list_presets (available tool configurations), whoami (token introspection with live refresh - detects permission changes and updates available tools), switch_preset (change active preset), set_scope (restrict to namespace), clear_scope (work everywhere in this session, keeping its preset and read-only mode), reset (restore initial state). Use whoami to diagnose access issues and verify token permissions.',
+        'View and manage runtime session configuration. Actions: show (current host/preset/scope/mode), list_presets (available tool configurations), whoami (token introspection with live refresh - detects permission changes and updates available tools), switch_preset (change active preset), set_scope (restrict to namespace), clear_scope (work everywhere in this session, keeping its preset and read-only mode), reset (restore initial state), list_accounts (GitLab accounts of this connection, on one or several instances), switch_account (work with another listed account in this chat), link_account (sign in with another account, e.g. a personal GitLab.com account next to a company instance, and link it), unlink_account (remove a linked account). Use whoami to diagnose access issues and verify token permissions.',
       inputSchema: z.toJSONSchema(ManageContextSchema),
       outputSchema: ToolSchema.shape.outputSchema.parse({
         ...z.toJSONSchema(ContextOutputSchema, { target: 'draft-7' }),

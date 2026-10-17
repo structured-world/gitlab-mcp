@@ -41,17 +41,22 @@ model OAuthSession {
   scopes               String[] @default([])
   // RFC 8707 resource the session's tokens are issued for; null for older sessions.
   resource             String?
+  // Set on a GitLab account linked to another session; removed with that session.
+  linkedToSessionId    String?  @map("linked_to_session_id")
   createdAt            BigInt   @map("created_at")
   updatedAt            BigInt   @map("updated_at")
 
   // Relations
   authorizationCodes   AuthorizationCode[]
   mcpSessionMappings   McpSessionMapping[]
+  linkedTo             OAuthSession?  @relation("LinkedAccounts", fields: [linkedToSessionId], references: [id], onDelete: Cascade)
+  linkedAccounts       OAuthSession[] @relation("LinkedAccounts")
 
   @@map("oauth_sessions")
   @@index([mcpAccessToken], map: "idx_oauth_sessions_mcp_access_token")
   @@index([mcpRefreshToken], map: "idx_oauth_sessions_mcp_refresh_token")
   @@index([gitlabUserId], map: "idx_oauth_sessions_gitlab_user_id")
+  @@index([linkedToSessionId], map: "idx_oauth_sessions_linked_to_session_id")
 }
 
 // State for tracking in-progress Device Flow authorization
@@ -105,6 +110,8 @@ model AuthCodeFlowState {
   resource              String?
   // Tokens GitLab issued for the callback's code, kept until the account is set up.
   gitlabTokens          Json?   @map("gitlab_tokens")
+  // Set when the flow links another account to a session (session, stage, instance).
+  link                  Json?
 
   @@map("oauth_auth_code_flows")
   @@index([expiresAt], map: "idx_oauth_auth_code_flows_expires_at")

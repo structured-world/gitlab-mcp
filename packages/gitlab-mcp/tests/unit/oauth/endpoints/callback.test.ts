@@ -35,6 +35,11 @@ jest.mock('../../../../src/oauth/instance-app', () => ({
   oauthAppFor: jest.fn(),
 }));
 
+jest.mock('../../../../src/accounts/link', () => ({
+  completeAccountLink: jest.fn(),
+  failAccountLink: jest.fn(),
+}));
+
 jest.mock('../../../../src/oauth/token-utils', () => ({
   generateSessionId: jest.fn().mockReturnValue('session-id-123'),
   generateAuthorizationCode: jest.fn().mockReturnValue('auth-code-456'),
@@ -67,6 +72,7 @@ const mockExchangeGitLabAuthCode = exchangeGitLabAuthCode as jest.MockedFunction
 >;
 const mockGetGitLabUser = getGitLabUser as jest.MockedFunction<typeof getGitLabUser>;
 import { oauthAppFor } from '../../../../src/oauth/instance-app';
+import { completeAccountLink, failAccountLink } from '../../../../src/accounts/link';
 const mockOauthAppFor = oauthAppFor as jest.MockedFunction<typeof oauthAppFor>;
 const selectedApp = {
   baseUrl: 'https://git.corp.example/gitlab',
@@ -148,6 +154,51 @@ describe('OAuth Callback Handler', () => {
         error: 'server_error',
         error_description: 'OAuth not configured',
       });
+    });
+  });
+
+  // A flow that links another account to a session has no client to redirect to: it ends
+  // on a page of its own, and its steps are completed by the account linking module.
+  describe('account linking flows', () => {
+    const linkFlow = {
+      ...mockAuthCodeFlow,
+      clientRedirectUri: '',
+      clientState: '',
+      link: { sessionId: 'primary', stage: 'connect' as const, instance: 'https://gitlab.com' },
+    };
+
+    it('hands a link step to the account linking module', async () => {
+      mockRequest.query = { code: 'gitlab-code', state: 'link-state' };
+      withFlow(linkFlow);
+
+      await callbackHandler(mockRequest as Request, mockResponse as Response);
+
+      expect(completeAccountLink).toHaveBeenCalledWith(
+        mockResponse,
+        'link-state',
+        linkFlow,
+        'gitlab-code',
+        mockOAuthConfig,
+      );
+      expect(mockExchangeGitLabAuthCode).not.toHaveBeenCalled();
+      expect(redirectMock).not.toHaveBeenCalled();
+    });
+
+    it('shows a page instead of redirecting when GitLab refuses a link', async () => {
+      mockRequest.query = {
+        error: 'access_denied',
+        error_description: 'User denied access',
+        state: 'link-state',
+      };
+      mockSessionStore.consumeAuthCodeFlow.mockResolvedValue(linkFlow);
+
+      await callbackHandler(mockRequest as Request, mockResponse as Response);
+
+      expect(failAccountLink).toHaveBeenCalledWith(
+        mockResponse,
+        'GitLab did not authorize the account: User denied access',
+      );
+      expect(redirectMock).not.toHaveBeenCalled();
     });
   });
 

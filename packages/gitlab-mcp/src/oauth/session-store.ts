@@ -147,6 +147,20 @@ export class SessionStore {
   }
 
   /**
+   * Whether the backend keeps accounts linked to a session; a database package older than
+   * this server has no such method (nor the column it needs).
+   */
+  linksAccounts(): boolean {
+    const backend = this.backend as Partial<SessionStorageBackend>;
+    return typeof backend.getLinkedSessions === 'function';
+  }
+
+  /** The GitLab accounts linked to a session, oldest first. */
+  async getLinkedSessions(sessionId: string): Promise<OAuthSession[]> {
+    return this.backend.getLinkedSessions(sessionId);
+  }
+
+  /**
    * Get session count
    */
   async getSessionCount(): Promise<number> {

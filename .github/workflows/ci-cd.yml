@@ -103,6 +103,14 @@ jobs:
           --out "$RUNNER_TEMP/codex-plugin"
         working-directory: packages/gitlab-mcp
 
+      # Installs that package into a real Codex CLI and runs install, disable, enable,
+      # upgrade, reinstall and uninstall against the installed copy.
+      - name: Codex plugin lifecycle
+        run: |
+          npm install --prefix "$RUNNER_TEMP/codex-cli" --no-save --no-package-lock @openai/codex@0.163.0
+          node scripts/codex-plugin-lifecycle.mjs --codex "$RUNNER_TEMP/codex-cli/node_modules/.bin/codex" "$RUNNER_TEMP/codex-plugin"
+        working-directory: packages/gitlab-mcp
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v7
         with:

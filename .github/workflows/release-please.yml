@@ -436,7 +436,7 @@ jobs:
           # (core npm page, GitHub repo landing, db npm page) -- stage every one so
           # the public counts/version never drift between them. Missing the root and
           # db READMEs here previously left them stuck a release behind the core page.
-          git add package.json README.md server.json ../../README.md ../../package.json ../gitlab-mcp-db/README.md
+          git add package.json README.md server.json ../../README.md ../../package.json ../gitlab-mcp-db/README.md ../../.agents ../../plugins
           if git diff --cached --quiet; then
             echo "No metadata drift; nothing to commit."
           else

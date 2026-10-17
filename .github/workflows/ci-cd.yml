@@ -103,6 +103,18 @@ jobs:
           --out "$RUNNER_TEMP/codex-plugin"
         working-directory: packages/gitlab-mcp
 
+      # The repository marketplace (.agents/plugins and plugins/ at the repo root) is
+      # generated; a listing, asset or skill change must ship with its rebuild.
+      - name: Check the repository plugin marketplace
+        run: |
+          ./scripts/build-plugin-marketplace.sh
+          if [ -n "$(git status --porcelain -- ../../.agents ../../plugins)" ]; then
+            git status --porcelain -- ../../.agents ../../plugins
+            echo "The repository plugin marketplace is stale; run scripts/build-plugin-marketplace.sh and commit it."
+            exit 1
+          fi
+        working-directory: packages/gitlab-mcp
+
       # Installs that package into a real Codex CLI and runs install, disable, enable,
       # upgrade, reinstall and uninstall against the installed copy.
       - name: Codex plugin lifecycle
@@ -188,7 +200,7 @@ jobs:
         run: |
           git config user.name "structured-world-releaser[bot]"
           git config user.email "structured-world-releaser[bot]@users.noreply.github.com"
-          git add README.md server.json package.json
+          git add README.md server.json package.json ../../.agents ../../plugins
           if git diff --cached --quiet; then
             echo "No metadata drift; nothing to push."
             exit 0

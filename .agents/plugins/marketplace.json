@@ -1,0 +1,20 @@
+{
+  "name": "gitlab-mcp-dev",
+  "interface": {
+    "displayName": "GitLab MCP (local development server)"
+  },
+  "plugins": [
+    {
+      "name": "gitlab-mcp",
+      "source": {
+        "source": "local",
+        "path": "./plugins/gitlab-mcp"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}

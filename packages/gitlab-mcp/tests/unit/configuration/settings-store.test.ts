@@ -259,6 +259,8 @@ describe('LocalSettingsFile', () => {
     expect(generations()).toEqual(['1.json']);
   });
 
+  // Every one of the store's save attempts writes and syncs a real temporary file, so the
+  // run takes as long as that many fsync calls on the machine's disk.
   it('gives up when other processes keep saving first', async () => {
     jest.spyOn(fs.promises, 'link').mockRejectedValue(errno('EEXIST'));
 
@@ -266,7 +268,7 @@ describe('LocalSettingsFile', () => {
       `Settings are being changed by other processes: ${dir}`,
     );
     expect(fs.readdirSync(dir)).toEqual([]);
-  });
+  }, 120_000);
 
   it('reports a write it cannot save and leaves no temporary file', async () => {
     jest.spyOn(fs.promises, 'link').mockRejectedValueOnce(errno('EACCES'));

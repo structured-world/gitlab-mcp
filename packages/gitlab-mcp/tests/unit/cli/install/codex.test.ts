@@ -468,6 +468,42 @@ describe('installCodex', () => {
     expect(actions()).toEqual(['list --json', 'add gitlab', 'get gitlab']);
   });
 
+  it('says that the new entry hides the server of an installed GitLab MCP plugin', () => {
+    // Codex runs a global entry in place of a plugin server of the same name, so a disabled
+    // plugin would stay silently unused after it is enabled again.
+    writeFileSync(configFile(), '[plugins."gitlab-mcp@team"]\nenabled = false\n');
+
+    const result = installCodex(STDIO, false);
+
+    expect(result.success).toBe(true);
+    expect(result.notes).toEqual([
+      'The gitlab-mcp@team plugin is installed and its "gitlab" server stays unused while ' +
+        'this entry exists; keep one (codex plugin remove gitlab-mcp@team, or codex mcp remove gitlab).',
+    ]);
+  });
+
+  it('says that a kept existing entry hides the plugin server', () => {
+    // The existing global entry already shadows the enabled plugin, which mcp list does not show.
+    writeFileSync(
+      configFile(),
+      `${globalTable('gitlab')}[plugins."gitlab-mcp@team"]\nenabled = true\n`,
+    );
+    fake.servers = [{ name: 'gitlab', transport: { type: 'stdio', command: 'old', args: [] } }];
+
+    const result = installCodex(STDIO, false);
+
+    expect(result).toMatchObject({ success: false, wasAlreadyConfigured: true });
+    expect(result.notes).toEqual([
+      'The gitlab-mcp@team plugin is installed and its "gitlab" server stays unused while ' +
+        'this entry exists; keep one (codex plugin remove gitlab-mcp@team, or codex mcp remove gitlab).',
+    ]);
+  });
+
+  it('notes no plugin when config.toml lists only other plugins', () => {
+    writeFileSync(configFile(), '[plugins."github@openai"]\nenabled = true\n');
+    expect(installCodex(STDIO, false).notes).toEqual([]);
+  });
+
   it('restores the replaced entry when Codex keeps the new one disabled', () => {
     // A managed allowlist can enable the old command and disable the new one: the forced
     // replace must not leave a disabled entry where a working one was.

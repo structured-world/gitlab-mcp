@@ -11,9 +11,13 @@ import { parse as parseToml } from 'smol-toml';
 import { BackupResult, InstallResult } from './types';
 import { isRemoteServerConfig, McpServerConfig } from '../init/types';
 import { createBackup, restoreBackup } from './backup';
+import { MCP_SERVER_NAME, PLUGIN_NAME } from '../plugin/listing';
 
-/** Name of the entry this installer manages; other GitLab entries are only reported. */
-export const CODEX_SERVER_NAME = 'gitlab';
+/**
+ * Name of the entry this installer manages; other GitLab entries are only reported.
+ * It is the plugin's server name, so Codex runs one of the two, never both.
+ */
+export const CODEX_SERVER_NAME = MCP_SERVER_NAME;
 const CODEX_COMMAND = 'codex';
 const PACKAGE_PATTERN = /@structured-world\/gitlab-mcp(?:@[^\s/]*)?$/;
 const CHECKOUT_PATTERN =
@@ -155,16 +159,44 @@ function removeExisting(configPath: string, backup: BackupResult | undefined): s
   return undefined;
 }
 
+type CodexConfig = Record<string, unknown>;
+
+function readCodexConfig(configPath: string): CodexConfig {
+  return existsSync(configPath) ? parseToml(readFileSync(configPath, 'utf8')) : {};
+}
+
+function tableKeys(config: CodexConfig, table: string): string[] {
+  const value = config[table];
+  return typeof value === 'object' && value !== null ? Object.keys(value) : [];
+}
+
+function definesEntry(config: CodexConfig): boolean {
+  return tableKeys(config, 'mcp_servers').includes(CODEX_SERVER_NAME);
+}
+
 /**
  * True when the user's own config.toml defines the managed entry. `mcp list`
  * also reports servers from plugins and project configuration, which
  * `mcp remove` cannot edit, and `mcp remove` exits 0 for a missing name.
  */
 export function hasGlobalEntry(configPath: string): boolean {
-  if (!existsSync(configPath)) return false;
-  const servers = parseToml(readFileSync(configPath, 'utf8')).mcp_servers;
-  return (
-    typeof servers === 'object' && servers !== null && Object.hasOwn(servers, CODEX_SERVER_NAME)
+  return definesEntry(readCodexConfig(configPath));
+}
+
+/**
+ * Installed GitLab MCP plugins, as `PLUGIN@MARKETPLACE`, enabled or not. `mcp list`
+ * omits a disabled plugin's server, and a global entry of the same name hides an
+ * enabled one, so only config.toml shows them all.
+ */
+function installedPlugins(config: CodexConfig): string[] {
+  return tableKeys(config, 'plugins').filter((id) => id.startsWith(`${PLUGIN_NAME}@`));
+}
+
+function shadowNotes(plugins: string[]): string[] {
+  return plugins.map(
+    (id) =>
+      `The ${id} plugin is installed and its "${CODEX_SERVER_NAME}" server stays unused while ` +
+      `this entry exists; keep one (codex plugin remove ${id}, or codex mcp remove ${CODEX_SERVER_NAME}).`,
   );
 }
 
@@ -203,8 +235,11 @@ export function installCodex(config: McpServerConfig, force: boolean): InstallRe
 
   const notes = duplicateNotes(servers, config);
   let existing: boolean;
+  let plugins: string[];
   try {
-    existing = hasGlobalEntry(configPath);
+    const codexConfig = readCodexConfig(configPath);
+    existing = definesEntry(codexConfig);
+    plugins = installedPlugins(codexConfig);
   } catch (error) {
     const reason = (error as Error).message;
     return { client, success: false, error: `Cannot read ${configPath}: ${reason}`, notes };
@@ -228,7 +263,7 @@ export function installCodex(config: McpServerConfig, force: boolean): InstallRe
       error: 'gitlab-mcp is already configured. Use --force to overwrite.',
       wasAlreadyConfigured: true,
       configPath,
-      notes,
+      notes: [...notes, ...shadowNotes(plugins)],
     };
   }
 
@@ -261,6 +296,7 @@ export function installCodex(config: McpServerConfig, force: boolean): InstallRe
   if (added.status !== 0 && isRemoteServerConfig(config)) {
     notes.push(`Sign-in did not complete; run: codex mcp login ${CODEX_SERVER_NAME}`);
   }
+  notes.push(...shadowNotes(plugins));
 
   return {
     client,

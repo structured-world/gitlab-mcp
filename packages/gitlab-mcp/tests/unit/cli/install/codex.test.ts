@@ -468,6 +468,30 @@ describe('installCodex', () => {
     expect(actions()).toEqual(['list --json', 'add gitlab', 'get gitlab']);
   });
 
+  it('restores the replaced entry when Codex keeps the new one disabled', () => {
+    // A managed allowlist can enable the old command and disable the new one: the forced
+    // replace must not leave a disabled entry where a working one was.
+    const original = `model = "o3"\n${globalTable('gitlab')}`;
+    writeFileSync(configFile(), original);
+    fake.servers = [{ name: 'gitlab', transport: { type: 'stdio', command: 'old', args: [] } }];
+    fake.getOutput = JSON.stringify({
+      name: 'gitlab',
+      enabled: false,
+      disabled_reason: 'not allowed by requirements',
+      transport: { type: 'stdio', ...STDIO },
+    });
+
+    const result = installCodex(STDIO, true);
+
+    expect(result).toMatchObject({
+      success: false,
+      error:
+        'Codex saved the gitlab entry but keeps it disabled: not allowed by requirements; ' +
+        'the previous Codex configuration was restored',
+    });
+    expect(readConfig()).toBe(original);
+  });
+
   it('names the missing executable when Codex is not installed', () => {
     mockSpawn.mockImplementation(
       () =>

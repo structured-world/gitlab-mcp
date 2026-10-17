@@ -248,11 +248,13 @@ export function installCodex(config: McpServerConfig, force: boolean): InstallRe
     return { client, success: false, error, backupPath, configPath, notes };
   }
 
-  // A project, system or managed config.toml can disable the server; the user's
-  // own entry is correct, so it stays and the reason is reported.
+  // A project, system or managed config.toml can disable the server. A new entry is
+  // correct and stays, with the reason reported; a replaced entry is restored, since
+  // a managed allowlist can enable the old command while disabling the new one.
   if (applied.enabled === false) {
     const reason = applied.disabled_reason ?? 'no reason given';
-    const error = `Codex saved the gitlab entry but keeps it disabled: ${reason}`;
+    const restored = existing ? rollBack(existing, backupPath, configPath) : '';
+    const error = `Codex saved the gitlab entry but keeps it disabled: ${reason}${restored}`;
     return { client, success: false, error, backupPath, configPath, notes };
   }
 

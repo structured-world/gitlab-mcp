@@ -219,6 +219,7 @@ describe('isNonPublicHost', () => {
     '239.255.255.250',
     '240.0.0.1',
     '255.255.255.255',
+    '192.88.99.2',
     '2001:db8::1',
     'ff02::1',
   ])('treats the reserved address %s as non-public', (host) => {
@@ -245,6 +246,14 @@ describe('isNonPublicHost', () => {
     // IANA IPv6 Special-Purpose Address Registry: not globally reachable.
     expect(isNonPublicHost(host)).toBe(true);
   });
+
+  it.each(['192.0.0.9', '192.0.0.10', '::ffff:192.0.0.9'])(
+    'keeps the globally reachable IPv4 anycast address %s public',
+    (host) => {
+      // IANA IPv4 Special-Purpose Address Registry: PCP and TURN anycast are globally reachable.
+      expect(isNonPublicHost(host)).toBe(false);
+    },
+  );
 
   it.each([
     '64:ff9b::808:808',

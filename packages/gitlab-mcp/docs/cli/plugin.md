@@ -27,7 +27,7 @@ npx @structured-world/gitlab-mcp plugin build --endpoint <url> [options]
 | `--privacy-url <url>` | Privacy policy of the endpoint operator. Required with `--public`   |
 | `--terms-url <url>`   | Terms of service of the endpoint operator. Required with `--public` |
 
-The endpoint must use HTTPS. Plain HTTP is accepted only on loopback (`localhost`, `127.0.0.1`, `::1`), for a server on the same machine. With `--public` the host must also be publicly reachable: not a private, reserved or special-purpose address, and not a special-use domain such as `.test`, `.invalid`, `.local` or `.internal`.
+The endpoint must use HTTPS. Plain HTTP is accepted only on loopback (`localhost`, `127.0.0.1`, `::1`), for a server on the same machine. With `--public` the host must also be publicly reachable: not a private or reserved address, nor a special-purpose address the IANA registries mark as not globally reachable, and not a special-use domain such as `.test`, `.invalid`, `.local` or `.internal`.
 
 ## Output
 

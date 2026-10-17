@@ -72,8 +72,9 @@ const NON_PUBLIC_IPV4: ReadonlyArray<readonly [string, number]> = [
   ['127.0.0.0', 8], // loopback, RFC 1122 3.2.1.3
   ['169.254.0.0', 16], // link-local, RFC 3927
   ['172.16.0.0', 12], // private, RFC 1918
-  ['192.0.0.0', 24], // IETF protocol assignments, RFC 6890 2.2.2
+  ['192.0.0.0', 24], // IETF protocol assignments, RFC 6890 2.2.2 (exceptions below)
   ['192.0.2.0', 24], // documentation TEST-NET-1, RFC 5737
+  ['192.88.99.2', 32], // 6a44 relay anycast, RFC 6751
   ['192.168.0.0', 16], // private, RFC 1918
   ['198.18.0.0', 15], // benchmarking, RFC 2544
   ['198.51.100.0', 24], // documentation TEST-NET-2, RFC 5737
@@ -82,16 +83,25 @@ const NON_PUBLIC_IPV4: ReadonlyArray<readonly [string, number]> = [
   ['240.0.0.0', 4], // reserved and limited broadcast
 ];
 
+/** Addresses inside 192.0.0.0/24 the registry marks as globally reachable. */
+const GLOBAL_IPV4_EXCEPTIONS: ReadonlyArray<readonly [string, number]> = [
+  ['192.0.0.9', 32], // Port Control Protocol anycast, RFC 7723
+  ['192.0.0.10', 32], // TURN anycast, RFC 8155
+];
+
 function ipv4ToNumber(address: string): number {
   return address.split('.').reduce((value, part) => value * 256 + Number(part), 0);
 }
 
+function inIpv4Block(value: number, [base, prefix]: readonly [string, number]): boolean {
+  const size = 2 ** (32 - prefix);
+  return Math.floor(value / size) === Math.floor(ipv4ToNumber(base) / size);
+}
+
 function isNonPublicIpv4(address: string): boolean {
   const value = ipv4ToNumber(address);
-  return NON_PUBLIC_IPV4.some(([base, prefix]) => {
-    const size = 2 ** (32 - prefix);
-    return Math.floor(value / size) === Math.floor(ipv4ToNumber(base) / size);
-  });
+  if (GLOBAL_IPV4_EXCEPTIONS.some((block) => inIpv4Block(value, block))) return false;
+  return NON_PUBLIC_IPV4.some((block) => inIpv4Block(value, block));
 }
 
 /**

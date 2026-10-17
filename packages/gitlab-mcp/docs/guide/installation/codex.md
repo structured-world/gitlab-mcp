@@ -29,7 +29,17 @@ codex plugin marketplace add ./gitlab-mcp-plugin
 
 In Codex or the ChatGPT desktop app, open the Plugins Directory, choose the **GitLab by Structured World** marketplace and install the plugin. Codex opens GitLab in the browser to sign in. Then open the plugin's settings to choose a preset, read-only mode and the projects a chat may use; see [Account settings](/configuration/settings).
 
-To update, rebuild into the same directory with the new package version and restart the app. Removing the plugin leaves your account settings on the server; they apply again when you reinstall.
+To update, rebuild into the same directory with the new package version and install the plugin again, from the Plugins Directory or with `codex plugin add gitlab-mcp@gitlab-mcp`; Codex replaces the cached copy. Disabling the plugin stops its server and keeps it installed. Removing it (`codex plugin remove gitlab-mcp@gitlab-mcp`) deletes the cached copy and leaves the rest of `config.toml`, Claude configuration and your account settings on the server as they are; the settings apply again when you reinstall.
+
+### Moving from a local server to the plugin
+
+The plugin's server is named `gitlab-sw`, like the entry `gitlab-mcp install --codex` writes. While both exist, Codex runs the `gitlab-sw` entry from `config.toml` and the plugin's server stays unused, so remove the entry after installing the plugin:
+
+```bash
+codex mcp remove gitlab-sw
+```
+
+An entry you added by hand under another name, such as `gitlab`, runs next to the plugin and Codex lists the tools twice; remove it the same way, by its name.
 
 ## Local server
 
@@ -48,11 +58,12 @@ npx @structured-world/gitlab-mcp install --codex --url https://mcp.example.com/m
 
 The installer:
 
-- writes the `gitlab` entry and refuses to replace an existing one without `--force`;
-- with `--force`, backs up `config.toml`, replaces only the `gitlab` entry and restores the backup if Codex fails to save the new one or keeps it disabled; a new entry Codex saved wrongly is removed;
-- stops when a plugin or project configuration already provides a server named `gitlab`, which only that plugin or project can change;
+- writes the `gitlab-sw` entry and refuses to replace an existing one without `--force`; the name is distinct from the generic `gitlab` other GitLab servers use, because Codex runs only one server of a name;
+- with `--force`, backs up `config.toml`, replaces only the `gitlab-sw` entry and restores the backup if Codex fails to save the new one or keeps it disabled; a new entry Codex saved wrongly is removed;
+- stops when a plugin or project configuration already provides a server named `gitlab-sw`, which only that plugin or project can change;
 - reports GitLab MCP registered under other names, including by an installed plugin, because Codex would list its tools twice; it leaves them in place, remove the one you do not use with `codex mcp remove <name>` or by disabling the plugin;
-- reads back what Codex saved, reports a new entry another configuration keeps disabled and leaves it in place, and reports a sign-in that did not finish (`codex mcp login gitlab`).
+- reports an installed GitLab MCP plugin, enabled or disabled, whose server the `gitlab-sw` entry hides;
+- reads back what Codex saved, reports a new entry another configuration keeps disabled and leaves it in place, and reports a sign-in that did not finish (`codex mcp login gitlab-sw`).
 
 Preview the entry without writing it:
 
@@ -61,11 +72,11 @@ npx @structured-world/gitlab-mcp install --codex --show
 ```
 
 ```toml
-[mcp_servers.gitlab]
+[mcp_servers.gitlab-sw]
 command = "npx"
 args = ["-y", "@structured-world/gitlab-mcp"]
 
-[mcp_servers.gitlab.env]
+[mcp_servers.gitlab-sw.env]
 GITLAB_API_URL = "https://gitlab.example.com"
 GITLAB_TOKEN = "glpat-..."
 ```

@@ -1,0 +1,56 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "gitlab-mcp",
+  "version": "11.0.0",
+  "description": "Advanced GitLab MCP server",
+  "author": {
+    "name": "Dmitry Prudnikov",
+    "email": "mail@polaz.com",
+    "url": "https://gitlab-mcp.sw.foundation"
+  },
+  "homepage": "https://gitlab-mcp.sw.foundation",
+  "repository": "https://github.com/structured-world/gitlab-mcp",
+  "license": "Apache-2.0",
+  "keywords": [
+    "gitlab",
+    "merge-requests",
+    "code-review",
+    "ci-cd",
+    "pipelines",
+    "issues",
+    "devops"
+  ],
+  "extensions": {
+    "com.openai": {
+      "onboardingSkill": "./skills/gitlab-setup/SKILL.md",
+      "interface": {
+        "displayName": "GitLab by Structured World",
+        "shortDescription": "GitLab projects, MRs and CI",
+        "longDescription": "Work with GitLab from chat: browse projects and repositories, review and manage merge requests, triage issues, epics and other work items, inspect and run CI/CD pipelines, and manage releases, wiki pages, labels and milestones. Every call runs with the permissions of the GitLab account the server connects with: your own when the server signs you in with GitLab, or the token a local server is started with. The account settings page limits the tools, projects and groups a chat can use or keeps it read-only. Works with GitLab.com and self-managed GitLab 16.0 or later, as the endpoint operator configures. Features GitLab does not offer on an instance or tier stay unavailable there.",
+        "developerName": "Structured World",
+        "category": "Developer Tools",
+        "capabilities": [
+          "Interactive",
+          "Read",
+          "Write"
+        ],
+        "defaultPrompt": [
+          "Show my open merge requests and which ones wait for my review",
+          "Why did the latest pipeline on main fail?",
+          "Summarize the issues assigned to me in this milestone"
+        ],
+        "brandColor": "#6B4FBB",
+        "brandColorDark": "#B197FC",
+        "websiteURL": "https://gitlab-mcp.sw.foundation",
+        "supportURL": "https://github.com/structured-world/gitlab-mcp/issues",
+        "composerIcon": "./assets/composer-icon.png",
+        "composerIconDark": "./assets/composer-icon-dark.png",
+        "logo": "./assets/logo.png",
+        "screenshots": [
+          "./assets/screenshot-1.png",
+          "./assets/screenshot-2.png"
+        ]
+      }
+    }
+  }
+}

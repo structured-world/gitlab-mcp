@@ -9,8 +9,12 @@
 /** Plugin identifier: hosts use it as the plugin ID and the component namespace. */
 export const PLUGIN_NAME = 'gitlab-mcp';
 
-/** Key of the single MCP server in mcp.json. */
-export const MCP_SERVER_NAME = 'gitlab';
+/**
+ * Key of the single MCP server in mcp.json. Codex names the server and its tools by it,
+ * and a server of the same name hides another, so it is not the generic "gitlab" other
+ * GitLab servers use.
+ */
+export const MCP_SERVER_NAME = 'gitlab-sw';
 
 /** Skill opened when the plugin is first set up. */
 export const ONBOARDING_SKILL = 'gitlab-setup';
@@ -29,15 +33,28 @@ export const PLUGIN_KEYWORDS = [
 /** Package-relative path of the logo, shared with the MCPB bundle. */
 export const LOGO_SOURCE = 'plugin/assets/logo.png';
 
+/**
+ * Listing images other than the logo, as package-relative paths; each is packaged under
+ * assets/ with its file name. The logo is a tile with its own background and serves both
+ * themes; the composer icon is a bare glyph and needs one per theme. The PNG files are
+ * rendered by scripts/plugin-assets.mjs.
+ */
+export const LISTING_ASSETS = {
+  composerIcon: 'plugin/assets/composer-icon.png',
+  composerIconDark: 'plugin/assets/composer-icon-dark.png',
+  screenshots: ['plugin/assets/screenshot-1.png', 'plugin/assets/screenshot-2.png'],
+} as const;
+
 export const LISTING = {
   displayName: 'GitLab by Structured World',
   shortDescription: 'GitLab projects, MRs and CI',
   longDescription:
     'Work with GitLab from chat: browse projects and repositories, review and manage merge requests, ' +
     'triage issues, epics and other work items, inspect and run CI/CD pipelines, and manage releases, ' +
-    'wiki pages, labels and milestones. Sign in with your GitLab account; every call runs with your ' +
-    'own GitLab permissions, and the account settings page limits the tools, projects and groups a ' +
-    'chat can use or keeps it read-only. Works with GitLab.com and self-managed GitLab 16.0 or later, ' +
+    'wiki pages, labels and milestones. Every call runs with the permissions of the GitLab account ' +
+    'the server connects with: your own when the server signs you in with GitLab, or the token a ' +
+    'local server is started with. The account settings page limits the tools, projects and groups ' +
+    'a chat can use or keeps it read-only. Works with GitLab.com and self-managed GitLab 16.0 or later, ' +
     'as the endpoint operator configures. Features GitLab does not offer on an instance or tier stay ' +
     'unavailable there.',
   developerName: 'Structured World',
@@ -50,4 +67,6 @@ export const LISTING = {
   ],
   // 6.1:1 against white; the directory requires at least 2:1.
   brandColor: '#6B4FBB',
+  // 6.7:1 against the dark theme's #212121; the directory requires at least 2:1.
+  brandColorDark: '#B197FC',
 } as const;

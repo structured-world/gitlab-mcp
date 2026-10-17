@@ -11,9 +11,13 @@ import { parse as parseToml } from 'smol-toml';
 import { BackupResult, InstallResult } from './types';
 import { isRemoteServerConfig, McpServerConfig } from '../init/types';
 import { createBackup, restoreBackup } from './backup';
+import { MCP_SERVER_NAME, PLUGIN_NAME } from '../plugin/listing';
 
-/** Name of the entry this installer manages; other GitLab entries are only reported. */
-export const CODEX_SERVER_NAME = 'gitlab';
+/**
+ * Name of the entry this installer manages; other GitLab entries are only reported.
+ * It is the plugin's server name, so Codex runs one of the two, never both.
+ */
+export const CODEX_SERVER_NAME = MCP_SERVER_NAME;
 const CODEX_COMMAND = 'codex';
 const PACKAGE_PATTERN = /@structured-world\/gitlab-mcp(?:@[^\s/]*)?$/;
 const CHECKOUT_PATTERN =
@@ -150,7 +154,7 @@ function removeExisting(configPath: string, backup: BackupResult | undefined): s
   }
   const removed = runCodex(['mcp', 'remove', CODEX_SERVER_NAME]);
   if (removed.status !== 0) {
-    return `Failed to remove the existing gitlab entry: ${failure(removed)}`;
+    return `Failed to remove the existing ${CODEX_SERVER_NAME} entry: ${failure(removed)}`;
   }
   return undefined;
 }
@@ -168,6 +172,42 @@ export function hasGlobalEntry(configPath: string): boolean {
   );
 }
 
+interface InstalledPlugin {
+  pluginId: string;
+  name: string;
+  enabled: boolean;
+}
+
+/**
+ * Installed GitLab MCP plugins as Codex resolves them across its configuration layers
+ * (user, project, system). `mcp list` omits a disabled plugin's server, and a global
+ * entry of the same name hides an enabled one, so only the plugin list shows them all.
+ */
+function installedPlugins(): InstalledPlugin[] {
+  const result = runCodex(['plugin', 'list', '--json']);
+  // A Codex without the plugin command has no plugins for the entry to hide.
+  if (result.status !== 0) return [];
+  try {
+    const { installed } = JSON.parse(result.stdout) as { installed?: InstalledPlugin[] };
+    return (installed ?? []).filter((plugin) => plugin.name === PLUGIN_NAME);
+  } catch {
+    return [];
+  }
+}
+
+function shadowNotes(plugins: InstalledPlugin[]): string[] {
+  const entry = CODEX_SERVER_NAME;
+  return plugins.map(({ pluginId: id, enabled }) =>
+    enabled
+      ? `The ${id} plugin is installed and its "${entry}" server stays unused while this ` +
+        `entry exists; keep one (codex plugin remove ${id}, or codex mcp remove ${entry}).`
+      : // Removing the entry alone would leave no GitLab server at all.
+        `The ${id} plugin is installed but disabled; while this entry exists its "${entry}" ` +
+        `server stays unused even when enabled. To use the plugin, enable it, then run ` +
+        `codex mcp remove ${entry}; or remove it with codex plugin remove ${id}.`,
+  );
+}
+
 /**
  * Undoes a failed add and says how: the backup is restored, or, when there was
  * no entry before, the one Codex saved is removed.
@@ -182,12 +222,12 @@ function rollBack(hadEntry: boolean, backupPath: string | undefined, configPath:
   runCodex(['mcp', 'remove', CODEX_SERVER_NAME]);
   // A leftover entry would make the next install refuse without --force.
   return hasGlobalEntry(configPath)
-    ? `; the partly saved gitlab entry is still in config.toml, remove it with: codex mcp remove ${CODEX_SERVER_NAME}`
-    : '; the partly saved gitlab entry was removed';
+    ? `; the partly saved ${CODEX_SERVER_NAME} entry is still in config.toml, remove it with: codex mcp remove ${CODEX_SERVER_NAME}`
+    : `; the partly saved ${CODEX_SERVER_NAME} entry was removed`;
 }
 
 /**
- * Registers GitLab MCP in Codex. An existing `gitlab` entry is replaced only
+ * Registers GitLab MCP in Codex. An existing entry of its name is replaced only
  * with `force`; GitLab MCP registered under other names, including by an
  * installed plugin, is reported and left alone.
  */
@@ -214,8 +254,8 @@ export function installCodex(config: McpServerConfig, force: boolean): InstallRe
       client,
       success: false,
       error:
-        'Codex already runs a server named "gitlab" from a plugin or project configuration; ' +
-        'disable it there before installing.',
+        `Codex already runs a server named "${CODEX_SERVER_NAME}" from a plugin or project ` +
+        'configuration; disable it there before installing.',
       configPath,
       notes,
     };
@@ -228,7 +268,7 @@ export function installCodex(config: McpServerConfig, force: boolean): InstallRe
       error: 'gitlab-mcp is already configured. Use --force to overwrite.',
       wasAlreadyConfigured: true,
       configPath,
-      notes,
+      notes: [...notes, ...shadowNotes(installedPlugins())],
     };
   }
 
@@ -254,13 +294,14 @@ export function installCodex(config: McpServerConfig, force: boolean): InstallRe
   if (applied.enabled === false) {
     const reason = applied.disabled_reason ?? 'no reason given';
     const restored = existing ? rollBack(existing, backupPath, configPath) : '';
-    const error = `Codex saved the gitlab entry but keeps it disabled: ${reason}${restored}`;
+    const error = `Codex saved the ${CODEX_SERVER_NAME} entry but keeps it disabled: ${reason}${restored}`;
     return { client, success: false, error, backupPath, configPath, notes };
   }
 
   if (added.status !== 0 && isRemoteServerConfig(config)) {
     notes.push(`Sign-in did not complete; run: codex mcp login ${CODEX_SERVER_NAME}`);
   }
+  notes.push(...shadowNotes(installedPlugins()));
 
   return {
     client,

@@ -34,6 +34,18 @@ yarn dev:stdio
 yarn dev:sse
 ```
 
+### Codex Plugin
+
+The repository root is a Codex plugin marketplace (`.agents/plugins/marketplace.json`, `plugins/gitlab-mcp/`) generated from the plugin build for a local server on port 3002. After changing skills, the listing or `plugin/assets/`, rebuild and commit it:
+
+```bash
+cd packages/gitlab-mcp
+yarn build
+./scripts/build-plugin-marketplace.sh
+```
+
+The listing images in `plugin/assets/` are rendered by `node scripts/plugin-assets.mjs` (needs `rsvg-convert` and Google Chrome): the composer icons from their SVG sources, and the screenshots from the connection panel with demo data. Re-render them when the panel or the icons change, then rebuild the marketplace.
+
 ## Testing
 
 ### Test Types

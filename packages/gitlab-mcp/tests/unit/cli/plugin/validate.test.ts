@@ -415,6 +415,38 @@ describe('validatePackage', () => {
     ]);
   });
 
+  it('checks the dark brand color against the dark theme background', () => {
+    // The directory measures brandColorDark against #212121, not white.
+    const m = manifest();
+    ui(m).brandColorDark = '#B197FC';
+    expect(issuesOf(packageFiles(m))).toEqual([]);
+    ui(m).brandColorDark = '#333333';
+    expect(issuesOf(packageFiles(m))).toEqual([
+      'plugin.json: interface.brandColorDark needs 2:1 contrast against #212121',
+    ]);
+    ui(m).brandColorDark = 'lavender';
+    expect(issuesOf(packageFiles(m))).toEqual([
+      'plugin.json: interface.brandColorDark must be #RRGGBB',
+    ]);
+  });
+
+  it('checks dark-theme icons like the light ones when they are listed', () => {
+    const m = manifest();
+    ui(m).logoDark = './assets/logo-dark.png';
+    ui(m).composerIconDark = './assets/icon-dark.png';
+    const files = packageFiles(m);
+    files.set('assets/logo-dark.png', png(420, 420));
+    files.set('assets/icon-dark.png', png(96, 96));
+    expect(issuesOf(files)).toEqual([]);
+
+    files.set('assets/icon-dark.png', png(96, 64));
+    files.delete('assets/logo-dark.png');
+    expect(issuesOf(files)).toEqual([
+      'plugin.json: interface.logoDark does not resolve inside the package',
+      'assets/icon-dark.png: icon must be square, got 96x64',
+    ]);
+  });
+
   it.each(['latest', '1.2', '01.2.3', '1.2.3-', '1.2.3-01', '1.2.3-a..b', '1.2.3+', '1.2.3+a_b'])(
     'refuses the non-semantic version %s',
     (version) => {

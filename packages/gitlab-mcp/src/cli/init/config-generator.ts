@@ -3,7 +3,7 @@
  */
 
 import { StdioServerConfig, WizardConfig, MCP_CLIENT_INFO, ROLE_PRESETS } from './types';
-import { codexConfigPreview } from '../install/codex';
+import { CODEX_SERVER_NAME, codexConfigPreview } from '../install/codex';
 
 /**
  * Escape a string for safe use in shell double-quoted context.
@@ -81,7 +81,7 @@ export function generateClaudeCodeCommand(config: WizardConfig, serverName = 'gi
 /** `codex mcp add` command for a local server, shell-escaped like the Claude Code one. */
 export function generateCodexCommand(
   serverConfig: StdioServerConfig,
-  serverName = 'gitlab',
+  serverName = CODEX_SERVER_NAME,
 ): string {
   const envFlags = Object.entries(serverConfig.env).map(
     ([key, value]) => `--env ${key}="${shellEscape(value)}" `,

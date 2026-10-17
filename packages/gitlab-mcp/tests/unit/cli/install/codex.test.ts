@@ -42,6 +42,11 @@ interface FakeCodex {
   getOutput?: string;
   /** Codex rewrites config.toml on remove; tests use this to change the file. */
   onRemove?: () => void;
+  /** Installed plugins `plugin list --json` reports, across every config layer. */
+  plugins: Array<{ pluginId: string; name: string; enabled: boolean }>;
+  failPluginList?: boolean;
+  /** Raw stdout of `plugin list --json`, replacing the installed list. */
+  pluginListOutput?: string;
 }
 
 /** The config.toml table of a global entry, the only place `mcp remove` edits. */
@@ -93,12 +98,21 @@ function transportOf(args: string[]): CodexServer['transport'] {
 beforeEach(() => {
   codexHome = mkdtempSync(join(tmpdir(), 'codex-home-'));
   process.env.CODEX_HOME = codexHome;
-  fake = { servers: [], calls: [] };
+  fake = { servers: [], calls: [], plugins: [] };
   mockSpawn.mockReset();
   mockSpawn.mockImplementation((command, rawArgs, options) => {
     const args = [...(rawArgs ?? [])];
     expect(command).toBe('codex');
     fake.calls.push({ args, stdio: options?.stdio, timeout: options?.timeout });
+    if (args[0] === 'plugin') {
+      expect(args).toEqual(['plugin', 'list', '--json']);
+      return fake.failPluginList
+        ? reply(2, '', "unrecognized subcommand 'plugin'")
+        : reply(
+            0,
+            fake.pluginListOutput ?? JSON.stringify({ installed: fake.plugins, available: [] }),
+          );
+    }
     const [, action, name] = args;
     switch (action) {
       case 'list':
@@ -138,8 +152,9 @@ afterEach(() => {
   else process.env.CODEX_HOME = originalHome;
 });
 
+/** The `codex mcp` subcommands issued; plugin list calls are checked where they matter. */
 function actions(): string[] {
-  return fake.calls.map((c) => c.args.slice(1, 3).join(' '));
+  return fake.calls.filter((c) => c.args[0] === 'mcp').map((c) => c.args.slice(1, 3).join(' '));
 }
 
 describe('codexConfigPath', () => {
@@ -170,7 +185,7 @@ describe('installCodex', () => {
     expect(add?.args).toEqual([
       'mcp',
       'add',
-      'gitlab',
+      'gitlab-sw',
       '--env',
       'GITLAB_API_URL=https://gitlab.example.com',
       '--env',
@@ -181,12 +196,12 @@ describe('installCodex', () => {
       '@structured-world/gitlab-mcp',
     ]);
     expect(add?.stdio).toBe('pipe');
-    expect(actions()).toEqual(['list --json', 'add gitlab', 'get gitlab']);
+    expect(actions()).toEqual(['list --json', 'add gitlab-sw', 'get gitlab-sw']);
   });
 
-  it('refuses to replace an existing gitlab entry without force and changes nothing', () => {
-    writeFileSync(configFile(), globalTable('gitlab'));
-    fake.servers = [{ name: 'gitlab', transport: { type: 'stdio', command: 'old', args: [] } }];
+  it('refuses to replace an existing gitlab-sw entry without force and changes nothing', () => {
+    writeFileSync(configFile(), globalTable('gitlab-sw'));
+    fake.servers = [{ name: 'gitlab-sw', transport: { type: 'stdio', command: 'old', args: [] } }];
     const result = installCodex(STDIO, false);
 
     expect(result.success).toBe(false);
@@ -196,11 +211,11 @@ describe('installCodex', () => {
     expect(fake.servers[0].transport).toEqual({ type: 'stdio', command: 'old', args: [] });
   });
 
-  it('with force, backs up config.toml and replaces only the gitlab entry', () => {
-    const original = `model = "o3"\n${globalTable('gitlab')}`;
+  it('with force, backs up config.toml and replaces only the gitlab-sw entry', () => {
+    const original = `model = "o3"\n${globalTable('gitlab-sw')}`;
     writeFileSync(configFile(), original);
     fake.servers = [
-      { name: 'gitlab', transport: { type: 'stdio', command: 'old', args: [] } },
+      { name: 'gitlab-sw', transport: { type: 'stdio', command: 'old', args: [] } },
       {
         name: 'github',
         transport: { type: 'streamable_http', url: 'https://api.github.example/mcp' },
@@ -212,14 +227,19 @@ describe('installCodex', () => {
     expect(result.wasAlreadyConfigured).toBe(true);
     expect(result.backupPath).toBeDefined();
     expect(readFileSync(result.backupPath as string, 'utf8')).toBe(original);
-    expect(actions()).toEqual(['list --json', 'remove gitlab', 'add gitlab', 'get gitlab']);
-    expect(fake.servers.map((s) => s.name).sort()).toEqual(['github', 'gitlab']);
+    expect(actions()).toEqual([
+      'list --json',
+      'remove gitlab-sw',
+      'add gitlab-sw',
+      'get gitlab-sw',
+    ]);
+    expect(fake.servers.map((s) => s.name).sort()).toEqual(['github', 'gitlab-sw']);
   });
 
   it('restores config.toml from the backup when the add fails after the old entry was removed', () => {
     const configPath = join(codexHome, 'config.toml');
-    writeFileSync(configPath, '[mcp_servers.gitlab]\ncommand = "old"\n');
-    fake.servers = [{ name: 'gitlab', transport: { type: 'stdio', command: 'old', args: [] } }];
+    writeFileSync(configPath, '[mcp_servers.gitlab-sw]\ncommand = "old"\n');
+    fake.servers = [{ name: 'gitlab-sw', transport: { type: 'stdio', command: 'old', args: [] } }];
     fake.failAdd = { status: 1, stderr: 'invalid server name' };
     fake.onRemove = () => writeFileSync(configPath, '');
 
@@ -229,13 +249,13 @@ describe('installCodex', () => {
     expect(result.error).toBe(
       'codex mcp add failed: invalid server name; the previous Codex configuration was restored',
     );
-    expect(readFileSync(configPath, 'utf8')).toBe('[mcp_servers.gitlab]\ncommand = "old"\n');
+    expect(readFileSync(configPath, 'utf8')).toBe('[mcp_servers.gitlab-sw]\ncommand = "old"\n');
   });
 
   it('says where the backup is when restoring it fails after the old entry was removed', () => {
     // Otherwise the user would not know the previous configuration is gone.
-    writeFileSync(configFile(), globalTable('gitlab'));
-    fake.servers = [{ name: 'gitlab', transport: { type: 'stdio', command: 'old', args: [] } }];
+    writeFileSync(configFile(), globalTable('gitlab-sw'));
+    fake.servers = [{ name: 'gitlab-sw', transport: { type: 'stdio', command: 'old', args: [] } }];
     fake.failAdd = { status: 1, stderr: 'invalid server name' };
     const restoreSpy = jest.spyOn(backup, 'restoreBackup').mockReturnValueOnce(false);
     try {
@@ -258,21 +278,21 @@ describe('installCodex', () => {
   });
 
   it('stops when the old entry cannot be removed', () => {
-    writeFileSync(configFile(), globalTable('gitlab'));
-    fake.servers = [{ name: 'gitlab', transport: { type: 'stdio', command: 'old', args: [] } }];
+    writeFileSync(configFile(), globalTable('gitlab-sw'));
+    fake.servers = [{ name: 'gitlab-sw', transport: { type: 'stdio', command: 'old', args: [] } }];
     fake.failRemove = true;
     const result = installCodex(STDIO, true);
     expect(result).toMatchObject({
       success: false,
-      error: 'Failed to remove the existing gitlab entry: permission denied',
+      error: 'Failed to remove the existing gitlab-sw entry: permission denied',
     });
-    expect(actions()).toEqual(['list --json', 'remove gitlab']);
+    expect(actions()).toEqual(['list --json', 'remove gitlab-sw']);
   });
 
   it('keeps the duplicate-registration notes when the old entry cannot be removed', () => {
-    writeFileSync(configFile(), globalTable('gitlab'));
+    writeFileSync(configFile(), globalTable('gitlab-sw'));
     fake.servers = [
-      { name: 'gitlab', transport: { type: 'stdio', command: 'old', args: [] } },
+      { name: 'gitlab-sw', transport: { type: 'stdio', command: 'old', args: [] } },
       {
         name: 'gl',
         transport: { type: 'stdio', command: 'npx', args: ['@structured-world/gitlab-mcp'] },
@@ -288,8 +308,8 @@ describe('installCodex', () => {
 
   it('leaves the existing entry alone when config.toml cannot be backed up', () => {
     // Without a backup a failed add after the remove could not be undone.
-    writeFileSync(join(codexHome, 'config.toml'), '[mcp_servers.gitlab]\ncommand = "old"\n');
-    fake.servers = [{ name: 'gitlab', transport: { type: 'stdio', command: 'old', args: [] } }];
+    writeFileSync(join(codexHome, 'config.toml'), '[mcp_servers.gitlab-sw]\ncommand = "old"\n');
+    fake.servers = [{ name: 'gitlab-sw', transport: { type: 'stdio', command: 'old', args: [] } }];
     // Simulated rather than provoked with chmod, which Windows does not honour.
     const backupSpy = jest
       .spyOn(backup, 'createBackup')
@@ -315,7 +335,7 @@ describe('installCodex', () => {
       return reply(
         0,
         JSON.stringify({
-          name: 'gitlab',
+          name: 'gitlab-sw',
           transport: {
             type: 'stdio',
             command: STDIO.command,
@@ -336,7 +356,7 @@ describe('installCodex', () => {
       return reply(
         0,
         JSON.stringify({
-          name: 'gitlab',
+          name: 'gitlab-sw',
           transport: { type: 'stdio', command: 'npx', args: ['x'], env: null },
         }),
       );
@@ -351,10 +371,15 @@ describe('installCodex', () => {
     const result = installCodex(STDIO, false);
     expect(result).toMatchObject({
       success: false,
-      error: 'codex mcp add failed: interrupted; the partly saved gitlab entry was removed',
+      error: 'codex mcp add failed: interrupted; the partly saved gitlab-sw entry was removed',
     });
-    expect(actions()).toEqual(['list --json', 'add gitlab', 'get gitlab', 'remove gitlab']);
-    expect(hasTable('gitlab')).toBe(false);
+    expect(actions()).toEqual([
+      'list --json',
+      'add gitlab-sw',
+      'get gitlab-sw',
+      'remove gitlab-sw',
+    ]);
+    expect(hasTable('gitlab-sw')).toBe(false);
   });
 
   it('fails when Codex saved a remote entry for a local server', () => {
@@ -368,8 +393,8 @@ describe('installCodex', () => {
   });
 
   it('names a backup failure that Codex gave no reason for', () => {
-    writeFileSync(configFile(), globalTable('gitlab'));
-    fake.servers = [{ name: 'gitlab', transport: { type: 'stdio', command: 'old', args: [] } }];
+    writeFileSync(configFile(), globalTable('gitlab-sw'));
+    fake.servers = [{ name: 'gitlab-sw', transport: { type: 'stdio', command: 'old', args: [] } }];
     const backupSpy = jest.spyOn(backup, 'createBackup').mockReturnValueOnce({ created: false });
     try {
       expect(installCodex(STDIO, true).error).toBe(
@@ -382,13 +407,13 @@ describe('installCodex', () => {
 
   it('says when Codex disables the entry without giving a reason', () => {
     fake.getOutput = JSON.stringify({
-      name: 'gitlab',
+      name: 'gitlab-sw',
       enabled: false,
       disabled_reason: null,
       transport: { type: 'stdio', ...STDIO },
     });
     expect(installCodex(STDIO, false).error).toBe(
-      'Codex saved the gitlab entry but keeps it disabled: no reason given',
+      'Codex saved the gitlab-sw entry but keeps it disabled: no reason given',
     );
   });
 
@@ -398,10 +423,10 @@ describe('installCodex', () => {
     fake.failRemove = true;
     const result = installCodex(STDIO, false);
     expect(result.error).toBe(
-      "codex mcp add failed: Added global MCP server 'gitlab'.; the partly saved gitlab entry " +
-        'is still in config.toml, remove it with: codex mcp remove gitlab',
+      "codex mcp add failed: Added global MCP server 'gitlab-sw'.; the partly saved gitlab-sw entry " +
+        'is still in config.toml, remove it with: codex mcp remove gitlab-sw',
     );
-    expect(hasTable('gitlab')).toBe(true);
+    expect(hasTable('gitlab-sw')).toBe(true);
   });
 
   it('removes a new entry whose read-back output cannot be parsed', () => {
@@ -410,9 +435,9 @@ describe('installCodex', () => {
     const result = installCodex(STDIO, false);
     expect(result).toMatchObject({
       success: false,
-      error: expect.stringContaining('; the partly saved gitlab entry was removed') as string,
+      error: expect.stringContaining('; the partly saved gitlab-sw entry was removed') as string,
     });
-    expect(hasTable('gitlab')).toBe(false);
+    expect(hasTable('gitlab-sw')).toBe(false);
   });
 
   it('stops with the parser message when config.toml is not valid TOML', () => {
@@ -425,20 +450,20 @@ describe('installCodex', () => {
     expect(actions()).toEqual(['list --json']);
   });
 
-  it('treats a config.toml whose mcp_servers is not a table as having no gitlab entry', () => {
+  it('treats a config.toml whose mcp_servers is not a table as having no gitlab-sw entry', () => {
     writeFileSync(configFile(), 'mcp_servers = "none"\n');
     expect(installCodex(STDIO, false).success).toBe(true);
   });
 
   it('does not take over a gitlab server that a plugin or project configuration provides', () => {
     // mcp remove edits only the global config.toml, so a forced replace would only shadow it.
-    fake.servers = [{ name: 'gitlab', transport: { type: 'streamable_http', url: REMOTE.url } }];
+    fake.servers = [{ name: 'gitlab-sw', transport: { type: 'streamable_http', url: REMOTE.url } }];
     const result = installCodex(STDIO, true);
     expect(result).toMatchObject({
       success: false,
       error:
-        'Codex already runs a server named "gitlab" from a plugin or project configuration; ' +
-        'disable it there before installing.',
+        'Codex already runs a server named "gitlab-sw" from a plugin or project ' +
+        'configuration; disable it there before installing.',
     });
     expect(actions()).toEqual(['list --json']);
   });
@@ -453,7 +478,7 @@ describe('installCodex', () => {
       return reply(
         0,
         JSON.stringify({
-          name: 'gitlab',
+          name: 'gitlab-sw',
           enabled: false,
           disabled_reason: 'disabled by /repo/.codex/config.toml',
           transport: { type: 'stdio', ...STDIO },
@@ -463,19 +488,80 @@ describe('installCodex', () => {
     expect(installCodex(STDIO, false)).toMatchObject({
       success: false,
       error:
-        'Codex saved the gitlab entry but keeps it disabled: disabled by /repo/.codex/config.toml',
+        'Codex saved the gitlab-sw entry but keeps it disabled: disabled by /repo/.codex/config.toml',
     });
-    expect(actions()).toEqual(['list --json', 'add gitlab', 'get gitlab']);
+    expect(actions()).toEqual(['list --json', 'add gitlab-sw', 'get gitlab-sw']);
   });
+
+  it('says that the new entry hides the server of an installed GitLab MCP plugin', () => {
+    // Codex runs a global entry in place of a plugin server of the same name. The plugin is
+    // enabled in a repository's .codex/config.toml, which the user's own file does not show.
+    fake.plugins = [{ pluginId: 'gitlab-mcp@team', name: 'gitlab-mcp', enabled: true }];
+
+    const result = installCodex(STDIO, false);
+
+    expect(result.success).toBe(true);
+    expect(result.notes).toEqual([
+      'The gitlab-mcp@team plugin is installed and its "gitlab-sw" server stays unused while ' +
+        'this entry exists; keep one (codex plugin remove gitlab-mcp@team, or codex mcp remove gitlab-sw).',
+    ]);
+    expect(fake.calls.at(-1)?.args).toEqual(['plugin', 'list', '--json']);
+  });
+
+  it('tells to enable a disabled plugin before removing the entry that hides it', () => {
+    // Removing the entry alone would leave no GitLab server at all.
+    fake.plugins = [{ pluginId: 'gitlab-mcp@team', name: 'gitlab-mcp', enabled: false }];
+
+    expect(installCodex(STDIO, false).notes).toEqual([
+      'The gitlab-mcp@team plugin is installed but disabled; while this entry exists its ' +
+        '"gitlab-sw" server stays unused even when enabled. To use the plugin, enable it, then ' +
+        'run codex mcp remove gitlab-sw; or remove it with codex plugin remove gitlab-mcp@team.',
+    ]);
+  });
+
+  it('says that a kept existing entry hides the plugin server', () => {
+    // The existing global entry already shadows the enabled plugin, which mcp list does not show.
+    writeFileSync(configFile(), globalTable('gitlab-sw'));
+    fake.servers = [{ name: 'gitlab-sw', transport: { type: 'stdio', command: 'old', args: [] } }];
+    fake.plugins = [{ pluginId: 'gitlab-mcp@team', name: 'gitlab-mcp', enabled: true }];
+
+    const result = installCodex(STDIO, false);
+
+    expect(result).toMatchObject({ success: false, wasAlreadyConfigured: true });
+    expect(result.notes).toEqual([
+      'The gitlab-mcp@team plugin is installed and its "gitlab-sw" server stays unused while ' +
+        'this entry exists; keep one (codex plugin remove gitlab-mcp@team, or codex mcp remove gitlab-sw).',
+    ]);
+  });
+
+  it('notes no plugin when only other plugins are installed', () => {
+    fake.plugins = [{ pluginId: 'github@openai', name: 'github', enabled: true }];
+    expect(installCodex(STDIO, false).notes).toEqual([]);
+  });
+
+  it('installs without plugin notes when this Codex has no plugin command', () => {
+    // A Codex without plugins cannot have one the entry would hide.
+    fake.failPluginList = true;
+    expect(installCodex(STDIO, false)).toMatchObject({ success: true, notes: [] });
+  });
+
+  it.each(['plugins: none', '{}'])(
+    'installs without plugin notes when the plugin list reads %s',
+    (output) => {
+      // An unreadable or empty list names no plugin; the install itself does not depend on it.
+      fake.pluginListOutput = output;
+      expect(installCodex(STDIO, false)).toMatchObject({ success: true, notes: [] });
+    },
+  );
 
   it('restores the replaced entry when Codex keeps the new one disabled', () => {
     // A managed allowlist can enable the old command and disable the new one: the forced
     // replace must not leave a disabled entry where a working one was.
-    const original = `model = "o3"\n${globalTable('gitlab')}`;
+    const original = `model = "o3"\n${globalTable('gitlab-sw')}`;
     writeFileSync(configFile(), original);
-    fake.servers = [{ name: 'gitlab', transport: { type: 'stdio', command: 'old', args: [] } }];
+    fake.servers = [{ name: 'gitlab-sw', transport: { type: 'stdio', command: 'old', args: [] } }];
     fake.getOutput = JSON.stringify({
-      name: 'gitlab',
+      name: 'gitlab-sw',
       enabled: false,
       disabled_reason: 'not allowed by requirements',
       transport: { type: 'stdio', ...STDIO },
@@ -486,7 +572,7 @@ describe('installCodex', () => {
     expect(result).toMatchObject({
       success: false,
       error:
-        'Codex saved the gitlab entry but keeps it disabled: not allowed by requirements; ' +
+        'Codex saved the gitlab-sw entry but keeps it disabled: not allowed by requirements; ' +
         'the previous Codex configuration was restored',
     });
     expect(readConfig()).toBe(original);
@@ -550,7 +636,34 @@ describe('installCodex', () => {
       '"gitlab-mcp" also runs GitLab MCP, so Codex lists its tools twice; remove the one you do not use (codex mcp remove gitlab-mcp, or disable the plugin).',
       '"gl" also runs GitLab MCP, so Codex lists its tools twice; remove the one you do not use (codex mcp remove gl, or disable the plugin).',
     ]);
-    expect(fake.servers.map((s) => s.name)).toEqual(['gitlab-mcp', 'gl', 'github', 'gitlab']);
+    expect(fake.servers.map((s) => s.name)).toEqual(['gitlab-mcp', 'gl', 'github', 'gitlab-sw']);
+  });
+
+  it('leaves another GitLab server named gitlab alone and does not count it as a duplicate', () => {
+    // "gitlab" is the generic name other GitLab MCP servers use; ours installs as gitlab-sw.
+    fake.servers = [
+      {
+        name: 'gitlab',
+        transport: { type: 'streamable_http', url: 'https://gitlab.example.com/api/v4/mcp' },
+      },
+    ];
+    const result = installCodex(STDIO, false);
+
+    expect(result).toMatchObject({ success: true, notes: [] });
+    expect(fake.servers.map((s) => s.name)).toEqual(['gitlab', 'gitlab-sw']);
+  });
+
+  it('reports a manual gitlab entry that runs GitLab MCP as a duplicate', () => {
+    // An entry written by hand under the generic name still runs this package.
+    fake.servers = [
+      {
+        name: 'gitlab',
+        transport: { type: 'stdio', command: 'npx', args: ['-y', '@structured-world/gitlab-mcp'] },
+      },
+    ];
+    expect(installCodex(STDIO, false).notes).toEqual([
+      '"gitlab" also runs GitLab MCP, so Codex lists its tools twice; remove the one you do not use (codex mcp remove gitlab, or disable the plugin).',
+    ]);
   });
 
   it('bounds every piped Codex call with a timeout, but not the browser sign-in', () => {
@@ -565,7 +678,7 @@ describe('installCodex', () => {
   it('registers a remote endpoint with the terminal attached for the browser sign-in', () => {
     const result = installCodex(REMOTE, false);
     const add = fake.calls.find((c) => c.args[1] === 'add');
-    expect(add?.args).toEqual(['mcp', 'add', 'gitlab', '--url', 'https://mcp.example.com/mcp']);
+    expect(add?.args).toEqual(['mcp', 'add', 'gitlab-sw', '--url', 'https://mcp.example.com/mcp']);
     expect(add?.stdio).toBe('inherit');
     expect(result.success).toBe(true);
     expect(result.notes).toEqual([]);
@@ -575,7 +688,7 @@ describe('installCodex', () => {
     fake.failAdd = { status: 1, stderr: 'login cancelled', keepEntry: true };
     const result = installCodex(REMOTE, false);
     expect(result.success).toBe(true);
-    expect(result.notes).toEqual(['Sign-in did not complete; run: codex mcp login gitlab']);
+    expect(result.notes).toEqual(['Sign-in did not complete; run: codex mcp login gitlab-sw']);
   });
 
   it('treats an entry with the same remote endpoint as a duplicate', () => {
@@ -591,9 +704,9 @@ describe('installCodex', () => {
     expect(installCodex(STDIO, false)).toMatchObject({
       success: false,
       error:
-        "codex mcp add failed: Added global MCP server 'gitlab'.; the partly saved gitlab entry was removed",
+        "codex mcp add failed: Added global MCP server 'gitlab-sw'.; the partly saved gitlab-sw entry was removed",
     });
-    expect(hasTable('gitlab')).toBe(false);
+    expect(hasTable('gitlab-sw')).toBe(false);
   });
 });
 
@@ -676,11 +789,11 @@ describe('codex config preview', () => {
   it('shows the stdio entry Codex will hold', () => {
     expect(codexConfigPreview(STDIO)).toBe(
       [
-        '[mcp_servers.gitlab]',
+        '[mcp_servers.gitlab-sw]',
         'command = "npx"',
         'args = ["-y", "@structured-world/gitlab-mcp"]',
         '',
-        '[mcp_servers.gitlab.env]',
+        '[mcp_servers.gitlab-sw.env]',
         'GITLAB_API_URL = "https://gitlab.example.com"',
         'GITLAB_TOKEN = "secret value"',
       ].join('\n'),
@@ -695,13 +808,13 @@ describe('codex config preview', () => {
 
   it('shows the remote entry Codex will hold', () => {
     expect(codexConfigPreview(REMOTE)).toBe(
-      '[mcp_servers.gitlab]\nurl = "https://mcp.example.com/mcp"',
+      '[mcp_servers.gitlab-sw]\nurl = "https://mcp.example.com/mcp"',
     );
   });
 
   it('leaves out the env table when no variable is set', () => {
     expect(codexConfigPreview({ command: 'gitlab-mcp', args: [], env: {} })).toBe(
-      '[mcp_servers.gitlab]\ncommand = "gitlab-mcp"\nargs = []',
+      '[mcp_servers.gitlab-sw]\ncommand = "gitlab-mcp"\nargs = []',
     );
   });
 });

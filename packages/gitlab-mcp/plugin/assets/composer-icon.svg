@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 420 420">
+  <defs>
+    <linearGradient id="edge" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#E8590C"/>
+      <stop offset="1" stop-color="#7048E8"/>
+    </linearGradient>
+  </defs>
+  <g fill="none" stroke="url(#edge)" stroke-linejoin="round" stroke-linecap="round">
+    <path stroke-width="34" d="M95 42 L148 180 L272 180 L325 42 L380 180 L382 240 L210 385 L38 240 L40 180 Z"/>
+    <path stroke-width="16" d="M148 180 L210 290 L272 180 M40 180 L210 290 L380 180 M210 290 L210 385"/>
+  </g>
+  <g fill="url(#edge)">
+    <circle cx="148" cy="180" r="20"/>
+    <circle cx="272" cy="180" r="20"/>
+    <circle cx="210" cy="290" r="22"/>
+  </g>
+</svg>

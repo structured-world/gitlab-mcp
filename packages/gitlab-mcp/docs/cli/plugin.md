@@ -38,6 +38,8 @@ gitlab-mcp-plugin/
 └── gitlab-mcp-<version>.zip           # the same plugin as one archive
 ```
 
+`assets/` holds the logo, a composer icon for the light and the dark theme, and screenshots of the GitLab connection panel.
+
 The version is the version of the installed package. A rebuild replaces only `plugins/gitlab-mcp/` and produces a byte-identical ZIP; the command prints its SHA-256. When `--out` already holds a marketplace, the GitLab entry is added to or replaced in its catalog and the other plugins, its name and its display name stay.
 
 Before writing anything the command checks the package against the Agent Plugins 1.0.0 schemas and the directory rules: listing text limits, HTTPS listing links without credentials, square icons of 48 to 4096 px, skill headers, a single MCP server without headers, and no hooks, app references, tokens, private keys, local paths or, with `--public`, private network addresses and a display name ending in "MCP", "MCP Server" or "Plugin". Every problem is listed and nothing is written.
@@ -52,6 +54,19 @@ codex plugin marketplace add ./gitlab-mcp-plugin
 ```
 
 Then open the Plugins Directory in Codex or the ChatGPT desktop app, choose the **GitLab by Structured World** marketplace and install the plugin. Share the output directory, for example in a Git repository, so the team adds the same marketplace.
+
+## Local development server
+
+The repository is itself a marketplace with a plugin for a GitLab MCP server running on your computer in [HTTP mode](/guide/transport) on the default port (`http://127.0.0.1:3002/mcp`):
+
+```bash
+PORT=3002 GITLAB_API_URL=https://gitlab.example.com GITLAB_TOKEN=glpat-... \
+  npx @structured-world/gitlab-mcp
+codex plugin marketplace add structured-world/gitlab-mcp
+codex plugin add gitlab-mcp@gitlab-mcp-dev
+```
+
+The server uses your token, so the plugin needs no sign-in. Use it to try the skills and the connection panel; for a shared server, build the plugin for its address as above.
 
 ## Directory submission
 

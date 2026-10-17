@@ -102,5 +102,8 @@ console.log(JSON.stringify(tools.map(t => ({
 }))))
 ' 2>/dev/null | node scripts/update-mcp-manifest.js
 
+# Rebuild the repository's plugin marketplace, so its manifest carries this version.
+./scripts/build-plugin-marketplace.sh
+
 # Write version file for CI
 echo "$VERSION" > .semantic-release-version

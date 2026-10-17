@@ -18,7 +18,7 @@ import {
   generateServerConfig,
 } from './config-generator';
 import { openUrl } from './browser';
-import { installCodex } from '../install/codex';
+import { CODEX_SERVER_NAME, installCodex } from '../install/codex';
 import type { InstallResult } from '../install/types';
 
 function reportCodexInstall(result: InstallResult): void {
@@ -274,11 +274,11 @@ export async function runWizard(): Promise<void> {
       } else {
         // The wizard has no --force flag, so it asks before replacing an existing entry.
         const replace = await p.confirm({
-          message: 'Codex already has a gitlab entry. Replace it?',
+          message: `Codex already has a ${CODEX_SERVER_NAME} entry. Replace it?`,
           initialValue: false,
         });
         if (p.isCancel(replace) || !replace) {
-          p.log.info('Kept the existing Codex gitlab entry.');
+          p.log.info(`Kept the existing Codex ${CODEX_SERVER_NAME} entry.`);
         } else {
           reportCodexInstall(installCodex(serverConfig, true));
         }

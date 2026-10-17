@@ -6,7 +6,7 @@
  */
 
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
-import { tmpdir } from 'os';
+import { homedir, tmpdir } from 'os';
 import { join } from 'path';
 import { sync as spawnSync } from 'cross-spawn';
 import * as backup from '../../../../src/cli/install/backup';
@@ -145,6 +145,11 @@ function actions(): string[] {
 describe('codexConfigPath', () => {
   it('follows CODEX_HOME', () => {
     expect(codexConfigPath()).toBe(join(codexHome, 'config.toml'));
+  });
+
+  it('falls back to ~/.codex without CODEX_HOME', () => {
+    delete process.env.CODEX_HOME;
+    expect(codexConfigPath()).toBe(join(homedir(), '.codex', 'config.toml'));
   });
 });
 
@@ -350,6 +355,41 @@ describe('installCodex', () => {
     });
     expect(actions()).toEqual(['list --json', 'add gitlab', 'get gitlab', 'remove gitlab']);
     expect(hasTable('gitlab')).toBe(false);
+  });
+
+  it('fails when Codex saved a remote entry for a local server', () => {
+    fake.saveAs = { type: 'streamable_http', url: REMOTE.url };
+    expect(installCodex(STDIO, false).success).toBe(false);
+  });
+
+  it('accepts a saved local entry that Codex lists without arguments', () => {
+    fake.saveAs = { type: 'stdio', command: 'gitlab-mcp' };
+    expect(installCodex({ command: 'gitlab-mcp', args: [], env: {} }, false).success).toBe(true);
+  });
+
+  it('names a backup failure that Codex gave no reason for', () => {
+    writeFileSync(configFile(), globalTable('gitlab'));
+    fake.servers = [{ name: 'gitlab', transport: { type: 'stdio', command: 'old', args: [] } }];
+    const backupSpy = jest.spyOn(backup, 'createBackup').mockReturnValueOnce({ created: false });
+    try {
+      expect(installCodex(STDIO, true).error).toBe(
+        `Could not back up ${configFile()}: unknown error`,
+      );
+    } finally {
+      backupSpy.mockRestore();
+    }
+  });
+
+  it('says when Codex disables the entry without giving a reason', () => {
+    fake.getOutput = JSON.stringify({
+      name: 'gitlab',
+      enabled: false,
+      disabled_reason: null,
+      transport: { type: 'stdio', ...STDIO },
+    });
+    expect(installCodex(STDIO, false).error).toBe(
+      'Codex saved the gitlab entry but keeps it disabled: no reason given',
+    );
   });
 
   it('says how to remove a partly saved entry that the cleanup could not remove', () => {
@@ -560,6 +600,12 @@ describe('isGitlabMcpServer', () => {
     }
   });
 
+  it('reads an entry Codex lists without arguments', () => {
+    expect(isGitlabMcpServer({ name: 'bare', transport: { type: 'stdio', command: 'node' } })).toBe(
+      false,
+    );
+  });
+
   it('does not claim unrelated servers', () => {
     // An unscoped package of the same name is another project, run through npx.
     expect(
@@ -617,6 +663,12 @@ describe('codex config preview', () => {
   it('shows the remote entry Codex will hold', () => {
     expect(codexConfigPreview(REMOTE)).toBe(
       '[mcp_servers.gitlab]\nurl = "https://mcp.example.com/mcp"',
+    );
+  });
+
+  it('leaves out the env table when no variable is set', () => {
+    expect(codexConfigPreview({ command: 'gitlab-mcp', args: [], env: {} })).toBe(
+      '[mcp_servers.gitlab]\ncommand = "gitlab-mcp"\nargs = []',
     );
   });
 });

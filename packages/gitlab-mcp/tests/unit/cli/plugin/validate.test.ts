@@ -257,6 +257,11 @@ describe('isNonPublicHost', () => {
     expect(isNonPublicHost(host)).toBe(false);
   });
 
+  it('reads an IPv6 address written out in all eight groups', () => {
+    expect(isNonPublicHost('2001:0db8:0:0:0:0:0:1')).toBe(true);
+    expect(isNonPublicHost('2606:4700:4700:0:0:0:0:1111')).toBe(false);
+  });
+
   it('ignores the trailing root dot of an absolute DNS name', () => {
     // "localhost." and "localhost" name the same host (RFC 1034 3.1).
     expect(isNonPublicHost('localhost.')).toBe(true);
@@ -303,11 +308,36 @@ describe('contrastRatio and pngSize', () => {
     expect(pngSize(png(48, 64))).toEqual({ width: 48, height: 64 });
     expect(pngSize(Buffer.from('<svg/>'))).toBeUndefined();
   });
+
+  it('rejects a PNG signature whose first chunk is not IHDR', () => {
+    const data = png(48, 48);
+    data.write('IDAT', 12, 'ascii');
+    expect(pngSize(data)).toBeUndefined();
+  });
 });
 
 describe('validatePackage', () => {
   it('accepts a complete public package', () => {
     expect(issuesOf(packageFiles())).toEqual([]);
+  });
+
+  it('names the field of a schema violation below the root', () => {
+    expect(issuesOf(packageFiles(manifest({ version: 1 })))).toContain(
+      'plugin.json: /version must be string',
+    );
+  });
+
+  it('compiles a schema that carries no $id', () => {
+    const { $id: _plugin, ...plugin } = schemas.plugin as { $id?: string };
+    const { $id: _mcp, ...mcp } = schemas.mcp as { $id?: string };
+    expect(() => validatePackage(packageFiles(), { plugin, mcp }, 'public')).not.toThrow();
+  });
+
+  it('checks no endpoint for a server declared without a URL', () => {
+    const files = packageFiles(manifest(), { gitlab: { type: 'stdio', command: 'gitlab-mcp' } });
+    expect(issuesOf(files, 'private').some((issue) => issue.startsWith('mcp.json: gitlab:'))).toBe(
+      false,
+    );
   });
 
   it('reports a schema violation in plugin.json', () => {

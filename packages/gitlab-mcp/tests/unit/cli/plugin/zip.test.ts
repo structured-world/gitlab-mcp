@@ -95,6 +95,15 @@ describe('createZip', () => {
     );
   });
 
+  it('refuses an entry larger than a ZIP without ZIP64 can describe', () => {
+    // The size is faked: a real 4 GiB buffer is not needed to reach the check.
+    const data = Buffer.from('x');
+    Object.defineProperty(data, 'length', { value: 0x1_0000_0000 });
+    expect(() => createZip([{ path: 'big.bin', data }])).toThrow(
+      'ZIP entry exceeds 4 GiB without ZIP64',
+    );
+  });
+
   it('writes a valid empty archive', () => {
     expect(parseZip(createZip([]))).toEqual([]);
   });

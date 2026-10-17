@@ -277,7 +277,8 @@ const TOML_SHORT_ESCAPES: Readonly<Record<string, string>> = {
 export function tomlString(value: string): string {
   let escaped = '';
   for (const char of value) {
-    const code = char.codePointAt(0) ?? 0;
+    // Iterating a string yields non-empty characters, so position 0 always has a code point.
+    const code = char.codePointAt(0) as number;
     const short = TOML_SHORT_ESCAPES[char];
     if (short !== undefined) escaped += short;
     // Other control characters have no short escape.

@@ -363,6 +363,32 @@ describe('wizard', () => {
       );
     });
 
+    it('reports a failed Codex install that gives no reason', async () => {
+      (configGenerator.generateClientConfig as jest.Mock).mockReturnValueOnce({
+        type: 'cli',
+        content: '[mcp_servers.gitlab]',
+        cliCommand: 'codex mcp add gitlab -- npx ...',
+      });
+      (p.select as jest.Mock)
+        .mockResolvedValueOnce('saas')
+        .mockResolvedValueOnce('developer')
+        .mockResolvedValueOnce('codex');
+      (p.confirm as jest.Mock)
+        .mockResolvedValueOnce(true)
+        .mockResolvedValueOnce(true)
+        .mockResolvedValueOnce(true);
+      (p.password as jest.Mock).mockResolvedValueOnce('glpat-token');
+      (connection.testConnection as jest.Mock).mockResolvedValueOnce({
+        success: true,
+        username: 'dev',
+      });
+      mockInstallCodex.mockReturnValueOnce({ client: 'codex', success: false });
+
+      await runWizard();
+
+      expect(p.log.error).toHaveBeenCalledWith('Installation failed');
+    });
+
     it('should validate URL input for self-hosted instance', async () => {
       // Capture the validate function from p.text call
       let validateFn: ((value: string) => string | undefined) | undefined;

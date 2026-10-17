@@ -4,7 +4,7 @@
  */
 
 import { isIP } from 'node:net';
-import Ajv2020 from 'ajv/dist/2020';
+import Ajv2020, { type ErrorObject } from 'ajv/dist/2020';
 import { parse as parseYaml } from 'yaml';
 
 export type PluginFlavor = 'public' | 'private';
@@ -424,8 +424,9 @@ function checkSchema(
   const id = (schema as { $id?: string }).$id;
   const check = (id ? ajv.getSchema(id) : undefined) ?? ajv.compile(schema);
   if (check(value)) return;
-  for (const error of check.errors ?? []) {
-    issues.push({ file: path, message: `${error.instancePath || '/'} ${error.message ?? ''}` });
+  // Ajv fills `errors`, each with a message, whenever validation fails.
+  for (const error of check.errors as ErrorObject[]) {
+    issues.push({ file: path, message: `${error.instancePath || '/'} ${error.message as string}` });
   }
 }
 

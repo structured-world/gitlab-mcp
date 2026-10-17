@@ -261,6 +261,20 @@ describe('buildPlugin from a minimal package', () => {
     expect(ui.supportURL).toBe('https://github.example.com/acme/gitlab-mcp/issues');
   });
 
+  it('lists the missing author and links of a package.json without them', () => {
+    writePackage({ name: '@structured-world/gitlab-mcp', version: '1.2.3', description: 'x' });
+    let error: unknown;
+    try {
+      buildPlugin({ ...PUBLIC, outDir, packageRoot: root });
+    } catch (caught) {
+      error = caught;
+    }
+    expect(error).toBeInstanceOf(PluginValidationError);
+    expect((error as PluginValidationError).issues.map((i) => i.message)).toEqual(
+      expect.arrayContaining(['author.name is required', 'interface.websiteURL is required']),
+    );
+  });
+
   it('refuses a package.json without a version', () => {
     writePackage({ name: '@structured-world/gitlab-mcp' });
     expect(() => buildPlugin({ ...PUBLIC, outDir, packageRoot: root })).toThrow(
@@ -276,6 +290,16 @@ describe('findPackageRoot', () => {
 
   it('fails outside the package', () => {
     expect(() => findPackageRoot(tmpdir())).toThrow('Cannot locate the');
+  });
+
+  it('walks past the package.json of another package', () => {
+    const other = mkdtempSync(join(tmpdir(), 'other-package-'));
+    try {
+      writeFileSync(join(other, 'package.json'), JSON.stringify({ name: 'other' }));
+      expect(() => findPackageRoot(other)).toThrow('Cannot locate the');
+    } finally {
+      rmSync(other, { recursive: true, force: true });
+    }
   });
 });
 

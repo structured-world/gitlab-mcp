@@ -4,6 +4,7 @@
  */
 
 import {
+  installCline,
   installToClient,
   installToClients,
   generateConfigPreview,
@@ -535,6 +536,18 @@ describe('install installers', () => {
 
       expect(result.success).toBe(false);
       expect(result.wasAlreadyConfigured).toBe(true);
+    });
+
+    it('keeps an existing entry when installCline is called without force', () => {
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(
+        JSON.stringify({ mcpServers: { gitlab: { command: 'old' } } }),
+      );
+
+      expect(installCline(mockServerConfig)).toMatchObject({
+        success: false,
+        wasAlreadyConfigured: true,
+      });
     });
 
     it('should create backup when config exists', () => {

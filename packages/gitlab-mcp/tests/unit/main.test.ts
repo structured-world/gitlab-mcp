@@ -214,6 +214,18 @@ describe('main', () => {
       mockConsoleError.mockRestore();
     });
 
+    it('prints a thrown value that is not an Error', async () => {
+      const mockConsoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
+      mockBuildServerConfig.mockImplementation(() => {
+        throw 'bad --url';
+      });
+      mockRunInstallCommand.mockRejectedValue('no clients');
+      await runMain(installMocks);
+      expect(mockConsoleError).toHaveBeenCalledWith('bad --url');
+      expect(mockConsoleError).toHaveBeenCalledWith('no clients');
+      mockConsoleError.mockRestore();
+    });
+
     it('exits 2 with the message when the arguments are invalid', async () => {
       const mockConsoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
       mockBuildServerConfig.mockImplementation(() => {

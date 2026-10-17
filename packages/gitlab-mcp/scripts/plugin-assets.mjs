@@ -225,9 +225,9 @@ window.addEventListener('message', (event) => {
 }
 
 // Pages are addressed by scene number only, so no request value reaches the HTML.
-const pages = SCENES.map((scene) => hostPage(scene));
+const pages = new Map(SCENES.map((scene, index) => [`/${index}`, hostPage(scene)]));
 const server = createServer((request, response) => {
-  const page = pages[Number(new URL(request.url, 'http://127.0.0.1').pathname.slice(1))];
+  const page = pages.get(new URL(request.url, 'http://127.0.0.1').pathname);
   response.writeHead(page === undefined ? 404 : 200, {
     'content-type': 'text/html; charset=utf-8',
   });

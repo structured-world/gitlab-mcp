@@ -12,6 +12,7 @@ import {
   INSTALLABLE_CLIENTS,
 } from './types';
 import { expandPath } from '../utils/path-utils.js';
+import { codexConfigPath, hasGlobalEntry } from './codex';
 
 // Re-export expandPath for backwards compatibility with existing imports
 export { expandPath } from '../utils/path-utils.js';
@@ -108,9 +109,36 @@ export function isAlreadyConfigured(configPath: string): boolean {
 }
 
 /**
+ * Codex is found through its CLI; whether the gitlab entry the installer
+ * manages exists is read from the global config.toml.
+ */
+function detectCodex(): ClientDetectionResult {
+  const configPath = codexConfigPath();
+  const result: ClientDetectionResult = {
+    client: 'codex',
+    detected: commandExists('codex'),
+    method: 'cli-command',
+    configPath,
+    configExists: existsSync(configPath),
+  };
+  if (result.detected) {
+    try {
+      // Only the entry the installer would replace, read from config.toml:
+      // `codex mcp list` contacts remote servers and can stall detection.
+      result.alreadyConfigured = hasGlobalEntry(configPath);
+    } catch {
+      // An unreadable config.toml is reported by the installer itself.
+      result.alreadyConfigured = false;
+    }
+  }
+  return result;
+}
+
+/**
  * Detect a single MCP client
  */
 export function detectClient(client: InstallableClient): ClientDetectionResult {
+  if (client === 'codex') return detectCodex();
   const metadata = CLIENT_METADATA[client];
   const configPath = getConfigPath(client);
   const expandedPath = configPath ? expandPath(configPath) : undefined;

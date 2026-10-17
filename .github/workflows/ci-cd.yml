@@ -92,6 +92,17 @@ jobs:
           echo "Manifest template is valid (JSON + required fields)"
         working-directory: packages/gitlab-mcp
 
+      # Builds the plugin with the directory submission rules from the built CLI,
+      # so a missing asset, a bad skill header or an embedded secret fails the PR.
+      - name: Validate Codex plugin package
+        run: >-
+          node dist/src/main.js plugin build --public
+          --endpoint https://mcp.example.com/mcp
+          --privacy-url https://example.com/privacy
+          --terms-url https://example.com/terms
+          --out "$RUNNER_TEMP/codex-plugin"
+        working-directory: packages/gitlab-mcp
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v7
         with:

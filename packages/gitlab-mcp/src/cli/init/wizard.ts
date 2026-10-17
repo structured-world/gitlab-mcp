@@ -18,6 +18,7 @@ import {
   generateServerConfig,
 } from './config-generator';
 import { openUrl } from './browser';
+import { installCodex } from '../install/codex';
 
 /**
  * Mask sensitive values in content for display (JSON and CLI commands)
@@ -254,7 +255,16 @@ export async function runWizard(): Promise<void> {
       return;
     }
 
-    if (runNow) {
+    if (runNow && client === 'codex') {
+      // The installer drives the Codex CLI with backup, read-back and rollback.
+      const result = installCodex(generateServerConfig(wizardConfig), false);
+      if (result.success) {
+        p.log.success('MCP server installed!');
+      } else {
+        p.log.error(result.error ?? 'Installation failed');
+      }
+      for (const note of result.notes ?? []) p.log.warn(note);
+    } else if (runNow) {
       // Execute claude mcp add command using spawnSync with argument array
       // to prevent command injection vulnerabilities
       const { spawnSync } = await import('child_process');

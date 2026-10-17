@@ -12,7 +12,9 @@ import {
 } from './types';
 import { detectAllClients, getDetectedClients } from './detector';
 import { installToClients, generateConfigPreview } from './installers';
-import { McpServerConfig } from '../init/types';
+import { McpServerConfig, StdioServerConfig } from '../init/types';
+import { validateEndpoint } from '../plugin/validate';
+import { printNotes } from './notes';
 
 /**
  * CLI flags for install command
@@ -25,6 +27,9 @@ export interface InstallFlags {
   cline?: boolean;
   rooCode?: boolean;
   windsurf?: boolean;
+  codex?: boolean;
+  /** Remote MCP endpoint to register instead of a local server */
+  url?: string;
   all?: boolean;
   show?: boolean;
   force?: boolean;
@@ -36,8 +41,25 @@ export interface InstallFlags {
 export function parseInstallFlags(args: string[]): InstallFlags {
   const flags: InstallFlags = {};
 
-  for (const arg of args) {
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg.startsWith('--url=')) {
+      flags.url = arg.slice('--url='.length);
+      continue;
+    }
     switch (arg) {
+      case '--url': {
+        const value = args[i + 1];
+        if (value === undefined || value.startsWith('--')) {
+          throw new Error('--url needs the MCP endpoint, e.g. --url https://mcp.example.com/mcp');
+        }
+        flags.url = value;
+        i++;
+        break;
+      }
+      case '--codex':
+        flags.codex = true;
+        break;
       case '--claude-desktop':
         flags.claudeDesktop = true;
         break;
@@ -87,6 +109,7 @@ export function getClientsFromFlags(flags: InstallFlags): InstallableClient[] {
   if (flags.cline) clients.push('cline');
   if (flags.rooCode) clients.push('roo-code');
   if (flags.windsurf) clients.push('windsurf');
+  if (flags.codex) clients.push('codex');
 
   return clients;
 }
@@ -284,6 +307,7 @@ export async function runInstallWizard(
         info += `\n    Backup: ${result.backupPath}`;
       }
       console.log(info);
+      printNotes(result, console.log);
     }
   }
 
@@ -292,6 +316,7 @@ export async function runInstallWizard(
     for (const result of failed) {
       const metadata = CLIENT_METADATA[result.client];
       console.log(`  ✗ ${metadata.name}: ${result.error}`);
+      printNotes(result, console.log);
     }
   }
 
@@ -326,19 +351,27 @@ export async function runInstallCommand(
   if (specifiedClients.length > 0 || flags.all) {
     const detected = getDetectedClients();
     let targetClients: InstallableClient[];
+    // A client named on the command line but not installed is a failed install.
+    const missing: InstallResult[] = [];
 
     if (flags.all) {
       targetClients = detected.map((r) => r.client);
+      // Nothing to install is a failure, not an empty success.
+      if (targetClients.length === 0) throw new Error('No supported MCP clients detected.');
     } else {
       targetClients = specifiedClients.filter((c) => detected.some((d) => d.client === c));
+      for (const client of specifiedClients.filter((c) => !targetClients.includes(c))) {
+        const name = CLIENT_METADATA[client].name;
+        missing.push({ client, success: false, error: `${name} is not installed` });
+      }
     }
 
-    if (targetClients.length === 0) {
-      console.error('No supported MCP clients detected.');
-      return [];
-    }
-
-    const results = installToClients(targetClients, serverConfig, flags.force ?? false);
+    const results = [
+      ...missing,
+      ...(targetClients.length > 0
+        ? installToClients(targetClients, serverConfig, flags.force ?? false)
+        : []),
+    ];
 
     // Display results
     for (const result of results) {
@@ -348,8 +381,10 @@ export async function runInstallCommand(
         if (result.backupPath) {
           console.log(`  Backup created: ${result.backupPath}`);
         }
+        printNotes(result, console.log);
       } else {
         console.error(`✗ Failed for ${metadata.name}: ${result.error}`);
+        printNotes(result, console.error);
       }
     }
 
@@ -361,15 +396,25 @@ export async function runInstallCommand(
 }
 
 /**
+ * Server config for the install command: the remote endpoint from --url, or a
+ * local server built from the environment
+ */
+export function buildServerConfig(flags: InstallFlags): McpServerConfig {
+  // Same rules as a private plugin package: HTTPS, or plain HTTP on loopback.
+  if (flags.url !== undefined) return { url: validateEndpoint(flags.url, 'private').href };
+  return buildServerConfigFromEnv();
+}
+
+/**
  * Build server config from environment/defaults
  */
-export function buildServerConfigFromEnv(): McpServerConfig {
-  const instanceUrl = process.env.GITLAB_URL ?? 'https://gitlab.com';
+export function buildServerConfigFromEnv(): StdioServerConfig {
+  const instanceUrl = process.env.GITLAB_API_URL ?? 'https://gitlab.com';
   const token = process.env.GITLAB_TOKEN ?? '';
   const preset = process.env.GITLAB_MCP_PRESET;
 
   const env: Record<string, string> = {
-    GITLAB_URL: instanceUrl,
+    GITLAB_API_URL: instanceUrl,
     GITLAB_TOKEN: token,
   };
 

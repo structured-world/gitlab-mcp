@@ -22,8 +22,17 @@ import * as childProcess from 'child_process';
 // Mock modules
 jest.mock('fs');
 jest.mock('child_process');
+jest.mock('../../../../src/cli/install/codex', () => ({
+  CODEX_SERVER_NAME: 'gitlab',
+  codexConfigPath: jest.fn(() => '/home/user/.codex/config.toml'),
+  listCodexServers: jest.fn(() => []),
+  hasGlobalEntry: jest.fn(() => false),
+}));
+import { hasGlobalEntry, listCodexServers } from '../../../../src/cli/install/codex';
 const mockFs = fs as jest.Mocked<typeof fs>;
 const mockChildProcess = childProcess as jest.Mocked<typeof childProcess>;
+const mockListCodex = listCodexServers as jest.MockedFunction<typeof listCodexServers>;
+const mockHasGlobalEntry = hasGlobalEntry as jest.MockedFunction<typeof hasGlobalEntry>;
 
 describe('install detector', () => {
   beforeEach(() => {
@@ -283,6 +292,64 @@ describe('install detector', () => {
 
       const result = detectClient('cursor');
       expect(result.configExists).toBe(true);
+    });
+
+    describe('codex', () => {
+      const which = (status: number) =>
+        mockChildProcess.spawnSync.mockReturnValue({
+          status,
+          stdout: '',
+          stderr: '',
+          pid: 1,
+          output: [],
+          signal: null,
+        });
+
+      it('reads only config.toml to tell whether the gitlab entry exists', () => {
+        // Listing servers makes Codex contact remote ones, which can stall detection.
+        which(0);
+        mockFs.existsSync.mockReturnValue(true);
+        mockHasGlobalEntry.mockReturnValueOnce(true);
+
+        expect(detectClient('codex')).toEqual({
+          client: 'codex',
+          detected: true,
+          method: 'cli-command',
+          configPath: '/home/user/.codex/config.toml',
+          configExists: true,
+          alreadyConfigured: true,
+        });
+        expect(mockHasGlobalEntry).toHaveBeenCalledWith('/home/user/.codex/config.toml');
+        expect(mockListCodex).not.toHaveBeenCalled();
+      });
+
+      it('reports Codex as not configured when config.toml has no gitlab entry', () => {
+        which(0);
+        mockFs.existsSync.mockReturnValue(false);
+        mockHasGlobalEntry.mockReturnValueOnce(false);
+
+        expect(detectClient('codex').alreadyConfigured).toBe(false);
+      });
+
+      it('reports Codex as absent without reading the configuration of a missing CLI', () => {
+        which(1);
+        mockFs.existsSync.mockReturnValue(false);
+
+        const result = detectClient('codex');
+        expect(result.detected).toBe(false);
+        expect(result.alreadyConfigured).toBeUndefined();
+        expect(mockHasGlobalEntry).not.toHaveBeenCalled();
+      });
+
+      it('treats an unreadable config.toml as not configured', () => {
+        which(0);
+        mockFs.existsSync.mockReturnValue(true);
+        mockHasGlobalEntry.mockImplementationOnce(() => {
+          throw new Error('Invalid TOML document');
+        });
+
+        expect(detectClient('codex').alreadyConfigured).toBe(false);
+      });
     });
   });
 

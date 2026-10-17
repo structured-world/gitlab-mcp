@@ -8,8 +8,9 @@ import { DiscoveryResult, SetupResult, ToolConfig } from '../types';
 import { InstallableClient, CLIENT_METADATA } from '../../install/types';
 import { testConnection, validateGitLabUrl, getPatCreationUrl } from '../../init/connection';
 import { openUrl } from '../../init/browser';
-import { McpServerConfig } from '../../init/types';
+import { StdioServerConfig } from '../../init/types';
 import { installToClients } from '../../install/installers';
+import { printNotes } from '../../install/notes';
 import { runToolSelectionFlow, applyManualCategories } from './tool-selection';
 
 /**
@@ -159,6 +160,7 @@ export async function runLocalSetupFlow(discovery: DiscoveryResult): Promise<Set
       let info = `  ✓ ${metadata.name}`;
       if (result.configPath) info += ` (${result.configPath})`;
       console.log(info);
+      printNotes(result, console.log);
     }
   }
 
@@ -167,6 +169,7 @@ export async function runLocalSetupFlow(discovery: DiscoveryResult): Promise<Set
     for (const result of failed) {
       const metadata = CLIENT_METADATA[result.client];
       console.log(`  ✗ ${metadata.name}: ${result.error}`);
+      printNotes(result, console.log);
     }
   }
 
@@ -184,7 +187,7 @@ function buildServerConfig(
   instanceUrl: string,
   token: string,
   toolConfig: ToolConfig,
-): McpServerConfig {
+): StdioServerConfig {
   const env: Record<string, string> = {
     GITLAB_API_URL: instanceUrl,
     GITLAB_TOKEN: token,

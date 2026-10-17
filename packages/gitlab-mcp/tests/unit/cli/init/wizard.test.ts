@@ -45,6 +45,12 @@ jest.mock('child_process', () => ({
   spawnSync: mockSpawnSync,
 }));
 
+// Mock the Codex installer the wizard hands Codex to
+const mockInstallCodex = jest.fn();
+jest.mock('../../../../src/cli/install/codex', () => ({
+  installCodex: (...args: unknown[]): unknown => mockInstallCodex(...args),
+}));
+
 // Mock connection module
 jest.mock('../../../../src/cli/init/connection', () => ({
   testConnection: jest.fn(),
@@ -287,6 +293,73 @@ describe('wizard', () => {
       expect(p.note).toHaveBeenCalledWith(
         'claude mcp add gitlab npx ...',
         'Run this command to install:',
+      );
+    });
+
+    it('installs into Codex, not Claude Code, when the wizard runs the Codex command', async () => {
+      mockSpawnSync.mockClear();
+      (configGenerator.generateClientConfig as jest.Mock).mockReturnValueOnce({
+        type: 'cli',
+        content: '[mcp_servers.gitlab]',
+        cliCommand: 'codex mcp add gitlab -- npx ...',
+      });
+      (p.select as jest.Mock)
+        .mockResolvedValueOnce('saas')
+        .mockResolvedValueOnce('developer')
+        .mockResolvedValueOnce('codex');
+      (p.confirm as jest.Mock)
+        .mockResolvedValueOnce(true) // has token
+        .mockResolvedValueOnce(true) // enable write
+        .mockResolvedValueOnce(true); // run now
+      (p.password as jest.Mock).mockResolvedValueOnce('glpat-token');
+      (connection.testConnection as jest.Mock).mockResolvedValueOnce({
+        success: true,
+        username: 'dev',
+      });
+      mockInstallCodex.mockReturnValueOnce({ client: 'codex', success: true, notes: [] });
+
+      await runWizard();
+
+      expect(mockInstallCodex).toHaveBeenCalledWith(
+        expect.objectContaining({ command: 'npx' }),
+        false,
+      );
+      expect(mockSpawnSync).not.toHaveBeenCalledWith(
+        'claude',
+        expect.anything(),
+        expect.anything(),
+      );
+    });
+
+    it('reports a failed Codex install from the wizard', async () => {
+      (configGenerator.generateClientConfig as jest.Mock).mockReturnValueOnce({
+        type: 'cli',
+        content: '[mcp_servers.gitlab]',
+        cliCommand: 'codex mcp add gitlab -- npx ...',
+      });
+      (p.select as jest.Mock)
+        .mockResolvedValueOnce('saas')
+        .mockResolvedValueOnce('developer')
+        .mockResolvedValueOnce('codex');
+      (p.confirm as jest.Mock)
+        .mockResolvedValueOnce(true)
+        .mockResolvedValueOnce(true)
+        .mockResolvedValueOnce(true);
+      (p.password as jest.Mock).mockResolvedValueOnce('glpat-token');
+      (connection.testConnection as jest.Mock).mockResolvedValueOnce({
+        success: true,
+        username: 'dev',
+      });
+      mockInstallCodex.mockReturnValueOnce({
+        client: 'codex',
+        success: false,
+        error: 'gitlab-mcp is already configured. Use --force to overwrite.',
+      });
+
+      await runWizard();
+
+      expect(p.log.error).toHaveBeenCalledWith(
+        'gitlab-mcp is already configured. Use --force to overwrite.',
       );
     });
 

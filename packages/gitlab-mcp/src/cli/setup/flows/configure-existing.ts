@@ -8,6 +8,7 @@ import { DiscoveryResult, SetupResult } from '../types';
 import { InstallableClient, CLIENT_METADATA } from '../../install/types';
 import { installToClients } from '../../install/installers';
 import { buildServerConfigFromEnv } from '../../install/install-command';
+import { printNotes } from '../../install/notes';
 
 /**
  * Run the configure-existing flow.
@@ -163,6 +164,7 @@ async function addToClients(clients: InstallableClient[]): Promise<SetupResult> 
       p.log.error(`  ${CLIENT_METADATA[r.client].name}: ${r.error}`);
     }
   }
+  for (const r of results) printNotes(r, console.log);
 
   return {
     success: successful.length > 0,
@@ -222,6 +224,7 @@ async function updateClients(clients: InstallableClient[]): Promise<SetupResult>
       p.log.error(`  ${CLIENT_METADATA[r.client].name}: ${r.error}`);
     }
   }
+  for (const r of results) printNotes(r, console.log);
 
   return {
     success: successful.length > 0,

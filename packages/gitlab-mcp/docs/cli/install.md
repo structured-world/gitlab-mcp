@@ -108,7 +108,7 @@ When overwriting an existing configuration, the installer creates a backup:
 
 See [Clients](/clients/) for paths on all platforms and [Codex installation](/guide/installation/codex) for how the Codex entry is replaced, rolled back and checked for duplicates.
 
-The command exits with status 1 when any selected client fails.
+The command exits with status 1 when any selected client fails or `--all` finds no supported client.
 
 ## See Also
 

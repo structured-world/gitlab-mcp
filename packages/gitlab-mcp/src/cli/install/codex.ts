@@ -29,6 +29,9 @@ export type CodexTransport =
 export interface CodexServer {
   name: string;
   transport: CodexTransport;
+  /** False when a higher-precedence configuration disables the server. */
+  enabled?: boolean;
+  disabled_reason?: string | null;
 }
 
 interface RunResult {
@@ -100,8 +103,7 @@ export function isGitlabMcpServer(server: CodexServer, target?: McpServerConfig)
   return target !== undefined && isRemoteServerConfig(target) && transport.url === target.url;
 }
 
-function matches(server: CodexServer | undefined, config: McpServerConfig): boolean {
-  if (!server) return false;
+function matches(server: CodexServer, config: McpServerConfig): boolean {
   const transport = server.transport;
   if (isRemoteServerConfig(config)) {
     return transport.type === 'streamable_http' && transport.url === config.url;
@@ -148,6 +150,25 @@ function removeExisting(configPath: string, backup: BackupResult | undefined): s
 }
 
 /**
+ * Undoes a failed add and says how: the backup is restored, or, when there was
+ * no configuration to restore, the partly saved new entry is removed.
+ */
+function rollBack(
+  applied: CodexServer | undefined,
+  existing: CodexServer | undefined,
+  backupPath: string | undefined,
+  configPath: string,
+): string {
+  if (backupPath !== undefined && restoreBackup(backupPath, configPath)) {
+    return '; the previous Codex configuration was restored';
+  }
+  if (applied && !existing && runCodex(['mcp', 'remove', CODEX_SERVER_NAME]).status === 0) {
+    return '; the partly saved gitlab entry was removed';
+  }
+  return '';
+}
+
+/**
  * Registers GitLab MCP in Codex. An existing `gitlab` entry is replaced only
  * with `force`; GitLab MCP registered under other names, including by an
  * installed plugin, is reported and left alone.
@@ -187,18 +208,17 @@ export function installCodex(config: McpServerConfig, force: boolean): InstallRe
   const added = runCodex(addArgs(config), isRemoteServerConfig(config));
   const applied = getCodexServer(CODEX_SERVER_NAME);
 
-  if (!matches(applied, config)) {
-    const restored = backupPath !== undefined && restoreBackup(backupPath, configPath);
-    return {
-      client,
-      success: false,
-      error:
-        `codex mcp add failed: ${failure(added)}` +
-        (restored ? '; the previous Codex configuration was restored' : ''),
-      backupPath,
-      configPath,
-      notes,
-    };
+  if (!applied || !matches(applied, config)) {
+    const error = `codex mcp add failed: ${failure(added)}${rollBack(applied, existing, backupPath, configPath)}`;
+    return { client, success: false, error, backupPath, configPath, notes };
+  }
+
+  // A project, system or managed config.toml can disable the server; the user's
+  // own entry is correct, so it stays and the reason is reported.
+  if (applied.enabled === false) {
+    const reason = applied.disabled_reason ?? 'no reason given';
+    const error = `Codex saved the gitlab entry but keeps it disabled: ${reason}`;
+    return { client, success: false, error, backupPath, configPath, notes };
   }
 
   if (added.status !== 0 && isRemoteServerConfig(config)) {

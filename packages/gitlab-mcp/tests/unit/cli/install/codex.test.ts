@@ -292,6 +292,56 @@ describe('installCodex', () => {
     expect(installCodex({ command: 'npx', args: ['x'], env: {} }, false).success).toBe(true);
   });
 
+  it('removes a partly saved new entry when there was no configuration to restore', () => {
+    // Codex saved the entry with the wrong arguments and no config.toml existed before.
+    mockSpawn.mockImplementation((_c, rawArgs, options) => {
+      const args = [...(rawArgs ?? [])];
+      fake.calls.push({ args, stdio: options?.stdio });
+      if (args[1] === 'list') return reply(0, '[]');
+      if (args[1] === 'add') {
+        fake.servers = [{ name: 'gitlab', transport: { type: 'stdio', command: 'npx', args: [] } }];
+        return reply(1, '', 'interrupted');
+      }
+      if (args[1] === 'remove') {
+        fake.servers = [];
+        return reply(0, 'removed');
+      }
+      return reply(0, JSON.stringify(fake.servers[0]));
+    });
+    const result = installCodex(STDIO, false);
+    expect(result).toMatchObject({
+      success: false,
+      error: 'codex mcp add failed: interrupted; the partly saved gitlab entry was removed',
+    });
+    expect(actions()).toEqual(['list --json', 'add gitlab', 'get gitlab', 'remove gitlab']);
+    expect(fake.servers).toEqual([]);
+  });
+
+  it('fails without rolling back when another configuration disables the entry', () => {
+    // A project or managed config.toml can disable the server; undoing the user's entry would not help.
+    mockSpawn.mockImplementation((_c, rawArgs, options) => {
+      const args = [...(rawArgs ?? [])];
+      fake.calls.push({ args, stdio: options?.stdio });
+      if (args[1] === 'list') return reply(0, '[]');
+      if (args[1] === 'add') return reply(0, 'ok');
+      return reply(
+        0,
+        JSON.stringify({
+          name: 'gitlab',
+          enabled: false,
+          disabled_reason: 'disabled by /repo/.codex/config.toml',
+          transport: { type: 'stdio', ...STDIO },
+        }),
+      );
+    });
+    expect(installCodex(STDIO, false)).toMatchObject({
+      success: false,
+      error:
+        'Codex saved the gitlab entry but keeps it disabled: disabled by /repo/.codex/config.toml',
+    });
+    expect(actions()).toEqual(['list --json', 'add gitlab', 'get gitlab']);
+  });
+
   it('reports a failure instead of throwing when the saved entry cannot be read back', () => {
     mockSpawn.mockImplementation((_c, rawArgs) => {
       const args = [...(rawArgs ?? [])];
@@ -399,9 +449,10 @@ describe('installCodex', () => {
         }),
       );
     });
+    // The wrong entry is new, so it is removed rather than left for the next run to trip on.
     expect(installCodex(STDIO, false)).toMatchObject({
       success: false,
-      error: 'codex mcp add failed: ok',
+      error: 'codex mcp add failed: ok; the partly saved gitlab entry was removed',
     });
   });
 });

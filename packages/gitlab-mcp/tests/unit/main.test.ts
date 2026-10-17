@@ -205,6 +205,15 @@ describe('main', () => {
       expect(mockExit).toHaveBeenCalledWith(1);
     });
 
+    it('exits 1 with the message when the install cannot run', async () => {
+      const mockConsoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
+      mockRunInstallCommand.mockRejectedValue(new Error('No supported MCP clients detected.'));
+      await runMain(installMocks);
+      expect(mockConsoleError).toHaveBeenCalledWith('No supported MCP clients detected.');
+      expect(mockExit).toHaveBeenCalledWith(1);
+      mockConsoleError.mockRestore();
+    });
+
     it('exits 2 with the message when the arguments are invalid', async () => {
       const mockConsoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
       mockBuildServerConfig.mockImplementation(() => {

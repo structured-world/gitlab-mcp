@@ -431,8 +431,10 @@ describe('install-command', () => {
       getDetectedClients.mockReturnValueOnce([]);
       const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
 
-      expect(await runInstallCommand(mockServerConfig, { all: true })).toEqual([]);
-      expect(consoleSpy).toHaveBeenCalledWith('No supported MCP clients detected.');
+      // Nothing to install is a failure, so the CLI exits non-zero for automation.
+      await expect(runInstallCommand(mockServerConfig, { all: true })).rejects.toThrow(
+        'No supported MCP clients detected.',
+      );
 
       consoleSpy.mockRestore();
     });

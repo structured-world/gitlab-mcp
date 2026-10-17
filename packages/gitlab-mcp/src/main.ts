@@ -54,8 +54,13 @@ async function main(): Promise<void> {
       console.error(error instanceof Error ? error.message : String(error));
       process.exit(2);
     }
-    const results = await runInstallCommand(serverConfig, flags);
-    process.exit(results.some((result) => !result.success) ? 1 : 0);
+    try {
+      const results = await runInstallCommand(serverConfig, flags);
+      process.exit(results.some((result) => !result.success) ? 1 : 0);
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
   }
 
   // Handle plugin subcommand

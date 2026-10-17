@@ -356,10 +356,8 @@ export async function runInstallCommand(
 
     if (flags.all) {
       targetClients = detected.map((r) => r.client);
-      if (targetClients.length === 0) {
-        console.error('No supported MCP clients detected.');
-        return [];
-      }
+      // Nothing to install is a failure, not an empty success.
+      if (targetClients.length === 0) throw new Error('No supported MCP clients detected.');
     } else {
       targetClients = specifiedClients.filter((c) => detected.some((d) => d.client === c));
       for (const client of specifiedClients.filter((c) => !targetClients.includes(c))) {

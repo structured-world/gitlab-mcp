@@ -3,6 +3,7 @@
  */
 
 import { StdioServerConfig, WizardConfig, MCP_CLIENT_INFO, ROLE_PRESETS } from './types';
+import { codexConfigPreview } from '../install/codex';
 
 /**
  * Escape a string for safe use in shell double-quoted context.
@@ -77,6 +78,17 @@ export function generateClaudeCodeCommand(config: WizardConfig, serverName = 'gi
   return `claude mcp add ${serverName} ${serverConfig.command} ${serverConfig.args.join(' ')} ${envFlags}`;
 }
 
+/** `codex mcp add` command for a local server, shell-escaped like the Claude Code one. */
+export function generateCodexCommand(
+  serverConfig: StdioServerConfig,
+  serverName = 'gitlab',
+): string {
+  const envFlags = Object.entries(serverConfig.env).map(
+    ([key, value]) => `--env ${key}="${shellEscape(value)}" `,
+  );
+  return `codex mcp add ${serverName} ${envFlags.join('')}-- ${serverConfig.command} ${serverConfig.args.join(' ')}`;
+}
+
 /**
  * Generate configuration based on client type
  */
@@ -94,6 +106,17 @@ export function generateClientConfig(config: WizardConfig): {
       type: 'cli',
       content: generateMcpServersJson(config),
       cliCommand: generateClaudeCodeCommand(config),
+      configPath: clientInfo.configPath,
+    };
+  }
+
+  // Codex keeps TOML; its CLI writes the entry, the preview shows the result.
+  if (config.client === 'codex') {
+    const serverConfig = generateServerConfig(config);
+    return {
+      type: 'cli',
+      content: codexConfigPreview(serverConfig),
+      cliCommand: generateCodexCommand(serverConfig),
       configPath: clientInfo.configPath,
     };
   }

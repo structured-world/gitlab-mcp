@@ -227,6 +227,24 @@ describe('installCodex', () => {
     expect(readFileSync(configPath, 'utf8')).toBe('[mcp_servers.gitlab]\ncommand = "old"\n');
   });
 
+  it('says where the backup is when restoring it fails after the old entry was removed', () => {
+    // Otherwise the user would not know the previous configuration is gone.
+    writeFileSync(configFile(), globalTable('gitlab'));
+    fake.servers = [{ name: 'gitlab', transport: { type: 'stdio', command: 'old', args: [] } }];
+    fake.failAdd = { status: 1, stderr: 'invalid server name' };
+    const restoreSpy = jest.spyOn(backup, 'restoreBackup').mockReturnValueOnce(false);
+    try {
+      const result = installCodex(STDIO, true);
+      expect(result.success).toBe(false);
+      expect(result.error).toBe(
+        'codex mcp add failed: invalid server name; restoring the previous Codex configuration ' +
+          `failed, restore it by hand from ${result.backupPath}`,
+      );
+    } finally {
+      restoreSpy.mockRestore();
+    }
+  });
+
   it('reports a failed add without a backup to restore', () => {
     fake.failAdd = { status: 2, stderr: 'boom' };
     const result = installCodex(STDIO, false);

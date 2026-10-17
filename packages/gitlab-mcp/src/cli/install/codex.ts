@@ -168,8 +168,10 @@ export function hasGlobalEntry(configPath: string): boolean {
  * no entry before, the one Codex saved is removed.
  */
 function rollBack(hadEntry: boolean, backupPath: string | undefined, configPath: string): string {
-  if (backupPath !== undefined && restoreBackup(backupPath, configPath)) {
-    return '; the previous Codex configuration was restored';
+  if (backupPath !== undefined) {
+    return restoreBackup(backupPath, configPath)
+      ? '; the previous Codex configuration was restored'
+      : `; restoring the previous Codex configuration failed, restore it by hand from ${backupPath}`;
   }
   if (hadEntry || !hasGlobalEntry(configPath)) return '';
   runCodex(['mcp', 'remove', CODEX_SERVER_NAME]);

@@ -11,7 +11,7 @@
  * Usage: node scripts/plugin-assets.mjs [--chrome <path to Chrome>]
  */
 
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
@@ -39,18 +39,36 @@ function run(command, args) {
   }
 }
 
-/** Runs a command without blocking, so this process can serve the page it loads. */
-function runAsync(command, args) {
+/**
+ * Takes one screenshot with headless Chrome, without blocking, so this process can serve
+ * the page it loads. Success is the file written anew: Chrome can exit non-zero when its
+ * shutdown watchdog fires after the screenshot is already saved.
+ */
+function screenshot(url, file, height, profile) {
+  rmSync(file, { force: true });
   return new Promise((resolve, reject) => {
-    const child = crossSpawn(command, args, { stdio: ['ignore', 'ignore', 'pipe'] });
+    const child = crossSpawn(
+      chrome,
+      [
+        '--headless=new',
+        `--user-data-dir=${profile}`,
+        '--hide-scrollbars',
+        '--force-device-scale-factor=2',
+        `--window-size=768,${height}`,
+        '--virtual-time-budget=6000',
+        `--screenshot=${file}`,
+        url,
+      ],
+      { stdio: ['ignore', 'ignore', 'pipe'] },
+    );
     let stderr = '';
     child.stderr.on('data', (chunk) => (stderr += chunk));
     const timer = setTimeout(() => child.kill('SIGKILL'), 120_000);
     child.on('error', reject);
-    child.on('close', (code) => {
+    child.on('close', () => {
       clearTimeout(timer);
-      if (code === 0) resolve();
-      else reject(new Error(`${command} exited with ${code}: ${stderr}`));
+      if (existsSync(file)) resolve();
+      else reject(new Error(`Chrome wrote no screenshot to ${file}: ${stderr}`));
     });
   });
 }
@@ -153,22 +171,28 @@ for (const [tool, answer] of Object.entries(answers)) {
 }
 
 // ---- Host page ----
-// Heights fit each scene's panel, so no screenshot ends in empty space.
+// The panel fills the window less its margins, so a screenshot never depends on when the
+// panel reports its size; each height fits that scene's panel content.
 const SCENES = [
   { file: 'screenshot-1.png', theme: 'light', search: '', height: 874 },
   { file: 'screenshot-2.png', theme: 'dark', search: 'plat', height: 1002 },
 ];
 
-function hostPage(theme, search) {
-  // The panel goes in as a JSON string; "</" is escaped so it cannot close this script.
-  const panel = JSON.stringify(settingsPanelHtml()).replace(/<\//g, '<\\/');
+/** JSON for an inline script: "</" is escaped so the value cannot close the script element. */
+function scriptJson(value) {
+  return JSON.stringify(value).replaceAll('</', String.raw`<\/`);
+}
+
+function hostPage({ theme, search }) {
+  const panel = scriptJson(settingsPanelHtml());
   const background = theme === 'dark' ? '#212121' : '#f4f4f5';
   return `<!doctype html>
 <html><head><meta charset="utf-8"><style>
 html, body { margin: 0; background: ${background}; }
-iframe { display: block; width: 720px; margin: 24px auto; border: 0; border-radius: 12px; }
+iframe { display: block; width: 720px; height: calc(100vh - 48px); margin: 24px auto; border: 0;
+  border-radius: 12px; }
 </style></head><body><script>
-const ANSWERS = ${JSON.stringify(answers)};
+const ANSWERS = ${scriptJson(answers)};
 const frame = document.createElement('iframe');
 frame.srcdoc = ${panel};
 document.body.appendChild(frame);
@@ -176,7 +200,7 @@ function reply(id, result) { frame.contentWindow.postMessage({ jsonrpc: '2.0', i
 function typeSearch() {
   const doc = frame.contentDocument;
   const input = doc.getElementById('search');
-  input.value = ${JSON.stringify(search)};
+  input.value = ${scriptJson(search)};
   input.dispatchEvent(new Event('input'));
   // The panel searches 300 ms after the last keystroke.
   setTimeout(() => doc.querySelector('#results li')?.click(), 800);
@@ -186,47 +210,42 @@ window.addEventListener('message', (event) => {
   const message = event.data;
   if (message.method === 'ui/initialize') {
     reply(message.id, {
-      protocolVersion: ${JSON.stringify(MCP_APPS_PROTOCOL_VERSION)},
+      protocolVersion: ${scriptJson(MCP_APPS_PROTOCOL_VERSION)},
       hostCapabilities: { serverTools: {} },
-      hostContext: { theme: ${JSON.stringify(theme)} },
+      hostContext: { theme: ${scriptJson(theme)} },
     });
   } else if (message.method === 'tools/call') {
     const answer = ANSWERS[message.params.name];
     reply(message.id, { content: [{ type: 'text', text: JSON.stringify(answer) }], structuredContent: answer });
-  } else if (message.method === 'ui/notifications/size-changed') {
-    frame.style.height = message.params.height + 'px';
-  } else if (message.method === 'ui/notifications/initialized' && ${JSON.stringify(search)}) {
+  } else if (message.method === 'ui/notifications/initialized' && ${scriptJson(search)}) {
     setTimeout(typeSearch, 200);
   }
 });
 </script></body></html>`;
 }
 
+// Pages are addressed by scene number only, so no request value reaches the HTML.
+const pages = SCENES.map((scene) => hostPage(scene));
 const server = createServer((request, response) => {
-  const url = new URL(request.url, 'http://127.0.0.1');
-  response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-  response.end(hostPage(url.searchParams.get('theme'), url.searchParams.get('search') ?? ''));
+  const page = pages[Number(new URL(request.url, 'http://127.0.0.1').pathname.slice(1))];
+  response.writeHead(page === undefined ? 404 : 200, {
+    'content-type': 'text/html; charset=utf-8',
+  });
+  response.end(page ?? '');
 });
 await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
-const profile = mkdtempSync(join(tmpdir(), 'plugin-assets-chrome-'));
+const profiles = mkdtempSync(join(tmpdir(), 'plugin-assets-chrome-'));
 
 try {
-  for (const scene of SCENES) {
-    const url = `http://127.0.0.1:${server.address().port}/?theme=${scene.theme}&search=${scene.search}`;
-    // A separate profile keeps this run away from any Chrome the user has open.
-    await runAsync(chrome, [
-      '--headless=new',
-      `--user-data-dir=${profile}`,
-      '--hide-scrollbars',
-      '--force-device-scale-factor=2',
-      `--window-size=768,${scene.height}`,
-      '--virtual-time-budget=6000',
-      `--screenshot=${join(assets, scene.file)}`,
-      url,
-    ]);
-    console.log(`Rendered ${scene.file}`);
-  }
+  // Each run has its own profile, apart from the others and from the user's Chrome.
+  await Promise.all(
+    SCENES.map(async (scene, index) => {
+      const url = `http://127.0.0.1:${server.address().port}/${index}`;
+      await screenshot(url, join(assets, scene.file), scene.height, join(profiles, `${index}`));
+      console.log(`Rendered ${scene.file}`);
+    }),
+  );
 } finally {
   server.close();
-  rmSync(profile, { recursive: true, force: true });
+  rmSync(profiles, { recursive: true, force: true });
 }

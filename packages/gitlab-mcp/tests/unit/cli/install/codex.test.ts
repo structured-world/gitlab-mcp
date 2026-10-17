@@ -5,7 +5,7 @@
  * CODEX_HOME so backup and rollback act on disk.
  */
 
-import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { sync as spawnSync } from 'cross-spawn';
@@ -30,13 +30,35 @@ const STDIO = {
 const REMOTE = { url: 'https://mcp.example.com/mcp' };
 
 interface FakeCodex {
+  /** What `mcp list` reports: global entries and those plugins provide. */
   servers: CodexServer[];
   calls: Array<{ args: string[]; stdio: unknown }>;
   failAdd?: { status: number; stderr: string; keepEntry?: boolean };
   failRemove?: boolean;
   failList?: string;
+  /** Transport Codex saves instead of the requested one. */
+  saveAs?: CodexServer['transport'];
+  /** Raw stdout of a successful `mcp get`, replacing the saved entry. */
+  getOutput?: string;
   /** Codex rewrites config.toml on remove; tests use this to change the file. */
   onRemove?: () => void;
+}
+
+/** The config.toml table of a global entry, the only place `mcp remove` edits. */
+function globalTable(name: string): string {
+  return `[mcp_servers.${name}]\ncommand = "old"\n`;
+}
+
+function configFile(): string {
+  return join(codexHome, 'config.toml');
+}
+
+function readConfig(): string {
+  return existsSync(configFile()) ? readFileSync(configFile(), 'utf8') : '';
+}
+
+function hasTable(name: string): boolean {
+  return readConfig().includes(`[mcp_servers.${name}]`);
 }
 
 let codexHome: string;
@@ -83,21 +105,24 @@ beforeEach(() => {
         return fake.failList ? reply(1, '', fake.failList) : reply(0, JSON.stringify(fake.servers));
       case 'get': {
         const server = fake.servers.find((s) => s.name === name);
-        return server
-          ? reply(0, JSON.stringify(server))
-          : reply(1, '', `No MCP server named '${name}' found.`);
+        if (!server) return reply(1, '', `No MCP server named '${name}' found.`);
+        return reply(0, fake.getOutput ?? JSON.stringify(server));
       }
       case 'remove':
         if (fake.failRemove) return reply(1, '', 'permission denied');
+        // Like Codex, an entry missing from config.toml is reported, not an error.
+        if (!hasTable(name)) return reply(0, `No MCP server named '${name}' found.`);
         fake.onRemove?.();
+        writeFileSync(configFile(), readConfig().replace(globalTable(name), ''));
         fake.servers = fake.servers.filter((s) => s.name !== name);
         return reply(0, `Removed global MCP server '${name}'.`);
       case 'add':
         if (fake.failAdd && !fake.failAdd.keepEntry) {
           return reply(fake.failAdd.status, '', fake.failAdd.stderr);
         }
+        if (!hasTable(name)) writeFileSync(configFile(), readConfig() + globalTable(name));
         fake.servers = fake.servers.filter((s) => s.name !== name);
-        fake.servers.push({ name, transport: transportOf(args) });
+        fake.servers.push({ name, transport: fake.saveAs ?? transportOf(args) });
         return fake.failAdd
           ? reply(fake.failAdd.status, '', fake.failAdd.stderr)
           : reply(0, `Added global MCP server '${name}'.`);
@@ -155,6 +180,7 @@ describe('installCodex', () => {
   });
 
   it('refuses to replace an existing gitlab entry without force and changes nothing', () => {
+    writeFileSync(configFile(), globalTable('gitlab'));
     fake.servers = [{ name: 'gitlab', transport: { type: 'stdio', command: 'old', args: [] } }];
     const result = installCodex(STDIO, false);
 
@@ -166,7 +192,8 @@ describe('installCodex', () => {
   });
 
   it('with force, backs up config.toml and replaces only the gitlab entry', () => {
-    writeFileSync(join(codexHome, 'config.toml'), 'model = "o3"\n');
+    const original = `model = "o3"\n${globalTable('gitlab')}`;
+    writeFileSync(configFile(), original);
     fake.servers = [
       { name: 'gitlab', transport: { type: 'stdio', command: 'old', args: [] } },
       {
@@ -179,7 +206,7 @@ describe('installCodex', () => {
     expect(result.success).toBe(true);
     expect(result.wasAlreadyConfigured).toBe(true);
     expect(result.backupPath).toBeDefined();
-    expect(readFileSync(result.backupPath as string, 'utf8')).toBe('model = "o3"\n');
+    expect(readFileSync(result.backupPath as string, 'utf8')).toBe(original);
     expect(actions()).toEqual(['list --json', 'remove gitlab', 'add gitlab', 'get gitlab']);
     expect(fake.servers.map((s) => s.name).sort()).toEqual(['github', 'gitlab']);
   });
@@ -208,6 +235,7 @@ describe('installCodex', () => {
   });
 
   it('stops when the old entry cannot be removed', () => {
+    writeFileSync(configFile(), globalTable('gitlab'));
     fake.servers = [{ name: 'gitlab', transport: { type: 'stdio', command: 'old', args: [] } }];
     fake.failRemove = true;
     const result = installCodex(STDIO, true);
@@ -219,6 +247,7 @@ describe('installCodex', () => {
   });
 
   it('keeps the duplicate-registration notes when the old entry cannot be removed', () => {
+    writeFileSync(configFile(), globalTable('gitlab'));
     fake.servers = [
       { name: 'gitlab', transport: { type: 'stdio', command: 'old', args: [] } },
       {
@@ -294,27 +323,39 @@ describe('installCodex', () => {
 
   it('removes a partly saved new entry when there was no configuration to restore', () => {
     // Codex saved the entry with the wrong arguments and no config.toml existed before.
-    mockSpawn.mockImplementation((_c, rawArgs, options) => {
-      const args = [...(rawArgs ?? [])];
-      fake.calls.push({ args, stdio: options?.stdio });
-      if (args[1] === 'list') return reply(0, '[]');
-      if (args[1] === 'add') {
-        fake.servers = [{ name: 'gitlab', transport: { type: 'stdio', command: 'npx', args: [] } }];
-        return reply(1, '', 'interrupted');
-      }
-      if (args[1] === 'remove') {
-        fake.servers = [];
-        return reply(0, 'removed');
-      }
-      return reply(0, JSON.stringify(fake.servers[0]));
-    });
+    fake.saveAs = { type: 'stdio', command: 'npx', args: [] };
+    fake.failAdd = { status: 1, stderr: 'interrupted', keepEntry: true };
     const result = installCodex(STDIO, false);
     expect(result).toMatchObject({
       success: false,
       error: 'codex mcp add failed: interrupted; the partly saved gitlab entry was removed',
     });
     expect(actions()).toEqual(['list --json', 'add gitlab', 'get gitlab', 'remove gitlab']);
-    expect(fake.servers).toEqual([]);
+    expect(hasTable('gitlab')).toBe(false);
+  });
+
+  it('removes a new entry whose read-back output cannot be parsed', () => {
+    // add wrote the entry before get could confirm it, so it must not outlive the failure.
+    fake.getOutput = 'gitlab: stdio npx';
+    const result = installCodex(STDIO, false);
+    expect(result).toMatchObject({
+      success: false,
+      error: expect.stringContaining('; the partly saved gitlab entry was removed') as string,
+    });
+    expect(hasTable('gitlab')).toBe(false);
+  });
+
+  it('does not take over a gitlab server that a plugin or project configuration provides', () => {
+    // mcp remove edits only the global config.toml, so a forced replace would only shadow it.
+    fake.servers = [{ name: 'gitlab', transport: { type: 'streamable_http', url: REMOTE.url } }];
+    const result = installCodex(STDIO, true);
+    expect(result).toMatchObject({
+      success: false,
+      error:
+        'Codex already runs a server named "gitlab" from a plugin or project configuration; ' +
+        'disable it there before installing.',
+    });
+    expect(actions()).toEqual(['list --json']);
   });
 
   it('fails without rolling back when another configuration disables the entry', () => {
@@ -340,16 +381,6 @@ describe('installCodex', () => {
         'Codex saved the gitlab entry but keeps it disabled: disabled by /repo/.codex/config.toml',
     });
     expect(actions()).toEqual(['list --json', 'add gitlab', 'get gitlab']);
-  });
-
-  it('reports a failure instead of throwing when the saved entry cannot be read back', () => {
-    mockSpawn.mockImplementation((_c, rawArgs) => {
-      const args = [...(rawArgs ?? [])];
-      if (args[1] === 'list') return reply(0, '[]');
-      if (args[1] === 'add') return reply(0, 'ok');
-      return reply(0, 'gitlab: stdio npx');
-    });
-    expect(installCodex(STDIO, false)).toMatchObject({ success: false });
   });
 
   it('names the missing executable when Codex is not installed', () => {
@@ -437,23 +468,14 @@ describe('installCodex', () => {
   });
 
   it('fails when Codex saved something other than what was requested', () => {
-    mockSpawn.mockImplementation((_c, rawArgs) => {
-      const args = [...(rawArgs ?? [])];
-      if (args[1] === 'list') return reply(0, '[]');
-      if (args[1] === 'add') return reply(0, 'ok');
-      return reply(
-        0,
-        JSON.stringify({
-          name: 'gitlab',
-          transport: { type: 'stdio', command: 'other', args: [] },
-        }),
-      );
-    });
+    fake.saveAs = { type: 'stdio', command: 'other', args: [] };
     // The wrong entry is new, so it is removed rather than left for the next run to trip on.
     expect(installCodex(STDIO, false)).toMatchObject({
       success: false,
-      error: 'codex mcp add failed: ok; the partly saved gitlab entry was removed',
+      error:
+        "codex mcp add failed: Added global MCP server 'gitlab'.; the partly saved gitlab entry was removed",
     });
+    expect(hasTable('gitlab')).toBe(false);
   });
 });
 

@@ -616,6 +616,7 @@
     "picomatch": "^4.0.7",
     "pino": "^10.4.0",
     "pino-pretty": "^13.2.0",
+    "smol-toml": "1.9.0",
     "transliteration": "^2.6.1",
     "undici": "^8.12.0",
     "xstate": "^5.33.2",

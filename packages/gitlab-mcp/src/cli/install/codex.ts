@@ -3,10 +3,11 @@
  * Codex itself edits config.toml and keeps every unrelated setting.
  */
 
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { sync as spawnSync } from 'cross-spawn';
+import { parse as parseToml } from 'smol-toml';
 import { BackupResult, InstallResult } from './types';
 import { isRemoteServerConfig, McpServerConfig } from '../init/types';
 import { createBackup, restoreBackup } from './backup';
@@ -150,22 +151,29 @@ function removeExisting(configPath: string, backup: BackupResult | undefined): s
 }
 
 /**
- * Undoes a failed add and says how: the backup is restored, or, when there was
- * no configuration to restore, the partly saved new entry is removed.
+ * True when the user's own config.toml defines the managed entry. `mcp list`
+ * also reports servers from plugins and project configuration, which
+ * `mcp remove` cannot edit, and `mcp remove` exits 0 for a missing name.
  */
-function rollBack(
-  applied: CodexServer | undefined,
-  existing: CodexServer | undefined,
-  backupPath: string | undefined,
-  configPath: string,
-): string {
+function hasGlobalEntry(configPath: string): boolean {
+  if (!existsSync(configPath)) return false;
+  const servers = parseToml(readFileSync(configPath, 'utf8')).mcp_servers;
+  return (
+    typeof servers === 'object' && servers !== null && Object.hasOwn(servers, CODEX_SERVER_NAME)
+  );
+}
+
+/**
+ * Undoes a failed add and says how: the backup is restored, or, when there was
+ * no entry before, the one Codex saved is removed.
+ */
+function rollBack(hadEntry: boolean, backupPath: string | undefined, configPath: string): string {
   if (backupPath !== undefined && restoreBackup(backupPath, configPath)) {
     return '; the previous Codex configuration was restored';
   }
-  if (applied && !existing && runCodex(['mcp', 'remove', CODEX_SERVER_NAME]).status === 0) {
-    return '; the partly saved gitlab entry was removed';
-  }
-  return '';
+  if (hadEntry || !hasGlobalEntry(configPath)) return '';
+  runCodex(['mcp', 'remove', CODEX_SERVER_NAME]);
+  return hasGlobalEntry(configPath) ? '' : '; the partly saved gitlab entry was removed';
 }
 
 /**
@@ -183,8 +191,25 @@ export function installCodex(config: McpServerConfig, force: boolean): InstallRe
     return { client, success: false, error: (error as Error).message };
   }
 
-  const existing = servers.find((s) => s.name === CODEX_SERVER_NAME);
   const notes = duplicateNotes(servers, config);
+  let existing: boolean;
+  try {
+    existing = hasGlobalEntry(configPath);
+  } catch (error) {
+    const reason = (error as Error).message;
+    return { client, success: false, error: `Cannot read ${configPath}: ${reason}`, notes };
+  }
+  if (!existing && servers.some((s) => s.name === CODEX_SERVER_NAME)) {
+    return {
+      client,
+      success: false,
+      error:
+        'Codex already runs a server named "gitlab" from a plugin or project configuration; ' +
+        'disable it there before installing.',
+      configPath,
+      notes,
+    };
+  }
 
   if (existing && !force) {
     return {
@@ -209,7 +234,7 @@ export function installCodex(config: McpServerConfig, force: boolean): InstallRe
   const applied = getCodexServer(CODEX_SERVER_NAME);
 
   if (!applied || !matches(applied, config)) {
-    const error = `codex mcp add failed: ${failure(added)}${rollBack(applied, existing, backupPath, configPath)}`;
+    const error = `codex mcp add failed: ${failure(added)}${rollBack(existing, backupPath, configPath)}`;
     return { client, success: false, error, backupPath, configPath, notes };
   }
 
@@ -230,7 +255,7 @@ export function installCodex(config: McpServerConfig, force: boolean): InstallRe
     success: true,
     backupPath,
     configPath,
-    wasAlreadyConfigured: existing !== undefined,
+    wasAlreadyConfigured: existing,
     notes,
   };
 }

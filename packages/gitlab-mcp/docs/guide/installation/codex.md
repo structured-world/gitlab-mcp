@@ -49,9 +49,10 @@ npx @structured-world/gitlab-mcp install --codex --url https://mcp.example.com/m
 The installer:
 
 - writes the `gitlab` entry and refuses to replace an existing one without `--force`;
-- with `--force`, backs up `config.toml`, replaces only the `gitlab` entry and restores the backup if Codex fails to save the new one;
+- with `--force`, backs up `config.toml`, replaces only the `gitlab` entry and restores the backup if Codex fails to save the new one; a new entry Codex saved wrongly is removed;
+- stops when a plugin or project configuration already provides a server named `gitlab`, which only that plugin or project can change;
 - reports GitLab MCP registered under other names, including by an installed plugin, because Codex would list its tools twice; it leaves them in place, remove the one you do not use with `codex mcp remove <name>` or by disabling the plugin;
-- reads back what Codex saved and reports a sign-in that did not finish (`codex mcp login gitlab`).
+- reads back what Codex saved, reports an entry another configuration keeps disabled, and reports a sign-in that did not finish (`codex mcp login gitlab`).
 
 Preview the entry without writing it:
 

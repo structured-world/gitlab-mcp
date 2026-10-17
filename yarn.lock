@@ -2253,6 +2253,7 @@ __metadata:
     pino: "npm:^10.4.0"
     pino-pretty: "npm:^13.2.0"
     prettier: "npm:^3.9.10"
+    smol-toml: "npm:1.9.0"
     transliteration: "npm:^2.6.1"
     ts-jest: "npm:^29.4.14"
     ts-node: "npm:^10.9.2"

@@ -32,7 +32,7 @@ const REMOTE = { url: 'https://mcp.example.com/mcp' };
 interface FakeCodex {
   /** What `mcp list` reports: global entries and those plugins provide. */
   servers: CodexServer[];
-  calls: Array<{ args: string[]; stdio: unknown }>;
+  calls: Array<{ args: string[]; stdio: unknown; timeout?: number }>;
   failAdd?: { status: number; stderr: string; keepEntry?: boolean };
   failRemove?: boolean;
   failList?: string;
@@ -98,7 +98,7 @@ beforeEach(() => {
   mockSpawn.mockImplementation((command, rawArgs, options) => {
     const args = [...(rawArgs ?? [])];
     expect(command).toBe('codex');
-    fake.calls.push({ args, stdio: options?.stdio });
+    fake.calls.push({ args, stdio: options?.stdio, timeout: options?.timeout });
     const [, action, name] = args;
     switch (action) {
       case 'list':
@@ -527,6 +527,15 @@ describe('installCodex', () => {
       '"gl" also runs GitLab MCP, so Codex lists its tools twice; remove the one you do not use (codex mcp remove gl, or disable the plugin).',
     ]);
     expect(fake.servers.map((s) => s.name)).toEqual(['gitlab-mcp', 'gl', 'github', 'gitlab']);
+  });
+
+  it('bounds every piped Codex call with a timeout, but not the browser sign-in', () => {
+    // A configured server that never answers must not hang the install.
+    installCodex(REMOTE, false);
+    for (const call of fake.calls.filter((c) => c.args[1] !== 'add')) {
+      expect(call.timeout).toBe(60_000);
+    }
+    expect(fake.calls.find((c) => c.args[1] === 'add')?.timeout).toBeUndefined();
   });
 
   it('registers a remote endpoint with the terminal attached for the browser sign-in', () => {

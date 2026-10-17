@@ -464,7 +464,8 @@ describe('validatePackage', () => {
     files.set(
       'skills/gitlab-setup/SKILL.md',
       Buffer.from(
-        `${SKILL}Use glpat-abcdefghijklmnopqrstuvwx from /Users/someone/.env at http://10.0.0.5/api\n`,
+        // Built at runtime so secret scanners do not flag the fixture itself.
+        `${SKILL}Use ${'glpat-' + 'x'.repeat(24)} from /Users/someone/.env at http://10.0.0.5/api\n`,
       ),
     );
     expect(issuesOf(files)).toEqual([

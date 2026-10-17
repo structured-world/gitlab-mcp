@@ -401,7 +401,14 @@ export async function runInstallCommand(
  */
 export function buildServerConfig(flags: InstallFlags): McpServerConfig {
   // Same rules as a private plugin package: HTTPS, or plain HTTP on loopback.
-  if (flags.url !== undefined) return { url: validateEndpoint(flags.url, 'private').href };
+  if (flags.url !== undefined) {
+    // Every other client takes local servers only and would fail after detection.
+    const clients = getClientsFromFlags(flags);
+    if (flags.all || clients.length !== 1 || clients[0] !== 'codex') {
+      throw new Error('--url registers a remote server in Codex only; use it with --codex alone');
+    }
+    return { url: validateEndpoint(flags.url, 'private').href };
+  }
   return buildServerConfigFromEnv();
 }
 

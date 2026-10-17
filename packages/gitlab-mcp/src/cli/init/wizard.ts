@@ -19,6 +19,16 @@ import {
 } from './config-generator';
 import { openUrl } from './browser';
 import { installCodex } from '../install/codex';
+import type { InstallResult } from '../install/types';
+
+function reportCodexInstall(result: InstallResult): void {
+  if (result.success) {
+    p.log.success('MCP server installed!');
+  } else {
+    p.log.error(result.error ?? 'Installation failed');
+  }
+  for (const note of result.notes ?? []) p.log.warn(note);
+}
 
 /**
  * Mask sensitive values in content for display (JSON and CLI commands)
@@ -257,13 +267,22 @@ export async function runWizard(): Promise<void> {
 
     if (runNow && client === 'codex') {
       // The installer drives the Codex CLI with backup, read-back and rollback.
-      const result = installCodex(generateServerConfig(wizardConfig), false);
-      if (result.success) {
-        p.log.success('MCP server installed!');
+      const serverConfig = generateServerConfig(wizardConfig);
+      const result = installCodex(serverConfig, false);
+      if (!result.wasAlreadyConfigured) {
+        reportCodexInstall(result);
       } else {
-        p.log.error(result.error ?? 'Installation failed');
+        // The wizard has no --force flag, so it asks before replacing an existing entry.
+        const replace = await p.confirm({
+          message: 'Codex already has a gitlab entry. Replace it?',
+          initialValue: false,
+        });
+        if (p.isCancel(replace) || !replace) {
+          p.log.info('Kept the existing Codex gitlab entry.');
+        } else {
+          reportCodexInstall(installCodex(serverConfig, true));
+        }
       }
-      for (const note of result.notes ?? []) p.log.warn(note);
     } else if (runNow) {
       // Execute claude mcp add command using spawnSync with argument array
       // to prevent command injection vulnerabilities

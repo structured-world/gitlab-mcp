@@ -86,14 +86,26 @@ describe('install-command', () => {
     });
 
     it('builds a remote config from --url and a local one otherwise', () => {
-      expect(buildServerConfig({ url: 'https://mcp.example.com/mcp' })).toEqual({
+      expect(buildServerConfig({ codex: true, url: 'https://mcp.example.com/mcp' })).toEqual({
         url: 'https://mcp.example.com/mcp',
       });
       expect(buildServerConfig({})).toHaveProperty('command', 'npx');
     });
 
+    it.each([
+      { url: 'https://mcp.example.com/mcp' },
+      { url: 'https://mcp.example.com/mcp', all: true },
+      { url: 'https://mcp.example.com/mcp', cursor: true },
+      { url: 'https://mcp.example.com/mcp', codex: true, cursor: true },
+    ])('refuses --url unless Codex is the only target: %o', (flags) => {
+      // Every other client takes local servers only, so it would fail after detection.
+      expect(() => buildServerConfig(flags)).toThrow(
+        '--url registers a remote server in Codex only; use it with --codex alone',
+      );
+    });
+
     it('refuses an endpoint that would send credentials in clear text', () => {
-      expect(() => buildServerConfig({ url: 'http://mcp.example.com/mcp' })).toThrow(
+      expect(() => buildServerConfig({ codex: true, url: 'http://mcp.example.com/mcp' })).toThrow(
         'plain HTTP is accepted only on loopback',
       );
     });

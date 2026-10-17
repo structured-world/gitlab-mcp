@@ -42,12 +42,17 @@ interface RunResult {
   error?: Error;
 }
 
+// `codex mcp list` contacts configured remote servers; one that never answers
+// must not hang the install. The browser sign-in takes as long as the user needs.
+const CODEX_TIMEOUT_MS = 60_000;
+
 function runCodex(args: string[], interactive = false): RunResult {
   // cross-spawn runs npm's codex.cmd shim on Windows without a shell, so
   // arguments with spaces or cmd.exe metacharacters pass through intact.
   const result = spawnSync(CODEX_COMMAND, args, {
     stdio: interactive ? 'inherit' : 'pipe',
     encoding: 'utf8',
+    ...(interactive ? {} : { timeout: CODEX_TIMEOUT_MS }),
   });
   return {
     status: result.status,

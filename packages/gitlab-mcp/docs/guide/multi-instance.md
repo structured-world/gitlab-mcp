@@ -68,27 +68,19 @@ Configuration is loaded in this order (first match wins):
 
 ## Instance Selection in OAuth Flow
 
-When OAuth is enabled and multiple instances are configured, users select their instance before authentication:
+When OAuth is enabled and more than one instance has an OAuth application configured, the sign-in starts on a page that lists those instances:
 
 ```
-╔════════════════════════════════════════════════════════════╗
-║              Select GitLab Instance                         ║
-╠════════════════════════════════════════════════════════════╣
-║                                                             ║
-║  ○ GitLab.com (SaaS)                                       ║
-║    https://gitlab.com                                       ║
-║    Status: ● Healthy | v17.2.0                             ║
-║                                                             ║
-║  ○ Corporate GitLab (Self-hosted)                          ║
-║    https://git.corp.io                                      ║
-║    Status: ● Healthy | v16.8.0 | Premium                   ║
-║                                                             ║
-║  [ Continue to GitLab Login ]                               ║
-║                                                             ║
-╚════════════════════════════════════════════════════════════╝
+Choose the GitLab instance to sign in to
+
+  GitLab.com
+  https://gitlab.com
+
+  Corporate GitLab
+  https://git.corp.io
 ```
 
-The selected instance is tied to the OAuth session. To switch instances, users must re-authenticate.
+Each entry shows the instance address, below its label when one is set; choosing one continues to that GitLab's login. The selected instance is tied to the OAuth session. To work with another instance, users sign in again and choose it; see [Context Switching](/advanced/context-switching).
 
 ## Tier Detection per Namespace
 
@@ -151,5 +143,5 @@ See [Rate Limiting Configuration](/configuration/rate-limiting) for details.
 - [Configuration Reference](/configuration/instances) - All configuration options
 - [Federation Architecture](/advanced/federation) - Technical deep dive
 - [Tier Detection](/advanced/tier-detection) - How namespace tier detection works
-- [Context Switching](/advanced/context-switching) - Instance switching behavior
+- [Context Switching](/advanced/context-switching) - Which instance a connection uses
 - [CLI Commands](/cli/instances) - Instance management commands

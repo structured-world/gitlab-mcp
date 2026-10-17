@@ -1,131 +1,69 @@
 ---
 title: Context Switching
-description: "Understand GitLab MCP context switching between instances. Learn how OAuth and static token modes handle instance changes, tool re-validation, namespace caching, and preset configuration."
+description: "How GitLab MCP binds a connection to one GitLab instance in static token and OAuth modes, how to work with another instance, and what manage_context changes within a chat."
 head:
   - - meta
     - name: keywords
-      content: context switching, instance switching, OAuth, static token, manage_context, MCP
+      content: context switching, instance switching, OAuth, static token, manage_context, presets, scope, MCP
 ---
 
-# GitLab Instance Context Switching
+# Context Switching
 
-How GitLab MCP handles switching between GitLab instances depending on authentication mode.
+A connection to GitLab MCP works with one GitLab instance. Within it, `manage_context` changes the preset and the scope of the current chat.
 
-## Behavior by Auth Mode
+## Which instance a connection uses
 
-| Mode | Instance Switching | Required Action |
-|------|-------------------|-----------------|
-| OAuth | **Blocked** | User must re-authenticate |
-| Static Token | Allowed via `manage_context` | Re-introspection + tool validation |
+| Mode | Instance | To use another instance |
+|------|----------|-------------------------|
+| Static token | `GITLAB_API_URL` (or the host of the profile in `GITLAB_PROFILE`), fixed when the server starts | Register a second server entry with its own URL and token |
+| OAuth | The instance the user signs in to | Sign in again and choose the other instance |
 
-## OAuth Mode
+### Static token mode
 
-In OAuth mode, the session is tied to a specific GitLab instance:
+The server uses one token for one instance for its whole lifetime. To work with several instances, register one server entry per instance in the client, each with its own `GITLAB_API_URL` and `GITLAB_TOKEN`, under different names. The tools of each entry act only on its instance.
 
-```
-User → OAuth Flow → Instance Selection → Authentication → Session
-                          ↓
-                   Session bound to
-                   selected instance
-```
+### OAuth mode
 
-### Why Switching is Blocked
+When the server is configured with several instances, the sign-in page lists them by label and address, and the user picks one. The session and its tokens belong to that instance, since a token issued by one GitLab is not accepted by another. To work with another instance, disconnect the server in the client, connect again and choose the other instance on the sign-in page.
 
-OAuth tokens are issued by a specific GitLab instance. Using an OAuth token from gitlab.com against git.company.io would fail authentication.
+To be signed in to two instances at once, add the server to the client twice under different names; each entry signs in separately and is offered the sign-in page, where you choose its instance:
 
-### How to Switch Instances
-
-To work with a different instance in OAuth mode:
-
-1. End current session (logout)
-2. Initiate new OAuth flow
-3. Select the desired instance
-4. Authenticate with that instance
-
-```json
-// Attempting to switch in OAuth mode
-// manage_context
-{
-  "action": "switch_instance",
-  "instanceUrl": "https://git.company.io"
-}
-
-// Error response
-{
-  "error": "Cannot switch instances in OAuth mode. Please re-authenticate with the desired GitLab instance."
-}
+```bash
+codex mcp add gitlab-corp --url https://mcp.example.com/mcp
 ```
 
-## Static Token Mode
+The client keeps the sign-in of each entry apart and names the tools by the entry, so a chat sees both sets of tools and each acts on its own instance. A plugin provides one entry, so the second one is added this way next to it.
 
-In static token mode (using `GITLAB_TOKEN`), instance switching is allowed via `manage_context`.
+See [Multi-Instance Setup](/guide/multi-instance) for configuring the instance list.
 
-### Switching Instances
+## Changing the context of a chat
+
+`manage_context` changes how the current chat works with the instance; it never changes the instance itself.
+
+| Action | Effect |
+|--------|--------|
+| `show` | Current instance, preset, scope and read-only state |
+| `whoami` | The signed-in account, token scopes and the tools they allow |
+| `list_presets` | Available presets |
+| `switch_preset` | Use another preset in this chat |
+| `set_scope` / `clear_scope` | Limit this chat to a project or group, or lift the limit |
+| `reset` | Return this chat to the state it started with |
 
 ```json
 // manage_context
 {
-  "action": "switch_instance",
-  "instanceUrl": "https://git.company.io"
+  "action": "switch_preset",
+  "preset": "readonly"
 }
 ```
 
-### What Happens on Switch
+A preset or scope chosen this way applies to the current chat only. Account settings, changed on the settings page or with the settings tools, apply to every chat of the account except where a chat chose otherwise; see [Account settings](/configuration/settings).
 
-1. **Validate instance** - Check instance is registered
-2. **Clear namespace cache** - Old tier data is invalid
-3. **Re-introspect** - Fetch version and schema for new instance
-4. **Re-validate tools** - Check tools against new schema
-5. **Keep chat settings** - Read-only mode and presets set with `manage_context` stay with
-   every chat; working scopes are cleared, since they named projects of the previous
-   instance. Account settings are per instance (see [Settings](/configuration/settings))
-6. **Notify client** - Send `tools/list_changed` if tools changed
+## Tool availability
 
-### Response Format
+The tool list follows the instance a connection works with: its version, its tier and the scopes of the token. When the token's permissions or the connection state change, the server sends `tools/list_changed` and clients fetch the new list.
 
-```json
-{
-  "success": true,
-  "instance": "https://git.company.io",
-  "label": "Corporate GitLab",
-  "version": "16.8.0",
-  "availableTools": 42,
-  "disabledTools": [
-    "manage_work_items",  // Work Items API not available in v16.8
-    "browse_iterations"   // Requires newer version
-  ],
-  "message": "Switched to Corporate GitLab (v16.8.0). 2 tools disabled due to schema differences."
-}
-```
-
-## Tool Re-validation
-
-Different GitLab versions have different GraphQL schemas. When switching instances:
-
-### Schema Validation
-
-Tools declare required GraphQL types and widgets:
-
-```typescript
-const manageWorkItemsTool = {
-  name: 'manage_work_items',
-  requiredGraphQLTypes: ['WorkItem', 'WorkItemType'],
-  requiredWidgets: ['DESCRIPTION', 'LABELS', 'ASSIGNEES'],
-  // ...
-};
-```
-
-On instance switch:
-1. Fetch GraphQL schema for new instance
-2. Check each tool's requirements against schema
-3. Disable tools with missing types/widgets
-4. Report disabled tools to user
-
-### Version Compatibility
-
-The server supports GitLab 16.0 and later. Where an older instance lacks newer API
-surface, tools fall back to an equivalent it does have; only actions GitLab itself
-cannot perform there are hidden (and refused if called), for example:
+The server supports GitLab 16.0 and later. Where an older instance lacks newer API surface, tools fall back to an equivalent it does have; only actions GitLab itself cannot perform there are hidden (and refused if called), for example:
 
 | GitLab Version | Work items |
 |----------------|------------|
@@ -133,74 +71,7 @@ cannot perform there are hidden (and refused if called), for example:
 | 16.4 - 18.0 | All actions; listing goes through project or group queries, as does lookup by IID where the namespace query is missing |
 | 16.0 - 16.3 | All actions except `add_link` / `remove_link` |
 
-## Namespace Tier Cache
-
-When switching instances:
-
-```
-Before switch:
-  Session namespace cache:
-    "gitlab-org" → Ultimate
-    "my-group" → Free
-
-After switch:
-  Session namespace cache:
-    (cleared - invalid for new instance)
-```
-
-The cache is cleared because:
-- Namespace paths may not exist on new instance
-- Same path may have different tier on new instance
-- Old cache data would cause incorrect feature checks
-
-## Multi-Token Presets
-
-For advanced setups, you can configure presets with different tokens for different instances:
-
-```yaml
-# profiles.yaml
-presets:
-  gitlab-com:
-    host: https://gitlab.com
-    token: glpat-gitlab-token
-
-  corporate:
-    host: https://git.company.io
-    token: glpat-corporate-token
-```
-
-Switch between presets:
-
-```json
-// manage_context
-{
-  "action": "switch_preset",
-  "preset": "corporate"
-}
-```
-
-This also triggers re-introspection and tool validation.
-
-## Best Practices
-
-### OAuth Mode
-
-- Configure all needed instances upfront
-- Use instance labels for easy identification
-- Plan workflows around single-instance sessions
-
-### Static Token Mode
-
-- Use presets for frequently-switched instances
-- Ensure tokens have appropriate scopes for each instance
-- Be aware of tool availability differences between versions
-
-### Mixed Environments
-
-If your team uses both OAuth and static tokens:
-- OAuth users: One session per instance
-- Static token users: Can switch freely
-- Document which approach each team member uses
+Features that depend on a group's tier, such as epics or iterations, are checked per namespace; see [Tier Detection](/advanced/tier-detection).
 
 ## Related Documentation
 

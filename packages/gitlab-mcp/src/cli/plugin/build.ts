@@ -74,7 +74,9 @@ export function findPackageRoot(start: string = __dirname): string {
 export function parseAuthor(author: string): { name: string; email?: string } {
   const nameEnd = author.search(/[<(]/);
   const name = (nameEnd === -1 ? author : author.slice(0, nameEnd)).trim();
-  const email = /<([^>]+)>/.exec(author)?.[1].trim();
+  const open = author.indexOf('<');
+  const close = open === -1 ? -1 : author.indexOf('>', open + 1);
+  const email = close === -1 ? '' : author.slice(open + 1, close).trim();
   return email ? { name, email } : { name };
 }
 

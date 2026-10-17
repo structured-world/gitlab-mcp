@@ -35,10 +35,26 @@ const SECRET_PATTERNS: Array<[string, RegExp]> = [
 const LOCAL_PATH_PATTERN =
   /(?<![\w.~-])(?:\/Users\/|\/home\/|[A-Za-z]:\\{1,2}Users\\{1,2})[^\s"'`]+/;
 
-// The grammar published with Semantic Versioning 2.0.0 ("Is there a suggested
-// regular expression"): prerelease and build metadata included.
-const SEMVER_PATTERN =
-  /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/;
+const SEMVER_NUMBER = /^(?:0|[1-9]\d*)$/;
+const SEMVER_IDENTIFIER = /^[0-9A-Za-z-]+$/;
+
+/** Semantic Versioning 2.0.0: MAJOR.MINOR.PATCH, optional prerelease and build metadata. */
+function isSemVer(version: string): boolean {
+  const plus = version.indexOf('+');
+  const build = plus === -1 ? undefined : version.slice(plus + 1);
+  const rest = plus === -1 ? version : version.slice(0, plus);
+  const dash = rest.indexOf('-');
+  const prerelease = dash === -1 ? undefined : rest.slice(dash + 1);
+  const core = (dash === -1 ? rest : rest.slice(0, dash)).split('.');
+  // Item 2: three numbers without leading zeros.
+  if (core.length !== 3 || !core.every((part) => SEMVER_NUMBER.test(part))) return false;
+  // Item 9: non-empty identifiers; numeric ones without leading zeros.
+  const validPrerelease = (id: string): boolean =>
+    SEMVER_IDENTIFIER.test(id) && (!/^\d+$/.test(id) || SEMVER_NUMBER.test(id));
+  if (prerelease !== undefined && !prerelease.split('.').every(validPrerelease)) return false;
+  // Item 10: non-empty identifiers, leading zeros allowed.
+  return build === undefined || build.split('.').every((id) => SEMVER_IDENTIFIER.test(id));
+}
 
 // Matches a URL in text, including a bracketed IPv6 host (RFC 3986 3.2.2), in
 // any letter case: schemes are case-insensitive (RFC 3986 3.1).
@@ -222,6 +238,8 @@ export function validateEndpoint(raw: string, flavor: PluginFlavor): URL {
   if (url.search || url.hash) {
     throw new Error('Endpoint must not carry a query or fragment');
   }
+  // Reserved in the IANA service name and port registry; nothing listens there.
+  if (url.port === '0') throw new Error('Endpoint port 0 is reserved');
   const plainLoopback = url.protocol === 'http:' && isLoopback(url.hostname);
   if (url.protocol !== 'https:' && !(flavor === 'private' && plainLoopback)) {
     throw new Error(
@@ -478,7 +496,7 @@ function checkManifest(
   flavor: PluginFlavor,
 ): void {
   checkText(issues, 'version', manifest.version, 64);
-  if (typeof manifest.version === 'string' && !SEMVER_PATTERN.test(manifest.version)) {
+  if (typeof manifest.version === 'string' && !isSemVer(manifest.version)) {
     issues.push({
       file: 'plugin.json',
       message: 'version must be a Semantic Versioning 2.0.0 version',

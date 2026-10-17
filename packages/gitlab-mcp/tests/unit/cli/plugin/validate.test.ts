@@ -188,6 +188,14 @@ describe('validateEndpoint', () => {
     );
   });
 
+  it('refuses port 0, which no server can listen on', () => {
+    // Port 0 is reserved in the IANA service name and port registry.
+    expect(() => validateEndpoint('https://mcp.example.com:0/mcp', 'private')).toThrow(
+      'Endpoint port 0 is reserved',
+    );
+    expect(validateEndpoint('https://mcp.example.com:8443/mcp', 'private').port).toBe('8443');
+  });
+
   it('refuses a value that is not a URL', () => {
     expect(() => validateEndpoint('mcp.example.com', 'private')).toThrow('not a valid URL');
   });
@@ -368,7 +376,7 @@ describe('validatePackage', () => {
     ]);
   });
 
-  it.each(['latest', '1.2', '01.2.3', '1.2.3-', '1.2.3-01'])(
+  it.each(['latest', '1.2', '01.2.3', '1.2.3-', '1.2.3-01', '1.2.3-a..b', '1.2.3+', '1.2.3+a_b'])(
     'refuses the non-semantic version %s',
     (version) => {
       expect(issuesOf(packageFiles(manifest({ version })))).toEqual([
@@ -377,7 +385,7 @@ describe('validatePackage', () => {
     },
   );
 
-  it.each(['11.0.0', '11.0.0-rc.1', '11.0.0+ci.5', '1.2.3-beta+7'])(
+  it.each(['11.0.0', '11.0.0-rc.1', '11.0.0+ci.5', '1.2.3-beta+7', '1.0.0-alpha-1', '1.0.0+001'])(
     'accepts the semantic version %s, prerelease and build metadata included',
     (version) => {
       expect(issuesOf(packageFiles(manifest({ version })))).toEqual([]);

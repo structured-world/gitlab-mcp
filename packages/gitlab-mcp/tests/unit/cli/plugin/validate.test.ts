@@ -201,6 +201,16 @@ describe('isNonPublicHost', () => {
     expect(isNonPublicHost(host)).toBe(true);
   });
 
+  it('ignores the trailing root dot of an absolute DNS name', () => {
+    // "localhost." and "localhost" name the same host (RFC 1034 3.1).
+    expect(isNonPublicHost('localhost.')).toBe(true);
+    expect(isNonPublicHost('service.local.')).toBe(true);
+    expect(isNonPublicHost('mcp.example.com.')).toBe(false);
+    expect(() => validateEndpoint('https://localhost./mcp', 'public')).toThrow(
+      'not publicly reachable',
+    );
+  });
+
   it('keeps the public neighbours of reserved blocks public', () => {
     for (const host of [
       '192.0.3.1',
@@ -310,11 +320,21 @@ describe('validatePackage', () => {
     ]);
   });
 
-  it('refuses a non-semantic version', () => {
-    expect(issuesOf(packageFiles(manifest({ version: 'latest' })))).toEqual([
-      'plugin.json: version must be an explicit x.y.z version',
-    ]);
-  });
+  it.each(['latest', '1.2', '01.2.3', '1.2.3-', '1.2.3-01'])(
+    'refuses the non-semantic version %s',
+    (version) => {
+      expect(issuesOf(packageFiles(manifest({ version })))).toEqual([
+        'plugin.json: version must be a Semantic Versioning 2.0.0 version',
+      ]);
+    },
+  );
+
+  it.each(['11.0.0', '11.0.0-rc.1', '11.0.0+ci.5', '1.2.3-beta+7'])(
+    'accepts the semantic version %s, prerelease and build metadata included',
+    (version) => {
+      expect(issuesOf(packageFiles(manifest({ version })))).toEqual([]);
+    },
+  );
 
   it('refuses icons that are missing, not square or too small', () => {
     const missing = packageFiles();

@@ -33,6 +33,11 @@ const SECRET_PATTERNS: Array<[string, RegExp]> = [
 // lookbehind skips the same words as segments of a web URL path.
 const LOCAL_PATH_PATTERN = /(?<![\w.~-])(?:\/Users\/|\/home\/|[A-Za-z]:\\Users\\)[^\s"'`]+/;
 
+// The grammar published with Semantic Versioning 2.0.0 ("Is there a suggested
+// regular expression"): prerelease and build metadata included.
+const SEMVER_PATTERN =
+  /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/;
+
 // Matches a URL in text, including a bracketed IPv6 host (RFC 3986 3.2.2).
 const URL_IN_TEXT_PATTERN = /https?:\/\/(?:\[[0-9A-Fa-f:.]+\])?[^\s"'`<>)\]]*/g;
 
@@ -85,7 +90,11 @@ export class PluginValidationError extends Error {
 
 /** True for loopback, private, link-local and unique-local addresses and local names. */
 export function isNonPublicHost(hostname: string): boolean {
-  const host = hostname.replace(/^\[|\]$/g, '').toLowerCase();
+  // A trailing root dot names the same host (RFC 1034 3.1): "localhost." is "localhost".
+  const host = hostname
+    .replace(/^\[|\]$/g, '')
+    .replace(/\.$/, '')
+    .toLowerCase();
   if (host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local')) return true;
   if (host.endsWith('.internal') || host.endsWith('.lan') || host.endsWith('.home.arpa')) {
     return true;
@@ -404,8 +413,11 @@ function checkManifest(
   flavor: PluginFlavor,
 ): void {
   checkText(issues, 'version', manifest.version, 64);
-  if (typeof manifest.version === 'string' && !/^\d+\.\d+\.\d+$/.test(manifest.version)) {
-    issues.push({ file: 'plugin.json', message: 'version must be an explicit x.y.z version' });
+  if (typeof manifest.version === 'string' && !SEMVER_PATTERN.test(manifest.version)) {
+    issues.push({
+      file: 'plugin.json',
+      message: 'version must be a Semantic Versioning 2.0.0 version',
+    });
   }
   checkText(issues, 'description', manifest.description, 4000);
   const author = (manifest.author ?? {}) as Json;

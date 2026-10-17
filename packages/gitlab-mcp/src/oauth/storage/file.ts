@@ -392,19 +392,28 @@ export class FileStorageBackend implements SessionStorageBackend {
 
   deleteSession(sessionId: string): Promise<boolean> {
     // A revoked session must not come back after a crash; a revocation whose write failed
-    // restores the session, so the retry revokes it instead of finding nothing to revoke.
+    // restores the session and its linked accounts, so the retry revokes it instead of
+    // finding nothing to revoke.
     return this.transition(
       async () => {
-        const removed = await this.memory.getSession(sessionId);
+        const session = await this.memory.getSession(sessionId);
+        const linked = await this.memory.getLinkedSessions(sessionId);
+        const removed = session ? [session, ...linked] : undefined;
         return (await this.memory.deleteSession(sessionId)) ? removed : undefined;
       },
       isPresent,
-      (removed) => this.memory.createSession(removed),
+      async (removed) => {
+        for (const session of removed) await this.memory.createSession(session);
+      },
     ).then((removed) => removed !== undefined);
   }
 
   async getAllSessions(): Promise<OAuthSession[]> {
     return this.memory.getAllSessions();
+  }
+
+  async getLinkedSessions(sessionId: string): Promise<OAuthSession[]> {
+    return this.memory.getLinkedSessions(sessionId);
   }
 
   // Device flow operations

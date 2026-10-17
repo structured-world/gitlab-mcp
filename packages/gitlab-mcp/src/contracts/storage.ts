@@ -12,6 +12,7 @@ export type {
   StorageConfig,
 } from '../oauth/storage/types';
 export type {
+  AccountLinkStep,
   OAuthSession,
   DeviceFlowState,
   AuthCodeFlowState,

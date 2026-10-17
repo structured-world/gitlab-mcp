@@ -245,11 +245,11 @@ The `apiUrl` is used by `enhancedFetch` to route requests to the correct instanc
 ## Session Isolation
 
 Each OAuth session is isolated:
-- Bound to the GitLab instance the user signed in to
+- Holds the account it signed in with and the accounts linked to it, each with its own tokens and instance
 - Has its own namespace tier cache
-- Works with another instance only through a new sign-in
+- Never reaches the accounts of another session
 
-A static token server works with the one instance it was started for; another instance needs another server entry. See [Context Switching](/advanced/context-switching).
+Each chat of a session works with one of its accounts; a call runs with that account's token on its instance. A static-token server works with its own instance and the configured instances that name a token. See [Context Switching](/advanced/context-switching).
 
 ## Schema Differences
 

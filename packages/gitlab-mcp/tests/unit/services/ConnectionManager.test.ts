@@ -782,48 +782,6 @@ describe('ConnectionManager Unit', () => {
     });
   });
 
-  describe('reinitialize', () => {
-    let manager: ConnectionManager;
-
-    beforeEach(() => {
-      manager = ConnectionManager.getInstance();
-      mockIsOAuthEnabled.mockReturnValue(false);
-    });
-
-    it('should restore saved state on failed reinitialize', async () => {
-      // Set up initial state for the URL
-      injectInstanceState(manager, 'https://new-gitlab.com', {
-        instanceInfo: {
-          version: '15.0.0',
-          tier: 'free',
-        } as unknown as InstanceState['instanceInfo'],
-        schemaInfo: { workItemWidgetTypes: ['OLD'] } as unknown as InstanceState['schemaInfo'],
-        isInitialized: true,
-      });
-
-      // Force initialize to reject so the rollback path is always exercised,
-      // regardless of ambient config (tokens, GITLAB_BASE_URL)
-      const initSpy = jest
-        .spyOn(manager, 'initialize')
-        .mockRejectedValue(new Error('forced test failure'));
-
-      await expect(manager.reinitialize('https://new-gitlab.com')).rejects.toThrow(
-        'forced test failure',
-      );
-
-      expect(initSpy).toHaveBeenCalledWith('https://new-gitlab.com');
-
-      // On failure, saved state is restored so the URL remains usable
-      expect(internals(manager).instances.has('https://new-gitlab.com')).toBe(true);
-      expect(internals(manager).instances.get('https://new-gitlab.com')!.isInitialized).toBe(true);
-      // currentInstanceUrl must also be restored so zero-arg accessors
-      // (getInstanceInfo(), getClient()) point at the correct instance
-      expect(internals(manager).currentInstanceUrl).toBe('https://new-gitlab.com');
-
-      initSpy.mockRestore();
-    });
-  });
-
   describe('admin info and capabilities snapshot', () => {
     let manager: ConnectionManager;
 

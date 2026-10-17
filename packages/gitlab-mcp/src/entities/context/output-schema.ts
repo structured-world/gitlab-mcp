@@ -117,6 +117,15 @@ const whoami = z.object({
   scopesRefreshed: z.boolean(),
 });
 
+const account = z.object({
+  id: z.string(),
+  label: z.string(),
+  instanceUrl: z.string(),
+  username: z.string().optional(),
+  primary: z.boolean(),
+  active: z.boolean(),
+});
+
 /** Object-root discriminated outputs, including list actions, for MCP 2025-11-25. */
 const success = z.discriminatedUnion('action', [
   z.object({ action: z.literal('show'), data: context }),
@@ -134,6 +143,26 @@ const success = z.discriminatedUnion('action', [
   z.object({
     action: z.literal('reset'),
     data: z.object({ success: z.boolean(), message: z.string(), context }),
+  }),
+  z.object({ action: z.literal('list_accounts'), data: z.array(account) }),
+  z.object({
+    action: z.literal('switch_account'),
+    data: z.object({ success: z.boolean(), account, message: z.string() }),
+  }),
+  z.object({
+    action: z.literal('link_account'),
+    data: z.object({
+      url: z.string(),
+      instanceUrl: z.string(),
+      instanceLabel: z.string().optional(),
+      expiresAt: z.string(),
+      opened: z.boolean(),
+      message: z.string(),
+    }),
+  }),
+  z.object({
+    action: z.literal('unlink_account'),
+    data: z.object({ success: z.boolean(), account, message: z.string() }),
   }),
 ]);
 

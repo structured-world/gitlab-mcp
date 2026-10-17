@@ -1,53 +1,85 @@
 ---
 title: Context Switching
-description: "How GitLab MCP binds a connection to one GitLab instance in static token and OAuth modes, how to work with another instance, and what manage_context changes within a chat."
+description: "How one GitLab MCP connection works with several GitLab accounts and instances, for example a company GitLab and a personal GitLab.com account, and what manage_context changes within a chat."
 head:
   - - meta
     - name: keywords
-      content: context switching, instance switching, OAuth, static token, manage_context, presets, scope, MCP
+      content: context switching, multiple accounts, several GitLab instances, link account, switch account, OAuth, static token, manage_context, presets, scope, MCP
 ---
 
 # Context Switching
 
-A connection to GitLab MCP works with one GitLab instance. Within it, `manage_context` changes the preset and the scope of the current chat.
+One connection to GitLab MCP can work with several GitLab accounts, on one instance or on several, for example a company GitLab and a personal GitLab.com account. Each chat works with one of them at a time and switches with `manage_context`; other chats keep theirs.
 
-## Which instance a connection uses
+## Accounts of a connection
 
-| Mode | Instance | To use another instance |
-|------|----------|-------------------------|
-| Static token | `GITLAB_API_URL` (or the host of the profile in `GITLAB_PROFILE`), fixed when the server starts | Register a second server entry with its own URL and token |
-| OAuth | The instance the user signs in to | Sign in again and choose the other instance |
+| Mode | First account | More accounts |
+|------|---------------|---------------|
+| OAuth | The account the connection signed in with | Accounts linked from a chat with `link_account`, on any configured instance |
+| Static token | `GITLAB_TOKEN` on `GITLAB_API_URL` | Each configured instance with its own token (`tokenEnv`) |
 
-### Static token mode
+```json
+// manage_context: the accounts of this connection, and which one this chat uses
+{ "action": "list_accounts" }
 
-The server uses one token for one instance for its whole lifetime. To work with several instances, register one server entry per instance in the client, each with its own `GITLAB_API_URL` and `GITLAB_TOKEN`, under different names. The tools of each entry act only on its instance.
-
-### OAuth mode
-
-When the server is configured with several instances, the sign-in page lists them by label and address, and the user picks one. The session and its tokens belong to that instance, since a token issued by one GitLab is not accepted by another. To work with another instance, disconnect the server in the client, connect again and choose the other instance on the sign-in page.
-
-To be signed in to two instances at once, add the server to the client twice under different names; each entry signs in separately and is offered the sign-in page, where you choose its instance:
-
-```bash
-codex mcp add gitlab-corp --url https://mcp.example.com/mcp
+// work with another account in this chat
+{ "action": "switch_account", "account": "gitlab:..." }
 ```
 
-The client keeps the sign-in of each entry apart and names the tools by the entry, so a chat sees both sets of tools and each acts on its own instance. A plugin provides one entry, so the second one is added this way next to it.
+After a switch, every call of the chat runs as that account on its instance, with its permissions, its account settings and the tools its instance's version and tier offer; the server sends `tools/list_changed` and the client fetches the new list. Other chats of the same connection are not affected, and a call already running finishes with the account it started with.
 
-See [Multi-Instance Setup](/guide/multi-instance) for configuring the instance list.
+An account that cannot be used refuses the chat's calls with the reason and what to do; the chat never falls back to another account on its own.
+
+### Linking another account (OAuth)
+
+```json
+// manage_context
+{ "action": "link_account", "instance": "https://gitlab.com" }
+```
+
+The result carries a sign-in link, and a client that supports opening links for a server (MCP URL elicitation) opens it for you. In the browser, GitLab first confirms the account this connection signed in with, then you sign in with the account to link. The first step makes sure the person who asked for the link completes it: a link opened by someone else is refused, so nobody can attach their GitLab account to your connection or yours to theirs. The link works once and for 10 minutes. Without `instance` the account is linked on the connection's own instance; to link a second account there, sign in to GitLab with that account in the browser.
+
+The instance must be configured on the server with its OAuth application (see [Instance Configuration](/configuration/instances)). Linked accounts are kept with the connection's session: they survive a server restart with file or PostgreSQL session storage, refresh their own GitLab tokens, and are removed with the session when the connection signs out, their GitLab sign-ins ended.
+
+```json
+// manage_context: remove a linked account and end its GitLab sign-in
+{ "action": "unlink_account", "account": "gitlab:..." }
+```
+
+The account the connection signed in with cannot be unlinked, and a chat must switch away from an account before unlinking it.
+
+### Configured instances (static token)
+
+A server started with a token can work with more instances when the instance configuration names a token for each:
+
+```yaml
+# GITLAB_INSTANCES_FILE
+instances:
+  - url: https://git.company.com
+    label: Company GitLab
+  - url: https://gitlab.com
+    label: GitLab.com
+    tokenEnv: GITLAB_COM_TOKEN
+```
+
+`list_accounts` lists the server's own instance and each configured instance whose token variable is set; `switch_account` takes the instance URL as the account id. Each instance is reached with its own token only.
+
+See [Multi-Instance Setup](/guide/multi-instance) for configuring the instance list and the sign-in page.
 
 ## Changing the context of a chat
 
-`manage_context` changes how the current chat works with the instance; it never changes the instance itself.
+`manage_context` changes how the current chat works with its account.
 
 | Action | Effect |
 |--------|--------|
 | `show` | Current instance, preset, scope and read-only state |
-| `whoami` | The signed-in account, token scopes and the tools they allow |
+| `whoami` | The account, token scopes and the tools they allow |
 | `list_presets` | Available presets |
 | `switch_preset` | Use another preset in this chat |
 | `set_scope` / `clear_scope` | Limit this chat to a project or group, or lift the limit |
 | `reset` | Return this chat to the state it started with |
+| `list_accounts` / `switch_account` | The accounts of the connection; work with another one in this chat |
+| `link_account` / `unlink_account` | Link another account through the browser, or remove a linked one |
 
 ```json
 // manage_context
@@ -57,11 +89,11 @@ See [Multi-Instance Setup](/guide/multi-instance) for configuring the instance l
 }
 ```
 
-A preset or scope chosen this way applies to the current chat only. Account settings, changed on the settings page or with the settings tools, apply to every chat of the account except where a chat chose otherwise; see [Account settings](/configuration/settings).
+A preset or scope chosen this way applies to the current chat only. Account settings, changed on the settings page or with the settings tools, apply to every chat of the account except where a chat chose otherwise; each linked account has its own. See [Account settings](/configuration/settings).
 
 ## Tool availability
 
-The tool list follows the instance a connection works with: its version, its tier and the scopes of the token. When the token's permissions or the connection state change, the server sends `tools/list_changed` and clients fetch the new list.
+The tool list follows the account a chat works with: its instance's version and tier and the scopes of its token. When the chat switches accounts, or the token's permissions or the connection state change, the server sends `tools/list_changed` and clients fetch the new list.
 
 The server supports GitLab 16.0 and later. Where an older instance lacks newer API surface, tools fall back to an equivalent it does have; only actions GitLab itself cannot perform there are hidden (and refused if called), for example:
 

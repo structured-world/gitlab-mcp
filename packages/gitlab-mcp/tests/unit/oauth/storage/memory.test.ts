@@ -308,6 +308,53 @@ describe('MemoryStorageBackend', () => {
         expect(sessions.map((s) => s.id)).toContain('session-2');
       });
     });
+
+    // Accounts linked to a session are listed for it only, oldest first, and removed with
+    // it: a disconnected session must not leave other accounts' tokens behind.
+    describe('linked accounts', () => {
+      it('lists the accounts linked to a session, oldest first', async () => {
+        await storage.createSession(createTestSession({ id: 'primary' }));
+        await storage.createSession(createTestSession({ id: 'other' }));
+        await storage.createSession(
+          createTestSession({ id: 'late', linkedToSessionId: 'primary', createdAt: 2000 }),
+        );
+        await storage.createSession(
+          createTestSession({ id: 'early', linkedToSessionId: 'primary', createdAt: 1000 }),
+        );
+        await storage.createSession(
+          createTestSession({ id: 'foreign', linkedToSessionId: 'other' }),
+        );
+
+        const linked = await storage.getLinkedSessions('primary');
+
+        expect(linked.map((s) => s.id)).toEqual(['early', 'late']);
+      });
+
+      it('deletes the linked accounts together with their session', async () => {
+        await storage.createSession(createTestSession({ id: 'primary' }));
+        await storage.createSession(
+          createTestSession({ id: 'linked', linkedToSessionId: 'primary', mcpAccessToken: '' }),
+        );
+        await storage.createSession(createTestSession({ id: 'unrelated' }));
+
+        expect(await storage.deleteSession('primary')).toBe(true);
+
+        expect(await storage.getSession('linked')).toBeUndefined();
+        expect(await storage.getSession('unrelated')).toBeDefined();
+      });
+
+      it('deletes a linked account alone without touching its session', async () => {
+        await storage.createSession(createTestSession({ id: 'primary' }));
+        await storage.createSession(
+          createTestSession({ id: 'linked', linkedToSessionId: 'primary' }),
+        );
+
+        expect(await storage.deleteSession('linked')).toBe(true);
+
+        expect(await storage.getSession('primary')).toBeDefined();
+        expect(await storage.getLinkedSessions('primary')).toEqual([]);
+      });
+    });
   });
 
   // Anonymous registration must not grow storage without bound: registrations per source

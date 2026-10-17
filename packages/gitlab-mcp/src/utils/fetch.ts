@@ -30,6 +30,7 @@ import {
   API_RETRY_MAX_DELAY_MS,
 } from '../config';
 import { isOAuthEnabled, getTokenContext } from '../oauth/index';
+import { currentTokenAccount } from '../accounts/token-account';
 import { getGitLabBaseUrl } from './gitlab-base-url';
 import { getRequestTracker } from '../logging/index';
 import { InstanceRegistry } from '../services/InstanceRegistry.js';
@@ -221,7 +222,8 @@ function getGitLabToken(): string | undefined {
     }
     return context?.gitlabToken;
   }
-  return GITLAB_TOKEN;
+  // A chat that switched to another configured instance uses that instance's token.
+  return currentTokenAccount()?.token ?? GITLAB_TOKEN;
 }
 
 /**

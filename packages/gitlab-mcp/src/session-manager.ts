@@ -7,6 +7,7 @@ import { normalizeInstanceUrl } from './utils/url';
 import { getConfigurationService } from './configuration';
 import { SETTINGS_READ_TOOL, SETTINGS_UPDATE_TOOL } from './entities/context/settings';
 import { MCP_APPS_EXTENSION } from './mcp-apps';
+import { forgetChat } from './accounts/chat-accounts';
 
 /** Default session idle timeout: 30 minutes */
 const DEFAULT_SESSION_TIMEOUT_MS = 30 * 60 * 1000;
@@ -151,15 +152,6 @@ export class SessionManager {
   }
 
   /**
-   * Point every session at one instance, without notifying them: a switch of the shared
-   * static-token instance moves all sessions, and its caller notifies them once afterwards.
-   */
-  pinAllSessions(url: string): void {
-    const normalizedUrl = normalizeInstanceUrl(url);
-    for (const session of this.sessions.values()) session.instanceUrl = normalizedUrl;
-  }
-
-  /**
    * Get the GitLab instance URL associated with a session.
    * Returns undefined if the session does not exist.
    */
@@ -188,6 +180,7 @@ export class SessionManager {
 
     this.sessions.delete(sessionId);
     getConfigurationService().forgetSession(sessionId);
+    forgetChat(sessionId);
 
     try {
       await session.server.close();

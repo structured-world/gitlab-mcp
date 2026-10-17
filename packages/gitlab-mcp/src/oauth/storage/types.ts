@@ -34,8 +34,11 @@ export interface SessionStorageBackend {
   getSessionByToken(token: string): Promise<OAuthSession | undefined>;
   getSessionByRefreshToken(refreshToken: string): Promise<OAuthSession | undefined>;
   updateSession(sessionId: string, updates: Partial<OAuthSession>): Promise<boolean>;
+  /** Delete a session together with the accounts linked to it. */
   deleteSession(sessionId: string): Promise<boolean>;
   getAllSessions(): Promise<OAuthSession[]>;
+  /** The GitLab accounts linked to a session, oldest first. */
+  getLinkedSessions(sessionId: string): Promise<OAuthSession[]>;
 
   // Device flow operations
   storeDeviceFlow(state: string, flow: DeviceFlowState): Promise<void>;

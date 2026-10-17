@@ -80,7 +80,7 @@ Choose the GitLab instance to sign in to
   https://git.corp.io
 ```
 
-Each entry shows the instance address, below its label when one is set; choosing one continues to that GitLab's login. The selected instance is tied to the OAuth session. To work with another instance, users sign in again and choose it; see [Context Switching](/advanced/context-switching).
+Each entry shows the instance address, below its label when one is set; choosing one continues to that GitLab's login. The selected instance is the session's first account. To work with another instance, or another account on the same one, a chat links it with `manage_context link_account` and switches with `switch_account`, without a new connection; see [Context Switching](/advanced/context-switching).
 
 ## Tier Detection per Namespace
 

@@ -68,6 +68,7 @@ const {
 
 // Import mocked OAuth module to control behavior per test
 const { isOAuthEnabled, getTokenContext } = require('../../../src/oauth/index');
+const { runWithTokenAccount } = require('../../../src/accounts/token-account');
 
 describe('Enhanced Fetch Utilities', () => {
   const mockFetch = mockUndiciFetch;
@@ -1023,6 +1024,18 @@ describe('Enhanced Fetch Utilities', () => {
       // Default mock: isOAuthEnabled returns false, GITLAB_TOKEN is "test-token"
       const headers = getAuthHeaders();
       expect(headers).toEqual({ 'PRIVATE-TOKEN': 'test-token' });
+    });
+
+    // A static-token chat that switched to another configured instance authenticates with
+    // that instance's token; the server's own token would be refused there.
+    it('uses the token of the configured instance a static-token chat switched to', () => {
+      const headers = runWithTokenAccount(
+        { instanceUrl: 'https://gitlab.com', token: 'com-pat' },
+        () => getAuthHeaders(),
+      );
+
+      expect(headers).toEqual({ 'PRIVATE-TOKEN': 'com-pat' });
+      expect(getAuthHeaders()).toEqual({ 'PRIVATE-TOKEN': 'test-token' });
     });
 
     it('should return Authorization Bearer header in OAuth mode', () => {

@@ -16,6 +16,7 @@ import { StructuredToolError, parseGitLabApiError } from '../../src/utils/error-
 import { GitLabTimeoutError } from '../../src/utils/fetch';
 import { ConfigurationService } from '../../src/configuration/service';
 import { resolveCaller } from '../../src/configuration/caller';
+import { runWithTokenAccount } from '../../src/accounts/token-account';
 
 // Mock ConnectionManager
 const mockConnectionManager = {
@@ -2906,20 +2907,31 @@ describe('handlers', () => {
       });
     });
 
-    // A sessionless static-token client (stdio) after switch_instance: the list is filtered
-    // with the settings of the instance the calls now run against, not the startup one.
-    it('lists a sessionless caller with the settings of the active instance', async () => {
-      const active = 'https://other.example.com';
-      mockConnectionManager.getCurrentInstanceUrl.mockReturnValue(active);
+    // A sessionless static-token chat (stdio) that switched to another configured instance:
+    // the list is filtered with that instance's settings, not the startup one's.
+    it('lists a sessionless caller with the settings of the instance it switched to', async () => {
+      const switched = 'https://other.example.com';
+      await service().updateAccount(resolveCaller(undefined, switched), { readOnly: true });
+
+      const result = await runWithTokenAccount({ instanceUrl: switched, token: 'other' }, () =>
+        listToolsHandler({}, {}),
+      );
+
+      expect(result.tools?.map((t) => t.name)).toEqual(['browse_merge_requests', 'manage_context']);
+    });
+
+    // Another chat initializing a configured instance moves the connection manager's latest
+    // instance; a chat that did not switch keeps its own instance and settings.
+    it('keeps a chat that did not switch on the server instance', async () => {
+      mockConnectionManager.getCurrentInstanceUrl.mockReturnValue('https://other.example.com');
       try {
-        await service().updateAccount(resolveCaller(undefined, active), { readOnly: true });
+        await service().updateAccount(resolveCaller(undefined, 'https://other.example.com'), {
+          readOnly: true,
+        });
 
         const result = await listToolsHandler({}, {});
 
-        expect(result.tools?.map((t) => t.name)).toEqual([
-          'browse_merge_requests',
-          'manage_context',
-        ]);
+        expect(result.tools?.map((t) => t.name)).toContain('manage_merge_request');
       } finally {
         mockConnectionManager.getCurrentInstanceUrl.mockReturnValue('https://gitlab.example.com');
       }

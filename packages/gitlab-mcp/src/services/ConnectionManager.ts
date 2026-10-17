@@ -347,7 +347,7 @@ export class ConnectionManager {
             },
           );
         }
-        // Verify state is still ours (reinitialize may have replaced it during async work)
+        // Verify state is still ours (reset may have replaced it during async work)
         if (this.instances.get(baseUrl) !== state) return;
         state.isInitialized = true;
         return;
@@ -380,7 +380,7 @@ export class ConnectionManager {
       const now = Date.now();
 
       if (cached && now - cached.timestamp < ConnectionManager.CACHE_TTL) {
-        // Verify state is still ours (reinitialize may have replaced it during prior awaits)
+        // Verify state is still ours (reset may have replaced it during prior awaits)
         if (this.instances.get(baseUrl) !== state) return;
         logInfo('Using cached GraphQL introspection data');
         state.instanceInfo = cached.instanceInfo;
@@ -396,7 +396,7 @@ export class ConnectionManager {
           schemaIntrospector.introspectSchema(),
         ]);
 
-        // Verify this state entry is still ours (reinitialize may have replaced it)
+        // Verify this state entry is still ours (reset may have replaced it)
         if (this.instances.get(baseUrl) !== state) return;
 
         state.instanceInfo = instanceInfo;
@@ -568,7 +568,7 @@ export class ConnectionManager {
       schemaIntrospector.introspectSchema(),
     ]);
 
-    // Verify this state entry is still ours (reinitialize may have replaced it)
+    // Verify this state entry is still ours (reset may have replaced it)
     if (this.instances.get(instanceUrl) !== state) return;
 
     state.instanceInfo = instanceInfo;
@@ -627,7 +627,7 @@ export class ConnectionManager {
 
   /**
    * The instance a call that names none works with: the one its tool call started with,
-   * so a switch_instance from another chat does not move it, else the current one.
+   * so an initialization for another chat's instance does not move it, else the current one.
    */
   private callInstanceUrl(): string | null {
     return currentCaller()?.instanceUrl ?? this.currentInstanceUrl;
@@ -865,7 +865,7 @@ export class ConnectionManager {
       previousHasWrite !== newScopeInfo.hasWriteAccess;
 
     // Re-check that the state entry is still the live one: a concurrent
-    // reinitialize() or reset() may have replaced / deleted it while we were
+    // reset() may have replaced / deleted it while we were
     // awaiting detectTokenScopes() above.  Writing into a stale object would
     // silently lose the refreshed scopes or corrupt a connection that is no
     // longer active.
@@ -979,74 +979,6 @@ export class ConnectionManager {
   }
 
   /**
-   * Re-initialize connection with a different GitLab instance.
-   * Used when switching instances in static token mode.
-   *
-   * @param newInstanceUrl - The new GitLab instance URL to connect to
-   */
-  public async reinitialize(rawInstanceUrl: string): Promise<void> {
-    const newInstanceUrl = normalizeInstanceUrl(rawInstanceUrl);
-    logInfo('Re-initializing ConnectionManager for new instance', {
-      newInstanceUrl,
-    });
-
-    // Clear state for the NEW URL before re-init. When switching instances,
-    // keep previous state alive as fallback. When refreshing the same URL,
-    // save the live state and restore it if re-init fails.
-    const previousUrl = this.currentInstanceUrl;
-    const savedState = this.instances.get(newInstanceUrl);
-    // Only restore states that were successfully initialized; a placeholder
-    // entry written by doInitialize() before any network step completed is not
-    // a valid fallback — reinstate it would point currentInstanceUrl at an
-    // uninitialised connection.
-    const restorableState = savedState?.isInitialized ? savedState : undefined;
-    this.initializePromises.delete(newInstanceUrl);
-    this.introspectionPromises.delete(newInstanceUrl);
-    this.instances.delete(newInstanceUrl);
-    this.instanceAccessTimes.delete(newInstanceUrl);
-
-    // Clear all caches for the new URL (guard: registry may not be initialized yet)
-    try {
-      const registry = InstanceRegistry.getInstance();
-      registry.clearIntrospectionCache(newInstanceUrl);
-    } catch {
-      // InstanceRegistry not initialized — no cache to clear
-    }
-    ConnectionManager.introspectionCache.delete(newInstanceUrl);
-    ConnectionManager.introspectionCache.delete(`${newInstanceUrl}/api/graphql`);
-
-    // Re-initialize the connection with the new instance URL
-    try {
-      await this.initialize(newInstanceUrl);
-    } catch (error) {
-      // On failure: restore the best available state.
-      // - Same-URL refresh: restore saved state for this URL
-      // - URL switch: keep previousUrl as the active healthy instance
-      if (restorableState) {
-        this.instances.set(newInstanceUrl, restorableState);
-        this.touchInstance(newInstanceUrl); // Restore access timestamp for the revived entry.
-      }
-      if (previousUrl && this.instances.has(previousUrl)) {
-        this.currentInstanceUrl = previousUrl;
-      } else if (restorableState) {
-        this.currentInstanceUrl = newInstanceUrl;
-      }
-      throw error;
-    }
-
-    // The previous instance's state stays: a tool call that started before the switch keeps
-    // working with it, and each of its reads refreshes it. Once idle, the TTL and LRU eviction
-    // reclaim it like any other instance.
-
-    const state = this.instances.get(newInstanceUrl);
-    logInfo('ConnectionManager re-initialized', {
-      version: state?.instanceInfo?.version,
-      tier: state?.instanceInfo?.tier,
-      instanceUrl: this.currentInstanceUrl,
-    });
-  }
-
-  /**
    * Clear the inflight initialize promise for a URL.
    * Called by HealthMonitor after init timeout — prevents reconnect attempts
    * from re-awaiting a hung doInitialize() promise.
@@ -1075,5 +1007,9 @@ export class ConnectionManager {
   }
 }
 
-// REST calls go to the instance this manager works with now, also after switch_instance.
-setActiveInstanceSource(() => ConnectionManager.getInstance().getCurrentInstanceUrl());
+// With OAuth, a REST call outside any request context goes to the instance initialized
+// last. A static-token server works with its own instance, whatever another chat that
+// switched to a configured instance initialized since.
+setActiveInstanceSource(() =>
+  isOAuthEnabled() ? ConnectionManager.getInstance().getCurrentInstanceUrl() : null,
+);

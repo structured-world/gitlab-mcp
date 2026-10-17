@@ -113,6 +113,9 @@ export class MemoryStorageBackend implements SessionStorageBackend {
     const session = this.sessions.get(sessionId);
     if (!session) return false;
 
+    for (const linked of await this.getLinkedSessions(sessionId)) {
+      await this.deleteSession(linked.id);
+    }
     if (session.mcpAccessToken) {
       this.tokenToSession.delete(session.mcpAccessToken);
     }
@@ -128,6 +131,12 @@ export class MemoryStorageBackend implements SessionStorageBackend {
 
   async getAllSessions(): Promise<OAuthSession[]> {
     return Array.from(this.sessions.values());
+  }
+
+  async getLinkedSessions(sessionId: string): Promise<OAuthSession[]> {
+    return Array.from(this.sessions.values())
+      .filter((session) => session.linkedToSessionId === sessionId)
+      .sort((a, b) => a.createdAt - b.createdAt);
   }
 
   // Device flow operations

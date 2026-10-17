@@ -12,6 +12,7 @@
  */
 
 import type {
+  AccountLinkStep,
   OAuthSession,
   DeviceFlowState as DeviceFlowStateType,
   AuthCodeFlowState as AuthCodeFlowStateType,
@@ -45,6 +46,7 @@ interface PrismaOAuthSessionRow {
   clientId: string;
   scopes: string[];
   resource?: string | null;
+  linkedToSessionId?: string | null;
   createdAt: bigint;
   updatedAt: bigint;
 }
@@ -81,6 +83,7 @@ interface PrismaDeviceFlowStateRow {
 interface PrismaAuthCodeFlowStateRow {
   requestedGitlabScopes?: unknown;
   gitlabTokens?: unknown;
+  link?: unknown;
   selectedInstance?: string | null;
   selectedInstanceLabel?: string | null;
   mcpScopes?: unknown;
@@ -163,6 +166,21 @@ function storedGitlabTokens(value: unknown): GitLabTokenResponse | undefined {
   return value as GitLabTokenResponse;
 }
 
+/** Account linking step of a flow; a corrupt value is refused rather than half-used. */
+function storedLinkStep(value: unknown): AccountLinkStep | undefined {
+  if (value == null) return undefined;
+  const step = value as Partial<Record<keyof AccountLinkStep, unknown>>;
+  if (
+    typeof step.sessionId !== 'string' ||
+    (step.stage !== 'verify' && step.stage !== 'connect') ||
+    typeof step.instance !== 'string' ||
+    (step.instanceLabel !== undefined && typeof step.instanceLabel !== 'string')
+  ) {
+    throw new Error('Invalid stored account link step');
+  }
+  return value as AccountLinkStep;
+}
+
 /** Optional row values come back as null; the contract uses absent properties. */
 function optional<T>(value: T | null | undefined): T | undefined {
   return value ?? undefined;
@@ -180,7 +198,7 @@ interface GenericPrismaClient {
     create(args: unknown): Promise<unknown>;
     findUnique(args: unknown): Promise<unknown>;
     findFirst(args: unknown): Promise<unknown>;
-    findMany(): Promise<unknown>;
+    findMany(args?: unknown): Promise<unknown>;
     update(args: unknown): Promise<unknown>;
     updateMany(args: unknown): Promise<unknown>;
     delete(args: unknown): Promise<unknown>;
@@ -316,6 +334,7 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
         clientId: session.clientId,
         scopes: session.scopes,
         resource: session.resource ?? null,
+        linkedToSessionId: session.linkedToSessionId ?? null,
         createdAt: BigInt(session.createdAt),
         updatedAt: BigInt(session.updatedAt),
       },
@@ -407,6 +426,7 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
 
   async deleteSession(sessionId: string): Promise<boolean> {
     const prisma = this.getPrisma();
+    // Linked accounts go with the session through their foreign key (ON DELETE CASCADE).
     const result = (await prisma.oAuthSession.deleteMany({
       where: { id: sessionId },
     })) as PrismaBatchPayload;
@@ -416,6 +436,15 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
   async getAllSessions(): Promise<OAuthSession[]> {
     const prisma = this.getPrisma();
     const rows = (await prisma.oAuthSession.findMany()) as PrismaOAuthSessionRow[];
+    return rows.map((row) => this.rowToSession(row));
+  }
+
+  async getLinkedSessions(sessionId: string): Promise<OAuthSession[]> {
+    const prisma = this.getPrisma();
+    const rows = (await prisma.oAuthSession.findMany({
+      where: { linkedToSessionId: sessionId },
+      orderBy: { createdAt: 'asc' },
+    })) as PrismaOAuthSessionRow[];
     return rows.map((row) => this.rowToSession(row));
   }
 
@@ -436,6 +465,7 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
       clientId: row.clientId,
       scopes: row.scopes,
       resource: optional(row.resource),
+      linkedToSessionId: optional(row.linkedToSessionId),
       createdAt: Number(row.createdAt),
       updatedAt: Number(row.updatedAt),
     };
@@ -541,6 +571,7 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
       mcpScopes: flow.scopes,
       resource: flow.resource ?? null,
       gitlabTokens: flow.gitlabTokens,
+      link: flow.link,
     };
     await prisma.authCodeFlowState.upsert({
       where: { internalState },
@@ -582,6 +613,7 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
       scopes: storedMcpScopes(row.mcpScopes),
       resource: optional(row.resource),
       gitlabTokens: storedGitlabTokens(row.gitlabTokens),
+      link: storedLinkStep(row.link),
     };
   }
 

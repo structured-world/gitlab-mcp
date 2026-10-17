@@ -4,6 +4,14 @@
 
 * exempt stdio session from idle timeout cleanup ([#363](https://github.com/structured-world/gitlab-mcp/issues/363)) ([ca563bd](https://github.com/structured-world/gitlab-mcp/commit/ca563bda9aa969d5d7680d3d89c2c72f32344838)), closes [#361](https://github.com/structured-world/gitlab-mcp/issues/361)
 
+## [11.1.0](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-v11.0.0...gitlab-mcp-v11.1.0) (2026-10-17)
+
+
+### Features
+
+* **codex:** package the plugin and install into Codex ([#678](https://github.com/structured-world/gitlab-mcp/issues/678)) ([3f2e868](https://github.com/structured-world/gitlab-mcp/commit/3f2e8682ff540076a63bd16492fe172f30902693))
+* **plugin:** complete the Codex plugin listing, marketplace and lifecycle checks ([#680](https://github.com/structured-world/gitlab-mcp/issues/680)) ([bcfcc27](https://github.com/structured-world/gitlab-mcp/commit/bcfcc27e96332c9c6abe6555f9dfde2e9aa72f2d))
+
 ## [11.0.0](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-v10.1.0...gitlab-mcp-v11.0.0) (2026-10-16)
 
 

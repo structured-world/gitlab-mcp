@@ -155,7 +155,7 @@ function removeExisting(configPath: string, backup: BackupResult | undefined): s
  * also reports servers from plugins and project configuration, which
  * `mcp remove` cannot edit, and `mcp remove` exits 0 for a missing name.
  */
-function hasGlobalEntry(configPath: string): boolean {
+export function hasGlobalEntry(configPath: string): boolean {
   if (!existsSync(configPath)) return false;
   const servers = parseToml(readFileSync(configPath, 'utf8')).mcp_servers;
   return (

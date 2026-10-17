@@ -26,11 +26,13 @@ jest.mock('../../../../src/cli/install/codex', () => ({
   CODEX_SERVER_NAME: 'gitlab',
   codexConfigPath: jest.fn(() => '/home/user/.codex/config.toml'),
   listCodexServers: jest.fn(() => []),
+  hasGlobalEntry: jest.fn(() => false),
 }));
-import { listCodexServers } from '../../../../src/cli/install/codex';
+import { hasGlobalEntry, listCodexServers } from '../../../../src/cli/install/codex';
 const mockFs = fs as jest.Mocked<typeof fs>;
 const mockChildProcess = childProcess as jest.Mocked<typeof childProcess>;
 const mockListCodex = listCodexServers as jest.MockedFunction<typeof listCodexServers>;
+const mockHasGlobalEntry = hasGlobalEntry as jest.MockedFunction<typeof hasGlobalEntry>;
 
 describe('install detector', () => {
   beforeEach(() => {
@@ -303,12 +305,11 @@ describe('install detector', () => {
           signal: null,
         });
 
-      it('asks the Codex CLI whether its gitlab entry exists', () => {
+      it('reads only config.toml to tell whether the gitlab entry exists', () => {
+        // Listing servers makes Codex contact remote ones, which can stall detection.
         which(0);
         mockFs.existsSync.mockReturnValue(true);
-        mockListCodex.mockReturnValueOnce([
-          { name: 'gitlab', transport: { type: 'stdio', command: 'npx', args: [] } },
-        ]);
+        mockHasGlobalEntry.mockReturnValueOnce(true);
 
         expect(detectClient('codex')).toEqual({
           client: 'codex',
@@ -318,36 +319,33 @@ describe('install detector', () => {
           configExists: true,
           alreadyConfigured: true,
         });
+        expect(mockHasGlobalEntry).toHaveBeenCalledWith('/home/user/.codex/config.toml');
+        expect(mockListCodex).not.toHaveBeenCalled();
       });
 
-      it('does not count a registration under another name as the entry it would replace', () => {
+      it('reports Codex as not configured when config.toml has no gitlab entry', () => {
         which(0);
         mockFs.existsSync.mockReturnValue(false);
-        mockListCodex.mockReturnValueOnce([
-          {
-            name: 'gitlab-mcp',
-            transport: { type: 'streamable_http', url: 'https://a.example/mcp' },
-          },
-        ]);
+        mockHasGlobalEntry.mockReturnValueOnce(false);
 
         expect(detectClient('codex').alreadyConfigured).toBe(false);
       });
 
-      it('reports Codex as absent without asking a CLI that is not installed', () => {
+      it('reports Codex as absent without reading the configuration of a missing CLI', () => {
         which(1);
         mockFs.existsSync.mockReturnValue(false);
 
         const result = detectClient('codex');
         expect(result.detected).toBe(false);
         expect(result.alreadyConfigured).toBeUndefined();
-        expect(mockListCodex).not.toHaveBeenCalled();
+        expect(mockHasGlobalEntry).not.toHaveBeenCalled();
       });
 
-      it('treats an unreadable Codex listing as not configured', () => {
+      it('treats an unreadable config.toml as not configured', () => {
         which(0);
-        mockFs.existsSync.mockReturnValue(false);
-        mockListCodex.mockImplementationOnce(() => {
-          throw new Error('codex mcp list failed: bad config');
+        mockFs.existsSync.mockReturnValue(true);
+        mockHasGlobalEntry.mockImplementationOnce(() => {
+          throw new Error('Invalid TOML document');
         });
 
         expect(detectClient('codex').alreadyConfigured).toBe(false);

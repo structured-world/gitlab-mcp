@@ -345,6 +345,21 @@ describe('installCodex', () => {
     expect(hasTable('gitlab')).toBe(false);
   });
 
+  it('stops with the parser message when config.toml is not valid TOML', () => {
+    writeFileSync(configFile(), 'model = \n');
+    const result = installCodex(STDIO, true);
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(
+      new RegExp(`^Cannot read ${configFile().replace(/[.\\/]/g, '\\$&')}: `),
+    );
+    expect(actions()).toEqual(['list --json']);
+  });
+
+  it('treats a config.toml whose mcp_servers is not a table as having no gitlab entry', () => {
+    writeFileSync(configFile(), 'mcp_servers = "none"\n');
+    expect(installCodex(STDIO, false).success).toBe(true);
+  });
+
   it('does not take over a gitlab server that a plugin or project configuration provides', () => {
     // mcp remove edits only the global config.toml, so a forced replace would only shadow it.
     fake.servers = [{ name: 'gitlab', transport: { type: 'streamable_http', url: REMOTE.url } }];

@@ -24,7 +24,6 @@ import crossSpawn from 'cross-spawn';
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml';
 
 const PLUGIN_NAME = 'gitlab-mcp';
-const SERVER_NAME = 'gitlab';
 
 function parseArgs(argv) {
   const codexAt = argv.indexOf('--codex');
@@ -113,7 +112,10 @@ cpSync(source, marketplace, { recursive: true });
 const marketplaceName = readJson(join(marketplace, '.agents', 'plugins', 'marketplace.json')).name;
 const pluginId = `${PLUGIN_NAME}@${marketplaceName}`;
 const manifest = readJson(join(pluginSource, 'plugin.json'));
-const endpoint = readJson(join(pluginSource, 'mcp.json')).mcpServers[SERVER_NAME].url;
+// The package declares one server; Codex lists it under that key.
+const [[SERVER_NAME, { url: endpoint }]] = Object.entries(
+  readJson(join(pluginSource, 'mcp.json')).mcpServers,
+);
 
 mkdirSync(join(home, '.claude'), { recursive: true });
 mkdirSync(codexHome, { recursive: true });

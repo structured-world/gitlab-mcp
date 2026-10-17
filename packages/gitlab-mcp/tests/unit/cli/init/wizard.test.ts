@@ -48,6 +48,7 @@ jest.mock('child_process', () => ({
 // Mock the Codex installer the wizard hands Codex to
 const mockInstallCodex = jest.fn();
 jest.mock('../../../../src/cli/install/codex', () => ({
+  CODEX_SERVER_NAME: 'gitlab-sw',
   installCodex: (...args: unknown[]): unknown => mockInstallCodex(...args),
 }));
 
@@ -428,7 +429,7 @@ describe('wizard', () => {
       await runWizard();
 
       expect(mockInstallCodex).toHaveBeenCalledTimes(1);
-      expect(p.log.info).toHaveBeenCalledWith('Kept the existing Codex gitlab entry.');
+      expect(p.log.info).toHaveBeenCalledWith('Kept the existing Codex gitlab-sw entry.');
     });
 
     it('reports a failed Codex install that gives no reason', async () => {

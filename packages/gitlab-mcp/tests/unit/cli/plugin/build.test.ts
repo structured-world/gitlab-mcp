@@ -55,7 +55,9 @@ describe('buildPlugin', () => {
     );
     expect(readJson(join(result.pluginDir, 'mcp.json'))).toEqual({
       $schema: 'https://agent-plugins.org/schemas/1.0.0/mcp.schema.json',
-      mcpServers: { gitlab: { type: 'streamable-http', url: 'https://mcp.example.com/mcp' } },
+      mcpServers: {
+        'gitlab-sw': { type: 'streamable-http', url: 'https://mcp.example.com/mcp' },
+      },
     });
 
     const manifest = readJson(join(result.pluginDir, 'plugin.json'));
@@ -182,7 +184,7 @@ describe('buildPlugin', () => {
     ].interface;
     expect(ui.privacyPolicyURL).toBeUndefined();
     expect(readJson(join(result.pluginDir, 'mcp.json')).mcpServers).toEqual({
-      gitlab: { type: 'streamable-http', url: 'http://localhost:3333/mcp' },
+      'gitlab-sw': { type: 'streamable-http', url: 'http://localhost:3333/mcp' },
     });
   });
 

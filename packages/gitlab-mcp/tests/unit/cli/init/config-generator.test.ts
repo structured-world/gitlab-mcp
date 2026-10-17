@@ -197,11 +197,11 @@ describe('config-generator', () => {
 
       expect(result.type).toBe('cli');
       expect(result.cliCommand).toBe(
-        'codex mcp add gitlab --env GITLAB_API_URL="https://gitlab.example.com" ' +
+        'codex mcp add gitlab-sw --env GITLAB_API_URL="https://gitlab.example.com" ' +
           '--env GITLAB_TOKEN="glpat-xxxxxxxxxxxx" --env GITLAB_MCP_PRESET="developer" ' +
           '-- npx -y @structured-world/gitlab-mcp@latest',
       );
-      expect(result.content).toContain('[mcp_servers.gitlab]');
+      expect(result.content).toContain('[mcp_servers.gitlab-sw]');
       expect(result.content).not.toContain('mcpServers');
       expect(result.configPath).toBe('~/.codex/config.toml');
     });

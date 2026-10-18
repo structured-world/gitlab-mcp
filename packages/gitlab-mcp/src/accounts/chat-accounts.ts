@@ -207,6 +207,11 @@ export async function unlinkChatAccount(
       'A server with a static token has no linked accounts; its instances are configured.',
     );
   }
+  if (!sessionStore.linksAccounts()) {
+    throw new AccountUnavailableError(
+      'The session storage of this server cannot keep linked accounts; update the database package.',
+    );
+  }
   const session = await signedInSession();
   const linked = await sessionStore.getLinkedSessions(session.id);
   const row = linked.find((candidate) => oauthAccountId(candidate) === accountId);

@@ -9,6 +9,7 @@
  * replicas.
  */
 
+import { createHash } from 'node:crypto';
 import type { Response } from 'express';
 import { GITLAB_BASE_URL } from '../config';
 import type { OAuthConfig } from '../oauth/config';
@@ -20,11 +21,7 @@ import type { GitLabOAuthApp } from '../oauth/oauth-app';
 import { buildGitLabAuthUrl, getGitLabUser, revokeGitLabToken } from '../oauth/gitlab-device-flow';
 import { exchangeFlowCode } from '../oauth/code-exchange';
 import { grantedGitlabScopes } from '../oauth/granted-scopes';
-import {
-  calculateTokenExpiry,
-  generateRandomString,
-  generateSessionId,
-} from '../oauth/token-utils';
+import { calculateTokenExpiry, generateRandomString } from '../oauth/token-utils';
 import type { AccountLinkStep, AuthCodeFlowState, OAuthSession } from '../oauth/types';
 import { normalizeInstanceUrl } from '../utils/url';
 import { escapeHtml } from '../utils/html';
@@ -33,6 +30,11 @@ import { AccountUnavailableError } from './chat-accounts';
 
 /** How long a link stays usable; long enough to sign in, short enough not to linger. */
 const LINK_TTL_MS = 10 * 60 * 1000;
+
+/** Storage id of an account linked to a session: one per session, instance and user. */
+function linkedAccountId(sessionId: string, instance: string, userId: number): string {
+  return createHash('sha256').update(`${sessionId}\n${instance}\n${userId}`).digest('hex');
+}
 
 export interface AccountLinkStart {
   /** Where the user signs in; opened in the browser, never shown to anyone else. */
@@ -50,13 +52,19 @@ function requestedScopes(app: GitLabOAuthApp): string[] {
   return app.scopes.split(/[,\s]+/).filter(Boolean);
 }
 
-/** Store one step of a link and return the GitLab sign-in URL that continues it. */
+/** A stored step of a link: its state and the GitLab sign-in URL that continues it. */
+interface StoredLinkStep {
+  state: string;
+  url: string;
+}
+
+/** Store one step of a link. */
 async function storeLinkStep(
   config: OAuthConfig,
   session: OAuthSession,
   app: GitLabOAuthApp,
   link: AccountLinkStep,
-): Promise<string> {
+): Promise<StoredLinkStep> {
   const state = generateRandomString(32);
   const flow: AuthCodeFlowState = {
     requestedGitlabScopes: requestedScopes(app),
@@ -75,7 +83,7 @@ async function storeLinkStep(
     link,
   };
   await sessionStore.storeAuthCodeFlow(state, flow);
-  return buildGitLabAuthUrl(config, callbackUri(config), state, app);
+  return { state, url: buildGitLabAuthUrl(config, callbackUri(config), state, app) };
 }
 
 /**
@@ -112,7 +120,7 @@ export async function startAccountLink(instance: string | undefined): Promise<Ac
       `No GitLab instance ${instance} is configured for sign-in; configured: ${known}.`,
     );
   }
-  const url = await storeLinkStep(config, session, own, {
+  const { url } = await storeLinkStep(config, session, own, {
     sessionId: session.id,
     stage: 'verify',
     instance: target.baseUrl,
@@ -130,8 +138,23 @@ export async function startAccountLink(instance: string | undefined): Promise<Ac
   };
 }
 
+/** A button on a link page that continues to `href`. */
+interface LinkPageAction {
+  href: string;
+  label: string;
+}
+
 /** Page the browser ends on; `message` is plain text. */
-function linkPage(res: Response, status: number, title: string, message: string): void {
+function linkPage(
+  res: Response,
+  status: number,
+  title: string,
+  message: string,
+  action?: LinkPageAction,
+): void {
+  const button = action
+    ? `\n    <p><a class="button" href="${escapeHtml(action.href)}">${escapeHtml(action.label)}</a></p>`
+    : '';
   res.status(status).type('html').send(`<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -143,12 +166,13 @@ function linkPage(res: Response, status: number, title: string, message: string)
     .container { background: white; padding: 40px; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
     h1 { color: #333; font-size: 24px; margin: 0 0 16px; }
     p { color: #555; line-height: 1.5; }
+    .button { display: inline-block; padding: 10px 20px; background: #6b4fbb; color: white; border-radius: 6px; text-decoration: none; }
   </style>
 </head>
 <body>
   <div class="container">
     <h1>${escapeHtml(title)}</h1>
-    <p>${escapeHtml(message)}</p>
+    <p>${escapeHtml(message)}</p>${button}
   </div>
 </body>
 </html>`);
@@ -189,14 +213,13 @@ async function verifyOwnAccount(
   }
   const tokens = flow.gitlabTokens ?? (await exchangeFlowCode(state, flow, code, config, own));
   const user = await getGitLabUser(tokens.access_token, own.baseUrl);
-  const consumed = await sessionStore.consumeAuthCodeFlow(state);
-  // Only the identity was needed; this grant must not outlive the check.
-  await revokeQuietly(tokens.access_token, config, own);
-  if (!consumed) {
-    failAccountLink(res, 'This link was already used. Ask for a new one in the chat.');
-    return;
-  }
   if (user.id !== session.gitlabUserId) {
+    const consumed = await sessionStore.consumeAuthCodeFlow(state);
+    await revokeQuietly(tokens.access_token, config, own);
+    if (!consumed) {
+      failAccountLink(res, 'This link was already used. Ask for a new one in the chat.');
+      return;
+    }
     logWarn('Account link refused: the browser signed in as another user', {
       sessionId: truncateId(session.id),
     });
@@ -207,8 +230,31 @@ async function verifyOwnAccount(
     );
     return;
   }
+  // The next step is stored before this one is spent: a failed write leaves this step and
+  // its tokens in place, so reloading the page retries it.
   const next = await storeLinkStep(config, session, target, { ...link, stage: 'connect' });
-  res.redirect(next);
+  const consumed = await sessionStore.consumeAuthCodeFlow(state);
+  // Only the identity was needed; this grant must not outlive the check.
+  await revokeQuietly(tokens.access_token, config, own);
+  if (!consumed) {
+    await sessionStore.deleteAuthCodeFlow(next.state);
+    failAccountLink(res, 'This link was already used. Ask for a new one in the chat.');
+    return;
+  }
+  if (normalizeInstanceUrl(target.baseUrl) !== normalizeInstanceUrl(own.baseUrl)) {
+    res.redirect(next.url);
+    return;
+  }
+  // On its own instance the browser is still signed in to GitLab as the account just
+  // verified, which GitLab would authorize again; the user signs in with the other one first.
+  linkPage(
+    res,
+    200,
+    'Sign in with the account to link',
+    `GitLab confirmed you as ${user.username}. To link another account on ${target.label ?? new URL(target.baseUrl).host}, ` +
+      'open the button link in a private window and sign in there with that account, or sign out of GitLab in this browser first and then continue.',
+    { href: next.url, label: 'Continue to GitLab sign-in' },
+  );
 }
 
 /** Second step: store the signed-in account with the session, or refresh it when linked. */
@@ -248,35 +294,47 @@ async function connectAccount(
     gitlabTokenExpiry: calculateTokenExpiry(tokens.expires_in),
     gitlabScopes: grantedGitlabScopes(tokens.scope, flow.requestedGitlabScopes),
   };
-  const existing = (await sessionStore.getLinkedSessions(session.id)).find(
-    (row) =>
-      normalizeInstanceUrl(row.gitlabApiUrl ?? GITLAB_BASE_URL) === instance &&
-      row.gitlabUserId === user.id,
-  );
+  const findExisting = async (): Promise<OAuthSession | undefined> =>
+    (await sessionStore.getLinkedSessions(session.id)).find(
+      (row) =>
+        normalizeInstanceUrl(row.gitlabApiUrl ?? GITLAB_BASE_URL) === instance &&
+        row.gitlabUserId === user.id,
+    );
+  let existing = await findExisting();
+  let createdId: string | undefined;
+  if (!existing) {
+    // The id follows from the session and the account, so a concurrent link of the same
+    // account collides on it in storage instead of storing the account twice.
+    const id = linkedAccountId(session.id, instance, user.id);
+    try {
+      await sessionStore.createSession({
+        id,
+        mcpAccessToken: '',
+        mcpRefreshToken: '',
+        mcpTokenExpiry: 0,
+        ...grant,
+        gitlabUserId: user.id,
+        gitlabUsername: user.username,
+        gitlabApiUrl: instance,
+        instanceLabel: link.instanceLabel,
+        clientId: session.clientId,
+        scopes: [],
+        linkedToSessionId: session.id,
+        createdAt: now,
+        updatedAt: now,
+      });
+      createdId = id;
+    } catch (error: unknown) {
+      // Another link of this account stored it meanwhile; this grant replaces that one.
+      existing = await findExisting();
+      if (!existing) throw error;
+    }
+  }
   // Read before the update: a backend may hand out the stored record, which the update changes.
   const replacedToken = existing?.gitlabAccessToken;
-  let createdId: string | undefined;
   if (existing) {
     // Linked again: the new grant replaces the old one.
     await sessionStore.updateSession(existing.id, { ...grant, gitlabUsername: user.username });
-  } else {
-    createdId = generateSessionId();
-    await sessionStore.createSession({
-      id: createdId,
-      mcpAccessToken: '',
-      mcpRefreshToken: '',
-      mcpTokenExpiry: 0,
-      ...grant,
-      gitlabUserId: user.id,
-      gitlabUsername: user.username,
-      gitlabApiUrl: instance,
-      instanceLabel: link.instanceLabel,
-      clientId: session.clientId,
-      scopes: [],
-      linkedToSessionId: session.id,
-      createdAt: now,
-      updatedAt: now,
-    });
   }
   // Exactly one callback completes the link; another one removes what it created.
   if (!(await sessionStore.consumeAuthCodeFlow(state))) {

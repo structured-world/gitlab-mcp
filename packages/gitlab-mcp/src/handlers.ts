@@ -438,6 +438,24 @@ function formatBootstrapFailure(ctx: BootstrapContext, initError: unknown): Call
   return withReauthChallenge(errorToolResult(connError), initError);
 }
 
+/** manage_context actions that manage the connection's accounts. */
+const ACCOUNT_ACTIONS: ReadonlySet<string> = new Set([
+  'list_accounts',
+  'switch_account',
+  'link_account',
+  'unlink_account',
+]);
+
+/** Whether a call lists, switches, links or unlinks the connection's accounts. */
+function managesAccounts(request: CallToolRequest): boolean {
+  const action = request.params.arguments?.action;
+  return (
+    request.params.name === 'manage_context' &&
+    typeof action === 'string' &&
+    ACCOUNT_ACTIONS.has(action)
+  );
+}
+
 /**
  * The instance a request works with, normalized: the OAuth token's (the configured one
  * without a request context), else the instance the static token works with now.
@@ -1223,8 +1241,11 @@ export async function setupHandlers(server: Server): Promise<void> {
     }
   };
   // A call runs as the account its chat works with; one that cannot be used refuses it.
+  // Managing the accounts needs no account's token, so it also runs when the chosen one
+  // cannot be used: that is how the chat switches away from it.
   server.setRequestHandler(CallToolRequestSchema, (request, extra) =>
     runWithMcpServer(server, async () => {
+      if (managesAccounts(request)) return callTool(request, extra);
       try {
         return await withChatAccount(extra?.sessionId, () => callTool(request, extra));
       } catch (error) {

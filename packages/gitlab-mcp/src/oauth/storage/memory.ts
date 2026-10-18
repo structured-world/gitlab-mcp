@@ -63,6 +63,10 @@ export class MemoryStorageBackend implements SessionStorageBackend {
 
   // Session operations
   async createSession(session: OAuthSession): Promise<void> {
+    // Creating never replaces a session, as with the primary key of the database backend.
+    if (this.sessions.has(session.id)) {
+      throw new Error(`Session ${session.id} already exists`);
+    }
     this.sessions.set(session.id, session);
     if (session.mcpAccessToken) {
       this.tokenToSession.set(session.mcpAccessToken, session.id);
@@ -113,9 +117,8 @@ export class MemoryStorageBackend implements SessionStorageBackend {
     const session = this.sessions.get(sessionId);
     if (!session) return false;
 
-    for (const linked of await this.getLinkedSessions(sessionId)) {
-      await this.deleteSession(linked.id);
-    }
+    const linked = await this.getLinkedSessions(sessionId);
+    await Promise.all(linked.map((account) => this.deleteSession(account.id)));
     if (session.mcpAccessToken) {
       this.tokenToSession.delete(session.mcpAccessToken);
     }

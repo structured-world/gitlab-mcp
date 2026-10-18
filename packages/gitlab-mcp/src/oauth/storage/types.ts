@@ -29,6 +29,7 @@ export interface SessionStorageBackend {
   readonly type: 'memory' | 'file' | 'postgresql' | 'redis';
 
   // Session operations
+  /** Store a new session; rejects when a session with its id exists. */
   createSession(session: OAuthSession): Promise<void>;
   getSession(sessionId: string): Promise<OAuthSession | undefined>;
   getSessionByToken(token: string): Promise<OAuthSession | undefined>;

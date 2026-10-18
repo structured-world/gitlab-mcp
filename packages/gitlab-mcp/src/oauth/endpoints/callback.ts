@@ -64,7 +64,11 @@ export async function callbackHandler(req: Request, res: Response): Promise<void
         return undefined;
       });
       if (flow?.link) {
-        failAccountLink(res, `GitLab did not authorize the account: ${error_description ?? error}`);
+        // The reason is in the log above; the page shows no text taken from the request.
+        failAccountLink(
+          res,
+          'GitLab did not authorize the account. Ask for a new link in the chat to try again.',
+        );
         return;
       }
       if (flow) {

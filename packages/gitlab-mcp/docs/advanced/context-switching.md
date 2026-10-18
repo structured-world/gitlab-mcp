@@ -28,7 +28,7 @@ One connection to GitLab MCP can work with several GitLab accounts, on one insta
 
 After a switch, every call of the chat runs as that account on its instance, with its permissions, its account settings and the tools its instance's version and tier offer; the server sends `tools/list_changed` and the client fetches the new list. Other chats of the same connection are not affected, and a call already running finishes with the account it started with.
 
-An account that cannot be used refuses the chat's calls with the reason and what to do; the chat never falls back to another account on its own.
+An account that cannot be used refuses the chat's calls with the reason and what to do; the chat never falls back to another account on its own. The account actions of `manage_context` keep working, so the chat can switch to another account or link this one again.
 
 ### Linking another account (OAuth)
 
@@ -37,7 +37,7 @@ An account that cannot be used refuses the chat's calls with the reason and what
 { "action": "link_account", "instance": "https://gitlab.com" }
 ```
 
-The result carries a sign-in link, and a client that supports opening links for a server (MCP URL elicitation) opens it for you. In the browser, GitLab first confirms the account this connection signed in with, then you sign in with the account to link. The first step makes sure the person who asked for the link completes it: a link opened by someone else is refused, so nobody can attach their GitLab account to your connection or yours to theirs. The link works once and for 10 minutes. Without `instance` the account is linked on the connection's own instance; to link a second account there, sign in to GitLab with that account in the browser.
+The result carries a sign-in link, and a client that supports opening links for a server (MCP URL elicitation) opens it for you. In the browser, GitLab first confirms the account this connection signed in with, then you sign in with the account to link. The first step makes sure the person who asked for the link completes it: a link opened by someone else is refused, so nobody can attach their GitLab account to your connection or yours to theirs. The link works once and for 10 minutes. Without `instance` the account is linked on the connection's own instance. There the browser is still signed in as your own account after the first step, so the page stops with a continue button: open it in a private window and sign in with the account to link, or sign out of GitLab in the browser first and then continue.
 
 The instance must be configured on the server with its OAuth application (see [Instance Configuration](/configuration/instances)). Linked accounts are kept with the connection's session: they survive a server restart with file or PostgreSQL session storage, refresh their own GitLab tokens, and are removed with the session when the connection signs out, their GitLab sign-ins ended.
 

@@ -184,10 +184,12 @@ describe('OAuth Callback Handler', () => {
       expect(redirectMock).not.toHaveBeenCalled();
     });
 
+    // The page never repeats text from the request: whoever crafts the callback URL
+    // cannot put their words on the server's page.
     it('shows a page instead of redirecting when GitLab refuses a link', async () => {
       mockRequest.query = {
         error: 'access_denied',
-        error_description: 'User denied access',
+        error_description: 'Call +1-555-0100 to restore your account',
         state: 'link-state',
       };
       mockSessionStore.consumeAuthCodeFlow.mockResolvedValue(linkFlow);
@@ -196,7 +198,7 @@ describe('OAuth Callback Handler', () => {
 
       expect(failAccountLink).toHaveBeenCalledWith(
         mockResponse,
-        'GitLab did not authorize the account: User denied access',
+        'GitLab did not authorize the account. Ask for a new link in the chat to try again.',
       );
       expect(redirectMock).not.toHaveBeenCalled();
     });

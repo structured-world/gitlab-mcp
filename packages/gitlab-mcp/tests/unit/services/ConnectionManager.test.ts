@@ -23,6 +23,12 @@ jest.mock('../../../src/services/TokenScopeDetector', () => ({
   ),
 }));
 
+// The static token of the test instance; other instances have none.
+jest.mock('../../../src/accounts/chat-accounts', () => ({
+  configuredInstanceToken: (url: string) =>
+    url === 'https://test-gitlab.com' ? 'test-pat' : undefined,
+}));
+
 /** Type-safe access to ConnectionManager private fields in tests */
 type CMInternals = {
   instances: Map<string, InstanceState>;
@@ -208,7 +214,17 @@ describe('ConnectionManager Unit', () => {
 
       const result = await manager.refreshTokenScopes();
       expect(result).toBe(false);
-      expect(mockDetectTokenScopes).toHaveBeenCalledWith(TEST_URL);
+      expect(mockDetectTokenScopes).toHaveBeenCalledWith(TEST_URL, 'test-pat');
+    });
+
+    // An instance without a static token has no scopes to re-detect; another instance's
+    // token is never probed against it.
+    it('should return false without detection for an instance without a token', async () => {
+      injectInstanceState(manager, 'https://no-token.example.com');
+
+      const result = await manager.refreshTokenScopes();
+      expect(result).toBe(false);
+      expect(mockDetectTokenScopes).not.toHaveBeenCalled();
     });
 
     it('should return false when scopes have not changed', async () => {

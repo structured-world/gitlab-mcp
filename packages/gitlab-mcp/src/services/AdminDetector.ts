@@ -41,16 +41,20 @@ const UserAdminSchema = z.object({ is_admin: z.boolean().optional() });
  *   leave the capability undefined and do not hide admin tools on a probe error.
  *   Only runs in static-token mode (the caller skips it under OAuth, where tokens
  *   cannot elevate and per-user status must not be cached in shared instance state).
+ * @param token - the static token of that instance (default: the server's own token)
  */
-export async function detectAdminStatus(baseUrl?: string): Promise<AdminInfo | null> {
+export async function detectAdminStatus(
+  baseUrl?: string,
+  token: string | undefined = GITLAB_TOKEN,
+): Promise<AdminInfo | null> {
   const url = normalizeInstanceUrl(baseUrl ?? GITLAB_BASE_URL);
-  if (!url || !GITLAB_TOKEN) {
+  if (!url || !token) {
     return null;
   }
 
   try {
     const userResponse = await enhancedFetch(`${url}/api/v4/user`, {
-      headers: { 'PRIVATE-TOKEN': GITLAB_TOKEN, Accept: 'application/json' },
+      headers: { 'PRIVATE-TOKEN': token, Accept: 'application/json' },
       retry: false,
     });
 
@@ -77,7 +81,7 @@ export async function detectAdminStatus(baseUrl?: string): Promise<AdminInfo | n
     // admin mode is actually elevated: include_pending_delete is admin-gated.
     const probe = await enhancedFetch(
       `${url}/api/v4/projects?include_pending_delete=true&per_page=1`,
-      { headers: { 'PRIVATE-TOKEN': GITLAB_TOKEN, Accept: 'application/json' }, retry: false },
+      { headers: { 'PRIVATE-TOKEN': token, Accept: 'application/json' }, retry: false },
     );
     const status = probe.status;
     await probe.body?.cancel().catch(() => {});

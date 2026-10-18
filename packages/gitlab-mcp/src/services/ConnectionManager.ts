@@ -21,6 +21,7 @@ import { currentCaller } from '../configuration/caller';
 import { logInfo, logDebug, logError } from '../logger';
 import { InstanceRegistry } from './InstanceRegistry';
 import { CachedIntrospection } from '../config/instances-schema';
+import { configuredInstanceToken } from '../accounts/chat-accounts';
 
 import { normalizeInstanceUrl } from '../utils/url';
 import type { InstanceCapabilities } from './InstanceCapabilities';
@@ -254,16 +255,23 @@ export class ConnectionManager {
             'Docs: https://gitlab-mcp.sw.foundation/guide/quick-start',
         );
       }
+      // A static token belongs to one instance: the server's own to its instance, another
+      // instance's to it. The server's own token is never sent to another host.
+      const staticToken = oauthMode ? undefined : configuredInstanceToken(baseUrl);
+      if (!oauthMode && !staticToken) {
+        throw new Error(
+          `No access token is configured for ${baseUrl}; give the instance a token variable (tokenEnv) in the instance configuration.`,
+        );
+      }
 
       // Construct GraphQL endpoint from base URL
       const endpoint = `${baseUrl}/api/graphql`;
 
       // In OAuth mode, don't set static auth header
       // enhancedFetch will add the token from request context
-      // GITLAB_TOKEN is guaranteed non-empty here (validated above for non-OAuth mode)
-      const clientOptions: { headers?: Record<string, string> } = oauthMode
-        ? {}
-        : { headers: { 'PRIVATE-TOKEN': String(GITLAB_TOKEN) } };
+      const clientOptions: { headers?: Record<string, string> } = staticToken
+        ? { headers: { 'PRIVATE-TOKEN': staticToken } }
+        : {};
 
       const client = new GraphQLClient(endpoint, clientOptions);
       const versionDetector = new GitLabVersionDetector(client);
@@ -355,11 +363,11 @@ export class ConnectionManager {
 
       // Step 1: Detect token scopes BEFORE GraphQL introspection
       // This prevents ugly 401 stack traces when token lacks api/read_api scope
-      state.tokenScopeInfo = await detectTokenScopes(baseUrl);
+      state.tokenScopeInfo = await detectTokenScopes(baseUrl, staticToken);
 
       // Admin role + elevation probe (static-token mode only — this branch never
       // runs under OAuth, which deferred above). Token-scoped, cached in state.
-      state.adminInfo = await detectAdminStatus(baseUrl);
+      state.adminInfo = await detectAdminStatus(baseUrl, staticToken);
 
       if (state.tokenScopeInfo) {
         // Log token scope info — derive total tools dynamically from scope requirements map
@@ -369,7 +377,7 @@ export class ConnectionManager {
         // If token lacks GraphQL access, skip introspection entirely
         if (!state.tokenScopeInfo.hasGraphQLAccess) {
           // Detect version via REST (doesn't require api scope for most GitLab versions)
-          state.instanceInfo = await this.detectVersionViaREST(baseUrl);
+          state.instanceInfo = await this.detectVersionViaREST(baseUrl, staticToken);
           state.isInitialized = true;
           return;
         }
@@ -848,8 +856,10 @@ export class ConnectionManager {
     const previousHasGraphQL = state.tokenScopeInfo?.hasGraphQLAccess ?? false;
     const previousHasWrite = state.tokenScopeInfo?.hasWriteAccess ?? false;
 
-    // Re-detect token scopes against the current instance URL
-    const newScopeInfo = await detectTokenScopes(url);
+    // Re-detect the scopes of this instance's own token
+    const token = configuredInstanceToken(url);
+    if (!token) return false;
+    const newScopeInfo = await detectTokenScopes(url, token);
 
     if (!newScopeInfo) {
       // Detection failed - keep existing state
@@ -892,14 +902,19 @@ export class ConnectionManager {
   /**
    * Detect GitLab version via REST API (fallback when GraphQL is not available).
    * Uses GET /api/v4/version; authentication requirements depend on instance
-   * configuration. This helper always sends the configured token as a fallback.
+   * configuration. A static token of the instance is sent when given, else the
+   * request's own credential.
    */
-  private async detectVersionViaREST(baseUrl?: string): Promise<GitLabInstanceInfo> {
+  private async detectVersionViaREST(
+    baseUrl?: string,
+    staticToken?: string,
+  ): Promise<GitLabInstanceInfo> {
     try {
       const url = baseUrl ?? this.currentInstanceUrl ?? GITLAB_BASE_URL;
       const response = await enhancedFetch(`${url}/api/v4/version`, {
         headers: {
           Accept: 'application/json',
+          ...(staticToken ? { 'PRIVATE-TOKEN': staticToken } : {}),
         },
         retry: false, // Don't retry version detection at startup
       });

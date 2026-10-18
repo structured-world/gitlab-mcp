@@ -403,7 +403,7 @@ export class FileStorageBackend implements SessionStorageBackend {
       },
       isPresent,
       async (removed) => {
-        for (const session of removed) await this.memory.createSession(session);
+        await Promise.all(removed.map((session) => this.memory.createSession(session)));
       },
     ).then((removed) => removed !== undefined);
   }

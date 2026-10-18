@@ -280,6 +280,22 @@ describe('chat accounts with OAuth', () => {
     );
   });
 
+  // A database package older than the server has no linked accounts; unlinking says so
+  // instead of failing on the missing storage method.
+  it('refuses to unlink when the session storage cannot keep linked accounts', async () => {
+    const backend = (sessionStore as unknown as { backend: Record<string, unknown> }).backend;
+    backend.getLinkedSessions = undefined;
+    try {
+      await expect(asSignedIn(() => unlinkChatAccount('chat-1', personalId))).rejects.toThrow(
+        new AccountUnavailableError(
+          'The session storage of this server cannot keep linked accounts; update the database package.',
+        ),
+      );
+    } finally {
+      delete backend.getLinkedSessions;
+    }
+  });
+
   it('forgets the choice of a closed chat', async () => {
     await asSignedIn(() => switchChatAccount('chat-1', personalId));
 

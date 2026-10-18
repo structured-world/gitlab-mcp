@@ -17,6 +17,7 @@ import { GitLabTimeoutError } from '../../src/utils/fetch';
 import { ConfigurationService } from '../../src/configuration/service';
 import { resolveCaller } from '../../src/configuration/caller';
 import { runWithTokenAccount } from '../../src/accounts/token-account';
+import * as chatAccounts from '../../src/accounts/chat-accounts';
 
 // Mock ConnectionManager
 const mockConnectionManager = {
@@ -2934,6 +2935,45 @@ describe('handlers', () => {
         expect(result.tools?.map((t) => t.name)).toContain('manage_merge_request');
       } finally {
         mockConnectionManager.getCurrentInstanceUrl.mockReturnValue('https://gitlab.example.com');
+      }
+    });
+
+    // A chat whose chosen account became unusable (unlinked, token removed, grant revoked)
+    // can still list, switch, link and unlink accounts; every other call is refused.
+    it('runs the account actions of a chat whose chosen account cannot be used', async () => {
+      const resolve = jest
+        .spyOn(chatAccounts, 'withChatAccount')
+        .mockRejectedValue(new chatAccounts.AccountUnavailableError('account gone'));
+      mockRegistryManager.executeTool.mockResolvedValue({ success: true });
+
+      try {
+        const recovery = await callToolHandler(
+          {
+            params: {
+              name: 'manage_context',
+              arguments: { action: 'switch_account', account: 'gitlab:1' },
+            },
+          },
+          { sessionId: 'sess-1' },
+        );
+        expect(recovery.isError).toBeUndefined();
+        // It runs on the connection's own instance, never the unusable account's.
+        expect(mockRegistryManager.executeTool).toHaveBeenCalledWith(
+          'manage_context',
+          expect.objectContaining({ action: 'switch_account' }),
+          'https://gitlab.example.com',
+        );
+
+        mockRegistryManager.executeTool.mockClear();
+        const refused = await callToolHandler(
+          { params: { name: 'browse_merge_requests', arguments: { action: 'list' } } },
+          { sessionId: 'sess-1' },
+        );
+        expect(refused.isError).toBe(true);
+        expect(refused.content?.[0].text).toContain('account gone');
+        expect(mockRegistryManager.executeTool).not.toHaveBeenCalled();
+      } finally {
+        resolve.mockRestore();
       }
     });
 

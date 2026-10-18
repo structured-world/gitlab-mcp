@@ -113,6 +113,12 @@ function stateOf(url: string): string {
   return new URL(url).searchParams.get('state') as string;
 }
 
+/** The sign-in URL behind the continue button of a link page. */
+function continueLink(page: string): string {
+  const href = /<a [^>]*href="([^"]+)"/.exec(page)?.[1] as string;
+  return href.replaceAll('&amp;', '&');
+}
+
 async function storedFlow(state: string): Promise<AuthCodeFlowState> {
   return (await sessionStore.getAuthCodeFlow(state)) as AuthCodeFlowState;
 }
@@ -135,7 +141,8 @@ describe('account linking', () => {
     mockOAuth = true;
     sessionStore.clear();
     jest.clearAllMocks();
-    await sessionStore.createSession(primary);
+    // A copy: the memory backend keeps the object it is given and updates change it.
+    await sessionStore.createSession({ ...primary });
   });
 
   describe('start', () => {
@@ -182,6 +189,26 @@ describe('account linking', () => {
     it('refuses when the connection is not signed in', async () => {
       await expect(startAccountLink('https://gitlab.com')).rejects.toThrow('not signed in');
     });
+
+    it("refuses when the session's own instance is no longer configured", async () => {
+      await sessionStore.updateSession('primary', { gitlabApiUrl: 'https://gone.example.com' });
+
+      await expect(startAsAlice('https://gitlab.com')).rejects.toThrow(
+        'no longer configured; sign in again',
+      );
+    });
+
+    it('refuses when the session storage cannot keep linked accounts', async () => {
+      const backend = (sessionStore as unknown as { backend: Record<string, unknown> }).backend;
+      backend.getLinkedSessions = undefined;
+      try {
+        await expect(startAsAlice('https://gitlab.com')).rejects.toThrow(
+          'cannot keep linked accounts',
+        );
+      } finally {
+        delete backend.getLinkedSessions;
+      }
+    });
   });
 
   describe('verify step', () => {
@@ -222,6 +249,108 @@ describe('account linking', () => {
       expect(res.redirect).not.toHaveBeenCalled();
       expect(mockRevoke).toHaveBeenCalledWith('mallory-token', config, corpApp);
       expect(await sessionStore.getLinkedSessions('primary')).toEqual([]);
+    });
+
+    // On the session's own instance the browser is still signed in to GitLab as the account
+    // just verified; an immediate redirect would authorize that same account again.
+    it('pauses on its own instance so the user can sign in with the other account', async () => {
+      const link = await startAsAlice();
+      const state = stateOf(link.url);
+      mockExchange.mockResolvedValueOnce(tokens('verify-token'));
+      mockUser.mockResolvedValueOnce({ id: 7, username: 'alice' });
+      const res = response();
+
+      await completeAccountLink(res, state, await storedFlow(state), 'code', config);
+
+      expect(res.redirect).not.toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(200);
+      const page = res.send.mock.calls[0][0] as string;
+      expect(page).toContain('private window');
+      const next = continueLink(page);
+      expect(next.startsWith('https://git.corp.example.com/oauth/authorize')).toBe(true);
+      expect((await storedFlow(stateOf(next))).link).toMatchObject({
+        stage: 'connect',
+        instance: 'https://git.corp.example.com',
+      });
+      expect(await sessionStore.getAuthCodeFlow(state)).toBeUndefined();
+    });
+
+    // A failed write of the next step must leave the verified step usable, as the error
+    // page tells the user to reload.
+    it('keeps the verified step for a retry when the next step cannot be stored', async () => {
+      const link = await startAsAlice('https://gitlab.com');
+      const state = stateOf(link.url);
+      mockExchange.mockResolvedValueOnce(tokens('verify-token'));
+      mockUser.mockResolvedValueOnce({ id: 7, username: 'alice' });
+      const store = jest
+        .spyOn(sessionStore, 'storeAuthCodeFlow')
+        .mockRejectedValueOnce(new Error('database unavailable'));
+      const res = response();
+
+      try {
+        await completeAccountLink(res, state, await storedFlow(state), 'code', config);
+      } finally {
+        store.mockRestore();
+      }
+
+      expect(res.status).toHaveBeenCalledWith(500);
+      expect(res.send.mock.calls[0][0]).toContain('reload this page');
+      expect(await sessionStore.getAuthCodeFlow(state)).toBeDefined();
+      expect(mockRevoke).not.toHaveBeenCalled();
+    });
+
+    // Two callbacks of one verified step: the one that loses drops the next step it stored,
+    // so a link never continues twice.
+    it('drops the next step when another callback spent the verified step first', async () => {
+      const link = await startAsAlice('https://gitlab.com');
+      const state = stateOf(link.url);
+      const flow = await storedFlow(state);
+      mockExchange.mockResolvedValueOnce(tokens('verify-token'));
+      mockUser.mockImplementationOnce(async () => {
+        await sessionStore.consumeAuthCodeFlow(state);
+        return { id: 7, username: 'alice' };
+      });
+      const store = jest.spyOn(sessionStore, 'storeAuthCodeFlow');
+      const res = response();
+      let nextState: string;
+
+      try {
+        await completeAccountLink(res, state, flow, 'code', config);
+        nextState = store.mock.calls[0][0];
+      } finally {
+        store.mockRestore();
+      }
+
+      expect(res.send.mock.calls[0][0]).toContain('already used');
+      expect(await sessionStore.getAuthCodeFlow(nextState)).toBeUndefined();
+      expect(mockRevoke).toHaveBeenCalledWith('verify-token', config, corpApp);
+    });
+
+    it('refuses a link opened by another user after it was already used', async () => {
+      const link = await startAsAlice('https://gitlab.com');
+      const state = stateOf(link.url);
+      const flow = await storedFlow(state);
+      await sessionStore.consumeAuthCodeFlow(state);
+      mockExchange.mockResolvedValueOnce(tokens('mallory-token'));
+      mockUser.mockResolvedValueOnce({ id: 666, username: 'mallory' });
+      const res = response();
+
+      await completeAccountLink(res, state, flow, 'code', config);
+
+      expect(res.send.mock.calls[0][0]).toContain('already used');
+      expect(mockRevoke).toHaveBeenCalledWith('mallory-token', config, corpApp);
+    });
+
+    it('refuses a step whose instance is no longer configured', async () => {
+      const link = await startAsAlice('https://gitlab.com');
+      const state = stateOf(link.url);
+      const flow = { ...(await storedFlow(state)), selectedInstance: 'https://gone.example.com' };
+      const res = response();
+
+      await completeAccountLink(res, state, flow, 'code', config);
+
+      expect(res.send.mock.calls[0][0]).toContain('no longer configured');
+      expect(mockExchange).not.toHaveBeenCalled();
     });
 
     it('refuses a link that was already used', async () => {
@@ -307,7 +436,7 @@ describe('account linking', () => {
       mockUser.mockResolvedValueOnce({ id: 7, username: 'alice' });
       const verifyRes = response();
       await completeAccountLink(verifyRes, verifyState, await storedFlow(verifyState), 'c', config);
-      const state = stateOf(verifyRes.redirect.mock.calls[0][0] as string);
+      const state = stateOf(continueLink(verifyRes.send.mock.calls[0][0] as string));
       mockExchange.mockResolvedValueOnce(tokens('same-token'));
       mockUser.mockResolvedValueOnce({ id: 7, username: 'alice' });
       const res = response();
@@ -317,6 +446,41 @@ describe('account linking', () => {
       expect(res.send.mock.calls[0][0]).toContain('the account this connection already uses');
       expect(await sessionStore.getLinkedSessions('primary')).toEqual([]);
       expect(mockRevoke).toHaveBeenCalledWith('same-token', config, corpApp);
+    });
+
+    // Two links of the same account completing at once store it once; the grant that lost
+    // the race is ended rather than left active behind the stored one.
+    it('stores an account linked by two concurrent links once', async () => {
+      const first = await verified();
+      const second = await verified();
+      mockExchange
+        .mockResolvedValueOnce(tokens('com-token-1'))
+        .mockResolvedValueOnce(tokens('com-token-2'));
+      mockUser
+        .mockResolvedValueOnce({ id: 99, username: 'alice-personal' })
+        .mockResolvedValueOnce({ id: 99, username: 'alice-personal' });
+
+      const [firstFlow, secondFlow] = [await storedFlow(first), await storedFlow(second)];
+      await Promise.all([
+        completeAccountLink(response(), first, firstFlow, 'code', config),
+        completeAccountLink(response(), second, secondFlow, 'code', config),
+      ]);
+
+      const linked = await sessionStore.getLinkedSessions('primary');
+      expect(linked).toHaveLength(1);
+      const lost = linked[0].gitlabAccessToken === 'com-token-1' ? 'com-token-2' : 'com-token-1';
+      expect(mockRevoke).toHaveBeenCalledWith(lost, config, comApp);
+    });
+
+    it('refuses a connect step whose instance is no longer configured', async () => {
+      const state = await verified();
+      const flow = { ...(await storedFlow(state)), selectedInstance: 'https://gone.example.com' };
+      const res = response();
+
+      await completeAccountLink(res, state, flow, 'code', config);
+
+      expect(res.send.mock.calls[0][0]).toContain('no longer configured');
+      expect(await sessionStore.getLinkedSessions('primary')).toEqual([]);
     });
 
     it('removes what it created when another callback completed the link first', async () => {

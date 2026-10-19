@@ -12,13 +12,36 @@ import {
   AuthorizationCode,
   RegisteredOAuthClient,
 } from '../types';
-import { SessionStorageBackend, SessionStorageStats } from './types';
+import {
+  AbandonedFlowGrantHandler,
+  ExpiredSessionHandler,
+  isPastAgeLimit,
+  SessionStorageBackend,
+  SessionStorageStats,
+} from './types';
 import type { AccountSettings, AccountSettingsRecord } from '../../configuration/types';
 import { logInfo, logWarn, logError, logDebug, truncateId } from '../../logger';
 
 export interface MemoryStorageOptions {
   /** Suppress initialization logging (used when wrapped by FileStorage) */
   silent?: boolean;
+}
+
+/**
+ * How many grants cleanup ends at once: a backlog (after a restart, say) goes out in steps
+ * instead of one burst against GitLab's rate limits.
+ */
+const CLEANUP_BATCH = 5;
+
+/** Run `run` over `items`, at most CLEANUP_BATCH at a time. */
+async function inBatches<T>(
+  items: readonly T[],
+  run: (item: T) => Promise<void>,
+  from = 0,
+): Promise<void> {
+  if (from >= items.length) return;
+  await Promise.all(items.slice(from, from + CLEANUP_BATCH).map((item) => run(item)));
+  return inBatches(items, run, from + CLEANUP_BATCH);
 }
 
 /** Remove the entries that expired before `now`; returns how many were removed. */
@@ -48,6 +71,8 @@ export class MemoryStorageBackend implements SessionStorageBackend {
   /** Session id -> end of its GitLab refresh lease (transient, not exported). */
   private gitlabRefreshLeases = new Map<string, number>();
   private cleanupIntervalId: ReturnType<typeof setInterval> | null = null;
+  private abandonedFlowGrant: AbandonedFlowGrantHandler | undefined;
+  private expiredSession: ExpiredSessionHandler | undefined;
   private silent: boolean;
 
   constructor(options?: MemoryStorageOptions) {
@@ -63,6 +88,10 @@ export class MemoryStorageBackend implements SessionStorageBackend {
 
   // Session operations
   async createSession(session: OAuthSession): Promise<void> {
+    // Creating never replaces a session, as with the primary key of the database backend.
+    if (this.sessions.has(session.id)) {
+      throw new Error(`Session ${session.id} already exists`);
+    }
     this.sessions.set(session.id, session);
     if (session.mcpAccessToken) {
       this.tokenToSession.set(session.mcpAccessToken, session.id);
@@ -113,6 +142,8 @@ export class MemoryStorageBackend implements SessionStorageBackend {
     const session = this.sessions.get(sessionId);
     if (!session) return false;
 
+    const linked = await this.getLinkedSessions(sessionId);
+    await Promise.all(linked.map((account) => this.deleteSession(account.id)));
     if (session.mcpAccessToken) {
       this.tokenToSession.delete(session.mcpAccessToken);
     }
@@ -128,6 +159,14 @@ export class MemoryStorageBackend implements SessionStorageBackend {
 
   async getAllSessions(): Promise<OAuthSession[]> {
     return Array.from(this.sessions.values());
+  }
+
+  getLinkedSessions(sessionId: string): Promise<OAuthSession[]> {
+    return Promise.resolve(
+      Array.from(this.sessions.values())
+        .filter((session) => session.linkedToSessionId === sessionId)
+        .sort((a, b) => a.createdAt - b.createdAt),
+    );
   }
 
   // Device flow operations
@@ -326,22 +365,55 @@ export class MemoryStorageBackend implements SessionStorageBackend {
     return this.updateSession(sessionId, updates);
   }
 
+  onAbandonedFlowGrant(handler: AbandonedFlowGrantHandler): void {
+    this.abandonedFlowGrant = handler;
+  }
+
+  onExpiredSession(handler: ExpiredSessionHandler): void {
+    this.expiredSession = handler;
+  }
+
+  /**
+   * Remove a session past its age limit: through the handler, which ends its grants and
+   * those of its linked accounts, then directly if the handler failed or left it.
+   */
+  private async expire(session: OAuthSession): Promise<void> {
+    await this.expiredSession?.(session).catch((error: unknown) => {
+      logWarn('Could not end the grants of an expired session', { err: error as Error });
+    });
+    await this.deleteSession(session.id);
+  }
+
   // Cleanup
   async cleanup(): Promise<void> {
     const now = Date.now();
-    let expiredSessions = 0;
 
-    // Clean up expired sessions (7 days max age)
-    const maxAge = 7 * 24 * 60 * 60 * 1000;
-    for (const [id, session] of this.sessions) {
-      if (session.createdAt + maxAge < now) {
-        await this.deleteSession(id);
-        expiredSessions++;
-      }
-    }
+    // Clean up expired sessions (7 days max age). A linked account goes with its session;
+    // it is younger than the session, so only one left without a session expires by itself.
+    const expired = [...this.sessions.values()].filter(
+      (session) =>
+        isPastAgeLimit(session, now) &&
+        !(session.linkedToSessionId && this.sessions.has(session.linkedToSessionId)),
+    );
+    await inBatches(expired, (session) => this.expire(session));
+    const expiredSessions = expired.length;
 
     const expiredDeviceFlows = deleteExpired(this.deviceFlows, now);
+    const handler = this.abandonedFlowGrant;
+    const abandoned = handler
+      ? [...this.authCodeFlows].filter(([, flow]) => flow.gitlabTokens && flow.expiresAt < now)
+      : [];
     const expiredAuthCodeFlows = deleteExpired(this.authCodeFlows, now);
+    // Each flow is out of its callback's reach while its grant is ended, and comes back
+    // when that fails: it holds the only copy of the grant, for the next cleanup to retry.
+    if (handler) {
+      await inBatches(abandoned, ([state, flow]) =>
+        handler(flow).catch((error: unknown) => {
+          logWarn('Could not end the grant of an abandoned flow', { err: error as Error });
+          this.authCodeFlows.set(state, flow);
+        }),
+      );
+    }
     const expiredAuthCodes = deleteExpired(this.authCodes, now);
     // Registrations that never completed an authorization expire; used ones have no expiry
     const expiredClients = deleteExpired(this.clients, now);

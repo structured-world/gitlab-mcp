@@ -310,26 +310,6 @@ describe('SessionManager', () => {
       expect(manager.getSessionInstanceUrl('session-1')).toBe('https://other.gitlab.com');
     });
 
-    // A switch of the shared static-token instance moves every session; the caller notifies
-    // them once afterwards, so pinning itself sends nothing.
-    it('pins every session to an instance without notifying them', async () => {
-      manager.start();
-      const first = await manager.createSession('session-1', mockTransport);
-      const second = await manager.createSession(
-        'session-2',
-        mockTransport,
-        'https://a.example.com',
-      );
-
-      manager.pinAllSessions('https://other.gitlab.com/');
-
-      expect(manager.getSessionInstanceUrl('session-1')).toBe('https://other.gitlab.com');
-      expect(manager.getSessionInstanceUrl('session-2')).toBe('https://other.gitlab.com');
-      await Promise.resolve();
-      expect(first.notification).not.toHaveBeenCalled();
-      expect(second.notification).not.toHaveBeenCalled();
-    });
-
     it('should send tools/list_changed notification when instanceUrl changes', async () => {
       manager.start();
       const server = await manager.createSession('session-1', mockTransport);

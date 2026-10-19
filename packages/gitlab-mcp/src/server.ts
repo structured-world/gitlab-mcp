@@ -37,6 +37,7 @@ import {
   runWithTokenContext,
 } from './oauth/index';
 import { registerOAuthEndpoints } from './oauth/routes';
+import { startSessionStore } from './oauth/grant-revocation';
 import type { TokenContext } from './oauth/types';
 // Middleware imports
 import {
@@ -399,7 +400,7 @@ export async function startServer(): Promise<void> {
 
   // Initialize session store (required for file-based and PostgreSQL persistence)
   if (oauthConfig) {
-    await sessionStore.initialize();
+    await startSessionStore(oauthConfig);
   }
 
   // Initialize session manager (handles per-session Server instances)

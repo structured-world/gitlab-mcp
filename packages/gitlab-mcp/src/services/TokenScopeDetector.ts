@@ -251,18 +251,22 @@ function computeDaysUntilExpiry(expiresAt: string | null): number | null {
  * - OAuth tokens - use OAuth introspection instead
  * - Job tokens - have different scope model
  *
+ * @param token - the static token of that instance (default: the server's own token)
  * @returns TokenScopeInfo or null if detection fails
  */
-export async function detectTokenScopes(baseUrl?: string): Promise<TokenScopeInfo | null> {
+export async function detectTokenScopes(
+  baseUrl?: string,
+  token: string | undefined = GITLAB_TOKEN,
+): Promise<TokenScopeInfo | null> {
   const url = normalizeInstanceUrl(baseUrl ?? GITLAB_BASE_URL);
-  if (!url || !GITLAB_TOKEN) {
+  if (!url || !token) {
     return null;
   }
 
   try {
     const response = await enhancedFetch(`${url}/api/v4/personal_access_tokens/self`, {
       headers: {
-        'PRIVATE-TOKEN': GITLAB_TOKEN,
+        'PRIVATE-TOKEN': token,
         Accept: 'application/json',
       },
       retry: false,

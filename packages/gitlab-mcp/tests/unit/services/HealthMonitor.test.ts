@@ -937,6 +937,23 @@ describe('HealthMonitor', () => {
       ).toBe(false);
     });
 
+    // A chat that switched to another configured instance makes the monitor watch it too.
+    // The server's own token belongs to its own instance: probing another instance with it
+    // would read as a revoked token and take that instance offline.
+    it('never probes another instance with the server token', async () => {
+      const other = 'https://other-gitlab.example.com';
+      stubUserEndpoint401();
+      const monitor = await initMonitor(other);
+      await new Promise((r) => setTimeout(r, HEALTH_CYCLE_MS));
+
+      expect(monitor.getState(other)).toBe('healthy');
+      expect(
+        mockFetch.mock.calls.some(
+          ([url]) => typeof url === 'string' && url.startsWith(`${other}/api/v4/user`),
+        ),
+      ).toBe(false);
+    });
+
     it('should swallow network errors during authenticated check', async () => {
       // Connectivity errors on the second request are noise, not signal:
       // the unauthenticated check already verified reachability.

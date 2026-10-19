@@ -2971,6 +2971,25 @@ describe('handlers', () => {
       }
     });
 
+    // A chat whose chosen account cannot be used lists the connection's own tools, so it
+    // still sees manage_context to switch away; other failures of the list surface.
+    it('lists the connection tools while the chosen account cannot be used', async () => {
+      const resolve = jest
+        .spyOn(chatAccounts, 'withChatAccount')
+        .mockRejectedValueOnce(new chatAccounts.AccountUnavailableError('account gone'))
+        .mockRejectedValueOnce(new Error('settings store down'));
+
+      try {
+        const result = await listToolsHandler({}, { sessionId: 'sess-1' });
+        expect(result.tools?.map((t) => t.name)).toContain('manage_context');
+        await expect(listToolsHandler({}, { sessionId: 'sess-1' })).rejects.toThrow(
+          'settings store down',
+        );
+      } finally {
+        resolve.mockRestore();
+      }
+    });
+
     // A chat whose chosen account became unusable (unlinked, token removed, grant revoked)
     // can still list, switch, link and unlink accounts; every other call is refused.
     it('runs the account actions of a chat whose chosen account cannot be used', async () => {

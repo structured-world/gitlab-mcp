@@ -78,7 +78,7 @@ async function grantsToEnd(
   const leaseUntil = await claimSessionLease(session.id, REMOVAL_LEASE_MS);
   const current = leaseUntil === undefined ? undefined : await sessionStore.getSession(session.id);
   // Removed meanwhile (a concurrent removal, cleanup): the grants known still end.
-  if (!current) return { grants: known };
+  if (!current || leaseUntil === undefined) return { grants: known };
   try {
     const linked = links ? await sessionStore.getLinkedSessions(session.id) : [];
     // Tokens as stored now: refreshed above, or a grant a link stored since, issued just now.
@@ -88,7 +88,7 @@ async function grantsToEnd(
     }));
     return { grants, leaseUntil };
   } catch (error: unknown) {
-    if (leaseUntil !== undefined) await releaseRemovalLease(session.id, leaseUntil);
+    await releaseRemovalLease(session.id, leaseUntil);
     throw error;
   }
 }
@@ -100,13 +100,16 @@ async function grantsToEnd(
  */
 export async function endSession(session: OAuthSession, config: OAuthConfig): Promise<void> {
   const { grants, leaseUntil } = await grantsToEnd(session, config);
-  try {
-    // Backends throw when the delete fails; false only means a concurrent removal took
-    // the session first, which is the same outcome.
-    await sessionStore.deleteSession(session.id);
-  } catch (error: unknown) {
-    if (leaseUntil !== undefined) await releaseRemovalLease(session.id, leaseUntil);
-    throw error;
+  // Without the lease the session is already gone: only its grants are left to end.
+  if (leaseUntil !== undefined) {
+    try {
+      // Backends throw when the delete fails; false only means a concurrent removal took
+      // the session first, which is the same outcome.
+      await sessionStore.deleteSession(session.id);
+    } catch (error: unknown) {
+      await releaseRemovalLease(session.id, leaseUntil);
+      throw error;
+    }
   }
   await Promise.all(
     grants.map(({ session: account, accessToken }) =>
@@ -149,6 +152,21 @@ export async function revokeAbandonedFlowGrant(
       err: error as Error,
     });
   }
+}
+
+/**
+ * Initialize the session store with the cleanups that end grants (of abandoned flows and
+ * of sessions past their age limit), and run cleanup once now: sessions that expired while
+ * the server was stopped still hold grants. Token lookups already refuse those sessions,
+ * so the server need not wait for it.
+ */
+export async function startSessionStore(config: OAuthConfig): Promise<void> {
+  await sessionStore.initialize();
+  sessionStore.onAbandonedFlowGrant((flow) => revokeAbandonedFlowGrant(flow, config));
+  sessionStore.onExpiredSession((session) => endSession(session, config));
+  sessionStore.cleanup().catch((error: unknown) => {
+    logWarn('Startup session cleanup failed', { err: error as Error });
+  });
 }
 
 /**

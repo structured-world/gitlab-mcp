@@ -15,6 +15,7 @@ import {
 import {
   AbandonedFlowGrantHandler,
   ExpiredSessionHandler,
+  isPastAgeLimit,
   SessionStorageBackend,
   SessionStorageStats,
 } from './types';
@@ -24,6 +25,23 @@ import { logInfo, logWarn, logError, logDebug, truncateId } from '../../logger';
 export interface MemoryStorageOptions {
   /** Suppress initialization logging (used when wrapped by FileStorage) */
   silent?: boolean;
+}
+
+/**
+ * How many grants cleanup ends at once: a backlog (after a restart, say) goes out in steps
+ * instead of one burst against GitLab's rate limits.
+ */
+const CLEANUP_BATCH = 5;
+
+/** Run `run` over `items`, at most CLEANUP_BATCH at a time. */
+async function inBatches<T>(
+  items: readonly T[],
+  run: (item: T) => Promise<void>,
+  from = 0,
+): Promise<void> {
+  if (from >= items.length) return;
+  await Promise.all(items.slice(from, from + CLEANUP_BATCH).map((item) => run(item)));
+  return inBatches(items, run, from + CLEANUP_BATCH);
 }
 
 /** Remove the entries that expired before `now`; returns how many were removed. */
@@ -372,13 +390,12 @@ export class MemoryStorageBackend implements SessionStorageBackend {
 
     // Clean up expired sessions (7 days max age). A linked account goes with its session;
     // it is younger than the session, so only one left without a session expires by itself.
-    const maxAge = 7 * 24 * 60 * 60 * 1000;
     const expired = [...this.sessions.values()].filter(
       (session) =>
-        session.createdAt + maxAge < now &&
+        isPastAgeLimit(session, now) &&
         !(session.linkedToSessionId && this.sessions.has(session.linkedToSessionId)),
     );
-    await Promise.all(expired.map((session) => this.expire(session)));
+    await inBatches(expired, (session) => this.expire(session));
     const expiredSessions = expired.length;
 
     const expiredDeviceFlows = deleteExpired(this.deviceFlows, now);
@@ -387,7 +404,7 @@ export class MemoryStorageBackend implements SessionStorageBackend {
       ? [...this.authCodeFlows.values()].filter((flow) => flow.gitlabTokens && flow.expiresAt < now)
       : [];
     const expiredAuthCodeFlows = deleteExpired(this.authCodeFlows, now);
-    if (handler) await Promise.all(abandoned.map((flow) => handler(flow)));
+    if (handler) await inBatches(abandoned, (flow) => handler(flow));
     const expiredAuthCodes = deleteExpired(this.authCodes, now);
     // Registrations that never completed an authorization expire; used ones have no expiry
     const expiredClients = deleteExpired(this.clients, now);

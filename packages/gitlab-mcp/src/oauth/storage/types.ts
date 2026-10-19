@@ -14,6 +14,14 @@ import {
 } from '../types';
 import type { AccountSettings, AccountSettingsRecord } from '../../configuration/types';
 
+/** How long a session lives from its creation; cleanup removes it after that. */
+export const SESSION_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** Whether a session (not a linked account, which goes with it) is past its age limit. */
+export function isPastAgeLimit(session: OAuthSession, now = Date.now()): boolean {
+  return session.createdAt + SESSION_MAX_AGE_MS < now;
+}
+
 /** Ends the GitLab grant of an auth code flow removed unfinished; best effort. */
 export type AbandonedFlowGrantHandler = (flow: AuthCodeFlowState) => Promise<void>;
 

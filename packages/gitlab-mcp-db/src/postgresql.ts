@@ -28,6 +28,26 @@ import type {
 } from '@structured-world/gitlab-mcp/storage-contract';
 import { logInfo, logError, logDebug } from './logger';
 
+/** Key prefix of an expired flow cleanup took over to end its grant. */
+const CLAIMED_FLOW_PREFIX = 'cleanup:';
+
+/**
+ * How many grants cleanup ends at once: a backlog (after an outage, say) goes out in steps
+ * instead of one burst against the database pool and GitLab's rate limits.
+ */
+const CLEANUP_BATCH = 5;
+
+/** Run `run` over `items`, at most CLEANUP_BATCH at a time. */
+async function inBatches<T>(
+  items: readonly T[],
+  run: (item: T) => Promise<void>,
+  from = 0,
+): Promise<void> {
+  if (from >= items.length) return;
+  await Promise.all(items.slice(from, from + CLEANUP_BATCH).map((item) => run(item)));
+  return inBatches(items, run, from + CLEANUP_BATCH);
+}
+
 /**
  * Explicit interfaces for Prisma model results.
  * These mirror the Prisma schema but with explicit types that ESLint can resolve.
@@ -228,6 +248,7 @@ interface GenericPrismaClient {
     upsert(args: unknown): Promise<unknown>;
     findUnique(args: unknown): Promise<unknown>;
     findMany(args: unknown): Promise<unknown>;
+    updateMany(args: unknown): Promise<unknown>;
     delete(args: unknown): Promise<unknown>;
     deleteMany(args: unknown): Promise<unknown>;
     count(): Promise<number>;
@@ -901,13 +922,53 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
     const rows = (await this.getPrisma().oAuthSession.findMany({
       where: { createdAt: { lt: cutoff }, linkedToSessionId: null },
     })) as PrismaOAuthSessionRow[];
-    await Promise.all(
-      rows.map((row) =>
-        handler(this.rowToSession(row)).catch((error: unknown) => {
-          logError('Could not end the grants of an expired session', { err: error as Error });
-        }),
-      ),
+    await inBatches(rows, (row) =>
+      handler(this.rowToSession(row)).catch((error: unknown) => {
+        logError('Could not end the grants of an expired session', { err: error as Error });
+      }),
     );
+  }
+
+  /**
+   * Take an expired flow away from its callback without deleting it: its row moves to a
+   * claimed key, so a callback finishing now finds nothing to consume, while the tokens stay
+   * stored until their grant is ended. A row already claimed by a cleanup that stopped
+   * before ending it is taken as it is. Resolves to the claimed key, or undefined when the
+   * callback consumed the flow first.
+   */
+  private async claimAbandonedFlow(internalState: string): Promise<string | undefined> {
+    if (internalState.startsWith(CLAIMED_FLOW_PREFIX)) return internalState;
+    const claimedState = CLAIMED_FLOW_PREFIX + internalState;
+    const claimed = (await this.getPrisma().authCodeFlowState.updateMany({
+      where: { internalState },
+      data: { internalState: claimedState },
+    })) as PrismaBatchPayload;
+    return claimed.count === 1 ? claimedState : undefined;
+  }
+
+  /**
+   * End the grant of each expired flow that still holds one, then remove the flow; a flow
+   * whose grant could not be ended stays claimed for the next cleanup.
+   */
+  private async endAbandonedFlows(now: bigint): Promise<void> {
+    const handler = this.abandonedFlowGrant;
+    if (!handler) return;
+    const prisma = this.getPrisma();
+    const flows = (
+      (await prisma.authCodeFlowState.findMany({
+        where: { expiresAt: { lt: now } },
+      })) as PrismaAuthCodeFlowStateRow[]
+    ).flatMap((row) => this.abandonedFlow(row));
+    await inBatches(flows, async (flow) => {
+      try {
+        const claimedState = await this.claimAbandonedFlow(flow.internalState);
+        if (!claimedState) return;
+        await handler(flow);
+        await prisma.authCodeFlowState.deleteMany({ where: { internalState: claimedState } });
+      } catch (error: unknown) {
+        logError('Could not end the grant of an abandoned flow', { err: error as Error });
+      }
+    });
   }
 
   /** The flow of an expired row that held GitLab tokens; a corrupt row is skipped. */
@@ -928,22 +989,9 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
     const maxSessionAge = BigInt(7 * 24 * 60 * 60 * 1000); // 7 days
 
     try {
-      // Each expired flow holding a grant is consumed one by one: a callback that finished
-      // after the read consumed it first, and its grant now belongs to a session.
-      const handler = this.abandonedFlowGrant;
-      const expired = handler
-        ? (
-            (await prisma.authCodeFlowState.findMany({
-              where: { expiresAt: { lt: now } },
-            })) as PrismaAuthCodeFlowStateRow[]
-          ).flatMap((row) => this.abandonedFlow(row))
-        : [];
-      const claimed = await Promise.all(
-        expired.map((flow) => this.consumeAuthCodeFlow(flow.internalState)),
-      );
-      const abandoned = claimed.filter(
-        (flow): flow is AuthCodeFlowStateType => flow?.gitlabTokens !== undefined,
-      );
+      // Grants first, each ended before its record goes: the bulk delete below then removes
+      // only flows and sessions that hold none, or whose handler left them.
+      await this.endAbandonedFlows(now);
       await this.expireSessions(now - maxSessionAge);
       // Use transaction for atomic cleanup
       const results = (await prisma.$transaction([
@@ -955,8 +1003,12 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
         prisma.deviceFlowState.deleteMany({
           where: { expiresAt: { lt: now } },
         }),
+        // A claimed flow whose grant could not be ended waits for the next cleanup.
         prisma.authCodeFlowState.deleteMany({
-          where: { expiresAt: { lt: now } },
+          where: {
+            expiresAt: { lt: now },
+            NOT: { internalState: { startsWith: CLAIMED_FLOW_PREFIX } },
+          },
         }),
         prisma.authorizationCode.deleteMany({
           where: { expiresAt: { lt: now } },
@@ -966,8 +1018,6 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
           where: { expiresAt: { lt: now } },
         }),
       ])) as PrismaBatchPayload[];
-
-      if (handler) await Promise.all(abandoned.map((flow) => handler(flow)));
 
       const expiredSessions = results[0].count;
       const expiredDeviceFlows = results[1].count;

@@ -346,6 +346,47 @@ describe('chat accounts with OAuth', () => {
     );
   });
 
+  // Another chat unlinked the account first, before or during the refresh of its token: it
+  // is gone, and that unlink ended its grant.
+  it('reports an account another chat unlinked first without ending a grant', async () => {
+    const getSession = sessionStore.getSession.bind(sessionStore);
+    const lookup = jest
+      .spyOn(sessionStore, 'getSession')
+      .mockImplementationOnce(getSession)
+      .mockImplementationOnce(async () => undefined);
+    try {
+      await asSignedIn(() => unlinkChatAccount('chat-1', personalId));
+    } finally {
+      lookup.mockRestore();
+    }
+    expect(mockRevoke).not.toHaveBeenCalled();
+
+    // The lookup above only pretended the account was gone; now it goes during the refresh.
+    mockLiveToken.mockImplementationOnce(async (row) => {
+      const read = row.gitlabAccessToken;
+      await sessionStore.deleteSession('linked-com');
+      return read;
+    });
+    await asSignedIn(() => unlinkChatAccount('chat-1', personalId));
+
+    expect(mockRevoke).not.toHaveBeenCalled();
+  });
+
+  // The account is removed; a lease that cannot be released expires on its own.
+  it('unlinks the account when its lease cannot be released', async () => {
+    const release = jest
+      .spyOn(sessionStore, 'releaseGitLabRefresh')
+      .mockRejectedValueOnce(new Error('database unavailable'));
+    try {
+      await asSignedIn(() => unlinkChatAccount('chat-1', personalId));
+    } finally {
+      release.mockRestore();
+    }
+
+    expect(await sessionStore.getSession('linked-com')).toBeUndefined();
+    expect(mockRevoke).toHaveBeenCalled();
+  });
+
   // A link or a token refresh holding the account's lease finishes before the unlink removes
   // the row; one that never lets go makes the unlink ask for a retry and keep the account.
   it('keeps the account when its lease stays held elsewhere', async () => {

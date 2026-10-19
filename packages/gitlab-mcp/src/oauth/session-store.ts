@@ -23,10 +23,15 @@ import {
   RegisteredOAuthClient,
 } from './types';
 import { SessionStorageBackend, createStorageBackend } from './storage';
+import { isPastAgeLimit } from './storage/types';
 import type { AbandonedFlowGrantHandler, ExpiredSessionHandler } from './storage/types';
 import type { AccountSettings, AccountSettingsRecord } from '../configuration/types';
 import { MemoryStorageBackend } from './storage/memory';
 import { logInfo, logError, logDebug } from '../logger';
+
+function withinAgeLimit(session: OAuthSession | undefined): OAuthSession | undefined {
+  return session && !isPastAgeLimit(session) ? session : undefined;
+}
 
 /**
  * Session store with pluggable storage backends
@@ -83,17 +88,18 @@ export class SessionStore {
   }
 
   /**
-   * Get session by MCP access token
+   * Get session by MCP access token. A session past its age limit is not found: it may
+   * still be stored until cleanup ends its grants, but it authenticates nothing.
    */
   async getSessionByToken(token: string): Promise<OAuthSession | undefined> {
-    return this.backend.getSessionByToken(token);
+    return withinAgeLimit(await this.backend.getSessionByToken(token));
   }
 
   /**
-   * Get session by MCP refresh token
+   * Get session by MCP refresh token; a session past its age limit is not found.
    */
   async getSessionByRefreshToken(refreshToken: string): Promise<OAuthSession | undefined> {
-    return this.backend.getSessionByRefreshToken(refreshToken);
+    return withinAgeLimit(await this.backend.getSessionByRefreshToken(refreshToken));
   }
 
   /**
@@ -375,10 +381,10 @@ export class SessionStore {
   }
 
   /**
-   * Get OAuth session by MCP session ID
+   * Get OAuth session by MCP session ID; a session past its age limit is not found.
    */
   async getSessionByMcpSessionId(mcpSessionId: string): Promise<OAuthSession | undefined> {
-    return this.backend.getSessionByMcpSessionId(mcpSessionId);
+    return withinAgeLimit(await this.backend.getSessionByMcpSessionId(mcpSessionId));
   }
 
   /**

@@ -728,6 +728,34 @@ describe('MemoryStorageBackend', () => {
         expect(await storage.getSession('linked')).toBeUndefined();
       });
 
+      // A backlog of expired sessions is ended a few at a time, not in one burst.
+      it('ends the grants of expired sessions a few at a time', async () => {
+        const eightDaysAgo = Date.now() - 8 * 24 * 60 * 60 * 1000;
+        for (let i = 0; i < 12; i++) {
+          await storage.createSession(
+            createTestSession({
+              id: `expired-${i}`,
+              mcpAccessToken: `access-${i}`,
+              mcpRefreshToken: `refresh-${i}`,
+              createdAt: eightDaysAgo,
+            }),
+          );
+        }
+        let running = 0;
+        let peak = 0;
+        storage.onExpiredSession(async () => {
+          running++;
+          peak = Math.max(peak, running);
+          await new Promise((resolve) => setTimeout(resolve, 1));
+          running--;
+        });
+
+        await storage.cleanup();
+
+        expect(peak).toBe(5);
+        expect(await storage.getAllSessions()).toHaveLength(0);
+      });
+
       // Expiry is a hard limit: a handler that fails still leaves the session removed.
       it('removes an expired session whose handler fails', async () => {
         const eightDaysAgo = Date.now() - 8 * 24 * 60 * 60 * 1000;

@@ -57,6 +57,7 @@ const createMockPrisma = () => ({
     upsert: jest.fn().mockResolvedValue({}),
     findUnique: jest.fn(),
     findMany: jest.fn().mockResolvedValue([]),
+    updateMany: jest.fn().mockResolvedValue({ count: 0 }),
     delete: jest.fn().mockResolvedValue({}),
     deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
     count: jest.fn().mockResolvedValue(0),
@@ -1049,12 +1050,12 @@ describe('PostgreSQLStorageBackend', () => {
       row('no-grant', null),
     ]);
     // The callback of "completed" finished after the read above and consumed its flow:
-    // cleanup removes only the flow still there, and ends only that one's grant.
-    mockPrisma.authCodeFlowState.findUnique.mockImplementation(
-      async ({ where }: { where: { internalState: string } }) =>
-        where.internalState === 'abandoned' ? row('abandoned', gitlabTokens) : null,
+    // cleanup takes over only the flow still there, and ends only that one's grant.
+    mockPrisma.authCodeFlowState.updateMany.mockImplementation(
+      async ({ where }: { where: { internalState: string } }) => ({
+        count: where.internalState === 'abandoned' ? 1 : 0,
+      }),
     );
-    mockPrisma.authCodeFlowState.deleteMany.mockResolvedValue({ count: 1 });
     const handler = jest.fn(async () => {});
     backend.onAbandonedFlowGrant(handler);
 
@@ -1067,6 +1068,99 @@ describe('PostgreSQLStorageBackend', () => {
     expect(handler).toHaveBeenCalledWith(
       expect.objectContaining({ internalState: 'abandoned', gitlabTokens }),
     );
+    expect(mockPrisma.authCodeFlowState.updateMany).toHaveBeenCalledWith({
+      where: { internalState: 'abandoned' },
+      data: { internalState: 'cleanup:abandoned' },
+    });
+    expect(mockPrisma.authCodeFlowState.deleteMany).toHaveBeenCalledWith({
+      where: { internalState: 'cleanup:abandoned' },
+    });
+  });
+
+  // The flow is the only stored copy of the grant: it stays (claimed, out of its callback's
+  // reach) until the grant is ended, so a cleanup that fails or stops leaves it for the next.
+  it('keeps a claimed flow whose grant could not be ended', async () => {
+    (backend as any).prisma = mockPrisma;
+    const gitlabTokens = {
+      access_token: 'cached-token',
+      refresh_token: 'cached-refresh',
+      token_type: 'Bearer',
+      expires_in: 7200,
+      created_at: 0,
+    };
+    mockPrisma.authCodeFlowState.findMany.mockResolvedValueOnce([
+      { ...createAuthCodeFlow(), internalState: 'abandoned', expiresAt: BigInt(1), gitlabTokens },
+    ]);
+    mockPrisma.authCodeFlowState.updateMany.mockResolvedValueOnce({ count: 1 });
+    backend.onAbandonedFlowGrant(async () => {
+      throw new Error('GitLab unavailable');
+    });
+
+    await backend.cleanup();
+
+    expect(mockPrisma.authCodeFlowState.deleteMany).not.toHaveBeenCalledWith({
+      where: { internalState: 'cleanup:abandoned' },
+    });
+    expect(mockPrisma.authCodeFlowState.deleteMany).toHaveBeenCalledWith({
+      where: {
+        expiresAt: { lt: expect.any(BigInt) },
+        NOT: { internalState: { startsWith: 'cleanup:' } },
+      },
+    });
+  });
+
+  // A flow a stopped cleanup claimed earlier is ended without claiming it again.
+  it('ends the grant of a flow claimed by an earlier cleanup', async () => {
+    (backend as any).prisma = mockPrisma;
+    const gitlabTokens = {
+      access_token: 'cached-token',
+      refresh_token: 'cached-refresh',
+      token_type: 'Bearer',
+      expires_in: 7200,
+      created_at: 0,
+    };
+    mockPrisma.authCodeFlowState.findMany.mockResolvedValueOnce([
+      {
+        ...createAuthCodeFlow(),
+        internalState: 'cleanup:abandoned',
+        expiresAt: BigInt(1),
+        gitlabTokens,
+      },
+    ]);
+    const handler = jest.fn(async () => {});
+    backend.onAbandonedFlowGrant(handler);
+
+    await backend.cleanup();
+
+    expect(mockPrisma.authCodeFlowState.updateMany).not.toHaveBeenCalled();
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(mockPrisma.authCodeFlowState.deleteMany).toHaveBeenCalledWith({
+      where: { internalState: 'cleanup:abandoned' },
+    });
+  });
+
+  // A backlog of expired sessions is ended a few at a time, not in one burst.
+  it('ends the grants of expired sessions a few at a time', async () => {
+    (backend as any).prisma = mockPrisma;
+    const rows = Array.from({ length: 12 }, (_, i) => ({
+      ...createSession(),
+      id: `expired-${i}`,
+      createdAt: BigInt(1),
+      linkedToSessionId: null,
+    }));
+    mockPrisma.oAuthSession.findMany.mockResolvedValueOnce(rows);
+    let running = 0;
+    let peak = 0;
+    backend.onExpiredSession(async () => {
+      running++;
+      peak = Math.max(peak, running);
+      await new Promise((resolve) => setTimeout(resolve, 1));
+      running--;
+    });
+
+    await backend.cleanup();
+
+    expect(peak).toBe(5);
   });
 
   // An expired session and its linked accounts hold GitLab grants: cleanup hands each

@@ -247,7 +247,9 @@ async function verifyOwnAccount(
   // its tokens in place, so reloading the page retries it.
   const next = await storeLinkStep(config, session, target, { ...link, stage: 'connect' });
   const consumed = await sessionStore.consumeAuthCodeFlow(state);
-  // Only the identity was needed; this grant must not outlive the check.
+  // Only the identity was needed; this grant must not outlive the check. It is a grant of its
+  // own, never the session's: GitLab leaves Doorkeeper's reuse_access_token off (and hashes
+  // token secrets, which rules it out), so every code exchange issues a new token.
   await revokeQuietly(tokens.access_token, config, own);
   if (!consumed) {
     await sessionStore.deleteAuthCodeFlow(next.state);

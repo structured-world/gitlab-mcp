@@ -398,6 +398,53 @@ describe('OAuth Session Store', () => {
       });
     });
 
+    // The handler that removes expired sessions reaches the backend the same way.
+    describe('onExpiredSession', () => {
+      it('hands the handler to the backend', () => {
+        const backend = new MemoryStorageBackend({ silent: true });
+        const register = jest.spyOn(backend, 'onExpiredSession');
+        const handler = jest.fn(async () => {});
+
+        new SessionStore(backend).onExpiredSession(handler);
+
+        expect(register).toHaveBeenCalledWith(handler);
+      });
+
+      it('accepts a backend without the hook', () => {
+        const backend = new MemoryStorageBackend({ silent: true }) as unknown as Record<
+          string,
+          unknown
+        >;
+        backend.onExpiredSession = undefined;
+
+        expect(() =>
+          new SessionStore(backend as unknown as SessionStorageBackend).onExpiredSession(
+            jest.fn(async () => {}),
+          ),
+        ).not.toThrow();
+      });
+    });
+
+    // A session past its age limit authenticates nothing, also before cleanup removes it
+    // (cleanup runs periodically, and after a restart it ends the grants first).
+    it('finds no session past its age limit by its tokens', async () => {
+      const backend = new MemoryStorageBackend({ silent: true });
+      const aged = new SessionStore(backend);
+      await aged.createSession(
+        createTestSession({
+          id: 'aged',
+          mcpAccessToken: 'aged-access',
+          mcpRefreshToken: 'aged-refresh',
+          createdAt: Date.now() - 8 * 24 * 60 * 60 * 1000,
+        }),
+      );
+
+      expect(await aged.getSessionByToken('aged-access')).toBeUndefined();
+      expect(await aged.getSessionByRefreshToken('aged-refresh')).toBeUndefined();
+      // Cleanup still finds it to end its grants.
+      expect(await aged.getSession('aged')).toBeDefined();
+    });
+
     describe('cleanup', () => {
       it('should remove expired sessions', async () => {
         // Session expiration is based on createdAt + 7 days

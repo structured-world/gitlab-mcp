@@ -659,6 +659,28 @@ describe('account linking', () => {
       expect(linked[0]).toMatchObject({ gitlabAccessToken: 'com-token' });
     });
 
+    // The check of the session took its lease; one that cannot be given back expires on its
+    // own, and the account stays linked.
+    it('links the account when the lease of the session check cannot be released', async () => {
+      const state = await verified();
+      const flow = await storedFlow(state);
+      mockExchange.mockResolvedValueOnce(tokens('com-token'));
+      mockUser.mockResolvedValueOnce({ id: 99, username: 'alice-personal' });
+      const release = jest
+        .spyOn(sessionStore, 'releaseGitLabRefresh')
+        .mockRejectedValueOnce(new Error('database unavailable'));
+      const res = response();
+
+      try {
+        await completeAccountLink(res, state, flow, 'code', config);
+      } finally {
+        release.mockRestore();
+      }
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(await sessionStore.getLinkedSessions('primary')).toHaveLength(1);
+    });
+
     // A refresh of the session holds its lease for a moment; the link waits for it and
     // completes once the session is free.
     it('waits for a refresh of the session before completing the link', async () => {

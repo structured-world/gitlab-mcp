@@ -45,7 +45,9 @@ export async function handleSwitchAccount(input: SwitchAccountInput): Promise<Ac
   const account = await switchChatAccount(sessionId, input.account);
   // The chat's tools follow the account's instance, version and permissions. A session moved
   // to another instance is told by the session manager; otherwise (same instance, other
-  // permissions, or the sessionless stdio chat) it is told here.
+  // permissions, or the sessionless stdio chat) it is told here. An instance not initialized
+  // yet lists unfiltered tools now; the first call that initializes it announces the list
+  // again (the tool-call bootstrap), so the client then lists the filtered tools.
   const { getSessionManager } = await import('../../session-manager');
   const sessions = getSessionManager();
   const previousUrl = sessionId ? sessions.getSessionInstanceUrl(sessionId) : undefined;

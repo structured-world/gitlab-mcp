@@ -12,7 +12,12 @@ import {
   AuthorizationCode,
   RegisteredOAuthClient,
 } from '../types';
-import { SessionStorageBackend, SessionStorageStats } from './types';
+import {
+  AbandonedFlowGrantHandler,
+  ExpiredSessionHandler,
+  SessionStorageBackend,
+  SessionStorageStats,
+} from './types';
 import type { AccountSettings, AccountSettingsRecord } from '../../configuration/types';
 import { logInfo, logWarn, logError, logDebug, truncateId } from '../../logger';
 
@@ -48,6 +53,8 @@ export class MemoryStorageBackend implements SessionStorageBackend {
   /** Session id -> end of its GitLab refresh lease (transient, not exported). */
   private gitlabRefreshLeases = new Map<string, number>();
   private cleanupIntervalId: ReturnType<typeof setInterval> | null = null;
+  private abandonedFlowGrant: AbandonedFlowGrantHandler | undefined;
+  private expiredSession: ExpiredSessionHandler | undefined;
   private silent: boolean;
 
   constructor(options?: MemoryStorageOptions) {
@@ -63,6 +70,10 @@ export class MemoryStorageBackend implements SessionStorageBackend {
 
   // Session operations
   async createSession(session: OAuthSession): Promise<void> {
+    // Creating never replaces a session, as with the primary key of the database backend.
+    if (this.sessions.has(session.id)) {
+      throw new Error(`Session ${session.id} already exists`);
+    }
     this.sessions.set(session.id, session);
     if (session.mcpAccessToken) {
       this.tokenToSession.set(session.mcpAccessToken, session.id);
@@ -113,6 +124,8 @@ export class MemoryStorageBackend implements SessionStorageBackend {
     const session = this.sessions.get(sessionId);
     if (!session) return false;
 
+    const linked = await this.getLinkedSessions(sessionId);
+    await Promise.all(linked.map((account) => this.deleteSession(account.id)));
     if (session.mcpAccessToken) {
       this.tokenToSession.delete(session.mcpAccessToken);
     }
@@ -128,6 +141,14 @@ export class MemoryStorageBackend implements SessionStorageBackend {
 
   async getAllSessions(): Promise<OAuthSession[]> {
     return Array.from(this.sessions.values());
+  }
+
+  getLinkedSessions(sessionId: string): Promise<OAuthSession[]> {
+    return Promise.resolve(
+      Array.from(this.sessions.values())
+        .filter((session) => session.linkedToSessionId === sessionId)
+        .sort((a, b) => a.createdAt - b.createdAt),
+    );
   }
 
   // Device flow operations
@@ -326,22 +347,47 @@ export class MemoryStorageBackend implements SessionStorageBackend {
     return this.updateSession(sessionId, updates);
   }
 
+  onAbandonedFlowGrant(handler: AbandonedFlowGrantHandler): void {
+    this.abandonedFlowGrant = handler;
+  }
+
+  onExpiredSession(handler: ExpiredSessionHandler): void {
+    this.expiredSession = handler;
+  }
+
+  /**
+   * Remove a session past its age limit: through the handler, which ends its grants and
+   * those of its linked accounts, then directly if the handler failed or left it.
+   */
+  private async expire(session: OAuthSession): Promise<void> {
+    await this.expiredSession?.(session).catch((error: unknown) => {
+      logWarn('Could not end the grants of an expired session', { err: error as Error });
+    });
+    await this.deleteSession(session.id);
+  }
+
   // Cleanup
   async cleanup(): Promise<void> {
     const now = Date.now();
-    let expiredSessions = 0;
 
-    // Clean up expired sessions (7 days max age)
+    // Clean up expired sessions (7 days max age). A linked account goes with its session;
+    // it is younger than the session, so only one left without a session expires by itself.
     const maxAge = 7 * 24 * 60 * 60 * 1000;
-    for (const [id, session] of this.sessions) {
-      if (session.createdAt + maxAge < now) {
-        await this.deleteSession(id);
-        expiredSessions++;
-      }
-    }
+    const expired = [...this.sessions.values()].filter(
+      (session) =>
+        session.createdAt + maxAge < now &&
+        !(session.linkedToSessionId && this.sessions.has(session.linkedToSessionId)),
+    );
+    await Promise.all(expired.map((session) => this.expire(session)));
+    const expiredSessions = expired.length;
 
     const expiredDeviceFlows = deleteExpired(this.deviceFlows, now);
+    const handler = this.abandonedFlowGrant;
+    const abandoned = handler
+      ? [...this.authCodeFlows.values()].filter((flow) => flow.gitlabTokens && flow.expiresAt < now)
+      : [];
     const expiredAuthCodeFlows = deleteExpired(this.authCodeFlows, now);
+    if (handler) await Promise.all(abandoned.map((flow) => handler(flow)));
     const expiredAuthCodes = deleteExpired(this.authCodes, now);
     // Registrations that never completed an authorization expire; used ones have no expiry
     const expiredClients = deleteExpired(this.clients, now);

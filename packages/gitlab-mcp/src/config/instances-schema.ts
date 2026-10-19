@@ -103,6 +103,13 @@ export const GitLabInstanceConfigSchema = z
     url: GitLabUrlSchema,
     label: z.string().optional().describe('Human-readable name for UI display'),
     oauth: InstanceOAuthConfigSchema.optional(),
+    tokenEnv: z
+      .string()
+      .min(1)
+      .optional()
+      .describe(
+        'Environment variable holding an access token for this instance; with a static token, chats can switch to it',
+      ),
     rateLimit: InstanceRateLimitConfigSchema.optional(),
     insecureSkipVerify: z
       .boolean()

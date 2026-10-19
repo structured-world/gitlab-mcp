@@ -308,6 +308,53 @@ describe('MemoryStorageBackend', () => {
         expect(sessions.map((s) => s.id)).toContain('session-2');
       });
     });
+
+    // Accounts linked to a session are listed for it only, oldest first, and removed with
+    // it: a disconnected session must not leave other accounts' tokens behind.
+    describe('linked accounts', () => {
+      it('lists the accounts linked to a session, oldest first', async () => {
+        await storage.createSession(createTestSession({ id: 'primary' }));
+        await storage.createSession(createTestSession({ id: 'other' }));
+        await storage.createSession(
+          createTestSession({ id: 'late', linkedToSessionId: 'primary', createdAt: 2000 }),
+        );
+        await storage.createSession(
+          createTestSession({ id: 'early', linkedToSessionId: 'primary', createdAt: 1000 }),
+        );
+        await storage.createSession(
+          createTestSession({ id: 'foreign', linkedToSessionId: 'other' }),
+        );
+
+        const linked = await storage.getLinkedSessions('primary');
+
+        expect(linked.map((s) => s.id)).toEqual(['early', 'late']);
+      });
+
+      it('deletes the linked accounts together with their session', async () => {
+        await storage.createSession(createTestSession({ id: 'primary' }));
+        await storage.createSession(
+          createTestSession({ id: 'linked', linkedToSessionId: 'primary', mcpAccessToken: '' }),
+        );
+        await storage.createSession(createTestSession({ id: 'unrelated' }));
+
+        expect(await storage.deleteSession('primary')).toBe(true);
+
+        expect(await storage.getSession('linked')).toBeUndefined();
+        expect(await storage.getSession('unrelated')).toBeDefined();
+      });
+
+      it('deletes a linked account alone without touching its session', async () => {
+        await storage.createSession(createTestSession({ id: 'primary' }));
+        await storage.createSession(
+          createTestSession({ id: 'linked', linkedToSessionId: 'primary' }),
+        );
+
+        expect(await storage.deleteSession('linked')).toBe(true);
+
+        expect(await storage.getSession('primary')).toBeDefined();
+        expect(await storage.getLinkedSessions('primary')).toEqual([]);
+      });
+    });
   });
 
   // Anonymous registration must not grow storage without bound: registrations per source
@@ -654,6 +701,46 @@ describe('MemoryStorageBackend', () => {
         expect(await storage.getSession('valid-session')).toBeDefined();
       });
 
+      // An expired session and the accounts linked to it hold GitLab grants: cleanup hands
+      // the session to the handler that ends them, instead of dropping the stored tokens.
+      it('hands each expired session to the expiry handler before removing it', async () => {
+        const eightDaysAgo = Date.now() - 8 * 24 * 60 * 60 * 1000;
+        await storage.createSession(createTestSession({ id: 'expired', createdAt: eightDaysAgo }));
+        await storage.createSession(
+          createTestSession({
+            id: 'linked',
+            mcpAccessToken: '',
+            mcpRefreshToken: '',
+            linkedToSessionId: 'expired',
+            createdAt: Date.now(),
+          }),
+        );
+        const seen: string[] = [];
+        storage.onExpiredSession(async (session) => {
+          seen.push(session.id);
+          expect(await storage.getLinkedSessions(session.id)).toHaveLength(1);
+        });
+
+        await storage.cleanup();
+
+        expect(seen).toEqual(['expired']);
+        expect(await storage.getSession('expired')).toBeUndefined();
+        expect(await storage.getSession('linked')).toBeUndefined();
+      });
+
+      // Expiry is a hard limit: a handler that fails still leaves the session removed.
+      it('removes an expired session whose handler fails', async () => {
+        const eightDaysAgo = Date.now() - 8 * 24 * 60 * 60 * 1000;
+        await storage.createSession(createTestSession({ id: 'expired', createdAt: eightDaysAgo }));
+        storage.onExpiredSession(async () => {
+          throw new Error('GitLab unavailable');
+        });
+
+        await storage.cleanup();
+
+        expect(await storage.getSession('expired')).toBeUndefined();
+      });
+
       it('should remove expired device flows', async () => {
         const expiredFlow = createTestDeviceFlow({
           expiresAt: Date.now() - 1000,
@@ -688,6 +775,37 @@ describe('MemoryStorageBackend', () => {
 
         expect(await storage.getAuthCodeFlow('expired-auth-flow')).toBeUndefined();
         expect(await storage.getAuthCodeFlow('valid-auth-flow')).toBeDefined();
+      });
+
+      // A flow whose callback exchanged the code but never finished holds the only copy of
+      // that GitLab grant; removing it hands the grant over to be ended.
+      it('hands over the grant of each expired auth code flow it removes', async () => {
+        const gitlabTokens = {
+          access_token: 'cached-token',
+          refresh_token: 'cached-refresh',
+          token_type: 'Bearer',
+          expires_in: 7200,
+          created_at: 0,
+        };
+        const abandoned = createTestAuthCodeFlow({ expiresAt: Date.now() - 1000, gitlabTokens });
+        await storage.storeAuthCodeFlow('abandoned', abandoned);
+        await storage.storeAuthCodeFlow(
+          'expired-no-grant',
+          createTestAuthCodeFlow({ expiresAt: Date.now() - 1000 }),
+        );
+        await storage.storeAuthCodeFlow(
+          'live-with-grant',
+          createTestAuthCodeFlow({ expiresAt: Date.now() + 600000, gitlabTokens }),
+        );
+        const handler = jest.fn(async () => {});
+        storage.onAbandonedFlowGrant(handler);
+
+        await storage.cleanup();
+
+        expect(handler).toHaveBeenCalledTimes(1);
+        expect(handler).toHaveBeenCalledWith(abandoned);
+        expect(await storage.getAuthCodeFlow('abandoned')).toBeUndefined();
+        expect(await storage.getAuthCodeFlow('live-with-grant')).toBeDefined();
       });
 
       it('should remove expired auth codes', async () => {

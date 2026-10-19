@@ -23,10 +23,11 @@ import { GITLAB_BASE_URL } from '../config';
 const NAMESPACE_TIER_CACHE_TTL_MS = 5 * 60 * 1000;
 
 /**
- * In-memory namespace tier cache
- * Key: `${sessionId}:${namespacePath}`
+ * In-memory namespace tier cache: session id -> account key (instance, user and namespace
+ * path) -> tier. A session can work with several accounts (linked accounts keep the
+ * session id), and each sees its own tier of a path.
  */
-const namespaceTierCache = new Map<string, NamespaceTierInfo>();
+const namespaceTierCache = new Map<string, Map<string, NamespaceTierInfo>>();
 
 /**
  * GraphQL query to get namespace tier
@@ -135,26 +136,29 @@ export function getFeaturesForTier(tier: 'free' | 'premium' | 'ultimate'): Recor
   return { ...TIER_FEATURES[tier] };
 }
 
-/**
- * Build cache key from session ID and namespace path
- */
-function buildCacheKey(sessionId: string, namespacePath: string): string {
-  return `${sessionId}:${namespacePath}`;
+/** Key of a namespace path as one account sees it; a newline occurs in none of the parts. */
+function accountKey(baseUrl: string, gitlabUserId: number, namespacePath: string): string {
+  return `${baseUrl}\n${gitlabUserId}\n${namespacePath}`;
 }
 
 /**
  * Get cached namespace tier info
  */
-function getCachedTier(sessionId: string, namespacePath: string): NamespaceTierInfo | null {
-  const key = buildCacheKey(sessionId, namespacePath);
-  const cached = namespaceTierCache.get(key);
+function getCachedTier(
+  sessionId: string,
+  key: string,
+  namespacePath: string,
+): NamespaceTierInfo | null {
+  const entries = namespaceTierCache.get(sessionId);
+  const cached = entries?.get(key);
 
-  if (!cached) return null;
+  if (!entries || !cached) return null;
 
   // Check TTL
   const age = Date.now() - cached.cachedAt.getTime();
   if (age > NAMESPACE_TIER_CACHE_TTL_MS) {
-    namespaceTierCache.delete(key);
+    entries.delete(key);
+    if (entries.size === 0) namespaceTierCache.delete(sessionId);
     logDebug('Namespace tier cache expired', {
       sessionId,
       namespacePath,
@@ -171,11 +175,16 @@ function getCachedTier(sessionId: string, namespacePath: string): NamespaceTierI
  */
 function setCachedTier(
   sessionId: string,
+  key: string,
   namespacePath: string,
   tierInfo: NamespaceTierInfo,
 ): void {
-  const key = buildCacheKey(sessionId, namespacePath);
-  namespaceTierCache.set(key, tierInfo);
+  let entries = namespaceTierCache.get(sessionId);
+  if (!entries) {
+    entries = new Map();
+    namespaceTierCache.set(sessionId, entries);
+  }
+  entries.set(key, tierInfo);
 
   logDebug('Namespace tier cached', {
     sessionId,
@@ -191,12 +200,7 @@ function setCachedTier(
 export function clearNamespaceTierCache(sessionId?: string): void {
   if (sessionId) {
     // Clear only for specific session
-    const prefix = `${sessionId}:`;
-    for (const key of namespaceTierCache.keys()) {
-      if (key.startsWith(prefix)) {
-        namespaceTierCache.delete(key);
-      }
-    }
+    namespaceTierCache.delete(sessionId);
     logDebug('Namespace tier cache cleared for session', { sessionId });
   } else {
     // Clear entire cache
@@ -304,7 +308,7 @@ export async function getNamespaceTier(namespacePath: string): Promise<Namespace
     };
   }
 
-  const { sessionId, gitlabToken, apiUrl } = context;
+  const { sessionId, gitlabToken, gitlabUserId, apiUrl } = context;
   const baseUrl = apiUrl || GITLAB_BASE_URL;
 
   if (!baseUrl) {
@@ -317,7 +321,8 @@ export async function getNamespaceTier(namespacePath: string): Promise<Namespace
   }
 
   // Check cache first
-  const cached = getCachedTier(sessionId, namespacePath);
+  const key = accountKey(baseUrl, gitlabUserId, namespacePath);
+  const cached = getCachedTier(sessionId, key, namespacePath);
   if (cached) {
     logDebug('Namespace tier from cache', {
       namespacePath,
@@ -330,7 +335,7 @@ export async function getNamespaceTier(namespacePath: string): Promise<Namespace
   const tierInfo = await queryNamespaceTier(namespacePath, gitlabToken, baseUrl);
 
   // Cache result
-  setCachedTier(sessionId, namespacePath, tierInfo);
+  setCachedTier(sessionId, key, namespacePath, tierInfo);
 
   return tierInfo;
 }
@@ -355,18 +360,11 @@ export function getNamespaceTierCacheMetrics(): {
   entriesBySession: Map<string, number>;
 } {
   const entriesBySession = new Map<string, number>();
-
-  for (const key of namespaceTierCache.keys()) {
-    // Cache key format: ${sessionId}:${namespacePath}
-    // sessionId is UUID (no colons), but namespace paths can contain colons.
-    // Using lastIndexOf safely handles any future format changes.
-    const separatorIndex = key.lastIndexOf(':');
-    const sessionId = separatorIndex === -1 ? key : key.slice(0, separatorIndex);
-    entriesBySession.set(sessionId, (entriesBySession.get(sessionId) ?? 0) + 1);
+  let totalEntries = 0;
+  for (const [sessionId, entries] of namespaceTierCache) {
+    entriesBySession.set(sessionId, entries.size);
+    totalEntries += entries.size;
   }
 
-  return {
-    totalEntries: namespaceTierCache.size,
-    entriesBySession,
-  };
+  return { totalEntries, entriesBySession };
 }

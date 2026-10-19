@@ -23,6 +23,7 @@ import {
   RegisteredOAuthClient,
 } from './types';
 import { SessionStorageBackend, createStorageBackend } from './storage';
+import type { AbandonedFlowGrantHandler, ExpiredSessionHandler } from './storage/types';
 import type { AccountSettings, AccountSettingsRecord } from '../configuration/types';
 import { MemoryStorageBackend } from './storage/memory';
 import { logInfo, logError, logDebug } from '../logger';
@@ -144,6 +145,20 @@ export class SessionStore {
    */
   async getAllSessions(): Promise<OAuthSession[]> {
     return this.backend.getAllSessions();
+  }
+
+  /**
+   * Whether the backend keeps accounts linked to a session; a database package older than
+   * this server has no such method (nor the column it needs).
+   */
+  linksAccounts(): boolean {
+    const backend = this.backend as Partial<SessionStorageBackend>;
+    return typeof backend.getLinkedSessions === 'function';
+  }
+
+  /** The GitLab accounts linked to a session, oldest first. */
+  async getLinkedSessions(sessionId: string): Promise<OAuthSession[]> {
+    return this.backend.getLinkedSessions(sessionId);
   }
 
   /**
@@ -384,6 +399,26 @@ export class SessionStore {
   // ============================================================
   // Cleanup Operations
   // ============================================================
+
+  /**
+   * End the GitLab grant of each expired authorization flow cleanup removes unfinished.
+   * A database package older than this server has no such hook; its cleanup removes those
+   * flows as before.
+   */
+  onAbandonedFlowGrant(handler: AbandonedFlowGrantHandler): void {
+    const backend = this.backend as Partial<SessionStorageBackend>;
+    backend.onAbandonedFlowGrant?.(handler);
+  }
+
+  /**
+   * Remove each session that reaches its age limit through `handler`, which ends its GitLab
+   * grants and those of its linked accounts. A database package older than this server has
+   * no such hook; its cleanup deletes those sessions as before.
+   */
+  onExpiredSession(handler: ExpiredSessionHandler): void {
+    const backend = this.backend as Partial<SessionStorageBackend>;
+    backend.onExpiredSession?.(handler);
+  }
 
   /**
    * Clean up all expired entries

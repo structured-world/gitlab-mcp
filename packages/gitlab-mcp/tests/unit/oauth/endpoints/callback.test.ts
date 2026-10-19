@@ -23,16 +23,24 @@ jest.mock('../../../../src/oauth/session-store', () => ({
     createSession: jest.fn(),
     deleteSession: jest.fn().mockResolvedValue(true),
     deleteAuthCode: jest.fn().mockResolvedValue(true),
+    linksAccounts: jest.fn(() => true),
+    getLinkedSessions: jest.fn(async () => []),
   },
 }));
 
 jest.mock('../../../../src/oauth/gitlab-device-flow', () => ({
   exchangeGitLabAuthCode: jest.fn(),
   getGitLabUser: jest.fn(),
+  revokeGitLabToken: jest.fn(),
 }));
 
 jest.mock('../../../../src/oauth/instance-app', () => ({
   oauthAppFor: jest.fn(),
+}));
+
+jest.mock('../../../../src/accounts/link', () => ({
+  completeAccountLink: jest.fn(),
+  failAccountLink: jest.fn(),
 }));
 
 jest.mock('../../../../src/oauth/token-utils', () => ({
@@ -58,7 +66,11 @@ jest.mock('../../../../src/logger', () => ({
 
 import { loadOAuthConfig } from '../../../../src/oauth/config';
 import { sessionStore } from '../../../../src/oauth/session-store';
-import { exchangeGitLabAuthCode, getGitLabUser } from '../../../../src/oauth/gitlab-device-flow';
+import {
+  exchangeGitLabAuthCode,
+  getGitLabUser,
+  revokeGitLabToken,
+} from '../../../../src/oauth/gitlab-device-flow';
 
 const mockLoadOAuthConfig = loadOAuthConfig as jest.MockedFunction<typeof loadOAuthConfig>;
 const mockSessionStore = sessionStore as jest.Mocked<typeof sessionStore>;
@@ -67,6 +79,7 @@ const mockExchangeGitLabAuthCode = exchangeGitLabAuthCode as jest.MockedFunction
 >;
 const mockGetGitLabUser = getGitLabUser as jest.MockedFunction<typeof getGitLabUser>;
 import { oauthAppFor } from '../../../../src/oauth/instance-app';
+import { completeAccountLink, failAccountLink } from '../../../../src/accounts/link';
 const mockOauthAppFor = oauthAppFor as jest.MockedFunction<typeof oauthAppFor>;
 const selectedApp = {
   baseUrl: 'https://git.corp.example/gitlab',
@@ -131,6 +144,15 @@ describe('OAuth Callback Handler', () => {
     mockSessionStore.deleteAuthCodeFlow.mockResolvedValue(true);
   });
 
+  /** Tokens a delivery cached on the flow after exchanging GitLab's code. */
+  const cachedTokens = {
+    access_token: 'cached-token',
+    token_type: 'Bearer',
+    expires_in: 7200,
+    refresh_token: 'cached-refresh',
+    created_at: 0,
+  };
+
   /** The flow the callback reads, and finally consumes. */
   function withFlow(flow: AuthCodeFlowState | undefined): void {
     mockSessionStore.getAuthCodeFlow.mockResolvedValue(flow);
@@ -151,7 +173,82 @@ describe('OAuth Callback Handler', () => {
     });
   });
 
+  // A flow that links another account to a session has no client to redirect to: it ends
+  // on a page of its own, and its steps are completed by the account linking module.
+  describe('account linking flows', () => {
+    const linkFlow = {
+      ...mockAuthCodeFlow,
+      clientRedirectUri: '',
+      clientState: '',
+      link: { sessionId: 'primary', stage: 'connect' as const, instance: 'https://gitlab.com' },
+    };
+
+    it('hands a link step to the account linking module', async () => {
+      mockRequest.query = { code: 'gitlab-code', state: 'link-state' };
+      withFlow(linkFlow);
+
+      await callbackHandler(mockRequest as Request, mockResponse as Response);
+
+      expect(completeAccountLink).toHaveBeenCalledWith(
+        mockResponse,
+        'link-state',
+        linkFlow,
+        'gitlab-code',
+        mockOAuthConfig,
+      );
+      expect(mockExchangeGitLabAuthCode).not.toHaveBeenCalled();
+      expect(redirectMock).not.toHaveBeenCalled();
+    });
+
+    // The page never repeats text from the request: whoever crafts the callback URL
+    // cannot put their words on the server's page.
+    it('shows a page instead of redirecting when GitLab refuses a link', async () => {
+      mockRequest.query = {
+        error: 'access_denied',
+        error_description: 'Call +1-555-0100 to restore your account',
+        state: 'link-state',
+      };
+      mockSessionStore.consumeAuthCodeFlow.mockResolvedValue(linkFlow);
+
+      await callbackHandler(mockRequest as Request, mockResponse as Response);
+
+      expect(failAccountLink).toHaveBeenCalledWith(
+        mockResponse,
+        'GitLab did not authorize the account. Ask for a new link in the chat to try again.',
+      );
+      expect(redirectMock).not.toHaveBeenCalled();
+    });
+
+    // A delivery that exchanged the code and then failed keeps its tokens on the flow for a
+    // retry; GitLab refusing the retry spends the flow, so its grant must end with it.
+    it('ends the cached grant when GitLab refuses a retried link', async () => {
+      mockRequest.query = { error: 'access_denied', state: 'link-state' };
+      mockSessionStore.consumeAuthCodeFlow.mockResolvedValue({
+        ...linkFlow,
+        gitlabTokens: cachedTokens,
+      });
+
+      await callbackHandler(mockRequest as Request, mockResponse as Response);
+
+      expect(revokeGitLabToken).toHaveBeenCalledWith('cached-token', mockOAuthConfig, selectedApp);
+      expect(failAccountLink).toHaveBeenCalled();
+    });
+  });
+
   describe('GitLab error responses', () => {
+    it('ends the cached grant of a sign-in GitLab then refuses', async () => {
+      mockRequest.query = { error: 'access_denied', state: 'flow-state-123' };
+      mockSessionStore.consumeAuthCodeFlow.mockResolvedValue({
+        ...mockAuthCodeFlow,
+        gitlabTokens: cachedTokens,
+      });
+
+      await callbackHandler(mockRequest as Request, mockResponse as Response);
+
+      expect(revokeGitLabToken).toHaveBeenCalledWith('cached-token', mockOAuthConfig, selectedApp);
+      expect(redirectMock).toHaveBeenCalledWith(expect.stringContaining('error=access_denied'));
+    });
+
     it('should redirect with error if GitLab returns error and flow state exists', async () => {
       mockRequest.query = {
         error: 'access_denied',
@@ -310,6 +407,30 @@ describe('OAuth Callback Handler', () => {
         error: 'invalid_request',
         error_description: 'Authorization flow expired. Please start again.',
       });
+    });
+
+    // An earlier callback exchanged the code and cached the grant, then failed until the
+    // flow expired: discarding the flow ends that grant, nothing else holds its tokens.
+    it('ends the cached grant of an expired flow it discards', async () => {
+      mockRequest.query = { code: 'gitlab-code-123', state: 'expired-state' };
+      withFlow({
+        ...mockAuthCodeFlow,
+        expiresAt: Date.now() - 1000,
+        gitlabTokens: {
+          access_token: 'cached-token',
+          refresh_token: 'cached-refresh',
+          token_type: 'Bearer',
+          expires_in: 7200,
+          created_at: 0,
+        },
+      });
+      mockOauthAppFor.mockResolvedValueOnce(selectedApp);
+
+      await callbackHandler(mockRequest as Request, mockResponse as Response);
+
+      expect(revokeGitLabToken).toHaveBeenCalledWith('cached-token', mockOAuthConfig, selectedApp);
+      expect(mockSessionStore.deleteAuthCodeFlow).toHaveBeenCalledWith('expired-state');
+      expect(statusMock).toHaveBeenCalledWith(400);
     });
 
     // Removing the expired flow is housekeeping; cleanup removes it later if this fails.

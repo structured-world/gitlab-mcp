@@ -14,6 +14,12 @@ import {
 } from '../types';
 import type { AccountSettings, AccountSettingsRecord } from '../../configuration/types';
 
+/** Ends the GitLab grant of an auth code flow removed unfinished; best effort. */
+export type AbandonedFlowGrantHandler = (flow: AuthCodeFlowState) => Promise<void>;
+
+/** Removes a session that reached its age limit with its linked accounts, ending their grants. */
+export type ExpiredSessionHandler = (session: OAuthSession) => Promise<void>;
+
 /**
  * Session storage backend interface
  *
@@ -23,19 +29,22 @@ import type { AccountSettings, AccountSettingsRecord } from '../../configuration
  * Methods returning a boolean report a missing record as `false`. A failed read or
  * write rejects instead, so callers never mistake a storage outage for an absent record.
  */
-
 export interface SessionStorageBackend {
   /** Backend type identifier */
   readonly type: 'memory' | 'file' | 'postgresql' | 'redis';
 
   // Session operations
+  /** Store a new session; rejects when a session with its id exists. */
   createSession(session: OAuthSession): Promise<void>;
   getSession(sessionId: string): Promise<OAuthSession | undefined>;
   getSessionByToken(token: string): Promise<OAuthSession | undefined>;
   getSessionByRefreshToken(refreshToken: string): Promise<OAuthSession | undefined>;
   updateSession(sessionId: string, updates: Partial<OAuthSession>): Promise<boolean>;
+  /** Delete a session together with the accounts linked to it. */
   deleteSession(sessionId: string): Promise<boolean>;
   getAllSessions(): Promise<OAuthSession[]>;
+  /** The GitLab accounts linked to a session, oldest first. */
+  getLinkedSessions(sessionId: string): Promise<OAuthSession[]>;
 
   // Device flow operations
   storeDeviceFlow(state: string, flow: DeviceFlowState): Promise<void>;
@@ -130,6 +139,19 @@ export interface SessionStorageBackend {
   initialize(): Promise<void>;
   /** Remove expired sessions, flows, codes and expired never-used client registrations. */
   cleanup(): Promise<void>;
+  /**
+   * Call `handler` for each expired auth code flow that held GitLab tokens, as cleanup
+   * removes it: its callback exchanged the code but never finished, so the flow held the
+   * only copy of that grant. Absent in database packages older than this server.
+   */
+  onAbandonedFlowGrant?(handler: AbandonedFlowGrantHandler): void;
+  /**
+   * Hand each session cleanup expires (not an account linked to a session still stored) to
+   * `handler`, which removes it with its linked accounts and ends their GitLab grants;
+   * cleanup deletes whatever the handler left. Absent in database packages older than this
+   * server.
+   */
+  onExpiredSession?(handler: ExpiredSessionHandler): void;
   close(): Promise<void>;
 
   // Statistics

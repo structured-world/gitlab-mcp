@@ -119,6 +119,8 @@ import { normalizeInstanceUrl } from './utils/url';
 import { groupOfRegistry } from './configuration/groups';
 import type { ToolFacts } from './configuration/policy';
 import { getGitLabApiUrlFromContext, getTokenContext } from './oauth/token-context';
+import { isOAuthEnabled } from './oauth/config';
+import { currentTokenAccount } from './accounts/token-account';
 
 const NONE_UNAVAILABLE: ReadonlyMap<string, string> = new Map();
 
@@ -620,7 +622,8 @@ class RegistryManager {
 
   /**
    * Resolve the cache key for a given (or default) instance URL.
-   * Fallback chain: explicit URL → OAuth context → getCurrentInstanceUrl() → GITLAB_BASE_URL.
+   * Fallback chain: explicit URL → OAuth context → the configured instance a static-token
+   * chat switched to → (OAuth) getCurrentInstanceUrl() → GITLAB_BASE_URL.
    * @param instanceUrl - Optional explicit instance URL
    * @returns Normalized instance URL for use as cache key
    */
@@ -631,6 +634,10 @@ class RegistryManager {
     // concurrent request.
     const contextUrl = getGitLabApiUrlFromContext();
     if (contextUrl) return normalizeInstanceUrl(contextUrl);
+    // A static-token chat lists its own instance, or the configured one it switched to.
+    const switched = currentTokenAccount()?.instanceUrl;
+    if (switched) return switched;
+    if (!isOAuthEnabled()) return normalizeInstanceUrl(GITLAB_BASE_URL);
     try {
       const current = ConnectionManager.getInstance().getCurrentInstanceUrl();
       if (current) return normalizeInstanceUrl(current);

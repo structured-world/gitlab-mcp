@@ -103,7 +103,7 @@ For detailed testing documentation, see [TESTING.md](TESTING.md).
 
 - Strict TypeScript with no `any` types
 - All code must pass `yarn lint` with zero errors
-- ESM modules with `.js` extensions in imports
+- TypeScript source uses extensionless relative imports (some older files still use `.js`; new code does not)
 - Zod schemas for all external data validation
 
 ### Commit Messages

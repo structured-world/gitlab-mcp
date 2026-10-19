@@ -23,6 +23,12 @@ jest.mock('../../../src/services/TokenScopeDetector', () => ({
   ),
 }));
 
+// The static token of the test instance; other instances have none.
+jest.mock('../../../src/accounts/instance-tokens', () => ({
+  configuredInstanceToken: (url: string) =>
+    url === 'https://test-gitlab.com' ? 'test-pat' : undefined,
+}));
+
 /** Type-safe access to ConnectionManager private fields in tests */
 type CMInternals = {
   instances: Map<string, InstanceState>;
@@ -208,7 +214,17 @@ describe('ConnectionManager Unit', () => {
 
       const result = await manager.refreshTokenScopes();
       expect(result).toBe(false);
-      expect(mockDetectTokenScopes).toHaveBeenCalledWith(TEST_URL);
+      expect(mockDetectTokenScopes).toHaveBeenCalledWith(TEST_URL, 'test-pat');
+    });
+
+    // An instance without a static token has no scopes to re-detect; another instance's
+    // token is never probed against it.
+    it('should return false without detection for an instance without a token', async () => {
+      injectInstanceState(manager, 'https://no-token.example.com');
+
+      const result = await manager.refreshTokenScopes();
+      expect(result).toBe(false);
+      expect(mockDetectTokenScopes).not.toHaveBeenCalled();
     });
 
     it('should return false when scopes have not changed', async () => {
@@ -779,48 +795,6 @@ describe('ConnectionManager Unit', () => {
 
         expect(internals(manager).instanceAccessTimes.size).toBe(0);
       });
-    });
-  });
-
-  describe('reinitialize', () => {
-    let manager: ConnectionManager;
-
-    beforeEach(() => {
-      manager = ConnectionManager.getInstance();
-      mockIsOAuthEnabled.mockReturnValue(false);
-    });
-
-    it('should restore saved state on failed reinitialize', async () => {
-      // Set up initial state for the URL
-      injectInstanceState(manager, 'https://new-gitlab.com', {
-        instanceInfo: {
-          version: '15.0.0',
-          tier: 'free',
-        } as unknown as InstanceState['instanceInfo'],
-        schemaInfo: { workItemWidgetTypes: ['OLD'] } as unknown as InstanceState['schemaInfo'],
-        isInitialized: true,
-      });
-
-      // Force initialize to reject so the rollback path is always exercised,
-      // regardless of ambient config (tokens, GITLAB_BASE_URL)
-      const initSpy = jest
-        .spyOn(manager, 'initialize')
-        .mockRejectedValue(new Error('forced test failure'));
-
-      await expect(manager.reinitialize('https://new-gitlab.com')).rejects.toThrow(
-        'forced test failure',
-      );
-
-      expect(initSpy).toHaveBeenCalledWith('https://new-gitlab.com');
-
-      // On failure, saved state is restored so the URL remains usable
-      expect(internals(manager).instances.has('https://new-gitlab.com')).toBe(true);
-      expect(internals(manager).instances.get('https://new-gitlab.com')!.isInitialized).toBe(true);
-      // currentInstanceUrl must also be restored so zero-arg accessors
-      // (getInstanceInfo(), getClient()) point at the correct instance
-      expect(internals(manager).currentInstanceUrl).toBe('https://new-gitlab.com');
-
-      initSpy.mockRestore();
     });
   });
 

@@ -37,6 +37,7 @@ import {
   runWithTokenContext,
 } from './oauth/index';
 import { registerOAuthEndpoints } from './oauth/routes';
+import { endSession, revokeAbandonedFlowGrant } from './oauth/grant-revocation';
 import type { TokenContext } from './oauth/types';
 // Middleware imports
 import {
@@ -400,6 +401,13 @@ export async function startServer(): Promise<void> {
   // Initialize session store (required for file-based and PostgreSQL persistence)
   if (oauthConfig) {
     await sessionStore.initialize();
+    sessionStore.onAbandonedFlowGrant((flow) => revokeAbandonedFlowGrant(flow, oauthConfig));
+    sessionStore.onExpiredSession((session) => endSession(session, oauthConfig));
+    // Sessions that expired while the server was stopped hold grants; end them now rather
+    // than at the first periodic cleanup.
+    sessionStore
+      .cleanup()
+      .catch((error: unknown) => logError('Startup session cleanup failed', { err: error }));
   }
 
   // Initialize session manager (handles per-session Server instances)

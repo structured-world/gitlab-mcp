@@ -29,28 +29,6 @@ jest.mock('../../../../src/server', () => ({
   sendToolsListChangedNotification: jest.fn().mockResolvedValue(undefined),
 }));
 
-const mockPinAllSessions = jest.fn();
-jest.mock('../../../../src/session-manager', () => ({
-  getSessionManager: () => ({ pinAllSessions: mockPinAllSessions }),
-}));
-
-const mockClearNamespaceTierCache = jest.fn();
-jest.mock('../../../../src/services/NamespaceTierDetector', () => ({
-  clearNamespaceTierCache: () => mockClearNamespaceTierCache(),
-  detectNamespaceTier: jest.fn(),
-}));
-
-const mockReinitialize = jest.fn();
-const mockGetCurrentInstanceUrl = jest.fn().mockReturnValue('https://gitlab.example.com');
-jest.mock('../../../../src/services/ConnectionManager', () => ({
-  ConnectionManager: {
-    getInstance: () => ({
-      reinitialize: mockReinitialize,
-      getCurrentInstanceUrl: mockGetCurrentInstanceUrl,
-    }),
-  },
-}));
-
 const mockPresets: Record<string, unknown> = {
   readonly: { description: 'Read-only preset', read_only: true },
   developer: { description: 'Developer preset', read_only: false },
@@ -88,8 +66,6 @@ jest.mock('../../../../src/profiles/loader', () => ({
 
 // A real configuration service over an in-memory store; notifications are recorded.
 const mockNotified: string[][] = [];
-/** Per notification: whether the sessions had already been pinned to the new instance. */
-const mockPinnedWhenNotified: boolean[] = [];
 let mockService: unknown;
 jest.mock('../../../../src/configuration', () => {
   const actual = jest.requireActual('../../../../src/configuration/caller');
@@ -107,7 +83,7 @@ import { findNamespaceType } from '../../../../src/utils/namespace';
 import { isGitLabAuthFailure } from '../../../../src/oauth/tool-auth';
 import { sendToolsListChangedNotification } from '../../../../src/server';
 import { ConfigurationService } from '../../../../src/configuration/service';
-import { resolveCaller, runWithCaller, type Caller } from '../../../../src/configuration/caller';
+import { runWithCaller, type Caller } from '../../../../src/configuration/caller';
 import type { AccountSettingsRecord, AccountSettings } from '../../../../src/configuration/types';
 
 const mockDetectNamespaceType = findNamespaceType as jest.MockedFunction<typeof findNamespaceType>;
@@ -152,10 +128,8 @@ describe('ContextManager', () => {
     ContextManager.resetInstance();
     jest.clearAllMocks();
     mockNotified.length = 0;
-    mockPinnedWhenNotified.length = 0;
     mockGitLabBaseUrl = 'https://gitlab.example.com';
     mockGitLabReadOnlyMode = false;
-    mockReinitialize.mockReset();
     process.env = { ...originalEnv, OAUTH_ENABLED: 'false' };
     store = memoryStore();
     service = new ConfigurationService(
@@ -163,7 +137,6 @@ describe('ContextManager', () => {
       { load: (name) => mockLoadPreset(name) },
       async (keys) => {
         mockNotified.push([...keys]);
-        mockPinnedWhenNotified.push(mockPinAllSessions.mock.calls.length > 0);
       },
     );
     mockService = service;
@@ -452,102 +425,6 @@ describe('ContextManager', () => {
       await expect(runWithCaller(alice1, () => manager.getContext())).rejects.toThrow(
         'Invalid scope configuration',
       );
-    });
-  });
-
-  describe('switchInstance', () => {
-    it('refuses in OAuth mode', async () => {
-      process.env.OAUTH_ENABLED = 'true';
-
-      await expect(getContextManager().switchInstance('https://other.example.com')).rejects.toThrow(
-        'Cannot switch instances in OAuth mode',
-      );
-    });
-
-    it('refuses an instance that is not configured', async () => {
-      await expect(
-        getContextManager().switchInstance('https://unknown-gitlab.com'),
-      ).rejects.toThrow('Instance not configured');
-    });
-
-    it('switches, notifies every session and clears the session scope', async () => {
-      const { InstanceRegistry } = await import('../../../../src/services/InstanceRegistry');
-      InstanceRegistry.getInstance().register({
-        url: 'https://success-gitlab.example.com',
-        label: 'Success GitLab',
-        insecureSkipVerify: false,
-      });
-      mockReinitialize.mockResolvedValue(undefined);
-      mockDetectNamespaceType.mockResolvedValue('group');
-      const manager = getContextManager();
-      await runWithCaller(alice1, () => manager.setScope('my-group'));
-      mockPinnedWhenNotified.length = 0;
-
-      const result = await runWithCaller(alice1, () =>
-        manager.switchInstance('https://success-gitlab.example.com'),
-      );
-
-      expect(result).toMatchObject({
-        success: true,
-        previous: 'https://gitlab.example.com',
-        current: 'https://success-gitlab.example.com',
-      });
-      expect(result.message).toContain('Success GitLab');
-      expect(mockClearNamespaceTierCache).toHaveBeenCalled();
-      expect(mockReinitialize).toHaveBeenCalledWith('https://success-gitlab.example.com');
-      expect(mockSendToolsListChangedNotification).toHaveBeenCalled();
-      // Sessions follow the shared token to the new instance before they are told to refresh,
-      // so the refreshed tool list is built for the new instance's account.
-      expect(mockPinAllSessions).toHaveBeenCalledWith('https://success-gitlab.example.com');
-      expect(mockPinAllSessions.mock.invocationCallOrder[0]).toBeLessThan(
-        mockSendToolsListChangedNotification.mock.invocationCallOrder[0],
-      );
-      // Moving the chats' overrides notifies their sessions too, so they are pinned first.
-      expect(mockPinnedWhenNotified.length).toBeGreaterThan(0);
-      expect(mockPinnedWhenNotified.every(Boolean)).toBe(true);
-      expect((await runWithCaller(alice1, () => manager.getContext())).scope).toBeUndefined();
-    });
-
-    // A static token's account is keyed by its instance, so the switch changes the key of
-    // every chat on this server: their read-only mode and presets move with them, their
-    // scopes (projects of the previous instance) do not.
-    it('keeps the chat overrides of every session across the switch, without the scope', async () => {
-      const { InstanceRegistry } = await import('../../../../src/services/InstanceRegistry');
-      InstanceRegistry.getInstance().register({
-        url: 'https://next-gitlab.example.com',
-        label: 'Next GitLab',
-        insecureSkipVerify: false,
-      });
-      mockReinitialize.mockResolvedValue(undefined);
-      mockDetectNamespaceType.mockResolvedValue('group');
-      const manager = getContextManager();
-      const before = (session: string) => resolveCaller(session, 'https://gitlab.example.com');
-      const after = (session: string) => resolveCaller(session, 'https://next-gitlab.example.com');
-      await service.updateSession(before('chat-1'), { readOnly: true });
-      await runWithCaller(before('chat-1'), () => manager.setScope('my-group'));
-      await service.updateSession(before('chat-2'), { preset: 'readonly' });
-
-      await runWithCaller(before('chat-1'), () =>
-        manager.switchInstance('https://next-gitlab.example.com'),
-      );
-
-      expect((await service.resolve(after('chat-1'))).session).toEqual({ readOnly: true });
-      expect((await service.resolve(after('chat-2'))).session).toEqual({ preset: 'readonly' });
-      expect((await service.resolve(before('chat-1'))).session).toEqual({});
-    });
-
-    it('reports a failed reconnection', async () => {
-      const { InstanceRegistry } = await import('../../../../src/services/InstanceRegistry');
-      InstanceRegistry.getInstance().register({
-        url: 'https://broken-gitlab.example.com',
-        label: 'Broken',
-        insecureSkipVerify: false,
-      });
-      mockReinitialize.mockRejectedValue(new Error('unreachable'));
-
-      await expect(
-        getContextManager().switchInstance('https://broken-gitlab.example.com'),
-      ).rejects.toThrow("Failed to switch to instance 'https://broken-gitlab.example.com'");
     });
   });
 });

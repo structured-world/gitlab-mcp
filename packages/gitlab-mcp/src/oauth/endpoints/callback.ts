@@ -15,12 +15,12 @@
  */
 
 import { Request, Response } from 'express';
-import { loadOAuthConfig, type OAuthConfig } from '../config';
-import type { GitLabOAuthApp } from '../oauth-app';
-import type { AuthCodeFlowState, GitLabTokenResponse } from '../types';
+import { loadOAuthConfig } from '../config';
 import { sessionStore } from '../session-store';
-import { keepIssuedTokens } from '../issued-tokens';
-import { exchangeGitLabAuthCode, getGitLabUser } from '../gitlab-device-flow';
+import { exchangeFlowCode } from '../code-exchange';
+import { discardAuthCodeFlow, revokeAbandonedFlowGrant } from '../grant-revocation';
+import { getGitLabUser } from '../gitlab-device-flow';
+import { completeAccountLink, failAccountLink } from '../../accounts/link';
 import { generateSessionId, generateAuthorizationCode, calculateTokenExpiry } from '../token-utils';
 import { logInfo, logWarn, logError, logDebug, truncateId } from '../../logger';
 import { GITLAB_BASE_URL } from '../../config';
@@ -64,6 +64,17 @@ export async function callbackHandler(req: Request, res: Response): Promise<void
         logError('Failed to read authorization flow', { err: err as Error });
         return undefined;
       });
+      // An earlier delivery may have exchanged the code and kept its tokens for a retry;
+      // the flow is spent now, so nothing else would end that grant.
+      if (flow) await revokeAbandonedFlowGrant(flow, config);
+      if (flow?.link) {
+        // The reason is in the log above; the page shows no text taken from the request.
+        failAccountLink(
+          res,
+          'GitLab did not authorize the account. Ask for a new link in the chat to try again.',
+        );
+        return;
+      }
       if (flow) {
         res.redirect(
           authorizationRedirect(flow.clientRedirectUri, config.issuer, {
@@ -121,9 +132,15 @@ export async function callbackHandler(req: Request, res: Response): Promise<void
     return;
   }
 
+  // Linking another account ends on a page of its own, not at a client's redirect URI.
+  if (flow.link) {
+    await completeAccountLink(res, state, flow, code, config);
+    return;
+  }
+
   // Check if flow has expired
   if (Date.now() > flow.expiresAt) {
-    await sessionStore.deleteAuthCodeFlow(state).catch(() => false);
+    await discardAuthCodeFlow(state, flow, config);
     res.status(400).json({
       error: 'invalid_request',
       error_description: 'Authorization flow expired. Please start again.',
@@ -138,7 +155,8 @@ export async function callbackHandler(req: Request, res: Response): Promise<void
       throw new Error('GitLab instance is no longer configured');
     }
 
-    const gitlabTokens = flow.gitlabTokens ?? (await exchangeCode(state, flow, code, config, app));
+    const gitlabTokens =
+      flow.gitlabTokens ?? (await exchangeFlowCode(state, flow, code, config, app));
 
     // Get GitLab user info
     const userInfo = await getGitLabUser(gitlabTokens.access_token, app.baseUrl);
@@ -224,30 +242,4 @@ export async function callbackHandler(req: Request, res: Response): Promise<void
       }),
     );
   }
-}
-
-/**
- * Exchange GitLab's single-use code and keep the tokens with the flow before anything
- * else can fail. When a concurrent callback already spent the code, its stored tokens are
- * used instead.
- */
-async function exchangeCode(
-  state: string,
-  flow: AuthCodeFlowState,
-  code: string,
-  config: OAuthConfig,
-  app: GitLabOAuthApp,
-): Promise<GitLabTokenResponse> {
-  let tokens: GitLabTokenResponse;
-  try {
-    tokens = await exchangeGitLabAuthCode(code, flow.callbackUri, config, app);
-  } catch (error: unknown) {
-    const current = await sessionStore.getAuthCodeFlow(state);
-    if (current?.gitlabTokens) return current.gitlabTokens;
-    throw error;
-  }
-  await keepIssuedTokens(() =>
-    sessionStore.storeAuthCodeFlow(state, { ...flow, gitlabTokens: tokens }),
-  );
-  return tokens;
 }

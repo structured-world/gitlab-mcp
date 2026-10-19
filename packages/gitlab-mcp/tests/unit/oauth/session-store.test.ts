@@ -370,6 +370,34 @@ describe('OAuth Session Store', () => {
   });
 
   describe('Cleanup Operations', () => {
+    // The handler that ends abandoned grants reaches the backend; a database package older
+    // than the server has no hook and keeps cleaning up as before.
+    describe('onAbandonedFlowGrant', () => {
+      it('hands the handler to the backend', () => {
+        const backend = new MemoryStorageBackend({ silent: true });
+        const register = jest.spyOn(backend, 'onAbandonedFlowGrant');
+        const handler = jest.fn(async () => {});
+
+        new SessionStore(backend).onAbandonedFlowGrant(handler);
+
+        expect(register).toHaveBeenCalledWith(handler);
+      });
+
+      it('accepts a backend without the hook', () => {
+        const backend = new MemoryStorageBackend({ silent: true }) as unknown as Record<
+          string,
+          unknown
+        >;
+        backend.onAbandonedFlowGrant = undefined;
+
+        expect(() =>
+          new SessionStore(backend as unknown as SessionStorageBackend).onAbandonedFlowGrant(
+            jest.fn(async () => {}),
+          ),
+        ).not.toThrow();
+      });
+    });
+
     describe('cleanup', () => {
       it('should remove expired sessions', async () => {
         // Session expiration is based on createdAt + 7 days

@@ -130,7 +130,7 @@ const LinkAccountSchema = z.object({
 const UnlinkAccountSchema = z.object({
   action: z
     .literal('unlink_account')
-    .describe('Remove a linked account from this connection and end its GitLab sign-in'),
+    .describe('Remove a linked account from this connection and revoke its OAuth grant'),
   account: z.string().min(1).describe('Account id from list_accounts'),
 });
 

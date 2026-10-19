@@ -535,6 +535,28 @@ function activeInstanceUrl(oauthEnabled: boolean, oauthContextUrl: string | unde
 }
 
 /**
+ * Keep the session's instance URL in sync so ListTools requests reflect the instance its
+ * calls go to, and no other: in OAuth mode that is the token's instance, so context changes
+ * (switch_preset, reset) need no re-pin of their own. In OAuth mode only a real context URL
+ * is pinned; the GITLAB_BASE_URL fallback of a contextless call (health checks, non-OAuth
+ * transport) must not overwrite a session pinned to a specific instance. In static-token
+ * mode the active instance is always tracked.
+ *
+ * Account actions do not pin: they run as the connection's own account whichever account
+ * the chat switched to, and switch_account pins the instance it moves to itself.
+ */
+async function pinSessionInstance(
+  sessionId: string,
+  oauthEnabled: boolean,
+  oauthContextUrl: string | undefined,
+  instanceUrl: string,
+): Promise<void> {
+  if (oauthEnabled && oauthContextUrl === undefined) return;
+  const { getSessionManager } = await import('./session-manager');
+  getSessionManager().setSessionInstanceUrl(sessionId, instanceUrl);
+}
+
+/**
  * The response to a call whose handler ran out of time; the handler may still be running.
  * A bootstrap it left unfinished is reported to the health monitor.
  */
@@ -1085,20 +1107,9 @@ export async function setupHandlers(server: Server): Promise<void> {
     const oauthContextUrl = oauthEnabled ? getUrlFromCtx() : undefined;
     const requestInstanceUrl = activeInstanceUrl(oauthEnabled, oauthContextUrl);
 
-    // Keep per-session instance URL in sync so ListTools requests reflect the correct
-    // instance. In OAuth mode only update when we have a real OAuth context URL —
-    // the GITLAB_BASE_URL fallback must NOT overwrite a session already pinned to a
-    // specific instance (contextless calls occur during health checks / non-OAuth
-    // transport; persisting the fallback would reset multi-tenant tool filtering).
-    // In static-token mode always track the active instance URL.
-    //
-    // The session lists tools of the instance its calls go to and of no other: in OAuth
-    // mode that is the token's instance. Context changes (switch_preset, reset) therefore
-    // need no re-pin of their own.
     const callSessionId = extra?.sessionId;
-    if (callSessionId && (!oauthEnabled || oauthContextUrl !== undefined)) {
-      const { getSessionManager: getSessionMgrForCall } = await import('./session-manager');
-      getSessionMgrForCall().setSessionInstanceUrl(callSessionId, requestInstanceUrl);
+    if (callSessionId && !managesAccounts(request)) {
+      await pinSessionInstance(callSessionId, oauthEnabled, oauthContextUrl, requestInstanceUrl);
     }
     // Whose settings apply, from the authenticated request only.
     const caller = resolveCaller(callSessionId, requestInstanceUrl);

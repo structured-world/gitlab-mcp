@@ -89,6 +89,11 @@ export interface AccountLinkStep {
   instance: string;
   /** Label of that instance */
   instanceLabel?: string;
+  /**
+   * At `connect`: SHA-256 (hex) of the nonce the browser that passed `verify` holds in a
+   * cookie, so the step completes only in that browser, never in one it was forwarded to.
+   */
+  browserBinding?: string;
 }
 
 /**

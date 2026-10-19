@@ -99,12 +99,28 @@ function tokens(access: string): GitLabTokenResponse {
   };
 }
 
+/** The cookies of the browser the tests sign in with; the server sets them on its responses. */
+const browserCookies = new Map<string, string>();
+
 function response() {
   const res = {
     status: jest.fn().mockReturnThis(),
     type: jest.fn().mockReturnThis(),
     send: jest.fn().mockReturnThis(),
     redirect: jest.fn().mockReturnThis(),
+    cookie: jest.fn((name: string, value: string): void => {
+      browserCookies.set(name, value);
+    }),
+    clearCookie: jest.fn((name: string): void => {
+      browserCookies.delete(name);
+    }),
+    // The request this response answers comes from that browser, with its cookies.
+    req: {
+      get headers() {
+        const cookie = [...browserCookies].map(([name, value]) => `${name}=${value}`).join('; ');
+        return { cookie };
+      },
+    },
   };
   return res as unknown as Response & typeof res;
 }
@@ -142,6 +158,7 @@ describe('account linking', () => {
     mockOAuth = true;
     sessionStore.clear();
     jest.clearAllMocks();
+    browserCookies.clear();
     // A copy: the memory backend keeps the object it is given and updates change it.
     await sessionStore.createSession({ ...primary });
   });
@@ -253,7 +270,9 @@ describe('account linking', () => {
     });
 
     // On the session's own instance the browser is still signed in to GitLab as the account
-    // just verified; an immediate redirect would authorize that same account again.
+    // just verified; an immediate redirect would authorize that same account again. The user
+    // changes the GitLab account in this browser, which holds the cookie of the next step (a
+    // private window would not).
     it('pauses on its own instance so the user can sign in with the other account', async () => {
       const link = await startAsAlice();
       const state = stateOf(link.url);
@@ -266,7 +285,8 @@ describe('account linking', () => {
       expect(res.redirect).not.toHaveBeenCalled();
       expect(res.status).toHaveBeenCalledWith(200);
       const page = res.send.mock.calls[0][0] as string;
-      expect(page).toContain('private window');
+      expect(page).toContain('sign out of GitLab in this browser');
+      expect(page).not.toContain('private window');
       const next = continueLink(page);
       expect(next.startsWith('https://git.corp.example.com/oauth/authorize')).toBe(true);
       expect((await storedFlow(stateOf(next))).link).toMatchObject({
@@ -381,6 +401,54 @@ describe('account linking', () => {
       await completeAccountLink(res, state, await storedFlow(state), 'code', config);
       return stateOf(res.redirect.mock.calls[0][0] as string);
     }
+
+    // The connect step is only the GitLab sign-in URL: forwarded to someone else, it would
+    // link their GitLab account to this session. It completes only in the browser that
+    // confirmed the session's own account.
+    it('refuses a connect step opened in another browser', async () => {
+      const state = await verified();
+      browserCookies.clear();
+      const res = response();
+
+      await completeAccountLink(res, state, await storedFlow(state), 'code', config);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.send.mock.calls[0][0]).toContain('browser');
+      expect(await sessionStore.getLinkedSessions('primary')).toHaveLength(0);
+      // Only the verify step exchanged a code: the forwarded one gets no grant at all.
+      expect(mockExchange).toHaveBeenCalledTimes(1);
+      expect(await sessionStore.getAuthCodeFlow(state)).toBeUndefined();
+    });
+
+    // The verify step hands the browser a cookie only the server reads, scoped to the
+    // callback, for the connect step to check.
+    it('binds the connect step to the browser with a callback cookie', async () => {
+      const link = await startAsAlice('https://gitlab.com');
+      const state = stateOf(link.url);
+      mockExchange.mockResolvedValueOnce(tokens('verify-token'));
+      mockUser.mockResolvedValueOnce({ id: 7, username: 'alice' });
+      const res = response();
+
+      await completeAccountLink(res, state, await storedFlow(state), 'code', config);
+
+      const [name, value, options] = res.cookie.mock.calls[0] as unknown as [
+        string,
+        string,
+        Record<string, unknown>,
+      ];
+      expect(name).toMatch(/^gitlab_mcp_link_/);
+      expect(value).toEqual(expect.any(String));
+      expect(options).toMatchObject({
+        httpOnly: true,
+        sameSite: 'lax',
+        secure: true,
+        path: '/oauth/callback',
+      });
+      // Only a digest is stored with the step; the browser holds the value itself.
+      const next = await storedFlow(stateOf(res.redirect.mock.calls[0][0] as string));
+      expect(next.link?.browserBinding).toEqual(expect.any(String));
+      expect(next.link?.browserBinding).not.toBe(value);
+    });
 
     it('stores the signed-in account with the session', async () => {
       const state = await verified();

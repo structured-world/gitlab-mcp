@@ -142,6 +142,21 @@ describe('manage_context account actions', () => {
     expect(result).toMatchObject({ success: true, account: personal });
   });
 
+  // Without a caller (no chat of its own) there is no session to move: the switch is
+  // announced to the client directly.
+  it('announces a switch made without a chat session', async () => {
+    mockSwitch.mockResolvedValue(personal);
+    const server = fakeServer();
+
+    await runWithMcpServer(server as unknown as Server, () =>
+      handleSwitchAccount({ action: 'switch_account', account: personal.id }),
+    );
+
+    expect(mockSwitch).toHaveBeenCalledWith(undefined, personal.id);
+    expect(mockSessions.getSessionInstanceUrl).not.toHaveBeenCalled();
+    expect(server.sendToolListChanged).toHaveBeenCalledTimes(1);
+  });
+
   describe('link_account', () => {
     const start = {
       url: 'https://git.corp.example.com/oauth/authorize?state=abc',
@@ -175,6 +190,17 @@ describe('manage_context account actions', () => {
       expect(result.message).toContain('The sign-in page is open');
     });
 
+    // An instance without a label is named by its URL in the sign-in text.
+    it('names an instance without a label by its URL', async () => {
+      mockStart.mockResolvedValueOnce({ ...start, instanceLabel: undefined });
+
+      const result = await inChat('chat-1', fakeServer(), () =>
+        handleLinkAccount({ action: 'link_account' }),
+      );
+
+      expect(result.message).toContain('on https://gitlab.com');
+    });
+
     it('returns the link for the user when the client cannot open it', async () => {
       const server = fakeServer({ elicitation: { form: {} } });
 
@@ -206,7 +232,8 @@ describe('manage_context account actions', () => {
     });
   });
 
-  it('unlinks an account and says its GitLab sign-in ended', async () => {
+  // Revoking the grant ends this server's access, not a browser sign-in; the message says so.
+  it('unlinks an account and says its OAuth grant was revoked', async () => {
     mockUnlink.mockResolvedValue({ ...personal, active: false });
 
     const result = await inChat('chat-1', fakeServer(), () =>
@@ -215,7 +242,7 @@ describe('manage_context account actions', () => {
 
     expect(mockUnlink).toHaveBeenCalledWith('chat-1', personal.id);
     expect(result.message).toBe(
-      'alice-personal @ GitLab.com is no longer linked and its GitLab sign-in was ended.',
+      "alice-personal @ GitLab.com is no longer linked; this server's access to it (its OAuth grant) was revoked.",
     );
   });
 });

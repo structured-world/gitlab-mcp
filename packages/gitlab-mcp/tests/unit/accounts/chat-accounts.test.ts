@@ -425,6 +425,20 @@ describe('chat accounts with OAuth', () => {
     );
   });
 
+  // A database package older than the server keeps no linked accounts: the list holds the
+  // connection's own account only.
+  it('lists only the signed-in account when the storage cannot keep linked accounts', async () => {
+    const backend = (sessionStore as unknown as { backend: Record<string, unknown> }).backend;
+    backend.getLinkedSessions = undefined;
+    try {
+      const accounts = await asSignedIn(() => listChatAccounts('chat-1'));
+
+      expect(accounts.map((a) => a.id)).toEqual([primaryId]);
+    } finally {
+      delete backend.getLinkedSessions;
+    }
+  });
+
   // A database package older than the server has no linked accounts; unlinking says so
   // instead of failing on the missing storage method.
   it('refuses to unlink when the session storage cannot keep linked accounts', async () => {
@@ -487,6 +501,25 @@ describe('chat accounts with a static token', () => {
       }),
       expect.objectContaining({ id: 'https://gitlab.com', label: 'GitLab.com', primary: false }),
     ]);
+  });
+
+  // Before the instance configuration is loaded only the server's own token is known, named
+  // by its host.
+  it('lists only the server token before the instances are configured', async () => {
+    InstanceRegistry.getInstance().reset();
+    try {
+      const accounts = await listChatAccounts(undefined);
+
+      expect(accounts).toEqual([
+        expect.objectContaining({
+          id: 'https://git.corp.example.com',
+          label: 'git.corp.example.com',
+          primary: true,
+        }),
+      ]);
+    } finally {
+      await InstanceRegistry.getInstance().initialize();
+    }
   });
 
   it('runs a switched chat with the configured instance and its token', async () => {

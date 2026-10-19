@@ -107,6 +107,6 @@ export async function handleUnlinkAccount(input: UnlinkAccountInput): Promise<Ac
   return {
     success: true,
     account,
-    message: `${account.label} is no longer linked and its GitLab sign-in was ended.`,
+    message: `${account.label} is no longer linked; this server's access to it (its OAuth grant) was revoked.`,
   };
 }

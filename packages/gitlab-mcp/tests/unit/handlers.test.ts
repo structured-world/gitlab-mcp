@@ -554,6 +554,20 @@ describe('handlers', () => {
       );
     });
 
+    // Account actions run as the connection's own account, not the one the chat switched
+    // to: pinning the session to that account's instance would list the wrong instance's
+    // tools until the next ordinary call.
+    it('keeps the session instance when a call manages accounts', async () => {
+      mockRegistryManager.executeTool.mockResolvedValue({ accounts: [] });
+
+      await callToolHandler(
+        { params: { name: 'manage_context', arguments: { action: 'list_accounts' } } },
+        { sessionId: 'sess-xyz' },
+      );
+
+      expect(mockSessionManager.setSessionInstanceUrl).not.toHaveBeenCalled();
+    });
+
     it('should not update session instanceUrl when sessionId is absent (#398)', async () => {
       // No extra.sessionId — no crash, no spurious session update
       const request = {

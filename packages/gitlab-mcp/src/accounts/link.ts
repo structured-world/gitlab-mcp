@@ -4,11 +4,14 @@
  * The chat receives a sign-in link. The browser first signs in with the session's own
  * account and continues only when GitLab reports that same user: otherwise a link opened by
  * another person would attach their GitLab account to this session. Then it signs in with
- * the account to link, and the callback stores that account with the session. Every step
+ * the account to link, and the callback stores that account with the session. That second
+ * step completes only in the browser that passed the first (a cookie it was given there):
+ * its sign-in URL forwarded to someone else would otherwise link their account. Every step
  * is a stored, single-use, expiring flow, so it works when requests land on different
  * replicas.
  */
 
+import { createHash, timingSafeEqual } from 'crypto';
 import type { Response } from 'express';
 import { GITLAB_BASE_URL } from '../config';
 import type { OAuthConfig } from '../oauth/config';
@@ -59,6 +62,40 @@ export interface AccountLinkStart {
 
 function callbackUri(config: OAuthConfig): string {
   return `${config.issuer}/oauth/callback`;
+}
+
+function sha256Hex(value: string): string {
+  return createHash('sha256').update(value).digest('hex');
+}
+
+/** Cookie of one link's connect step, named after its state so parallel links coexist. */
+function bindingCookieName(state: string): string {
+  return `gitlab_mcp_link_${sha256Hex(state).slice(0, 16)}`;
+}
+
+/** Hand the browser that passed `verify` the nonce its connect step checks. */
+function bindBrowser(res: Response, config: OAuthConfig, state: string, nonce: string): void {
+  res.cookie(bindingCookieName(state), nonce, {
+    httpOnly: true,
+    // Sent on GitLab's top-level redirect back to the callback, never on cross-site requests.
+    sameSite: 'lax',
+    secure: new URL(config.issuer).protocol === 'https:',
+    path: new URL(callbackUri(config)).pathname,
+    maxAge: LINK_TTL_MS,
+  });
+}
+
+/** Whether the request completing a connect step comes from the browser bound to it. */
+function fromBoundBrowser(res: Response, state: string, link: AccountLinkStep): boolean {
+  const name = bindingCookieName(state);
+  const nonce = (res.req?.headers.cookie ?? '')
+    .split(';')
+    .map((pair) => pair.trim().split('='))
+    .find(([key]) => key === name)?.[1];
+  if (!nonce || !link.browserBinding) return false;
+  const expected = Buffer.from(link.browserBinding, 'hex');
+  const actual = Buffer.from(sha256Hex(nonce), 'hex');
+  return expected.length === actual.length && timingSafeEqual(expected, actual);
 }
 
 function requestedScopes(app: GitLabOAuthApp): string[] {
@@ -244,8 +281,14 @@ async function verifyOwnAccount(
     return;
   }
   // The next step is stored before this one is spent: a failed write leaves this step and
-  // its tokens in place, so reloading the page retries it.
-  const next = await storeLinkStep(config, session, target, { ...link, stage: 'connect' });
+  // its tokens in place, so reloading the page retries it. It keeps only a digest of the
+  // nonce this browser receives below.
+  const nonce = generateRandomString(32);
+  const next = await storeLinkStep(config, session, target, {
+    ...link,
+    stage: 'connect',
+    browserBinding: sha256Hex(nonce),
+  });
   const consumed = await sessionStore.consumeAuthCodeFlow(state);
   // Only the identity was needed; this grant must not outlive the check. It is a grant of its
   // own, never the session's: GitLab leaves Doorkeeper's reuse_access_token off (and hashes
@@ -256,18 +299,20 @@ async function verifyOwnAccount(
     failAccountLink(res, 'This link was already used. Ask for a new one in the chat.');
     return;
   }
+  bindBrowser(res, config, next.state, nonce);
   if (normalizeInstanceUrl(target.baseUrl) !== normalizeInstanceUrl(own.baseUrl)) {
     res.redirect(next.url);
     return;
   }
   // On its own instance the browser is still signed in to GitLab as the account just
-  // verified, which GitLab would authorize again; the user signs in with the other one first.
+  // verified, which GitLab would authorize again; the user signs in with the other one first,
+  // in this browser (another one, a private window included, lacks the cookie of this step).
   linkPage(
     res,
     200,
     'Sign in with the account to link',
     `GitLab confirmed you as ${user.username}. To link another account on ${target.label ?? new URL(target.baseUrl).host}, ` +
-      'open the button link in a private window and sign in there with that account, or sign out of GitLab in this browser first and then continue.',
+      'sign out of GitLab in this browser (or switch to that account there), then continue here.',
     { href: next.url, label: 'Continue to GitLab sign-in' },
   );
 }
@@ -388,6 +433,19 @@ async function connectAccount(
   config: OAuthConfig,
   session: OAuthSession,
 ): Promise<void> {
+  // Checked before the code is exchanged: a browser this step was forwarded to gets no
+  // grant at all, and the step is spent so the forwarded link cannot be retried.
+  if (!fromBoundBrowser(res, state, link)) {
+    logWarn('Account link refused: continued in another browser', {
+      sessionId: truncateId(session.id),
+    });
+    await discardAuthCodeFlow(state, flow, config);
+    failAccountLink(
+      res,
+      'Continue the link in the browser where you confirmed your own account; a link cannot be passed on. Ask for a new one in the chat.',
+    );
+    return;
+  }
   const app = await oauthAppFor(config, flow.selectedInstance);
   if (!app) {
     failAccountLink(res, 'The GitLab instance of this link is no longer configured.');
@@ -452,6 +510,7 @@ async function connectAccount(
     failAccountLink(res, 'This link was already completed.');
     return;
   }
+  res.clearCookie(bindingCookieName(state), { path: new URL(callbackUri(config)).pathname });
   const label = `${user.username} @ ${link.instanceLabel ?? new URL(instance).host}`;
   logInfo('Account linked', { sessionId: truncateId(session.id), instance });
   linkPage(

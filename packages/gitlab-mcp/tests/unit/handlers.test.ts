@@ -235,6 +235,7 @@ describe('handlers', () => {
     mockServer = {
       setRequestHandler: jest.fn(),
       getClientVersion: jest.fn().mockReturnValue({ name: 'claude-code', version: 'test' }),
+      sendToolListChanged: jest.fn().mockResolvedValue(undefined),
     } as unknown as jest.Mocked<Server>;
 
     // Mock ConnectionManager methods — re-seed defaults that tests may flip
@@ -768,6 +769,28 @@ describe('handlers', () => {
 
       // Connection manager initialize called from the handler when not connected
       expect(mockConnectionManager.initialize).toHaveBeenCalledTimes(1);
+    });
+
+    // A tool list sent before an instance was first initialized could not be filtered by its
+    // version, tier and token scopes; once a call initialized it, clients are told to list
+    // again. An instance already initialized changes nothing, so nobody is told.
+    it('announces the tool list again after a call first initializes an instance', async () => {
+      mockConnectionManager.isConnected.mockReturnValue(false);
+
+      await callToolHandler({ params: { name: 'test_tool', arguments: {} } }, { sessionId: 's1' });
+
+      expect(mockConnectionManager.initialize).toHaveBeenCalledTimes(1);
+      expect(mockSessionManager.broadcastToolsListChanged).toHaveBeenCalledWith(
+        'https://gitlab.example.com',
+      );
+      expect(mockServer.sendToolListChanged).toHaveBeenCalledTimes(1);
+
+      jest.clearAllMocks();
+      mockConnectionManager.isConnected.mockReturnValue(true);
+      await callToolHandler({ params: { name: 'test_tool', arguments: {} } }, { sessionId: 's1' });
+
+      expect(mockSessionManager.broadcastToolsListChanged).not.toHaveBeenCalled();
+      expect(mockServer.sendToolListChanged).not.toHaveBeenCalled();
     });
 
     it('should return error if connection initialization fails', async () => {

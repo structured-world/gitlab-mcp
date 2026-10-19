@@ -7,6 +7,7 @@ import type { OAuthConfig } from './config';
 import { oauthAppFor } from './instance-app';
 import { revokeGitLabToken } from './gitlab-device-flow';
 import { withFreshGitLabToken } from './gitlab-token-refresh';
+import { sessionStore } from './session-store';
 import type { AuthCodeFlowState, OAuthSession } from './types';
 import { logWarn } from '../logger';
 
@@ -62,4 +63,17 @@ export async function revokeAbandonedFlowGrant(
       err: error as Error,
     });
   }
+}
+
+/**
+ * Discard an authorization flow that will not finish, ending the grant it cached. A failed
+ * removal is left to storage cleanup, which ends the grant too (revocation is idempotent).
+ */
+export async function discardAuthCodeFlow(
+  state: string,
+  flow: AuthCodeFlowState,
+  config: OAuthConfig,
+): Promise<void> {
+  await revokeAbandonedFlowGrant(flow, config);
+  await sessionStore.deleteAuthCodeFlow(state).catch(() => false);
 }

@@ -19,7 +19,7 @@ import { oauthAppFor, selectableOAuthApps } from '../oauth/instance-app';
 import type { GitLabOAuthApp } from '../oauth/oauth-app';
 import { buildGitLabAuthUrl, getGitLabUser, revokeGitLabToken } from '../oauth/gitlab-device-flow';
 import { exchangeFlowCode } from '../oauth/code-exchange';
-import { revokeAbandonedFlowGrant } from '../oauth/grant-revocation';
+import { discardAuthCodeFlow } from '../oauth/grant-revocation';
 import { grantedGitlabScopes } from '../oauth/granted-scopes';
 import { calculateTokenExpiry, generateRandomString } from '../oauth/token-utils';
 import type { AccountLinkStep, AuthCodeFlowState, OAuthSession } from '../oauth/types';
@@ -30,6 +30,13 @@ import { AccountUnavailableError } from './chat-accounts';
 
 /** How long a link stays usable; long enough to sign in, short enough not to linger. */
 const LINK_TTL_MS = 10 * 60 * 1000;
+
+/** Passes over the stored account before a link gives up and asks for a reload. */
+const STORE_ATTEMPTS = 20;
+/** Wait between passes while another link or a token refresh holds the account's lease. */
+const STORE_RETRY_MS = 100;
+/** How long a replacement holds the account: a lookup and one write. */
+const REPLACE_LEASE_MS = 15_000;
 
 /**
  * Storage id of an account linked to a session: one per session, instance and user. The
@@ -260,6 +267,87 @@ async function verifyOwnAccount(
   );
 }
 
+type LinkedGrant = Pick<
+  OAuthSession,
+  'gitlabAccessToken' | 'gitlabRefreshToken' | 'gitlabTokenExpiry' | 'gitlabScopes'
+>;
+
+/**
+ * Store the account with the session, or give an account linked before the new grant;
+ * returns the access token of the grant it displaced, if any. Replacements of one account
+ * take turns under the lease a GitLab token refresh holds (claimed only while the row still
+ * holds the refresh token read), so each knows exactly which grant it displaced.
+ */
+async function storeLinkedAccount(
+  session: OAuthSession,
+  link: AccountLinkStep,
+  user: { id: number; username: string },
+  instance: string,
+  grant: LinkedGrant,
+): Promise<string | undefined> {
+  for (let attempt = 1; ; attempt++) {
+    const existing = (await sessionStore.getLinkedSessions(session.id)).find(
+      (row) =>
+        normalizeInstanceUrl(row.gitlabApiUrl ?? GITLAB_BASE_URL) === instance &&
+        row.gitlabUserId === user.id,
+    );
+    if (!existing) {
+      const now = Date.now();
+      try {
+        // The id follows from the session and the account, so a concurrent link of the same
+        // account collides on it in storage instead of storing the account twice.
+        await sessionStore.createSession({
+          id: linkedAccountId(session.id, instance, user.id),
+          mcpAccessToken: '',
+          mcpRefreshToken: '',
+          mcpTokenExpiry: 0,
+          ...grant,
+          gitlabUserId: user.id,
+          gitlabUsername: user.username,
+          gitlabApiUrl: instance,
+          instanceLabel: link.instanceLabel,
+          clientId: session.clientId,
+          scopes: [],
+          linkedToSessionId: session.id,
+          createdAt: now,
+          updatedAt: now,
+        });
+        return undefined;
+      } catch (error: unknown) {
+        // Another link stored the account meanwhile: the next pass replaces its grant.
+        if (attempt >= STORE_ATTEMPTS) throw error;
+        continue;
+      }
+    }
+    const now = Date.now();
+    const leaseUntil = now + REPLACE_LEASE_MS;
+    if (
+      await sessionStore.claimGitLabRefresh(
+        existing.id,
+        existing.gitlabRefreshToken,
+        now,
+        leaseUntil,
+      )
+    ) {
+      try {
+        // Read before the update: a backend may hand out the stored record, which it changes.
+        const displaced = existing.gitlabAccessToken;
+        const updates = { ...grant, gitlabUsername: user.username };
+        if (await sessionStore.updateSession(existing.id, updates)) return displaced;
+        // Unlinked meanwhile in another chat: the next pass stores the account again.
+      } finally {
+        await sessionStore.releaseGitLabRefresh(existing.id, leaseUntil).catch(() => undefined);
+      }
+    } else if (attempt < STORE_ATTEMPTS) {
+      // Another link or a token refresh is changing the row: wait for its turn to end.
+      await new Promise((resolve) => setTimeout(resolve, STORE_RETRY_MS));
+    }
+    if (attempt >= STORE_ATTEMPTS) {
+      throw new Error('The linked account is being changed elsewhere');
+    }
+  }
+}
+
 /** Second step: store the signed-in account with the session, or refresh it when linked. */
 async function connectAccount(
   res: Response,
@@ -290,53 +378,12 @@ async function connectAccount(
     return;
   }
 
-  const now = Date.now();
-  const grant = {
+  const replacedToken = await storeLinkedAccount(session, link, user, instance, {
     gitlabAccessToken: tokens.access_token,
     gitlabRefreshToken: tokens.refresh_token,
     gitlabTokenExpiry: calculateTokenExpiry(tokens.expires_in),
     gitlabScopes: grantedGitlabScopes(tokens.scope, flow.requestedGitlabScopes),
-  };
-  const findExisting = async (): Promise<OAuthSession | undefined> =>
-    (await sessionStore.getLinkedSessions(session.id)).find(
-      (row) =>
-        normalizeInstanceUrl(row.gitlabApiUrl ?? GITLAB_BASE_URL) === instance &&
-        row.gitlabUserId === user.id,
-    );
-  let existing = await findExisting();
-  if (!existing) {
-    // The id follows from the session and the account, so a concurrent link of the same
-    // account collides on it in storage instead of storing the account twice.
-    const id = linkedAccountId(session.id, instance, user.id);
-    try {
-      await sessionStore.createSession({
-        id,
-        mcpAccessToken: '',
-        mcpRefreshToken: '',
-        mcpTokenExpiry: 0,
-        ...grant,
-        gitlabUserId: user.id,
-        gitlabUsername: user.username,
-        gitlabApiUrl: instance,
-        instanceLabel: link.instanceLabel,
-        clientId: session.clientId,
-        scopes: [],
-        linkedToSessionId: session.id,
-        createdAt: now,
-        updatedAt: now,
-      });
-    } catch (error: unknown) {
-      // Another link of this account stored it meanwhile; this grant replaces that one.
-      existing = await findExisting();
-      if (!existing) throw error;
-    }
-  }
-  // Read before the update: a backend may hand out the stored record, which the update changes.
-  const replacedToken = existing?.gitlabAccessToken;
-  if (existing) {
-    // Linked again: the new grant replaces the old one.
-    await sessionStore.updateSession(existing.id, { ...grant, gitlabUsername: user.username });
-  }
+  });
   // Exactly one callback completes the link. One that loses keeps the row: the account has a
   // single id, so the row is the one the winning callback reported as linked.
   if (!(await sessionStore.consumeAuthCodeFlow(state))) {
@@ -367,15 +414,14 @@ export async function completeAccountLink(
 ): Promise<void> {
   const link = flow.link as AccountLinkStep;
   if (Date.now() > flow.expiresAt) {
-    await revokeAbandonedFlowGrant(flow, config);
-    await sessionStore.deleteAuthCodeFlow(state).catch(() => false);
+    await discardAuthCodeFlow(state, flow, config);
     failAccountLink(res, 'This link expired. Ask for a new one in the chat.');
     return;
   }
   try {
     const session = await sessionStore.getSession(link.sessionId);
     if (!session) {
-      await sessionStore.deleteAuthCodeFlow(state).catch(() => false);
+      await discardAuthCodeFlow(state, flow, config);
       failAccountLink(res, 'The connection that asked for this link has signed out.');
       return;
     }

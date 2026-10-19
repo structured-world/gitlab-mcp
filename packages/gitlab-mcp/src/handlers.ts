@@ -41,7 +41,7 @@ import {
 } from './oauth/tool-auth';
 import type { CallToolRequest, CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { AccountUnavailableError, withChatAccount } from './accounts/chat-accounts';
-import { runWithMcpServer } from './mcp-server-context';
+import { currentMcpServer, runWithMcpServer } from './mcp-server-context';
 import { currentTokenAccount } from './accounts/token-account';
 import {
   getConfigurationService,
@@ -341,7 +341,8 @@ async function ensureBootstrapped(ctx: BootstrapContext): Promise<CallToolResult
   const { effectiveInstanceUrl, oauthMode, requestScopes, connectionManager, bootstrapState } = ctx;
   bootstrapState.started = true;
   try {
-    if (!connectionManager.isConnected(effectiveInstanceUrl)) {
+    const firstInitialization = !connectionManager.isConnected(effectiveInstanceUrl);
+    if (firstInitialization) {
       if (LOG_FORMAT === 'verbose') {
         logInfo('Connection not initialized, attempting to initialize...');
       }
@@ -370,6 +371,9 @@ async function ensureBootstrapped(ctx: BootstrapContext): Promise<CallToolResult
         err: cacheError as Error,
       });
     }
+    // A list sent before the instance was initialized (a chat that just switched to it,
+    // say) could not be filtered by its version, tier and token scopes: clients list again.
+    if (firstInitialization) announceToolListChange(effectiveInstanceUrl);
     if (LOG_FORMAT === 'verbose') {
       try {
         const instanceInfo = connectionManager.getInstanceInfo(effectiveInstanceUrl);
@@ -384,6 +388,19 @@ async function ensureBootstrapped(ctx: BootstrapContext): Promise<CallToolResult
   } catch (initError) {
     return formatBootstrapFailure(ctx, initError);
   }
+}
+
+/**
+ * Tell the sessions on `instanceUrl` and the calling chat (a sessionless one, or one on the
+ * same instance with another account) that their tool list changed; best effort.
+ */
+function announceToolListChange(instanceUrl: string): void {
+  void import('./session-manager')
+    .then(({ getSessionManager }) => getSessionManager().broadcastToolsListChanged(instanceUrl))
+    .catch((error: unknown) => logDebug('Could not announce the tool list', { err: error }));
+  void currentMcpServer()
+    ?.sendToolListChanged()
+    .catch((error: unknown) => logDebug('Could not announce the tool list', { err: error }));
 }
 
 function bootstrapFailureState(

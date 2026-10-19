@@ -786,6 +786,84 @@ describe('FileStorageBackend', () => {
       expect(await storage.getSession('valid-session')).toBeDefined();
     });
 
+    // A linked account goes with its session, also when the session expires while the server
+    // is stopped: the account is younger, so its own age would keep it.
+    it('drops linked accounts whose session expired on load', async () => {
+      const eightDaysAgo = Date.now() - 8 * 24 * 60 * 60 * 1000;
+      const existingData: StorageData = {
+        version: STORAGE_DATA_VERSION,
+        exportedAt: Date.now(),
+        sessions: [
+          createTestSession({ id: 'expired-parent', createdAt: eightDaysAgo }),
+          createTestSession({
+            id: 'orphan-link',
+            mcpAccessToken: '',
+            mcpRefreshToken: '',
+            linkedToSessionId: 'expired-parent',
+            createdAt: Date.now(),
+          }),
+          createTestSession({ id: 'live-parent', createdAt: Date.now() }),
+          createTestSession({
+            id: 'live-link',
+            mcpAccessToken: '',
+            mcpRefreshToken: '',
+            linkedToSessionId: 'live-parent',
+            createdAt: Date.now(),
+          }),
+        ],
+        deviceFlows: [],
+        authCodeFlows: [],
+        authCodes: [],
+        mcpSessionMappings: [],
+      };
+      fs.writeFileSync(filePath, JSON.stringify(existingData), 'utf-8');
+
+      storage = new FileStorageBackend({ filePath });
+      await storage.initialize();
+
+      expect(await storage.getSession('orphan-link')).toBeUndefined();
+      expect(await storage.getSession('live-link')).toBeDefined();
+    });
+
+    // An expired flow holding exchanged GitLab tokens is kept on load, so the next cleanup
+    // ends its grant before removing it; dropping it here would leave the grant authorized.
+    it('keeps expired flows holding a grant on load for cleanup to end', async () => {
+      const gitlabTokens = {
+        access_token: 'cached-token',
+        refresh_token: 'cached-refresh',
+        token_type: 'Bearer',
+        expires_in: 7200,
+        created_at: 0,
+      };
+      const abandoned = createTestAuthCodeFlow({ expiresAt: Date.now() - 1000, gitlabTokens });
+      const existingData: StorageData = {
+        version: STORAGE_DATA_VERSION,
+        exportedAt: Date.now(),
+        sessions: [],
+        deviceFlows: [],
+        authCodeFlows: [
+          { internalState: 'abandoned', flow: abandoned },
+          {
+            internalState: 'expired-no-grant',
+            flow: createTestAuthCodeFlow({ expiresAt: Date.now() - 1000 }),
+          },
+        ],
+        authCodes: [],
+        mcpSessionMappings: [],
+      };
+      fs.writeFileSync(filePath, JSON.stringify(existingData), 'utf-8');
+      storage = new FileStorageBackend({ filePath });
+      await storage.initialize();
+      const handler = jest.fn(async () => {});
+      storage.onAbandonedFlowGrant(handler);
+
+      await storage.cleanup();
+
+      expect(handler).toHaveBeenCalledWith(expect.objectContaining({ gitlabTokens }));
+      expect(await storage.getAuthCodeFlow('abandoned')).toBeUndefined();
+      expect(await storage.getAuthCodeFlow('expired-no-grant')).toBeUndefined();
+    });
+
     it('should filter expired device flows on load', async () => {
       const existingData: StorageData = {
         version: STORAGE_DATA_VERSION,

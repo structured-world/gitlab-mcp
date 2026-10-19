@@ -29,6 +29,7 @@ jest.mock('../../../../src/oauth/session-store', () => ({
 jest.mock('../../../../src/oauth/gitlab-device-flow', () => ({
   exchangeGitLabAuthCode: jest.fn(),
   getGitLabUser: jest.fn(),
+  revokeGitLabToken: jest.fn(),
 }));
 
 jest.mock('../../../../src/oauth/instance-app', () => ({
@@ -63,7 +64,11 @@ jest.mock('../../../../src/logger', () => ({
 
 import { loadOAuthConfig } from '../../../../src/oauth/config';
 import { sessionStore } from '../../../../src/oauth/session-store';
-import { exchangeGitLabAuthCode, getGitLabUser } from '../../../../src/oauth/gitlab-device-flow';
+import {
+  exchangeGitLabAuthCode,
+  getGitLabUser,
+  revokeGitLabToken,
+} from '../../../../src/oauth/gitlab-device-flow';
 
 const mockLoadOAuthConfig = loadOAuthConfig as jest.MockedFunction<typeof loadOAuthConfig>;
 const mockSessionStore = sessionStore as jest.Mocked<typeof sessionStore>;
@@ -363,6 +368,30 @@ describe('OAuth Callback Handler', () => {
         error: 'invalid_request',
         error_description: 'Authorization flow expired. Please start again.',
       });
+    });
+
+    // An earlier callback exchanged the code and cached the grant, then failed until the
+    // flow expired: discarding the flow ends that grant, nothing else holds its tokens.
+    it('ends the cached grant of an expired flow it discards', async () => {
+      mockRequest.query = { code: 'gitlab-code-123', state: 'expired-state' };
+      withFlow({
+        ...mockAuthCodeFlow,
+        expiresAt: Date.now() - 1000,
+        gitlabTokens: {
+          access_token: 'cached-token',
+          refresh_token: 'cached-refresh',
+          token_type: 'Bearer',
+          expires_in: 7200,
+          created_at: 0,
+        },
+      });
+      mockOauthAppFor.mockResolvedValueOnce(selectedApp);
+
+      await callbackHandler(mockRequest as Request, mockResponse as Response);
+
+      expect(revokeGitLabToken).toHaveBeenCalledWith('cached-token', mockOAuthConfig, selectedApp);
+      expect(mockSessionStore.deleteAuthCodeFlow).toHaveBeenCalledWith('expired-state');
+      expect(statusMock).toHaveBeenCalledWith(400);
     });
 
     // Removing the expired flow is housekeeping; cleanup removes it later if this fails.

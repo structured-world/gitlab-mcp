@@ -18,6 +18,7 @@ import { Request, Response } from 'express';
 import { loadOAuthConfig } from '../config';
 import { sessionStore } from '../session-store';
 import { exchangeFlowCode } from '../code-exchange';
+import { discardAuthCodeFlow } from '../grant-revocation';
 import { getGitLabUser } from '../gitlab-device-flow';
 import { completeAccountLink, failAccountLink } from '../../accounts/link';
 import { generateSessionId, generateAuthorizationCode, calculateTokenExpiry } from '../token-utils';
@@ -136,7 +137,7 @@ export async function callbackHandler(req: Request, res: Response): Promise<void
 
   // Check if flow has expired
   if (Date.now() > flow.expiresAt) {
-    await sessionStore.deleteAuthCodeFlow(state).catch(() => false);
+    await discardAuthCodeFlow(state, flow, config);
     res.status(400).json({
       error: 'invalid_request',
       error_description: 'Authorization flow expired. Please start again.',

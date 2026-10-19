@@ -505,6 +505,113 @@ describe('account linking', () => {
       expect(mockRevoke).not.toHaveBeenCalledWith('com-token', config, comApp);
     });
 
+    // Two links replacing the grant of an account linked before: every grant either ends up
+    // stored or is ended; none stays authorized at GitLab without a row to revoke it by.
+    it('ends every displaced grant when two links replace an account at once', async () => {
+      await sessionStore.createSession({
+        ...primary,
+        id: 'old-link',
+        mcpAccessToken: '',
+        mcpRefreshToken: '',
+        gitlabAccessToken: 'old-token',
+        gitlabRefreshToken: 'old-refresh',
+        gitlabUserId: 99,
+        gitlabUsername: 'alice-personal',
+        gitlabApiUrl: 'https://gitlab.com',
+        linkedToSessionId: 'primary',
+      });
+      const first = await verified();
+      const second = await verified();
+      mockExchange
+        .mockResolvedValueOnce(tokens('new-token-1'))
+        .mockResolvedValueOnce(tokens('new-token-2'));
+      // Both callbacks look the account up before either replaces its grant.
+      let arrived = 0;
+      let release!: () => void;
+      const barrier = new Promise<void>((resolve) => (release = resolve));
+      const meetThenReturnUser = async () => {
+        arrived += 1;
+        if (arrived === 2) release();
+        await barrier;
+        return { id: 99, username: 'alice-personal' };
+      };
+      mockUser
+        .mockImplementationOnce(meetThenReturnUser)
+        .mockImplementationOnce(meetThenReturnUser);
+      const linkedSessions = sessionStore.getLinkedSessions.bind(sessionStore);
+      let lookups = 0;
+      let lookedUp!: () => void;
+      const bothLookedUp = new Promise<void>((resolve) => (lookedUp = resolve));
+      const lookup = jest
+        .spyOn(sessionStore, 'getLinkedSessions')
+        .mockImplementation(async (id) => {
+          // Copies, as a database returns: the memory backend hands out its live records.
+          const rows = (await linkedSessions(id)).map((row) => ({ ...row }));
+          lookups += 1;
+          if (lookups === 2) lookedUp();
+          if (lookups <= 2) await bothLookedUp;
+          return rows;
+        });
+      const [firstFlow, secondFlow] = [await storedFlow(first), await storedFlow(second)];
+
+      try {
+        await Promise.all([
+          completeAccountLink(response(), first, firstFlow, 'code', config),
+          completeAccountLink(response(), second, secondFlow, 'code', config),
+        ]);
+      } finally {
+        lookup.mockRestore();
+      }
+
+      const [stored] = await sessionStore.getLinkedSessions('primary');
+      const displaced = ['old-token', 'new-token-1', 'new-token-2'].filter(
+        (token) => token !== stored.gitlabAccessToken,
+      );
+      for (const token of displaced) {
+        expect(mockRevoke).toHaveBeenCalledWith(token, config, comApp);
+      }
+      expect(mockRevoke).not.toHaveBeenCalledWith(stored.gitlabAccessToken, config, comApp);
+    });
+
+    // The account is unlinked in another chat between the lookup and the update: the link
+    // stores it again instead of reporting success for nothing stored.
+    it('stores the account again when it was unlinked during the link', async () => {
+      await sessionStore.createSession({
+        ...primary,
+        id: 'old-link',
+        mcpAccessToken: '',
+        mcpRefreshToken: '',
+        gitlabAccessToken: 'old-token',
+        gitlabRefreshToken: 'old-refresh',
+        gitlabUserId: 99,
+        gitlabUsername: 'alice-personal',
+        gitlabApiUrl: 'https://gitlab.com',
+        linkedToSessionId: 'primary',
+      });
+      const state = await verified();
+      mockExchange.mockResolvedValueOnce(tokens('new-token'));
+      mockUser.mockResolvedValueOnce({ id: 99, username: 'alice-personal' });
+      const update = sessionStore.updateSession.bind(sessionStore);
+      const race = jest
+        .spyOn(sessionStore, 'updateSession')
+        .mockImplementationOnce(async (id, updates) => {
+          await sessionStore.deleteSession(id);
+          return update(id, updates);
+        });
+      const res = response();
+
+      try {
+        await completeAccountLink(res, state, await storedFlow(state), 'code', config);
+      } finally {
+        race.mockRestore();
+      }
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      const linked = await sessionStore.getLinkedSessions('primary');
+      expect(linked).toHaveLength(1);
+      expect(linked[0]).toMatchObject({ gitlabUserId: 99, gitlabAccessToken: 'new-token' });
+    });
+
     // A retry after a failed completion reuses the cached grant the first attempt already
     // stored; the stored grant is the new one, not one to end.
     it('keeps the grant a retry reuses', async () => {
@@ -561,6 +668,23 @@ describe('account linking', () => {
     await completeAccountLink(res, state, flow, 'code', config);
 
     expect(res.send.mock.calls[0][0]).toContain('expired');
+    expect(mockRevoke).toHaveBeenCalledWith('cached-token', config, corpApp);
+    expect(await sessionStore.getAuthCodeFlow(state)).toBeUndefined();
+  });
+
+  // The connection signed out after a callback exchanged the code: the cached grant ends
+  // with the flow, as the account it would have linked is never stored.
+  it('ends the cached grant of a link whose connection signed out', async () => {
+    const link = await startAsAlice('https://gitlab.com');
+    const state = stateOf(link.url);
+    const flow = { ...(await storedFlow(state)), gitlabTokens: tokens('cached-token') };
+    await sessionStore.storeAuthCodeFlow(state, flow);
+    await sessionStore.deleteSession('primary');
+    const res = response();
+
+    await completeAccountLink(res, state, flow, 'code', config);
+
+    expect(res.send.mock.calls[0][0]).toContain('has signed out');
     expect(mockRevoke).toHaveBeenCalledWith('cached-token', config, corpApp);
     expect(await sessionStore.getAuthCodeFlow(state)).toBeUndefined();
   });

@@ -145,14 +145,24 @@ export class FileStorageBackend implements SessionStorageBackend {
 
       // Filter expired data before import
       const now = Date.now();
-      const validSessions = data.sessions.filter((s) => {
+      const unexpiredSessions = data.sessions.filter((s) => {
         // Sessions are valid for 7 days
         const maxAge = 7 * 24 * 60 * 60 * 1000;
         return s.createdAt + maxAge > now;
       });
+      // A linked account goes with its session, as deleting the session removes it; it is
+      // younger than the session, so its own age would keep it.
+      const kept = new Set(unexpiredSessions.map((s) => s.id));
+      const validSessions = unexpiredSessions.filter(
+        (s) => s.linkedToSessionId === undefined || kept.has(s.linkedToSessionId),
+      );
 
       const validDeviceFlows = data.deviceFlows.filter((d) => d.flow.expiresAt > now);
-      const validAuthCodeFlows = data.authCodeFlows.filter((a) => a.flow.expiresAt > now);
+      // An expired flow holding exchanged GitLab tokens is kept for cleanup, which ends that
+      // grant as it removes the flow; nothing else holds those tokens.
+      const validAuthCodeFlows = data.authCodeFlows.filter(
+        (a) => a.flow.expiresAt > now || a.flow.gitlabTokens !== undefined,
+      );
       const validAuthCodes = data.authCodes.filter((a) => a.expiresAt > now);
 
       // A damaged settings record is dropped, not loaded: settings of the wrong shape would

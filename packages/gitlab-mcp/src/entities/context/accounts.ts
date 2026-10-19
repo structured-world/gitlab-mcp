@@ -11,6 +11,7 @@ import {
 } from '../../accounts/chat-accounts';
 import { startAccountLink } from '../../accounts/link';
 import { currentCaller } from '../../configuration/caller';
+import { HANDLER_TIMEOUT_MS } from '../../config';
 import { currentMcpServer } from '../../mcp-server-context';
 import { generateRandomString } from '../../oauth/token-utils';
 import { logDebug } from '../../logger';
@@ -68,22 +69,38 @@ export async function handleSwitchAccount(input: SwitchAccountInput): Promise<Ac
 }
 
 /**
+ * How long the client may take to answer the URL elicitation. Its answer is the user's
+ * consent to open the link, not the end of the sign-in; a client that holds it longer must
+ * not hold the tool call past its timeout, and the link is returned either way.
+ */
+const LINK_ELICITATION_WAIT_MS = Math.min(30_000, HANDLER_TIMEOUT_MS / 2);
+
+/**
  * Ask the client to open the sign-in link (MCP URL elicitation) when it can; the link is
- * returned either way for the user to open.
+ * returned either way for the user to open. The chat is told when the sign-in completes.
  */
 export async function handleLinkAccount(input: LinkAccountInput): Promise<AccountLinkResult> {
-  const link = await startAccountLink(input.instance);
+  const server = currentMcpServer();
+  const opensLinks = server?.getClientCapabilities()?.elicitation?.url !== undefined;
+  const elicitationId = opensLinks ? generateRandomString(16) : undefined;
+  const mcpSessionId = chatSessionId();
+  const link = await startAccountLink(
+    input.instance,
+    elicitationId && mcpSessionId ? { mcpSessionId, elicitationId } : undefined,
+  );
   const instance = link.instanceLabel ?? link.instanceUrl;
   let opened = false;
-  const server = currentMcpServer();
-  if (server?.getClientCapabilities()?.elicitation?.url) {
+  if (server && elicitationId) {
     try {
-      const answer = await server.elicitInput({
-        mode: 'url',
-        message: `Sign in to ${instance} with the GitLab account to link to this connection.`,
-        url: link.url,
-        elicitationId: generateRandomString(16),
-      });
+      const answer = await server.elicitInput(
+        {
+          mode: 'url',
+          message: `Sign in to ${instance} with the GitLab account to link to this connection.`,
+          url: link.url,
+          elicitationId,
+        },
+        { timeout: LINK_ELICITATION_WAIT_MS },
+      );
       opened = answer.action === 'accept';
     } catch (error: unknown) {
       logDebug('URL elicitation for account linking failed', { err: error });

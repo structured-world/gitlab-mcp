@@ -252,6 +252,20 @@ export class SessionManager {
   }
 
   /**
+   * Tell a session of this process that the out-of-band interaction of its URL elicitation
+   * completed; best effort, and nothing when another replica holds the session.
+   */
+  async notifyElicitationComplete(sessionId: string, elicitationId: string): Promise<void> {
+    const session = this.sessions.get(sessionId);
+    if (!session) return;
+    try {
+      await session.server.createElicitationCompletionNotifier(elicitationId)();
+    } catch (error: unknown) {
+      logDebug('Failed to announce a completed elicitation', { err: error, sessionId });
+    }
+  }
+
+  /**
    * Get the number of active sessions.
    */
   get activeSessionCount(): number {

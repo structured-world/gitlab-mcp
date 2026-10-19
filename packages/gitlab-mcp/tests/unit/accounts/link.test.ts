@@ -52,6 +52,11 @@ jest.mock('../../../src/oauth/gitlab-device-flow', () => ({
 
 jest.mock('../../../src/oauth/code-exchange', () => ({ exchangeFlowCode: jest.fn() }));
 
+const mockElicitationComplete = jest.fn();
+jest.mock('../../../src/session-manager', () => ({
+  getSessionManager: () => ({ notifyElicitationComplete: mockElicitationComplete }),
+}));
+
 import type { Response } from 'express';
 import { completeAccountLink, startAccountLink } from '../../../src/accounts/link';
 import { sessionStore } from '../../../src/oauth/session-store';
@@ -140,7 +145,7 @@ async function storedFlow(state: string): Promise<AuthCodeFlowState> {
   return (await sessionStore.getAuthCodeFlow(state)) as AuthCodeFlowState;
 }
 
-function startAsAlice(instance?: string) {
+function startAsAlice(instance?: string, elicitation?: Parameters<typeof startAccountLink>[1]) {
   return runWithTokenContext(
     {
       gitlabToken: 'corp-gitlab',
@@ -149,7 +154,7 @@ function startAsAlice(instance?: string) {
       sessionId: 'primary',
       apiUrl: 'https://git.corp.example.com',
     },
-    () => startAccountLink(instance),
+    () => startAccountLink(instance, elicitation),
   ) as ReturnType<typeof startAccountLink>;
 }
 
@@ -392,8 +397,8 @@ describe('account linking', () => {
 
   describe('connect step', () => {
     /** Run the verify step and return the state of the connect step it started. */
-    async function verified(): Promise<string> {
-      const link = await startAsAlice('https://gitlab.com');
+    async function verified(elicitation?: Parameters<typeof startAccountLink>[1]): Promise<string> {
+      const link = await startAsAlice('https://gitlab.com', elicitation);
       const state = stateOf(link.url);
       mockExchange.mockResolvedValueOnce(tokens('verify-token'));
       mockUser.mockResolvedValueOnce({ id: 7, username: 'alice' });
@@ -472,6 +477,34 @@ describe('account linking', () => {
       expect(res.status).toHaveBeenCalledWith(200);
       expect(res.send.mock.calls[0][0]).toContain('alice-personal @ GitLab.com is linked');
       expect(await sessionStore.getAuthCodeFlow(state)).toBeUndefined();
+    });
+
+    // A client that opened the link through URL elicitation learns that the sign-in
+    // completed: only the chat that asked for the link is told, with its elicitation id.
+    it('tells the chat that opened the link that it completed', async () => {
+      const state = await verified({ mcpSessionId: 'chat-1', elicitationId: 'elicit-1' });
+      mockExchange.mockResolvedValueOnce(tokens('com-token'));
+      mockUser.mockResolvedValueOnce({ id: 99, username: 'alice-personal' });
+
+      await completeAccountLink(response(), state, await storedFlow(state), 'code', config);
+
+      expect(mockElicitationComplete).toHaveBeenCalledTimes(1);
+      expect(mockElicitationComplete).toHaveBeenCalledWith('chat-1', 'elicit-1');
+    });
+
+    // Nothing completed: a refused step tells the chat nothing, and a link the client did
+    // not open has no elicitation to complete.
+    it('announces no completion for a refused step or a link the client did not open', async () => {
+      const refused = await verified({ mcpSessionId: 'chat-1', elicitationId: 'elicit-1' });
+      browserCookies.clear();
+      await completeAccountLink(response(), refused, await storedFlow(refused), 'code', config);
+      const plain = await verified();
+      mockExchange.mockResolvedValueOnce(tokens('com-token'));
+      mockUser.mockResolvedValueOnce({ id: 99, username: 'alice-personal' });
+      await completeAccountLink(response(), plain, await storedFlow(plain), 'code', config);
+
+      expect(await sessionStore.getLinkedSessions('primary')).toHaveLength(1);
+      expect(mockElicitationComplete).not.toHaveBeenCalled();
     });
 
     it('replaces the grant of an account linked before and ends the old one', async () => {

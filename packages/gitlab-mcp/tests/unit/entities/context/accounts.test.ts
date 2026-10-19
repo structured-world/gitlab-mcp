@@ -32,6 +32,7 @@ import {
 import { startAccountLink } from '../../../../src/accounts/link';
 import { runWithCaller, type Caller } from '../../../../src/configuration/caller';
 import { runWithMcpServer } from '../../../../src/mcp-server-context';
+import { HANDLER_TIMEOUT_MS } from '../../../../src/config';
 
 const mockList = listChatAccounts as jest.MockedFunction<typeof listChatAccounts>;
 const mockSwitch = switchChatAccount as jest.MockedFunction<typeof switchChatAccount>;
@@ -177,9 +178,19 @@ describe('manage_context account actions', () => {
         handleLinkAccount({ action: 'link_account', instance: 'https://gitlab.com' }),
       );
 
-      expect(mockStart).toHaveBeenCalledWith('https://gitlab.com');
+      // The link keeps the elicitation and the chat that asked, to tell it when it completes.
+      const [, elicitation] = mockStart.mock.calls[0];
+      expect(mockStart).toHaveBeenCalledWith('https://gitlab.com', {
+        mcpSessionId: 'chat-1',
+        elicitationId: expect.any(String),
+      });
       expect(server.elicitInput).toHaveBeenCalledWith(
-        expect.objectContaining({ mode: 'url', url: start.url, elicitationId: expect.any(String) }),
+        expect.objectContaining({
+          mode: 'url',
+          url: start.url,
+          elicitationId: elicitation?.elicitationId,
+        }),
+        expect.anything(),
       );
       expect(result).toMatchObject({
         url: start.url,
@@ -201,6 +212,19 @@ describe('manage_context account actions', () => {
       expect(result.message).toContain('on https://gitlab.com');
     });
 
+    // A URL elicitation is answered once the user consents to open the link; a client that
+    // holds it until the sign-in ends must not hold the tool call past its own timeout.
+    it('bounds the wait for the client to open the link below the tool timeout', async () => {
+      const server = fakeServer({ elicitation: { url: {} } });
+      server.elicitInput.mockResolvedValue({ action: 'accept' });
+
+      await inChat('chat-1', server, () => handleLinkAccount({ action: 'link_account' }));
+
+      const options = server.elicitInput.mock.calls[0][1] as { timeout?: number } | undefined;
+      expect(options?.timeout).toBeGreaterThan(0);
+      expect(options?.timeout).toBeLessThan(HANDLER_TIMEOUT_MS);
+    });
+
     it('returns the link for the user when the client cannot open it', async () => {
       const server = fakeServer({ elicitation: { form: {} } });
 
@@ -208,6 +232,8 @@ describe('manage_context account actions', () => {
         handleLinkAccount({ action: 'link_account' }),
       );
 
+      // No elicitation to complete later.
+      expect(mockStart).toHaveBeenCalledWith(undefined, undefined);
       expect(server.elicitInput).not.toHaveBeenCalled();
       expect(result).toMatchObject({ url: start.url, opened: false });
       expect(result.message).toContain('Open the link in the browser');

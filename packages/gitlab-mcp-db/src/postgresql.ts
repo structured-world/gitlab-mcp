@@ -197,7 +197,9 @@ function storedLinkStep(value: unknown): AccountLinkStep | undefined {
     (step.stage !== 'verify' && step.stage !== 'connect') ||
     typeof step.instance !== 'string' ||
     (step.instanceLabel !== undefined && typeof step.instanceLabel !== 'string') ||
-    (step.browserBinding !== undefined && typeof step.browserBinding !== 'string')
+    (step.browserBinding !== undefined && typeof step.browserBinding !== 'string') ||
+    (step.mcpSessionId !== undefined && typeof step.mcpSessionId !== 'string') ||
+    (step.elicitationId !== undefined && typeof step.elicitationId !== 'string')
   ) {
     throw new Error('Invalid stored account link step');
   }

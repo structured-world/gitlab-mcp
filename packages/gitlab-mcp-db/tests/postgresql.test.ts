@@ -721,14 +721,16 @@ describe('PostgreSQLStorageBackend', () => {
       expect((await backend.getAuthCodeFlow('link-state'))?.link).toEqual(link);
     });
 
-    // The connect step carries the digest that ties it to the browser that passed verify;
-    // it must survive the round trip, or every connect step would be refused.
-    it('keeps the browser binding of a connect step', async () => {
+    // The connect step carries the digest that ties it to the browser that passed verify,
+    // and the elicitation whose chat learns the link completed; both survive the round trip.
+    it('keeps the browser binding and the elicitation of a connect step', async () => {
       const link = {
         sessionId: 'session-1',
         stage: 'connect' as const,
         instance: 'https://gitlab.com',
         browserBinding: 'ab'.repeat(32),
+        mcpSessionId: 'chat-1',
+        elicitationId: 'elicit-1',
       };
       mockPrisma.authCodeFlowState.findUnique.mockResolvedValueOnce({
         ...createAuthCodeFlow(),
@@ -739,22 +741,25 @@ describe('PostgreSQLStorageBackend', () => {
       expect((await backend.getAuthCodeFlow('link-state'))?.link).toEqual(link);
     });
 
-    it('refuses a link step whose browser binding is not a string', async () => {
-      mockPrisma.authCodeFlowState.findUnique.mockResolvedValueOnce({
-        ...createAuthCodeFlow(),
-        expiresAt: BigInt(6666),
-        link: {
-          sessionId: 'session-1',
-          stage: 'connect',
-          instance: 'https://gitlab.com',
-          browserBinding: 42,
-        },
-      });
+    it.each(['browserBinding', 'mcpSessionId', 'elicitationId'])(
+      'refuses a link step whose %s is not a string',
+      async (field) => {
+        mockPrisma.authCodeFlowState.findUnique.mockResolvedValueOnce({
+          ...createAuthCodeFlow(),
+          expiresAt: BigInt(6666),
+          link: {
+            sessionId: 'session-1',
+            stage: 'connect',
+            instance: 'https://gitlab.com',
+            [field]: 42,
+          },
+        });
 
-      await expect(backend.getAuthCodeFlow('internal-1')).rejects.toThrow(
-        'Invalid stored account link step',
-      );
-    });
+        await expect(backend.getAuthCodeFlow('internal-1')).rejects.toThrow(
+          'Invalid stored account link step',
+        );
+      },
+    );
 
     it('refuses a corrupt account linking step instead of half-using it', async () => {
       mockPrisma.authCodeFlowState.findUnique.mockResolvedValueOnce({

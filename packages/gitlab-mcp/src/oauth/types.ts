@@ -94,6 +94,10 @@ export interface AccountLinkStep {
    * cookie, so the step completes only in that browser, never in one it was forwarded to.
    */
   browserBinding?: string;
+  /** MCP session of the chat whose client opened the link through URL elicitation */
+  mcpSessionId?: string;
+  /** That elicitation's id, announced to the chat as complete once the account is linked */
+  elicitationId?: string;
 }
 
 /**

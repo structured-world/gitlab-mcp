@@ -52,6 +52,12 @@ function linkedAccountId(sessionId: string, instance: string, userId: number): s
   return `linked:${sessionId}:${userId}@${instance}`;
 }
 
+/** The URL elicitation through which a chat's client opened a link. */
+export interface LinkElicitation {
+  mcpSessionId: string;
+  elicitationId: string;
+}
+
 export interface AccountLinkStart {
   /** Where the user signs in; opened in the browser, never shown to anyone else. */
   url: string;
@@ -138,9 +144,13 @@ async function storeLinkStep(
 
 /**
  * Start linking an account on `instance` (default: the session's own instance) to the
- * connection's session; returns the sign-in link for the user.
+ * connection's session; returns the sign-in link for the user. With `elicitation`, the chat
+ * whose client opens the link is told when the account is linked.
  */
-export async function startAccountLink(instance: string | undefined): Promise<AccountLinkStart> {
+export async function startAccountLink(
+  instance: string | undefined,
+  elicitation?: LinkElicitation,
+): Promise<AccountLinkStart> {
   const config = loadOAuthConfig();
   if (!isOAuthEnabled() || !config) {
     throw new AccountUnavailableError(
@@ -175,6 +185,7 @@ export async function startAccountLink(instance: string | undefined): Promise<Ac
     stage: 'verify',
     instance: target.baseUrl,
     instanceLabel: target.label,
+    ...elicitation,
   });
   logInfo('Account link started', {
     sessionId: truncateId(session.id),
@@ -519,6 +530,23 @@ async function connectAccount(
     'Account linked',
     `${label} is linked to your GitLab MCP connection. Return to the chat and switch to it with manage_context switch_account.`,
   );
+  await announceLinked(link);
+}
+
+/**
+ * Tell the chat whose client opened the link (MCP URL elicitation) that it completed. The
+ * client's answer to the elicitation only meant consent to open it; this is how it learns
+ * the outcome. Best effort: the callback may reach a replica that does not hold the chat.
+ */
+async function announceLinked(link: AccountLinkStep): Promise<void> {
+  if (!link.mcpSessionId || !link.elicitationId) return;
+  try {
+    const { getSessionManager } = await import('../session-manager');
+    await getSessionManager().notifyElicitationComplete(link.mcpSessionId, link.elicitationId);
+  } catch (error: unknown) {
+    // The page is already sent: a failed announcement must not reach the error page.
+    logWarn('Could not announce a completed account link', { err: error as Error });
+  }
 }
 
 /** Complete a step of an account link from GitLab's callback. */

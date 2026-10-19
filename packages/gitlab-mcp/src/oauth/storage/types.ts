@@ -14,6 +14,9 @@ import {
 } from '../types';
 import type { AccountSettings, AccountSettingsRecord } from '../../configuration/types';
 
+/** Ends the GitLab grant of an auth code flow removed unfinished; best effort. */
+export type AbandonedFlowGrantHandler = (flow: AuthCodeFlowState) => Promise<void>;
+
 /**
  * Session storage backend interface
  *
@@ -23,7 +26,6 @@ import type { AccountSettings, AccountSettingsRecord } from '../../configuration
  * Methods returning a boolean report a missing record as `false`. A failed read or
  * write rejects instead, so callers never mistake a storage outage for an absent record.
  */
-
 export interface SessionStorageBackend {
   /** Backend type identifier */
   readonly type: 'memory' | 'file' | 'postgresql' | 'redis';
@@ -134,6 +136,12 @@ export interface SessionStorageBackend {
   initialize(): Promise<void>;
   /** Remove expired sessions, flows, codes and expired never-used client registrations. */
   cleanup(): Promise<void>;
+  /**
+   * Call `handler` for each expired auth code flow that held GitLab tokens, as cleanup
+   * removes it: its callback exchanged the code but never finished, so the flow held the
+   * only copy of that grant. Absent in database packages older than this server.
+   */
+  onAbandonedFlowGrant?(handler: AbandonedFlowGrantHandler): void;
   close(): Promise<void>;
 
   // Statistics

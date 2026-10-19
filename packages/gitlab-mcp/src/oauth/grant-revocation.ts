@@ -7,7 +7,7 @@ import type { OAuthConfig } from './config';
 import { oauthAppFor } from './instance-app';
 import { revokeGitLabToken } from './gitlab-device-flow';
 import { withFreshGitLabToken } from './gitlab-token-refresh';
-import type { OAuthSession } from './types';
+import type { AuthCodeFlowState, OAuthSession } from './types';
 import { logWarn } from '../logger';
 
 /**
@@ -42,5 +42,24 @@ export async function revokeGitLabGrant(
     if (app) await revokeGitLabToken(accessToken, config, app);
   } catch (error: unknown) {
     logWarn('GitLab token revocation failed', { err: error as Error });
+  }
+}
+
+/**
+ * End the grant an authorization flow cached after exchanging GitLab's code, when the flow
+ * is discarded unfinished: nothing else holds those tokens. Best effort.
+ */
+export async function revokeAbandonedFlowGrant(
+  flow: AuthCodeFlowState,
+  config: OAuthConfig,
+): Promise<void> {
+  if (!flow.gitlabTokens) return;
+  try {
+    const app = await oauthAppFor(config, flow.selectedInstance);
+    if (app) await revokeGitLabToken(flow.gitlabTokens.access_token, config, app);
+  } catch (error: unknown) {
+    logWarn('Failed to revoke the GitLab grant of an abandoned authorization', {
+      err: error as Error,
+    });
   }
 }

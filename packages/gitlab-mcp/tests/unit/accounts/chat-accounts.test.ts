@@ -51,8 +51,11 @@ jest.mock('../../../src/oauth/grant-revocation', () => ({
 }));
 
 import {
-  AccountUnavailableError,
+  configuredInstanceFor,
   configuredInstanceToken,
+} from '../../../src/accounts/instance-tokens';
+import {
+  AccountUnavailableError,
   forgetChat,
   listChatAccounts,
   resetChatAccounts,
@@ -368,6 +371,19 @@ describe('chat accounts with a static token', () => {
     expect(configuredInstanceToken('https://gitlab.com')).toBe('com-pat');
     expect(configuredInstanceToken('https://gl.unset.example.com')).toBeUndefined();
     expect(configuredInstanceToken('https://unknown.example.com')).toBeUndefined();
+  });
+
+  // A request belongs to the configured instance its URL starts with, segment-wise, so a
+  // look-alike host or path never borrows another instance's token.
+  it('finds the configured instance of a request URL', () => {
+    expect(configuredInstanceFor('https://gitlab.com/api/v4/version')).toBe('https://gitlab.com');
+    expect(configuredInstanceFor('https://git.corp.example.com')).toBe(
+      'https://git.corp.example.com',
+    );
+    expect(configuredInstanceFor('https://gitlab.com?private_token=x')).toBe('https://gitlab.com');
+    expect(configuredInstanceFor('https://gitlab.com.evil.example/api/v4')).toBeUndefined();
+    expect(configuredInstanceFor('https://gitlab.community/api/v4')).toBeUndefined();
+    expect(configuredInstanceFor('https://unknown.example.com/api/v4')).toBeUndefined();
   });
 
   it('has no linked accounts to unlink', async () => {

@@ -12,6 +12,7 @@
  */
 
 import type {
+  AbandonedFlowGrantHandler,
   AccountLinkStep,
   OAuthSession,
   DeviceFlowState as DeviceFlowStateType,
@@ -225,6 +226,7 @@ interface GenericPrismaClient {
   authCodeFlowState: {
     upsert(args: unknown): Promise<unknown>;
     findUnique(args: unknown): Promise<unknown>;
+    findMany(args: unknown): Promise<unknown>;
     delete(args: unknown): Promise<unknown>;
     deleteMany(args: unknown): Promise<unknown>;
     count(): Promise<number>;
@@ -260,6 +262,7 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
 
   private prisma: GenericPrismaClient | null = null;
   private cleanupIntervalId: ReturnType<typeof setInterval> | null = null;
+  private abandonedFlowGrant: AbandonedFlowGrantHandler | undefined;
   private readonly connectionString: string | undefined;
 
   constructor(options: PostgreSQLStorageOptions = {}) {
@@ -417,6 +420,9 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
     }
     if (updates.gitlabScopes !== undefined) {
       data.gitlabScopes = updates.gitlabScopes;
+    }
+    if (updates.gitlabUsername !== undefined) {
+      data.gitlabUsername = updates.gitlabUsername;
     }
     if (updates.resource !== undefined) {
       data.resource = updates.resource;
@@ -874,6 +880,21 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
     return { accountKey, settings, version, updatedAt };
   }
 
+  onAbandonedFlowGrant(handler: AbandonedFlowGrantHandler): void {
+    this.abandonedFlowGrant = handler;
+  }
+
+  /** The flow of an expired row that held GitLab tokens; a corrupt row is skipped. */
+  private abandonedFlow(row: PrismaAuthCodeFlowStateRow): AuthCodeFlowStateType[] {
+    if (row.gitlabTokens == null) return [];
+    try {
+      return [this.rowToAuthCodeFlow(row)];
+    } catch (error) {
+      logError('Unreadable expired authorization flow', { err: error as Error });
+      return [];
+    }
+  }
+
   // Cleanup
   async cleanup(): Promise<void> {
     const prisma = this.getPrisma();
@@ -881,6 +902,16 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
     const maxSessionAge = BigInt(7 * 24 * 60 * 60 * 1000); // 7 days
 
     try {
+      // Read before the delete below; replicas cleaning up at once may both end a grant,
+      // which GitLab treats as one revocation.
+      const handler = this.abandonedFlowGrant;
+      const abandoned = handler
+        ? (
+            (await prisma.authCodeFlowState.findMany({
+              where: { expiresAt: { lt: now } },
+            })) as PrismaAuthCodeFlowStateRow[]
+          ).flatMap((row) => this.abandonedFlow(row))
+        : [];
       // Use transaction for atomic cleanup
       const results = (await prisma.$transaction([
         prisma.oAuthSession.deleteMany({
@@ -902,6 +933,8 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
           where: { expiresAt: { lt: now } },
         }),
       ])) as PrismaBatchPayload[];
+
+      if (handler) await Promise.all(abandoned.map((flow) => handler(flow)));
 
       const expiredSessions = results[0].count;
       const expiredDeviceFlows = results[1].count;

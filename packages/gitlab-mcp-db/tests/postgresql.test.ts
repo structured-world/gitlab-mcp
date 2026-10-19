@@ -56,6 +56,7 @@ const createMockPrisma = () => ({
   authCodeFlowState: {
     upsert: jest.fn().mockResolvedValue({}),
     findUnique: jest.fn(),
+    findMany: jest.fn().mockResolvedValue([]),
     delete: jest.fn().mockResolvedValue({}),
     deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
     count: jest.fn().mockResolvedValue(0),
@@ -1023,6 +1024,52 @@ describe('PostgreSQLStorageBackend', () => {
       });
       expect(mockPrisma.oAuthClient.deleteMany).not.toHaveBeenCalled();
     });
+  });
+
+  // An expired flow whose callback exchanged the code but never finished holds the only
+  // copy of that GitLab grant; cleanup hands it over to be ended as it removes the flow.
+  it('hands over the grant of each expired auth code flow cleanup removes', async () => {
+    (backend as any).prisma = mockPrisma;
+    const gitlabTokens = {
+      access_token: 'cached-token',
+      refresh_token: 'cached-refresh',
+      token_type: 'Bearer',
+      expires_in: 7200,
+      created_at: 0,
+    };
+    const row = (internalState: string, tokens: unknown) => ({
+      ...createAuthCodeFlow(),
+      internalState,
+      expiresAt: BigInt(1),
+      gitlabTokens: tokens,
+    });
+    mockPrisma.authCodeFlowState.findMany.mockResolvedValueOnce([
+      row('abandoned', gitlabTokens),
+      row('no-grant', null),
+    ]);
+    const handler = jest.fn(async () => {});
+    backend.onAbandonedFlowGrant(handler);
+
+    await backend.cleanup();
+
+    expect(mockPrisma.authCodeFlowState.findMany).toHaveBeenCalledWith({
+      where: { expiresAt: { lt: expect.any(BigInt) } },
+    });
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(handler).toHaveBeenCalledWith(
+      expect.objectContaining({ internalState: 'abandoned', gitlabTokens }),
+    );
+  });
+
+  // Linking an account again after a GitLab username change stores the new username.
+  it('updates the GitLab username of a session', async () => {
+    (backend as any).prisma = mockPrisma;
+
+    await backend.updateSession('session-1', { gitlabUsername: 'renamed' });
+
+    expect(mockPrisma.oAuthSession.updateMany.mock.calls[0][0].data.gitlabUsername).toBe(
+      'renamed',
+    );
   });
 
   it('runs cleanup and stats', async () => {

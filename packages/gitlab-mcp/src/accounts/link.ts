@@ -9,7 +9,6 @@
  * replicas.
  */
 
-import { createHash } from 'node:crypto';
 import type { Response } from 'express';
 import { GITLAB_BASE_URL } from '../config';
 import type { OAuthConfig } from '../oauth/config';
@@ -20,6 +19,7 @@ import { oauthAppFor, selectableOAuthApps } from '../oauth/instance-app';
 import type { GitLabOAuthApp } from '../oauth/oauth-app';
 import { buildGitLabAuthUrl, getGitLabUser, revokeGitLabToken } from '../oauth/gitlab-device-flow';
 import { exchangeFlowCode } from '../oauth/code-exchange';
+import { revokeAbandonedFlowGrant } from '../oauth/grant-revocation';
 import { grantedGitlabScopes } from '../oauth/granted-scopes';
 import { calculateTokenExpiry, generateRandomString } from '../oauth/token-utils';
 import type { AccountLinkStep, AuthCodeFlowState, OAuthSession } from '../oauth/types';
@@ -31,9 +31,12 @@ import { AccountUnavailableError } from './chat-accounts';
 /** How long a link stays usable; long enough to sign in, short enough not to linger. */
 const LINK_TTL_MS = 10 * 60 * 1000;
 
-/** Storage id of an account linked to a session: one per session, instance and user. */
+/**
+ * Storage id of an account linked to a session: one per session, instance and user. The
+ * session id holds no colon and the user id is numeric, so the parts never run together.
+ */
 function linkedAccountId(sessionId: string, instance: string, userId: number): string {
-  return createHash('sha256').update(`${sessionId}\n${instance}\n${userId}`).digest('hex');
+  return `linked:${sessionId}:${userId}@${instance}`;
 }
 
 export interface AccountLinkStart {
@@ -301,7 +304,6 @@ async function connectAccount(
         row.gitlabUserId === user.id,
     );
   let existing = await findExisting();
-  let createdId: string | undefined;
   if (!existing) {
     // The id follows from the session and the account, so a concurrent link of the same
     // account collides on it in storage instead of storing the account twice.
@@ -323,7 +325,6 @@ async function connectAccount(
         createdAt: now,
         updatedAt: now,
       });
-      createdId = id;
     } catch (error: unknown) {
       // Another link of this account stored it meanwhile; this grant replaces that one.
       existing = await findExisting();
@@ -336,13 +337,14 @@ async function connectAccount(
     // Linked again: the new grant replaces the old one.
     await sessionStore.updateSession(existing.id, { ...grant, gitlabUsername: user.username });
   }
-  // Exactly one callback completes the link; another one removes what it created.
+  // Exactly one callback completes the link. One that loses keeps the row: the account has a
+  // single id, so the row is the one the winning callback reported as linked.
   if (!(await sessionStore.consumeAuthCodeFlow(state))) {
-    if (createdId) await sessionStore.deleteSession(createdId);
     failAccountLink(res, 'This link was already completed.');
     return;
   }
-  if (replacedToken) {
+  // A retry reuses the grant a failed attempt already stored; that grant is not replaced.
+  if (replacedToken && replacedToken !== tokens.access_token) {
     await revokeQuietly(replacedToken, config, app);
   }
   const label = `${user.username} @ ${link.instanceLabel ?? new URL(instance).host}`;
@@ -365,6 +367,7 @@ export async function completeAccountLink(
 ): Promise<void> {
   const link = flow.link as AccountLinkStep;
   if (Date.now() > flow.expiresAt) {
+    await revokeAbandonedFlowGrant(flow, config);
     await sessionStore.deleteAuthCodeFlow(state).catch(() => false);
     failAccountLink(res, 'This link expired. Ask for a new one in the chat.');
     return;

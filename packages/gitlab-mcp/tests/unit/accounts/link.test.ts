@@ -483,7 +483,10 @@ describe('account linking', () => {
       expect(await sessionStore.getLinkedSessions('primary')).toEqual([]);
     });
 
-    it('removes what it created when another callback completed the link first', async () => {
+    // Another delivery of the same callback completed the link and reported it linked; the
+    // account it reported is the one this delivery stored (one id per account), so the
+    // losing delivery must not delete it.
+    it('keeps the account when another delivery of the callback completed the link', async () => {
       const state = await verified();
       const flow = await storedFlow(state);
       mockExchange.mockResolvedValueOnce(tokens('com-token'));
@@ -496,7 +499,36 @@ describe('account linking', () => {
       await completeAccountLink(res, state, flow, 'code', config);
 
       expect(res.send.mock.calls[0][0]).toContain('already completed');
-      expect(await sessionStore.getLinkedSessions('primary')).toEqual([]);
+      const linked = await sessionStore.getLinkedSessions('primary');
+      expect(linked).toHaveLength(1);
+      expect(linked[0]).toMatchObject({ gitlabUserId: 99, gitlabAccessToken: 'com-token' });
+      expect(mockRevoke).not.toHaveBeenCalledWith('com-token', config, comApp);
+    });
+
+    // A retry after a failed completion reuses the cached grant the first attempt already
+    // stored; the stored grant is the new one, not one to end.
+    it('keeps the grant a retry reuses', async () => {
+      await sessionStore.createSession({
+        ...primary,
+        id: 'stored-link',
+        mcpAccessToken: '',
+        mcpRefreshToken: '',
+        gitlabAccessToken: 'com-token',
+        gitlabUserId: 99,
+        gitlabUsername: 'alice-personal',
+        gitlabApiUrl: 'https://gitlab.com',
+        linkedToSessionId: 'primary',
+      });
+      const state = await verified();
+      mockExchange.mockResolvedValueOnce(tokens('com-token'));
+      mockUser.mockResolvedValueOnce({ id: 99, username: 'alice-personal' });
+      const res = response();
+
+      await completeAccountLink(res, state, await storedFlow(state), 'code', config);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(mockRevoke).not.toHaveBeenCalledWith('com-token', config, comApp);
+      expect((await sessionStore.getSession('stored-link'))?.gitlabAccessToken).toBe('com-token');
     });
   });
 
@@ -511,6 +543,26 @@ describe('account linking', () => {
     expect(res.send.mock.calls[0][0]).toContain('expired');
     expect(await sessionStore.getAuthCodeFlow(state)).toBeUndefined();
     expect(mockExchange).not.toHaveBeenCalled();
+  });
+
+  // An earlier callback exchanged the code and cached the grant, then failed until the link
+  // expired: discarding the flow ends that grant instead of leaving it authorized.
+  it('ends the cached grant of an expired link', async () => {
+    const link = await startAsAlice('https://gitlab.com');
+    const state = stateOf(link.url);
+    const flow = {
+      ...(await storedFlow(state)),
+      gitlabTokens: tokens('cached-token'),
+      expiresAt: Date.now() - 1,
+    };
+    await sessionStore.storeAuthCodeFlow(state, flow);
+    const res = response();
+
+    await completeAccountLink(res, state, flow, 'code', config);
+
+    expect(res.send.mock.calls[0][0]).toContain('expired');
+    expect(mockRevoke).toHaveBeenCalledWith('cached-token', config, corpApp);
+    expect(await sessionStore.getAuthCodeFlow(state)).toBeUndefined();
   });
 
   it('refuses a link whose connection signed out meanwhile', async () => {

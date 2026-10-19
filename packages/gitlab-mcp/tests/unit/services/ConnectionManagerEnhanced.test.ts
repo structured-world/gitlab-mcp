@@ -51,7 +51,7 @@ const mockInstanceTokens: Record<string, string> = {
   'https://instance-b.example.com': 'instance-b-pat',
   'https://new-gitlab.example.com': 'new-gitlab-pat',
 };
-jest.mock('../../../src/accounts/chat-accounts', () => ({
+jest.mock('../../../src/accounts/instance-tokens', () => ({
   configuredInstanceToken: (url: string) => mockInstanceTokens[url],
 }));
 

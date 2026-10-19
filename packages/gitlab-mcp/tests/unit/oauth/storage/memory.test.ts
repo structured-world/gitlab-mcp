@@ -737,6 +737,37 @@ describe('MemoryStorageBackend', () => {
         expect(await storage.getAuthCodeFlow('valid-auth-flow')).toBeDefined();
       });
 
+      // A flow whose callback exchanged the code but never finished holds the only copy of
+      // that GitLab grant; removing it hands the grant over to be ended.
+      it('hands over the grant of each expired auth code flow it removes', async () => {
+        const gitlabTokens = {
+          access_token: 'cached-token',
+          refresh_token: 'cached-refresh',
+          token_type: 'Bearer',
+          expires_in: 7200,
+          created_at: 0,
+        };
+        const abandoned = createTestAuthCodeFlow({ expiresAt: Date.now() - 1000, gitlabTokens });
+        await storage.storeAuthCodeFlow('abandoned', abandoned);
+        await storage.storeAuthCodeFlow(
+          'expired-no-grant',
+          createTestAuthCodeFlow({ expiresAt: Date.now() - 1000 }),
+        );
+        await storage.storeAuthCodeFlow(
+          'live-with-grant',
+          createTestAuthCodeFlow({ expiresAt: Date.now() + 600000, gitlabTokens }),
+        );
+        const handler = jest.fn(async () => {});
+        storage.onAbandonedFlowGrant(handler);
+
+        await storage.cleanup();
+
+        expect(handler).toHaveBeenCalledTimes(1);
+        expect(handler).toHaveBeenCalledWith(abandoned);
+        expect(await storage.getAuthCodeFlow('abandoned')).toBeUndefined();
+        expect(await storage.getAuthCodeFlow('live-with-grant')).toBeDefined();
+      });
+
       it('should remove expired auth codes', async () => {
         const expiredCode = createTestAuthCode({
           code: 'expired-code',

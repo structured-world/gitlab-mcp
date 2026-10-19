@@ -21,7 +21,7 @@ import { currentCaller } from '../configuration/caller';
 import { logInfo, logDebug, logError } from '../logger';
 import { InstanceRegistry } from './InstanceRegistry';
 import { CachedIntrospection } from '../config/instances-schema';
-import { configuredInstanceToken } from '../accounts/chat-accounts';
+import { configuredInstanceToken } from '../accounts/instance-tokens';
 
 import { normalizeInstanceUrl } from '../utils/url';
 import type { InstanceCapabilities } from './InstanceCapabilities';
@@ -474,6 +474,8 @@ export class ConnectionManager {
 
     // GitLab GraphQL requires api/read_api; request grants are never cached on
     // shared instance state. https://docs.gitlab.com/api/graphql/#token-scopes
+    // Only OAuth requests carry grants (the bootstrap introspects per request only then), so
+    // the REST probe below is authenticated with the request's own bearer token.
     if (requestScopes && !requestScopes.includes('api') && !requestScopes.includes('read_api')) {
       if (!state.instanceInfo) {
         const info = await this.detectVersionViaREST(instanceUrl);

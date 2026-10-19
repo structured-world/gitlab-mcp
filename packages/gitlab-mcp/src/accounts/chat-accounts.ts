@@ -10,6 +10,7 @@
 
 import { GITLAB_BASE_URL, GITLAB_TOKEN } from '../config';
 import { runWithTokenAccount } from './token-account';
+import { configuredInstanceToken } from './instance-tokens';
 import { InstanceRegistry } from '../services/InstanceRegistry';
 import { isOAuthEnabled, loadOAuthConfig } from '../oauth/config';
 import { sessionStore } from '../oauth/session-store';
@@ -98,21 +99,6 @@ async function signedInSession(): Promise<OAuthSession> {
     throw new AccountUnavailableError('This connection is not signed in to GitLab.');
   }
   return session;
-}
-
-/**
- * The static token for an instance: the server's own token for its instance, else the
- * token variable configured for that instance; undefined when there is none.
- */
-export function configuredInstanceToken(instanceUrl: string): string | undefined {
-  const url = normalizeInstanceUrl(instanceUrl);
-  if (url === normalizeInstanceUrl(GITLAB_BASE_URL)) return GITLAB_TOKEN;
-  const registry = InstanceRegistry.getInstance();
-  if (!registry.isInitialized()) return undefined;
-  const tokenEnv = registry.getConfig(url)?.tokenEnv;
-  const token = tokenEnv ? process.env[tokenEnv] : undefined;
-  // A variable that is set but empty holds no token.
-  return token === '' ? undefined : token;
 }
 
 /**

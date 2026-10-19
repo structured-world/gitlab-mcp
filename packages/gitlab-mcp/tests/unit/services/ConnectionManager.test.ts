@@ -24,7 +24,7 @@ jest.mock('../../../src/services/TokenScopeDetector', () => ({
 }));
 
 // The static token of the test instance; other instances have none.
-jest.mock('../../../src/accounts/chat-accounts', () => ({
+jest.mock('../../../src/accounts/instance-tokens', () => ({
   configuredInstanceToken: (url: string) =>
     url === 'https://test-gitlab.com' ? 'test-pat' : undefined,
 }));

@@ -15,6 +15,7 @@ jest.mock('../../../src/config', () => ({
   HTTPS_PROXY: '',
   NODE_TLS_REJECT_UNAUTHORIZED: '',
   GITLAB_TOKEN: 'test-token',
+  GITLAB_BASE_URL: 'https://gitlab.example.com',
   CONNECT_TIMEOUT_MS: 2000,
   HEADERS_TIMEOUT_MS: 10000,
   BODY_TIMEOUT_MS: 30000,
@@ -29,6 +30,7 @@ jest.mock('undici', () => ({
   fetch: jest.fn(),
   Agent: jest.fn(() => ({ type: 'agent' })),
   ProxyAgent: jest.fn(() => ({ type: 'proxy-agent' })),
+  Pool: jest.fn(() => ({ type: 'pool', close: jest.fn(), destroy: jest.fn() })),
 }));
 
 const mockUndiciFetch = require('undici').fetch as jest.MockedFunction<typeof fetch>;
@@ -53,6 +55,20 @@ jest.mock('../../../src/logger', () => ({
 jest.mock('../../../src/oauth/index', () => ({
   isOAuthEnabled: jest.fn(() => false),
   getTokenContext: jest.fn(() => undefined),
+}));
+
+// Instances a static-token server works with: its own, one with a token variable, one whose
+// variable is unset. Read only by the tests that initialize the registry.
+jest.mock('../../../src/config/instances-loader', () => ({
+  loadInstancesConfig: jest.fn().mockResolvedValue({
+    instances: [
+      { url: 'https://gitlab.example.com', insecureSkipVerify: false },
+      { url: 'https://gitlab.com', tokenEnv: 'COM_TOKEN', insecureSkipVerify: false },
+      { url: 'https://gl.unset.example.com', tokenEnv: 'UNSET_TOKEN', insecureSkipVerify: false },
+    ],
+    source: 'file',
+    sourceDetails: 'test',
+  }),
 }));
 
 // Import the actual implementation (not mocked)
@@ -1014,6 +1030,8 @@ describe('Enhanced Fetch Utilities', () => {
   });
 
   describe('getAuthHeaders', () => {
+    const serverUrl = 'https://gitlab.example.com';
+
     afterEach(() => {
       // Reset OAuth mock to default (static/PAT mode)
       (isOAuthEnabled as jest.Mock).mockReturnValue(false);
@@ -1022,20 +1040,20 @@ describe('Enhanced Fetch Utilities', () => {
 
     it('should return PRIVATE-TOKEN header in static/PAT mode', () => {
       // Default mock: isOAuthEnabled returns false, GITLAB_TOKEN is "test-token"
-      const headers = getAuthHeaders();
+      const headers = getAuthHeaders(`${serverUrl}/api/v4/user`);
       expect(headers).toEqual({ 'PRIVATE-TOKEN': 'test-token' });
     });
 
-    // A static-token chat that switched to another configured instance authenticates with
-    // that instance's token; the server's own token would be refused there.
-    it('uses the token of the configured instance a static-token chat switched to', () => {
+    // A static-token chat that switched to another instance authenticates with that
+    // instance's token; the server's own token would be refused there.
+    it('uses the token of the instance a static-token chat switched to', () => {
       const headers = runWithTokenAccount(
         { instanceUrl: 'https://gitlab.com', token: 'com-pat' },
-        () => getAuthHeaders(),
+        () => getAuthHeaders('https://gitlab.com/api/v4/user'),
       );
 
       expect(headers).toEqual({ 'PRIVATE-TOKEN': 'com-pat' });
-      expect(getAuthHeaders()).toEqual({ 'PRIVATE-TOKEN': 'test-token' });
+      expect(getAuthHeaders(`${serverUrl}/api/v4/user`)).toEqual({ 'PRIVATE-TOKEN': 'test-token' });
     });
 
     it('should return Authorization Bearer header in OAuth mode', () => {
@@ -1043,7 +1061,7 @@ describe('Enhanced Fetch Utilities', () => {
       (isOAuthEnabled as jest.Mock).mockReturnValue(true);
       (getTokenContext as jest.Mock).mockReturnValue({ gitlabToken: 'oauth-token-abc' });
 
-      const headers = getAuthHeaders();
+      const headers = getAuthHeaders(`${serverUrl}/api/v4/user`);
       expect(headers).toEqual({ Authorization: 'Bearer oauth-token-abc' });
     });
 
@@ -1052,7 +1070,7 @@ describe('Enhanced Fetch Utilities', () => {
       (isOAuthEnabled as jest.Mock).mockReturnValue(true);
       (getTokenContext as jest.Mock).mockReturnValue(undefined);
 
-      const headers = getAuthHeaders();
+      const headers = getAuthHeaders(`${serverUrl}/api/v4/user`);
       expect(headers).toEqual({});
     });
 
@@ -1061,8 +1079,58 @@ describe('Enhanced Fetch Utilities', () => {
       (isOAuthEnabled as jest.Mock).mockReturnValue(true);
       (getTokenContext as jest.Mock).mockReturnValue({ gitlabUserId: 'user-1' });
 
-      const headers = getAuthHeaders();
+      const headers = getAuthHeaders(`${serverUrl}/api/v4/user`);
       expect(headers).toEqual({});
+    });
+  });
+
+  // A static token belongs to one instance. A request to a configured instance carries that
+  // instance's token whatever account context it runs in (or none, as during bootstrap and
+  // background probes), so the server's own token never reaches another configured host.
+  describe('static token of the request instance', () => {
+    const { InstanceRegistry } = require('../../../src/services/InstanceRegistry');
+    const originalEnv = process.env;
+
+    beforeAll(async () => {
+      InstanceRegistry.getInstance().reset();
+      await InstanceRegistry.getInstance().initialize();
+    });
+
+    beforeEach(() => {
+      process.env = { ...originalEnv, COM_TOKEN: 'com-pat' };
+      mockFetch.mockResolvedValue(createMockResponse());
+    });
+
+    afterAll(() => {
+      process.env = originalEnv;
+      InstanceRegistry.getInstance().reset();
+    });
+
+    function sentToken(): string | undefined {
+      const options = mockFetch.mock.calls[mockFetch.mock.calls.length - 1][1] as {
+        headers: Record<string, string>;
+      };
+      return options.headers['private-token'];
+    }
+
+    it('sends another configured instance its own token outside any account context', async () => {
+      await enhancedFetch('https://gitlab.com/api/v4/version', { retry: false });
+
+      expect(sentToken()).toBe('com-pat');
+    });
+
+    it('sends no token to a configured instance whose token variable is unset', async () => {
+      await enhancedFetch('https://gl.unset.example.com/api/v4/version', { retry: false });
+
+      expect(sentToken()).toBeUndefined();
+    });
+
+    it("sends the server's own instance the server's token inside a switched chat", async () => {
+      await runWithTokenAccount({ instanceUrl: 'https://gitlab.com', token: 'com-pat' }, () =>
+        enhancedFetch('https://gitlab.example.com/api/v4/user', { retry: false }),
+      );
+
+      expect(sentToken()).toBe('test-token');
     });
   });
 

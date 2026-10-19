@@ -12,7 +12,7 @@ import {
   AuthorizationCode,
   RegisteredOAuthClient,
 } from '../types';
-import { SessionStorageBackend, SessionStorageStats } from './types';
+import { AbandonedFlowGrantHandler, SessionStorageBackend, SessionStorageStats } from './types';
 import type { AccountSettings, AccountSettingsRecord } from '../../configuration/types';
 import { logInfo, logWarn, logError, logDebug, truncateId } from '../../logger';
 
@@ -48,6 +48,7 @@ export class MemoryStorageBackend implements SessionStorageBackend {
   /** Session id -> end of its GitLab refresh lease (transient, not exported). */
   private gitlabRefreshLeases = new Map<string, number>();
   private cleanupIntervalId: ReturnType<typeof setInterval> | null = null;
+  private abandonedFlowGrant: AbandonedFlowGrantHandler | undefined;
   private silent: boolean;
 
   constructor(options?: MemoryStorageOptions) {
@@ -338,6 +339,10 @@ export class MemoryStorageBackend implements SessionStorageBackend {
     return this.updateSession(sessionId, updates);
   }
 
+  onAbandonedFlowGrant(handler: AbandonedFlowGrantHandler): void {
+    this.abandonedFlowGrant = handler;
+  }
+
   // Cleanup
   async cleanup(): Promise<void> {
     const now = Date.now();
@@ -353,7 +358,12 @@ export class MemoryStorageBackend implements SessionStorageBackend {
     }
 
     const expiredDeviceFlows = deleteExpired(this.deviceFlows, now);
+    const handler = this.abandonedFlowGrant;
+    const abandoned = handler
+      ? [...this.authCodeFlows.values()].filter((flow) => flow.gitlabTokens && flow.expiresAt < now)
+      : [];
     const expiredAuthCodeFlows = deleteExpired(this.authCodeFlows, now);
+    if (handler) await Promise.all(abandoned.map((flow) => handler(flow)));
     const expiredAuthCodes = deleteExpired(this.authCodes, now);
     // Registrations that never completed an authorization expire; used ones have no expiry
     const expiredClients = deleteExpired(this.clients, now);

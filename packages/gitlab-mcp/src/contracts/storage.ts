@@ -7,6 +7,7 @@
  * the db package lazily, keeping the dependency one-directional.
  */
 export type {
+  AbandonedFlowGrantHandler,
   SessionStorageBackend,
   SessionStorageStats,
   StorageConfig,

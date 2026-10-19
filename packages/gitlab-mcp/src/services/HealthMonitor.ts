@@ -37,7 +37,7 @@ import {
   GITLAB_BASE_URL,
 } from '../config';
 import { isOAuthEnabled } from '../oauth/index';
-import { configuredInstanceToken } from '../accounts/chat-accounts';
+import { configuredInstanceToken } from '../accounts/instance-tokens';
 
 // ============================================================================
 // Types

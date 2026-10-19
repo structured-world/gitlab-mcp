@@ -23,6 +23,7 @@ import {
   RegisteredOAuthClient,
 } from '../types';
 import {
+  AbandonedFlowGrantHandler,
   SessionStorageBackend,
   SessionStorageStats,
   StorageData,
@@ -603,6 +604,10 @@ export class FileStorageBackend implements SessionStorageBackend {
       (rotated): rotated is true => rotated,
       () => this.memory.updateSession(sessionId, previous),
     );
+  }
+
+  onAbandonedFlowGrant(handler: AbandonedFlowGrantHandler): void {
+    this.memory.onAbandonedFlowGrant(handler);
   }
 
   // Cleanup

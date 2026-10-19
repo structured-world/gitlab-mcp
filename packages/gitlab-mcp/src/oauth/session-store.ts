@@ -23,6 +23,7 @@ import {
   RegisteredOAuthClient,
 } from './types';
 import { SessionStorageBackend, createStorageBackend } from './storage';
+import type { AbandonedFlowGrantHandler } from './storage/types';
 import type { AccountSettings, AccountSettingsRecord } from '../configuration/types';
 import { MemoryStorageBackend } from './storage/memory';
 import { logInfo, logError, logDebug } from '../logger';
@@ -398,6 +399,16 @@ export class SessionStore {
   // ============================================================
   // Cleanup Operations
   // ============================================================
+
+  /**
+   * End the GitLab grant of each expired authorization flow cleanup removes unfinished.
+   * A database package older than this server has no such hook; its cleanup removes those
+   * flows as before.
+   */
+  onAbandonedFlowGrant(handler: AbandonedFlowGrantHandler): void {
+    const backend = this.backend as Partial<SessionStorageBackend>;
+    backend.onAbandonedFlowGrant?.(handler);
+  }
 
   /**
    * Clean up all expired entries

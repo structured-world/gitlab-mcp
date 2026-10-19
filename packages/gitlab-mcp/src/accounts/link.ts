@@ -11,7 +11,7 @@
  * replicas.
  */
 
-import { createHash, timingSafeEqual } from 'crypto';
+import { createHash, timingSafeEqual } from 'node:crypto';
 import type { Response } from 'express';
 import { GITLAB_BASE_URL } from '../config';
 import type { OAuthConfig } from '../oauth/config';

@@ -1157,6 +1157,43 @@ describe('PostgreSQLStorageBackend', () => {
     });
   });
 
+  // An expired flow whose tokens are intact but whose other fields cannot be read still
+  // holds the only copy of a live grant: cleanup takes it out of the bulk delete instead
+  // of dropping it, so the tokens are never lost while the grant stays active.
+  it('keeps an unreadable expired flow that holds GitLab tokens', async () => {
+    attachPrisma(backend, mockPrisma);
+    const gitlabTokens = {
+      access_token: 'cached-token',
+      refresh_token: 'cached-refresh',
+      token_type: 'Bearer',
+      expires_in: 7200,
+      created_at: 0,
+    };
+    mockPrisma.authCodeFlowState.findMany.mockResolvedValueOnce([
+      {
+        ...createAuthCodeFlow(),
+        internalState: 'unreadable',
+        expiresAt: BigInt(1),
+        gitlabTokens,
+        link: { sessionId: 'session-1', stage: 'unknown', instance: 'https://gitlab.com' },
+      },
+    ]);
+    mockPrisma.authCodeFlowState.updateMany.mockResolvedValueOnce({ count: 1 });
+    const handler = jest.fn(async () => {});
+    backend.onAbandonedFlowGrant(handler);
+
+    await backend.cleanup();
+
+    expect(handler).not.toHaveBeenCalled();
+    expect(mockPrisma.authCodeFlowState.updateMany).toHaveBeenCalledWith({
+      where: { internalState: 'unreadable' },
+      data: { internalState: 'cleanup:unreadable' },
+    });
+    expect(mockPrisma.authCodeFlowState.deleteMany).not.toHaveBeenCalledWith({
+      where: { internalState: 'cleanup:unreadable' },
+    });
+  });
+
   // A flow a stopped cleanup claimed earlier is ended without claiming it again.
   it('ends the grant of a flow claimed by an earlier cleanup', async () => {
     attachPrisma(backend, mockPrisma);

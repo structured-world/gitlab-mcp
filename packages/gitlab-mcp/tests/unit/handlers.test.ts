@@ -3572,7 +3572,9 @@ describe('handlers', () => {
           if (tool === 'browse_todos') return args.page === 1 ? todos : [];
           inFlight++;
           peak = Math.max(peak, inFlight);
-          await new Promise((resolve) => setTimeout(resolve, 1));
+          // Yield without a timer: concurrent requests still overlap here, and the call
+          // stays far inside this file's 100 ms handler timeout on a loaded machine.
+          await Promise.resolve();
           inFlight--;
           if (args.id === 3) throw new Error('GitLab API error: 429 Too Many Requests');
           return { id: args.id, state: 'done' };
@@ -3584,7 +3586,8 @@ describe('handlers', () => {
         { sessionId: 'sess-1' },
       );
 
-      expect(peak).toBeLessThanOrEqual(5);
+      // Requests overlap, a few at a time: the bound is reached and never exceeded.
+      expect(peak).toBe(5);
       expect(JSON.parse(result.content?.[0].text ?? '')).toEqual({
         success: false,
         marked: 11,

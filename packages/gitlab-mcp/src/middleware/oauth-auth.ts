@@ -15,6 +15,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { loadOAuthConfig } from '../oauth/config';
 import { sessionStore } from '../oauth/session-store';
+import { isPastAgeLimit } from '../oauth/storage/types';
 import { verifyMCPToken } from '../oauth/token-utils';
 import { withFreshGitLabToken, GitLabGrantRevokedError } from '../oauth/gitlab-token-refresh';
 import { getBaseUrl } from '../oauth/endpoints/metadata';
@@ -101,7 +102,9 @@ export async function oauthAuthMiddleware(
     return;
   }
 
-  if (!session) {
+  // A session past its age limit stays stored until cleanup ends its grants, and an access
+  // token can outlive that limit; it authenticates nothing either way.
+  if (!session || isPastAgeLimit(session)) {
     sendUnauthorized(req, res, 'invalid_token', 'Session not found or expired');
     return;
   }
@@ -238,7 +241,11 @@ export async function optionalOAuthMiddleware(
     next();
     return;
   }
-  if (session?.mcpAccessToken !== token || !hasGrantedScope(payload.scope, session.scopes)) {
+  if (
+    session?.mcpAccessToken !== token ||
+    isPastAgeLimit(session) ||
+    !hasGrantedScope(payload.scope, session.scopes)
+  ) {
     next();
     return;
   }

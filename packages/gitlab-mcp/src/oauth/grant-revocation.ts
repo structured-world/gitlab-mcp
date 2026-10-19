@@ -169,8 +169,8 @@ export async function revokeAbandonedFlowGrant(
 /**
  * Initialize the session store with the cleanups that end grants (of abandoned flows and
  * of sessions past their age limit), and run cleanup once now: sessions that expired while
- * the server was stopped still hold grants. Token lookups already refuse those sessions,
- * so the server need not wait for it.
+ * the server was stopped still hold grants. Authentication refuses those sessions (token
+ * lookups and the bearer check alike), so the server need not wait for it.
  */
 export async function startSessionStore(config: OAuthConfig): Promise<void> {
   await sessionStore.initialize();

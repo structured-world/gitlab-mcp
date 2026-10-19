@@ -949,38 +949,28 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
 
   /**
    * End the grant of each expired flow that still holds one, then remove the flow; a flow
-   * whose grant could not be ended stays claimed for the next cleanup.
+   * whose grant could not be ended stays claimed for the next cleanup. A row is claimed
+   * before it is read, so one that cannot be read keeps its tokens out of the bulk delete.
    */
   private async endAbandonedFlows(now: bigint): Promise<void> {
     const handler = this.abandonedFlowGrant;
     if (!handler) return;
     const prisma = this.getPrisma();
-    const flows = (
+    const rows = (
       (await prisma.authCodeFlowState.findMany({
         where: { expiresAt: { lt: now } },
       })) as PrismaAuthCodeFlowStateRow[]
-    ).flatMap((row) => this.abandonedFlow(row));
-    await inBatches(flows, async (flow) => {
+    ).filter((row) => row.gitlabTokens != null);
+    await inBatches(rows, async (row) => {
       try {
-        const claimedState = await this.claimAbandonedFlow(flow.internalState);
+        const claimedState = await this.claimAbandonedFlow(row.internalState);
         if (!claimedState) return;
-        await handler(flow);
+        await handler(this.rowToAuthCodeFlow(row));
         await prisma.authCodeFlowState.deleteMany({ where: { internalState: claimedState } });
       } catch (error: unknown) {
         logError('Could not end the grant of an abandoned flow', { err: error as Error });
       }
     });
-  }
-
-  /** The flow of an expired row that held GitLab tokens; a corrupt row is skipped. */
-  private abandonedFlow(row: PrismaAuthCodeFlowStateRow): AuthCodeFlowStateType[] {
-    if (row.gitlabTokens == null) return [];
-    try {
-      return [this.rowToAuthCodeFlow(row)];
-    } catch (error) {
-      logError('Unreadable expired authorization flow', { err: error as Error });
-      return [];
-    }
   }
 
   // Cleanup

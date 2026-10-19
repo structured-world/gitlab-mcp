@@ -9,10 +9,19 @@ import { Request, Response } from 'express';
 import { loadOAuthConfig } from '../config';
 import { sessionStore } from '../session-store';
 import { liveGitLabAccessToken, revokeGitLabGrant } from '../grant-revocation';
+import { claimSessionLease } from '../gitlab-token-refresh';
 import { logInfo, logError, truncateId } from '../../logger';
 import type { OAuthErrorResponse, OAuthSession } from '../types';
 import { singleValuedParams } from '../request-params';
 import { authenticateClient } from '../client-auth';
+
+/** How long a revocation holds the session: a read of its linked accounts and a delete. */
+const REMOVAL_LEASE_MS = 15_000;
+
+/** Give the session back after a failed removal; a lease left behind expires on its own. */
+function releaseRemovalLease(sessionId: string, leaseUntil: number): Promise<void> {
+  return sessionStore.releaseGitLabRefresh(sessionId, leaseUntil).catch(() => undefined);
+}
 
 function sendError(res: Response, status: number, error: string, description: string): void {
   const response: OAuthErrorResponse = { error, error_description: description };
@@ -89,19 +98,37 @@ export async function revokeHandler(req: Request, res: Response): Promise<void> 
   }
 
   // The accounts linked to the session go with it; their grants are ended like its own.
+  const links = sessionStore.linksAccounts();
   let grants: Array<{ session: OAuthSession; accessToken: string }>;
+  let leaseUntil: number | undefined;
   try {
-    const linked = sessionStore.linksAccounts()
-      ? await sessionStore.getLinkedSessions(session.id)
-      : [];
-    grants = await Promise.all(
-      [session, ...linked].map(async (account) => ({
+    // Live tokens first: a refresh of the session needs the lease this removal holds next.
+    const before = links ? await sessionStore.getLinkedSessions(session.id) : [];
+    const known = await Promise.all(
+      [session, ...before].map(async (account) => ({
         session: account,
         accessToken: await liveGitLabAccessToken(account, config),
       })),
     );
+    // Held until the session is deleted: a link that stores an account after the read below
+    // finds the lease held or the session gone, and ends its own grant.
+    leaseUntil = await claimSessionLease(session.id, REMOVAL_LEASE_MS);
+    const current =
+      leaseUntil === undefined ? undefined : await sessionStore.getSession(session.id);
+    if (current) {
+      const linked = links ? await sessionStore.getLinkedSessions(session.id) : [];
+      // Tokens as stored now: refreshed above, or a grant a link stored since, issued just now.
+      grants = [current, ...linked].map((account) => ({
+        session: account,
+        accessToken: account.gitlabAccessToken,
+      }));
+    } else {
+      // Removed meanwhile (a concurrent revocation, cleanup): the grants known still end.
+      grants = known;
+    }
   } catch (error: unknown) {
     logError('Token revocation lookup failed', { err: error as Error });
+    if (leaseUntil !== undefined) await releaseRemovalLease(session.id, leaseUntil);
     sendError(res, 503, 'temporarily_unavailable', 'Revocation is temporarily unavailable');
     return;
   }
@@ -114,6 +141,7 @@ export async function revokeHandler(req: Request, res: Response): Promise<void> 
     await sessionStore.deleteSession(session.id);
   } catch (error: unknown) {
     logError('Token revocation failed', { err: error as Error });
+    if (leaseUntil !== undefined) await releaseRemovalLease(session.id, leaseUntil);
     sendError(res, 503, 'temporarily_unavailable', 'Revocation is temporarily unavailable');
     return;
   }

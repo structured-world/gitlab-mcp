@@ -142,6 +142,15 @@ describe('OAuth Callback Handler', () => {
     mockSessionStore.deleteAuthCodeFlow.mockResolvedValue(true);
   });
 
+  /** Tokens a delivery cached on the flow after exchanging GitLab's code. */
+  const cachedTokens = {
+    access_token: 'cached-token',
+    token_type: 'Bearer',
+    expires_in: 7200,
+    refresh_token: 'cached-refresh',
+    created_at: 0,
+  };
+
   /** The flow the callback reads, and finally consumes. */
   function withFlow(flow: AuthCodeFlowState | undefined): void {
     mockSessionStore.getAuthCodeFlow.mockResolvedValue(flow);
@@ -207,9 +216,37 @@ describe('OAuth Callback Handler', () => {
       );
       expect(redirectMock).not.toHaveBeenCalled();
     });
+
+    // A delivery that exchanged the code and then failed keeps its tokens on the flow for a
+    // retry; GitLab refusing the retry spends the flow, so its grant must end with it.
+    it('ends the cached grant when GitLab refuses a retried link', async () => {
+      mockRequest.query = { error: 'access_denied', state: 'link-state' };
+      mockSessionStore.consumeAuthCodeFlow.mockResolvedValue({
+        ...linkFlow,
+        gitlabTokens: cachedTokens,
+      });
+
+      await callbackHandler(mockRequest as Request, mockResponse as Response);
+
+      expect(revokeGitLabToken).toHaveBeenCalledWith('cached-token', mockOAuthConfig, selectedApp);
+      expect(failAccountLink).toHaveBeenCalled();
+    });
   });
 
   describe('GitLab error responses', () => {
+    it('ends the cached grant of a sign-in GitLab then refuses', async () => {
+      mockRequest.query = { error: 'access_denied', state: 'flow-state-123' };
+      mockSessionStore.consumeAuthCodeFlow.mockResolvedValue({
+        ...mockAuthCodeFlow,
+        gitlabTokens: cachedTokens,
+      });
+
+      await callbackHandler(mockRequest as Request, mockResponse as Response);
+
+      expect(revokeGitLabToken).toHaveBeenCalledWith('cached-token', mockOAuthConfig, selectedApp);
+      expect(redirectMock).toHaveBeenCalledWith(expect.stringContaining('error=access_denied'));
+    });
+
     it('should redirect with error if GitLab returns error and flow state exists', async () => {
       mockRequest.query = {
         error: 'access_denied',

@@ -18,7 +18,7 @@ import { Request, Response } from 'express';
 import { loadOAuthConfig } from '../config';
 import { sessionStore } from '../session-store';
 import { exchangeFlowCode } from '../code-exchange';
-import { discardAuthCodeFlow } from '../grant-revocation';
+import { discardAuthCodeFlow, revokeAbandonedFlowGrant } from '../grant-revocation';
 import { getGitLabUser } from '../gitlab-device-flow';
 import { completeAccountLink, failAccountLink } from '../../accounts/link';
 import { generateSessionId, generateAuthorizationCode, calculateTokenExpiry } from '../token-utils';
@@ -64,6 +64,9 @@ export async function callbackHandler(req: Request, res: Response): Promise<void
         logError('Failed to read authorization flow', { err: err as Error });
         return undefined;
       });
+      // An earlier delivery may have exchanged the code and kept its tokens for a retry;
+      // the flow is spent now, so nothing else would end that grant.
+      if (flow) await revokeAbandonedFlowGrant(flow, config);
       if (flow?.link) {
         // The reason is in the log above; the page shows no text taken from the request.
         failAccountLink(

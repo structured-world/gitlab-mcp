@@ -9,7 +9,10 @@ import { loadOAuthConfig } from '../../../../src/oauth/config';
 import { sessionStore } from '../../../../src/oauth/session-store';
 import { oauthAppFor } from '../../../../src/oauth/instance-app';
 import { revokeGitLabToken } from '../../../../src/oauth/gitlab-device-flow';
-import { withFreshGitLabToken } from '../../../../src/oauth/gitlab-token-refresh';
+import {
+  claimSessionLease,
+  withFreshGitLabToken,
+} from '../../../../src/oauth/gitlab-token-refresh';
 import { getRegisteredClient } from '../../../../src/oauth/endpoints/register';
 import type { OAuthSession } from '../../../../src/oauth/types';
 
@@ -18,15 +21,18 @@ jest.mock('../../../../src/oauth/session-store', () => ({
   sessionStore: {
     getSessionByRefreshToken: jest.fn(),
     getSessionByToken: jest.fn(),
+    getSession: jest.fn(),
     deleteSession: jest.fn(),
     linksAccounts: jest.fn(),
     getLinkedSessions: jest.fn(),
+    releaseGitLabRefresh: jest.fn(),
   },
 }));
 jest.mock('../../../../src/oauth/instance-app', () => ({ oauthAppFor: jest.fn() }));
 jest.mock('../../../../src/oauth/gitlab-device-flow', () => ({ revokeGitLabToken: jest.fn() }));
 jest.mock('../../../../src/oauth/gitlab-token-refresh', () => ({
   withFreshGitLabToken: jest.fn(async (s: unknown) => s),
+  claimSessionLease: jest.fn(),
 }));
 jest.mock('../../../../src/oauth/endpoints/register', () => ({
   getRegisteredClient: jest.fn(),
@@ -43,6 +49,7 @@ const mockStore = sessionStore as jest.Mocked<typeof sessionStore>;
 const mockAppFor = oauthAppFor as jest.MockedFunction<typeof oauthAppFor>;
 const mockRevokeGitLab = revokeGitLabToken as jest.MockedFunction<typeof revokeGitLabToken>;
 const mockFresh = withFreshGitLabToken as jest.MockedFunction<typeof withFreshGitLabToken>;
+const mockLease = claimSessionLease as jest.MockedFunction<typeof claimSessionLease>;
 const mockRegistered = getRegisteredClient as jest.MockedFunction<typeof getRegisteredClient>;
 
 const config = { issuer: 'https://mcp.example.com' } as ReturnType<typeof loadOAuthConfig>;
@@ -81,6 +88,9 @@ describe('revokeHandler', () => {
     mockStore.getSessionByRefreshToken.mockResolvedValue(undefined);
     mockStore.getSessionByToken.mockResolvedValue(undefined);
     mockStore.deleteSession.mockResolvedValue(true);
+    mockStore.getSession.mockResolvedValue(session);
+    mockStore.releaseGitLabRefresh.mockResolvedValue(undefined);
+    mockLease.mockResolvedValue(Date.now() + 15_000);
     mockStore.linksAccounts.mockReturnValue(true);
     mockStore.getLinkedSessions.mockResolvedValue([]);
     mockAppFor.mockResolvedValue(app);
@@ -227,6 +237,8 @@ describe('revokeHandler', () => {
     const expired = { ...session, gitlabTokenExpiry: Date.now() - 1000 };
     mockStore.getSessionByRefreshToken.mockResolvedValue(expired);
     mockFresh.mockResolvedValueOnce({ ...expired, gitlabAccessToken: 'gl-fresh' });
+    // The refresh stores the new tokens; the removal reads them back under the lease.
+    mockStore.getSession.mockResolvedValue({ ...expired, gitlabAccessToken: 'gl-fresh' });
     const { req, res } = revoke({ token: 'refresh-1', client_id: 'client-1' });
 
     await revokeHandler(req, res);
@@ -254,6 +266,7 @@ describe('revokeHandler', () => {
   it('revokes the known GitLab token when the session vanished during the refresh', async () => {
     mockStore.getSessionByRefreshToken.mockResolvedValue(session);
     mockFresh.mockResolvedValueOnce(undefined);
+    mockLease.mockResolvedValueOnce(undefined);
     const { req, res } = revoke({ token: 'refresh-1', client_id: 'client-1' });
 
     await revokeHandler(req, res);
@@ -335,6 +348,61 @@ describe('revokeHandler', () => {
     expect(mockRevokeGitLab).toHaveBeenCalledWith('gl-access', config, app);
     expect(mockRevokeGitLab).toHaveBeenCalledWith('gl-linked', config, otherApp);
     expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  // A link stores an account while the revocation refreshes the grants: the cascade removes
+  // that row with the session, so its grant must be among the ones ended.
+  it('ends the grant of an account a link stored during the revocation', async () => {
+    const stored: OAuthSession = {
+      ...session,
+      id: 'linked-new',
+      mcpAccessToken: '',
+      mcpRefreshToken: '',
+      gitlabAccessToken: 'gl-new',
+      linkedToSessionId: 'session-1',
+    };
+    mockStore.getSessionByRefreshToken.mockResolvedValue(session);
+    mockStore.getLinkedSessions.mockResolvedValueOnce([]).mockResolvedValue([stored]);
+    const { req, res } = revoke({ token: 'refresh-1', client_id: 'client-1' });
+
+    await revokeHandler(req, res);
+
+    expect(mockLease).toHaveBeenCalledWith('session-1', expect.any(Number));
+    expect(mockRevokeGitLab).toHaveBeenCalledWith('gl-new', config, app);
+    expect(mockRevokeGitLab).toHaveBeenCalledWith('gl-access', config, app);
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  // A failed delete gives the session back at once, so links and refreshes go on.
+  it('releases the session when the delete fails', async () => {
+    const leaseUntil = Date.now() + 15_000;
+    mockLease.mockResolvedValueOnce(leaseUntil);
+    mockStore.getSessionByRefreshToken.mockResolvedValue(session);
+    mockStore.deleteSession.mockRejectedValueOnce(new Error('database down'));
+    mockStore.releaseGitLabRefresh.mockRejectedValueOnce(new Error('database down'));
+    const { req, res } = revoke({ token: 'refresh-1', client_id: 'client-1' });
+
+    await revokeHandler(req, res);
+
+    expect(mockStore.releaseGitLabRefresh).toHaveBeenCalledWith('session-1', leaseUntil);
+    expect(res.status).toHaveBeenCalledWith(503);
+    expect(mockRevokeGitLab).not.toHaveBeenCalled();
+  });
+
+  it('releases the session when its linked accounts cannot be read under the lease', async () => {
+    const leaseUntil = Date.now() + 15_000;
+    mockLease.mockResolvedValueOnce(leaseUntil);
+    mockStore.getSessionByRefreshToken.mockResolvedValue(session);
+    mockStore.getLinkedSessions
+      .mockResolvedValueOnce([])
+      .mockRejectedValueOnce(new Error('database down'));
+    const { req, res } = revoke({ token: 'refresh-1', client_id: 'client-1' });
+
+    await revokeHandler(req, res);
+
+    expect(mockStore.releaseGitLabRefresh).toHaveBeenCalledWith('session-1', leaseUntil);
+    expect(mockStore.deleteSession).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(503);
   });
 
   it('answers 503 and keeps the session when its linked accounts cannot be read', async () => {

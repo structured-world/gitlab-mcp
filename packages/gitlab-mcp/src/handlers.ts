@@ -305,6 +305,34 @@ async function tryManageContextFastPath(
 }
 
 /**
+ * Calls that run without bootstrapping the instance: configuration tools while it is
+ * unreachable, and the account actions always. Listing, switching, linking and unlinking
+ * accounts read the session store and the instance configuration, never this instance, so a
+ * chat whose instance fails to start can still move to an account that works. Returns null
+ * to fall through to the bootstrap path.
+ */
+async function tryWithoutBootstrap(
+  request: CallToolRequest,
+  toolArguments: Record<string, unknown> | undefined,
+  effectiveInstanceUrl: string,
+  healthMonitor: HealthMonitor,
+  sessionId: string | undefined,
+  requestScopes: readonly string[] | undefined,
+): Promise<CallToolResult | null> {
+  const toolName = request.params.name;
+  const fastPath = await tryManageContextFastPath(
+    toolName,
+    toolArguments,
+    effectiveInstanceUrl,
+    healthMonitor,
+    sessionId,
+    requestScopes,
+  );
+  if (fastPath || !managesAccounts(request)) return fastPath;
+  return executeWithoutBootstrap(toolName, toolArguments, effectiveInstanceUrl, requestScopes);
+}
+
+/**
  * Run a tool without bootstrapping its instance. Returns null when the tool is not in the
  * instance's cache, so the caller falls through to the bootstrap path.
  */
@@ -504,6 +532,56 @@ function activeInstanceUrl(oauthEnabled: boolean, oauthContextUrl: string | unde
     : (currentTokenAccount()?.instanceUrl ?? GITLAB_BASE_URL);
   // Normalized so CONNECTION_FAILED instance_url and HealthMonitor keys are consistent.
   return normalizeInstanceUrl(raw);
+}
+
+/**
+ * The response to a call whose handler ran out of time; the handler may still be running.
+ * A bootstrap it left unfinished is reported to the health monitor.
+ */
+function handlerTimeoutResult(
+  request: CallToolRequest,
+  declaredIdempotent: boolean | undefined,
+  bootstrapState: BootstrapState,
+  requestInstanceUrl: string,
+): CallToolResult {
+  const toolName = request.params.name;
+  const requested = request.params.arguments?.action;
+  const action = typeof requested === 'string' ? requested : 'unknown';
+  const retryable = isIdempotentOperation(toolName, declaredIdempotent);
+  const timeoutError = createTimeoutError(toolName, action, HANDLER_TIMEOUT_MS, retryable);
+
+  logError(`Handler timeout: tool '${toolName}' timed out after ${HANDLER_TIMEOUT_MS}ms`);
+
+  // Only report to health monitor and clear inflight if bootstrap was
+  // actually attempted (not for disconnected manage_context bypass which
+  // does no GitLab I/O and shouldn't affect connection health).
+  if (bootstrapState.started && !bootstrapState.complete) {
+    // Use "timed out" so classifyError() reliably treats this as transient
+    // and triggers disconnected → auto-reconnect. Use a plain Error (not
+    // InitializationTimeoutError) because this is a handler-level timeout,
+    // not the startup init timeout from HealthMonitor.performConnect.
+    HealthMonitor.getInstance().reportError(
+      requestInstanceUrl,
+      new Error(`Handler timed out after ${HANDLER_TIMEOUT_MS}ms — bootstrap did not complete`),
+    );
+    ConnectionManager.getInstance().clearInflight(requestInstanceUrl);
+  }
+
+  recordEarlyReturnError(toolName, action, timeoutError.message);
+
+  return errorToolResult(timeoutError);
+}
+
+/** Record a failed call for the access log and on its connection's stats. */
+function recordToolError(errMsg: string): void {
+  const reqTracker = getRequestTracker();
+  reqTracker.setErrorForCurrentRequest(errMsg);
+
+  const curRequestId = getCurrentRequestId();
+  const sessionId = curRequestId ? reqTracker.getStack(curRequestId)?.sessionId : undefined;
+  if (sessionId) {
+    getConnectionTracker().recordError(sessionId, errMsg);
+  }
 }
 
 /**
@@ -1096,29 +1174,16 @@ export async function setupHandlers(server: Server): Promise<void> {
       );
       if (unreachableResult) return unreachableResult;
 
-      // manage_context fast-path when disconnected: bypass bootstrap and health reporting
-      const fastPathResult = await tryManageContextFastPath(
-        toolName,
+      // Configuration tools while disconnected, and the account actions: no bootstrap
+      const withoutBootstrap = await tryWithoutBootstrap(
+        request,
         toolArguments,
         effectiveInstanceUrl,
         healthMonitor,
         callSessionId,
         requestScopes,
       );
-      if (fastPathResult) return fastPathResult;
-
-      // Listing, switching, linking and unlinking accounts read the session store and the
-      // instance configuration, never this instance: a chat whose instance fails to start
-      // can still move to an account that works.
-      if (managesAccounts(request)) {
-        const accountResult = await executeWithoutBootstrap(
-          toolName,
-          toolArguments,
-          effectiveInstanceUrl,
-          requestScopes,
-        );
-        if (accountResult) return accountResult;
-      }
+      if (withoutBootstrap) return withoutBootstrap;
 
       // Initialize connection, verify client, and rebuild the per-URL tool cache
       const oauthMode = isOAuthEnabled();
@@ -1219,58 +1284,21 @@ export async function setupHandlers(server: Server): Promise<void> {
       // reportError from overwriting the timeout health signal.
       const result = await Promise.race([runWithCaller(caller, handlerWork), timeoutPromise]);
 
+      // timedOut already set in timer callback — handler is still running but we respond
       if (result === HANDLER_TIMEOUT_SYMBOL) {
-        // timedOut already set in timer callback — handler is still running but we respond
-        const toolName = request.params.name;
-        const action =
-          request.params.arguments && typeof request.params.arguments.action === 'string'
-            ? request.params.arguments.action
-            : 'unknown';
-        const retryable = isIdempotentOperation(toolName, declaredIdempotent);
-        const timeoutError = createTimeoutError(toolName, action, HANDLER_TIMEOUT_MS, retryable);
-
-        logError(`Handler timeout: tool '${toolName}' timed out after ${HANDLER_TIMEOUT_MS}ms`);
-
-        // Only report to health monitor and clear inflight if bootstrap was
-        // actually attempted (not for disconnected manage_context bypass which
-        // does no GitLab I/O and shouldn't affect connection health).
-        if (bootstrapState.started && !bootstrapState.complete) {
-          // Use "timed out" so classifyError() reliably treats this as transient
-          // and triggers disconnected → auto-reconnect. Use a plain Error (not
-          // InitializationTimeoutError) because this is a handler-level timeout,
-          // not the startup init timeout from HealthMonitor.performConnect.
-          HealthMonitor.getInstance().reportError(
-            requestInstanceUrl,
-            new Error(
-              `Handler timed out after ${HANDLER_TIMEOUT_MS}ms — bootstrap did not complete`,
-            ),
-          );
-          ConnectionManager.getInstance().clearInflight(requestInstanceUrl);
-        }
-
-        recordEarlyReturnError(toolName, action, timeoutError.message);
-
-        return errorToolResult(timeoutError);
+        return handlerTimeoutResult(
+          request,
+          declaredIdempotent,
+          bootstrapState,
+          requestInstanceUrl,
+        );
       }
 
       return result;
     } catch (error) {
       const errMsg = error instanceof Error ? error.message : String(error);
       logError(`Error in tool handler: ${errMsg}`);
-
-      // Record error for access logging
-      const reqTracker = getRequestTracker();
-      reqTracker.setErrorForCurrentRequest(errMsg);
-
-      // Record error on connection stats
-      const curRequestId = getCurrentRequestId();
-      if (curRequestId) {
-        const stack = reqTracker.getStack(curRequestId);
-        if (stack?.sessionId) {
-          const connTracker = getConnectionTracker();
-          connTracker.recordError(stack.sessionId, errMsg);
-        }
-      }
+      recordToolError(errMsg);
 
       // Try to convert to structured error for better LLM feedback
       const toolName = request.params.name;

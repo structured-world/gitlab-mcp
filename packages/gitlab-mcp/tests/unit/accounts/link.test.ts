@@ -600,6 +600,98 @@ describe('account linking', () => {
       expect(mockRevoke).not.toHaveBeenCalledWith('com-token', config, comApp);
     });
 
+    // The connection is revoked right after the link stored the account, too late for the
+    // revocation to see it: the row goes with the session, so the link ends its own grant
+    // instead of reporting an account that no longer exists.
+    it('ends its grant when the connection is revoked after the account was stored', async () => {
+      const state = await verified();
+      const flow = await storedFlow(state);
+      mockExchange.mockResolvedValueOnce(tokens('com-token'));
+      mockUser.mockResolvedValueOnce({ id: 99, username: 'alice-personal' });
+      const createSession = sessionStore.createSession.bind(sessionStore);
+      const create = jest
+        .spyOn(sessionStore, 'createSession')
+        .mockImplementationOnce(async (row) => {
+          await createSession(row);
+          await sessionStore.deleteSession('primary');
+        });
+      const res = response();
+
+      try {
+        await completeAccountLink(res, state, flow, 'code', config);
+      } finally {
+        create.mockRestore();
+      }
+
+      expect(res.send.mock.calls[0][0]).toContain('has signed out');
+      expect(mockRevoke).toHaveBeenCalledWith('com-token', config, comApp);
+      expect(await sessionStore.getAuthCodeFlow(state)).toBeUndefined();
+    });
+
+    // A refresh of the session holds its lease for a moment; the link waits for it and
+    // completes once the session is free.
+    it('waits for a refresh of the session before completing the link', async () => {
+      const state = await verified();
+      const flow = await storedFlow(state);
+      mockExchange.mockResolvedValueOnce(tokens('com-token'));
+      mockUser.mockResolvedValueOnce({ id: 99, username: 'alice-personal' });
+      const leaseUntil = Date.now() + 60_000;
+      await sessionStore.claimGitLabRefresh(
+        'primary',
+        primary.gitlabRefreshToken,
+        Date.now(),
+        leaseUntil,
+      );
+      const released = new Promise<void>((resolve) =>
+        setTimeout(() => {
+          void sessionStore.releaseGitLabRefresh('primary', leaseUntil).then(resolve);
+        }, 50),
+      );
+      const res = response();
+
+      await completeAccountLink(res, state, flow, 'code', config);
+      await released;
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(mockRevoke).not.toHaveBeenCalledWith('com-token', config, comApp);
+    });
+
+    // Duplicate deliveries of one callback both replace an account linked before: the first
+    // displaces the old grant, the second stores the same grant again and completes the link.
+    // The first still ends the grant it displaced, which no row refers to any more.
+    it('ends the grant it displaced when another delivery completed the link', async () => {
+      await sessionStore.createSession({
+        ...primary,
+        id: 'old-link',
+        mcpAccessToken: '',
+        mcpRefreshToken: '',
+        gitlabAccessToken: 'old-com-token',
+        gitlabUserId: 99,
+        gitlabUsername: 'alice-personal',
+        gitlabApiUrl: 'https://gitlab.com',
+        linkedToSessionId: 'primary',
+      });
+      const state = await verified();
+      const flow = await storedFlow(state);
+      mockExchange.mockResolvedValueOnce(tokens('com-token'));
+      mockUser.mockResolvedValueOnce({ id: 99, username: 'alice-personal' });
+      const consume = jest
+        .spyOn(sessionStore, 'consumeAuthCodeFlow')
+        .mockResolvedValueOnce(undefined);
+      const res = response();
+
+      try {
+        await completeAccountLink(res, state, flow, 'code', config);
+      } finally {
+        consume.mockRestore();
+      }
+
+      expect(res.send.mock.calls[0][0]).toContain('already completed');
+      expect((await sessionStore.getSession('old-link'))?.gitlabAccessToken).toBe('com-token');
+      expect(mockRevoke).toHaveBeenCalledWith('old-com-token', config, comApp);
+      expect(mockRevoke).not.toHaveBeenCalledWith('com-token', config, comApp);
+    });
+
     // Two links replacing the grant of an account linked before: every grant either ends up
     // stored or is ended; none stays authorized at GitLab without a row to revoke it by.
     it('ends every displaced grant when two links replace an account at once', async () => {

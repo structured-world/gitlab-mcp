@@ -70,13 +70,14 @@ import {
   GitLabGrantRevokedError,
   withFreshGitLabToken,
 } from '../../../src/oauth/gitlab-token-refresh';
-import { revokeGitLabGrant } from '../../../src/oauth/grant-revocation';
+import { liveGitLabAccessToken, revokeGitLabGrant } from '../../../src/oauth/grant-revocation';
 import { InstanceRegistry } from '../../../src/services/InstanceRegistry';
 import { accountProfileId } from '../../../src/entities/context/profile';
 import type { OAuthSession, TokenContext } from '../../../src/oauth/types';
 
 const mockFresh = withFreshGitLabToken as jest.MockedFunction<typeof withFreshGitLabToken>;
 const mockRevoke = revokeGitLabGrant as jest.MockedFunction<typeof revokeGitLabGrant>;
+const mockLiveToken = liveGitLabAccessToken as jest.MockedFunction<typeof liveGitLabAccessToken>;
 
 function session(overrides: Partial<OAuthSession>): OAuthSession {
   return {
@@ -320,6 +321,52 @@ describe('chat accounts with OAuth', () => {
     await expect(asSignedIn(() => withChatAccount('chat-2', async () => 'ran'))).rejects.toThrow(
       'no longer linked',
     );
+  });
+
+  // A link replaces the account's grant while the unlink is reading it: the grant the row
+  // holds when it is removed is the one ended, so no grant stays authorized without a row.
+  it('ends the grant a concurrent link stored before the account was removed', async () => {
+    mockLiveToken.mockImplementationOnce(async (row) => {
+      // Read first: the memory backend hands out the stored record, which the update changes.
+      const read = row.gitlabAccessToken;
+      await sessionStore.updateSession('linked-com', {
+        gitlabAccessToken: 'replaced-token',
+        gitlabRefreshToken: 'replaced-refresh',
+      });
+      return read;
+    });
+
+    await asSignedIn(() => unlinkChatAccount('chat-1', personalId));
+
+    expect(await sessionStore.getSession('linked-com')).toBeUndefined();
+    expect(mockRevoke).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'linked-com' }),
+      'replaced-token',
+      expect.anything(),
+    );
+  });
+
+  // A link or a token refresh holding the account's lease finishes before the unlink removes
+  // the row; one that never lets go makes the unlink ask for a retry and keep the account.
+  it('keeps the account when its lease stays held elsewhere', async () => {
+    jest.useFakeTimers();
+    try {
+      await sessionStore.claimGitLabRefresh(
+        'linked-com',
+        personal.gitlabRefreshToken,
+        Date.now(),
+        Date.now() + 60_000,
+      );
+      const unlink = asSignedIn(() => unlinkChatAccount('chat-1', personalId));
+      const settled = expect(unlink).rejects.toThrow('being changed elsewhere');
+      await jest.runAllTimersAsync();
+      await settled;
+    } finally {
+      jest.useRealTimers();
+    }
+
+    expect(await sessionStore.getSession('linked-com')).toBeDefined();
+    expect(mockRevoke).not.toHaveBeenCalled();
   });
 
   it('refuses to unlink the account this chat works with', async () => {

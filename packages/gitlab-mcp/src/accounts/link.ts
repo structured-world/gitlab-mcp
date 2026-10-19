@@ -20,6 +20,7 @@ import type { GitLabOAuthApp } from '../oauth/oauth-app';
 import { buildGitLabAuthUrl, getGitLabUser, revokeGitLabToken } from '../oauth/gitlab-device-flow';
 import { exchangeFlowCode } from '../oauth/code-exchange';
 import { discardAuthCodeFlow } from '../oauth/grant-revocation';
+import { claimSessionLease } from '../oauth/gitlab-token-refresh';
 import { grantedGitlabScopes } from '../oauth/granted-scopes';
 import { calculateTokenExpiry, generateRandomString } from '../oauth/token-utils';
 import type { AccountLinkStep, AuthCodeFlowState, OAuthSession } from '../oauth/types';
@@ -37,6 +38,8 @@ const STORE_ATTEMPTS = 20;
 const STORE_RETRY_MS = 100;
 /** How long a replacement holds the account: a lookup and one write. */
 const REPLACE_LEASE_MS = 15_000;
+/** How long a link holds its session to see that it was not revoked: no work in between. */
+const LINK_CHECK_LEASE_MS = 5_000;
 
 /**
  * Storage id of an account linked to a session: one per session, instance and user. The
@@ -415,15 +418,30 @@ async function connectAccount(
       gitlabScopes: grantedGitlabScopes(tokens.scope, flow.requestedGitlabScopes),
     },
   });
+  // The displaced grant is no longer stored, whichever delivery completes the link: a losing
+  // duplicate of this callback may be the one that displaced it. A retry reuses the grant a
+  // failed attempt already stored; that grant is not replaced.
+  if (replacedToken && replacedToken !== tokens.access_token) {
+    await revokeQuietly(replacedToken, config, app);
+  }
+  // A revocation of the session holds its lease from before it reads the linked accounts
+  // until it deletes the session with them. Taking the lease once now: granted, the session
+  // outlives this write or the revocation reads it; refused for good, the session is gone
+  // and nothing would end this grant.
+  const turn = await claimSessionLease(session.id, LINK_CHECK_LEASE_MS);
+  if (turn === undefined) {
+    await sessionStore.deleteSession(linkedAccountId(session.id, instance, user.id));
+    await sessionStore.consumeAuthCodeFlow(state);
+    await revokeQuietly(tokens.access_token, config, app);
+    failAccountLink(res, 'The connection that asked for this link has signed out.');
+    return;
+  }
+  await sessionStore.releaseGitLabRefresh(session.id, turn).catch(() => undefined);
   // Exactly one callback completes the link. One that loses keeps the row: the account has a
   // single id, so the row is the one the winning callback reported as linked.
   if (!(await sessionStore.consumeAuthCodeFlow(state))) {
     failAccountLink(res, 'This link was already completed.');
     return;
-  }
-  // A retry reuses the grant a failed attempt already stored; that grant is not replaced.
-  if (replacedToken && replacedToken !== tokens.access_token) {
-    await revokeQuietly(replacedToken, config, app);
   }
   const label = `${user.username} @ ${link.instanceLabel ?? new URL(instance).host}`;
   logInfo('Account linked', { sessionId: truncateId(session.id), instance });

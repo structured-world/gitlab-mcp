@@ -13,6 +13,7 @@ import { runWithTokenAccount } from './token-account';
 import { configuredInstanceToken } from './instance-tokens';
 import { InstanceRegistry } from '../services/InstanceRegistry';
 import { isOAuthEnabled, loadOAuthConfig } from '../oauth/config';
+import type { OAuthConfig } from '../oauth/config';
 import { sessionStore } from '../oauth/session-store';
 import { getTokenContext, runWithTokenContext } from '../oauth/token-context';
 import { GitLabGrantRevokedError, withFreshGitLabToken } from '../oauth/gitlab-token-refresh';
@@ -56,6 +57,13 @@ const SESSIONLESS = 'stdio';
 
 /** Chat key -> id of the account it switched to; absent: the first account. */
 const selections = new Map<string, string>();
+
+/** Passes over a linked account before an unlink gives up and asks for a retry. */
+const UNLINK_ATTEMPTS = 20;
+/** Wait between passes while a link or a token refresh holds the account's lease. */
+const UNLINK_RETRY_MS = 100;
+/** How long an unlink holds the account: a delete. */
+const UNLINK_LEASE_MS = 15_000;
 
 function chatKey(sessionId: string | undefined): string {
   return sessionId ?? SESSIONLESS;
@@ -211,10 +219,49 @@ export async function unlinkChatAccount(
       'This chat works with that account now; switch to another account first.',
     );
   }
-  const accessToken = await liveGitLabAccessToken(row, config);
-  await sessionStore.deleteSession(row.id);
-  await revokeGitLabGrant(row, accessToken, config);
+  const accessToken = await removeLinkedRow(row.id, config);
+  if (accessToken) await revokeGitLabGrant(row, accessToken, config);
   return oauthAccount(row, false, '');
+}
+
+/**
+ * Remove a linked account's row under the lease a link replacing its grant (and a token
+ * refresh) holds, so the grant removed is the one this returns: its live access token, or
+ * undefined when the row is already gone. A link that comes after stores the account again.
+ */
+async function removeLinkedRow(
+  rowId: string,
+  config: OAuthConfig,
+  attempt = 1,
+): Promise<string | undefined> {
+  const stored = await sessionStore.getSession(rowId);
+  if (!stored) return undefined;
+  const accessToken = await liveGitLabAccessToken(stored, config);
+  const current = await sessionStore.getSession(rowId);
+  if (!current) return undefined;
+  // The row holds the token just made live (or kept, when the refresh failed) unless a link
+  // replaced the grant meanwhile; then the next pass reads the new one.
+  if (current.gitlabAccessToken === accessToken) {
+    const now = Date.now();
+    const leaseUntil = now + UNLINK_LEASE_MS;
+    // The claim holds only while the row keeps this refresh token, i.e. this very grant.
+    const refreshToken = current.gitlabRefreshToken;
+    if (await sessionStore.claimGitLabRefresh(rowId, refreshToken, now, leaseUntil)) {
+      try {
+        await sessionStore.deleteSession(rowId);
+        return accessToken;
+      } finally {
+        await sessionStore.releaseGitLabRefresh(rowId, leaseUntil).catch(() => undefined);
+      }
+    }
+  }
+  if (attempt >= UNLINK_ATTEMPTS) {
+    throw new AccountUnavailableError(
+      'The account is being changed elsewhere (a sign-in or a token refresh); try again.',
+    );
+  }
+  await new Promise((resolve) => setTimeout(resolve, UNLINK_RETRY_MS));
+  return removeLinkedRow(rowId, config, attempt + 1);
 }
 
 /** Forget a closed chat's choice. */

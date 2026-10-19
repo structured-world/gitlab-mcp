@@ -778,6 +778,15 @@ describe('handlers', () => {
       mockConnectionManager.isConnected.mockReturnValue(false);
 
       await callToolHandler({ params: { name: 'test_tool', arguments: {} } }, { sessionId: 's1' });
+      // The announcement is not awaited by the call: wait for it before asserting, so it
+      // cannot land after the mocks are cleared below.
+      for (
+        let tick = 0;
+        tick < 50 && mockSessionManager.broadcastToolsListChanged.mock.calls.length === 0;
+        tick++
+      ) {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
 
       expect(mockConnectionManager.initialize).toHaveBeenCalledTimes(1);
       expect(mockSessionManager.broadcastToolsListChanged).toHaveBeenCalledWith(
@@ -788,6 +797,7 @@ describe('handlers', () => {
       jest.clearAllMocks();
       mockConnectionManager.isConnected.mockReturnValue(true);
       await callToolHandler({ params: { name: 'test_tool', arguments: {} } }, { sessionId: 's1' });
+      for (let tick = 0; tick < 10; tick++) await new Promise((resolve) => setTimeout(resolve, 0));
 
       expect(mockSessionManager.broadcastToolsListChanged).not.toHaveBeenCalled();
       expect(mockServer.sendToolListChanged).not.toHaveBeenCalled();
@@ -2985,6 +2995,7 @@ describe('handlers', () => {
           'manage_context',
           expect.objectContaining({ action: 'switch_account' }),
           'https://gitlab.example.com',
+          undefined,
         );
 
         mockRegistryManager.executeTool.mockClear();
@@ -2998,6 +3009,30 @@ describe('handlers', () => {
       } finally {
         resolve.mockRestore();
       }
+    });
+
+    // The connection's instance fails to start while the health monitor still reports it
+    // reachable: listing and switching accounts need no GitLab connection, so the chat can
+    // still move to an account that works.
+    it('runs the account actions when the instance cannot be initialized', async () => {
+      mockConnectionManager.isConnected.mockReturnValue(false);
+      mockConnectionManager.initialize.mockRejectedValue(new Error('Connection failed'));
+      mockRegistryManager.hasToolHandler.mockReturnValue(true);
+      mockRegistryManager.executeTool.mockResolvedValue([{ id: 'gitlab:1' }]);
+
+      const result = await callToolHandler(
+        { params: { name: 'manage_context', arguments: { action: 'list_accounts' } } },
+        { sessionId: 'sess-1' },
+      );
+
+      expect(result.isError).toBeUndefined();
+      expect(mockConnectionManager.initialize).not.toHaveBeenCalled();
+      expect(mockRegistryManager.executeTool).toHaveBeenCalledWith(
+        'manage_context',
+        expect.objectContaining({ action: 'list_accounts' }),
+        'https://gitlab.example.com',
+        undefined,
+      );
     });
 
     // Listing is visibility only: an unreadable settings store does not empty the list.

@@ -41,6 +41,22 @@ jest.mock('../../../../src/entities/context/accounts', () => ({
 describe('handleManageContext', () => {
   const originalEnv = process.env;
 
+  beforeEach(() => {
+    ContextManager.resetInstance();
+    jest.clearAllMocks();
+
+    process.env = {
+      ...originalEnv,
+      GITLAB_API_URL: 'https://gitlab.example.com',
+      GITLAB_READ_ONLY_MODE: 'false',
+      OAUTH_ENABLED: 'false',
+    };
+  });
+
+  afterAll(() => {
+    process.env = originalEnv;
+  });
+
   // Each account action reaches its own handler with the input it was called with.
   describe('account actions', () => {
     it('dispatches list, switch, link and unlink to the account handlers', async () => {
@@ -69,22 +85,6 @@ describe('handleManageContext', () => {
         account: 'b',
       });
     });
-  });
-
-  beforeEach(() => {
-    ContextManager.resetInstance();
-    jest.clearAllMocks();
-
-    process.env = {
-      ...originalEnv,
-      GITLAB_API_URL: 'https://gitlab.example.com',
-      GITLAB_READ_ONLY_MODE: 'false',
-      OAUTH_ENABLED: 'false',
-    };
-  });
-
-  afterAll(() => {
-    process.env = originalEnv;
   });
 
   describe('action: show', () => {

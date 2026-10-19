@@ -128,6 +128,20 @@ describe('manage_context account actions', () => {
     expect(server.sendToolListChanged).toHaveBeenCalledTimes(1);
   });
 
+  // The announcement is best effort: a client that cannot take it still has the switch.
+  it('switches when the tool list change cannot be announced', async () => {
+    mockSwitch.mockResolvedValue(personal);
+    mockSessions.getSessionInstanceUrl.mockReturnValue(undefined);
+    const server = fakeServer();
+    server.sendToolListChanged.mockRejectedValueOnce(new Error('transport closed'));
+
+    const result = await inChat('stdio', server, () =>
+      handleSwitchAccount({ action: 'switch_account', account: personal.id }),
+    );
+
+    expect(result).toMatchObject({ success: true, account: personal });
+  });
+
   describe('link_account', () => {
     const start = {
       url: 'https://git.corp.example.com/oauth/authorize?state=abc',

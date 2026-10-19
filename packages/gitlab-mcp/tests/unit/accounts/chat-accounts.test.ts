@@ -233,6 +233,60 @@ describe('chat accounts with OAuth', () => {
     );
   });
 
+  // The linked account was removed while its tokens were being refreshed.
+  it('refuses a call when the chosen account disappears during its refresh', async () => {
+    await asSignedIn(() => switchChatAccount('chat-1', personalId));
+    mockFresh.mockResolvedValueOnce(undefined);
+
+    await expect(asSignedIn(() => withChatAccount('chat-1', async () => 'ran'))).rejects.toThrow(
+      'no longer linked',
+    );
+  });
+
+  it('names a non-error refresh failure in the retry hint', async () => {
+    await asSignedIn(() => switchChatAccount('chat-1', personalId));
+    mockFresh.mockRejectedValueOnce('socket hang up');
+
+    await expect(asSignedIn(() => withChatAccount('chat-1', async () => 'ran'))).rejects.toThrow(
+      /could not be refreshed now \(socket hang up\)/,
+    );
+  });
+
+  // Without a request context (no signed-in caller) there is no account to switch to.
+  it('runs a call without a request context as is', async () => {
+    await asSignedIn(() => switchChatAccount('chat-1', personalId));
+
+    await expect(withChatAccount('chat-1', async () => getTokenContext())).resolves.toBeUndefined();
+    expect(mockFresh).not.toHaveBeenCalled();
+  });
+
+  // A request already made as the chosen account needs no switch and no refresh.
+  it('runs a request already made as the chosen account directly', async () => {
+    await asSignedIn(() => switchChatAccount('chat-1', personalId));
+    const asPersonal = {
+      ...signedIn,
+      gitlabToken: 'com-gitlab',
+      gitlabUserId: 99,
+      apiUrl: 'https://gitlab.com',
+    };
+
+    const context = await runWithTokenContext(asPersonal, () =>
+      withChatAccount('chat-1', async () => getTokenContext()),
+    );
+
+    expect(context).toMatchObject({ gitlabToken: 'com-gitlab', gitlabUserId: 99 });
+    expect(mockFresh).not.toHaveBeenCalled();
+  });
+
+  // An account without an instance label is labelled with its instance's host.
+  it('labels an account without an instance label by its host', async () => {
+    await sessionStore.updateSession('linked-com', { instanceLabel: undefined });
+
+    const accounts = await asSignedIn(() => listChatAccounts('chat-1'));
+
+    expect(accounts.find((a) => a.id === personalId)?.label).toBe('alice-personal @ gitlab.com');
+  });
+
   it('refuses to switch to an account the connection does not have', async () => {
     await expect(asSignedIn(() => switchChatAccount('chat-1', 'gitlab:unknown'))).rejects.toThrow(
       'No account "gitlab:unknown"',

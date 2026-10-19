@@ -291,6 +291,29 @@ async function tryManageContextFastPath(
   ) {
     return null;
   }
+  const result = await executeWithoutBootstrap(
+    toolName,
+    toolArguments,
+    effectiveInstanceUrl,
+    requestScopes,
+  );
+  // Not rate-limited: only a user's settings call while GitLab is unreachable asks for this
+  // probe, the monitor drops it while one is running, and a cooldown would keep the other
+  // tools down after GitLab answers again, which is what the probe is for.
+  if (result) healthMonitor.forceReconnect(effectiveInstanceUrl);
+  return result;
+}
+
+/**
+ * Run a tool without bootstrapping its instance. Returns null when the tool is not in the
+ * instance's cache, so the caller falls through to the bootstrap path.
+ */
+async function executeWithoutBootstrap(
+  toolName: string,
+  toolArguments: Record<string, unknown> | undefined,
+  effectiveInstanceUrl: string,
+  requestScopes: readonly string[] | undefined,
+): Promise<CallToolResult | null> {
   if (LOG_FORMAT === 'condensed') {
     const action =
       toolArguments && typeof toolArguments.action === 'string' ? toolArguments.action : undefined;
@@ -303,30 +326,26 @@ async function tryManageContextFastPath(
   // refreshCache() could swap the lookup cache between the two calls. In practice
   // this is benign: executeTool() falls through with undefined and we re-enter the
   // bootstrap path below. A full atomic getTool() refactor is tracked separately.
-  if (registryManager.hasToolHandler(toolName, effectiveInstanceUrl)) {
-    // The request's grants apply here too: a token without the tool's scopes is refused
-    // exactly as on the connected path, whatever GitLab's reachability.
-    const result = await registryManager.executeTool(
-      toolName,
-      toolArguments,
-      effectiveInstanceUrl,
-      requestScopes,
-    );
-    // If executeTool returns undefined (TOCTOU: cache was refreshed between hasToolHandler and
-    // executeTool), fall through to the bootstrap path instead of returning {text: "undefined"}.
-    if (result === undefined) {
-      return null;
-    }
-    // Not rate-limited: only a user's settings call while GitLab is unreachable asks for this
-    // probe, the monitor drops it while one is running, and a cooldown would keep the other
-    // tools down after GitLab answers again, which is what the probe is for.
-    healthMonitor.forceReconnect(effectiveInstanceUrl);
-    return formatToolResult(
-      result,
-      registryManager.getTool(toolName, effectiveInstanceUrl, requestScopes),
-    );
+  if (!registryManager.hasToolHandler(toolName, effectiveInstanceUrl)) {
+    return null; // tool not yet cached — fall through to bootstrap
   }
-  return null; // tool not yet cached — fall through to bootstrap
+  // The request's grants apply here too: a token without the tool's scopes is refused
+  // exactly as on the connected path, whatever GitLab's reachability.
+  const result = await registryManager.executeTool(
+    toolName,
+    toolArguments,
+    effectiveInstanceUrl,
+    requestScopes,
+  );
+  // If executeTool returns undefined (TOCTOU: cache was refreshed between hasToolHandler and
+  // executeTool), fall through to the bootstrap path instead of returning {text: "undefined"}.
+  if (result === undefined) {
+    return null;
+  }
+  return formatToolResult(
+    result,
+    registryManager.getTool(toolName, effectiveInstanceUrl, requestScopes),
+  );
 }
 
 /**
@@ -1087,6 +1106,19 @@ export async function setupHandlers(server: Server): Promise<void> {
         requestScopes,
       );
       if (fastPathResult) return fastPathResult;
+
+      // Listing, switching, linking and unlinking accounts read the session store and the
+      // instance configuration, never this instance: a chat whose instance fails to start
+      // can still move to an account that works.
+      if (managesAccounts(request)) {
+        const accountResult = await executeWithoutBootstrap(
+          toolName,
+          toolArguments,
+          effectiveInstanceUrl,
+          requestScopes,
+        );
+        if (accountResult) return accountResult;
+      }
 
       // Initialize connection, verify client, and rebuild the per-URL tool cache
       const oauthMode = isOAuthEnabled();

@@ -137,10 +137,12 @@ export class MemoryStorageBackend implements SessionStorageBackend {
     return Array.from(this.sessions.values());
   }
 
-  async getLinkedSessions(sessionId: string): Promise<OAuthSession[]> {
-    return Array.from(this.sessions.values())
-      .filter((session) => session.linkedToSessionId === sessionId)
-      .sort((a, b) => a.createdAt - b.createdAt);
+  getLinkedSessions(sessionId: string): Promise<OAuthSession[]> {
+    return Promise.resolve(
+      Array.from(this.sessions.values())
+        .filter((session) => session.linkedToSessionId === sessionId)
+        .sort((a, b) => a.createdAt - b.createdAt),
+    );
   }
 
   // Device flow operations

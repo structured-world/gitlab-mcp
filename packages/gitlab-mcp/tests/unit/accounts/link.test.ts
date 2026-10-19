@@ -472,6 +472,101 @@ describe('account linking', () => {
       expect(mockRevoke).toHaveBeenCalledWith(lost, config, comApp);
     });
 
+    // Only a create that collided with another link of the account is retried; a storage
+    // failure surfaces at once (the page asks for a reload, the flow keeps its tokens).
+    it('does not retry a create that failed for a storage reason', async () => {
+      const state = await verified();
+      mockExchange.mockResolvedValueOnce(tokens('com-token'));
+      mockUser.mockResolvedValueOnce({ id: 99, username: 'alice-personal' });
+      const create = jest
+        .spyOn(sessionStore, 'createSession')
+        .mockRejectedValue(new Error('database unavailable'));
+      const res = response();
+
+      try {
+        await completeAccountLink(res, state, await storedFlow(state), 'code', config);
+        expect(create).toHaveBeenCalledTimes(1);
+      } finally {
+        create.mockRestore();
+      }
+
+      expect(res.status).toHaveBeenCalledWith(500);
+      expect(await sessionStore.getAuthCodeFlow(state)).toBeDefined();
+    });
+
+    // The account stays leased elsewhere (a stuck refresh, say): the link stops after its
+    // passes and asks for a reload; the flow keeps its tokens and nothing is replaced.
+    it('asks for a reload when the account stays leased elsewhere', async () => {
+      await sessionStore.createSession({
+        ...primary,
+        id: 'old-link',
+        mcpAccessToken: '',
+        mcpRefreshToken: '',
+        gitlabAccessToken: 'old-token',
+        gitlabRefreshToken: 'old-refresh',
+        gitlabUserId: 99,
+        gitlabUsername: 'alice-personal',
+        gitlabApiUrl: 'https://gitlab.com',
+        linkedToSessionId: 'primary',
+      });
+      const state = await verified();
+      mockExchange.mockResolvedValueOnce(tokens('new-token'));
+      mockUser.mockResolvedValueOnce({ id: 99, username: 'alice-personal' });
+      const claim = jest.spyOn(sessionStore, 'claimGitLabRefresh').mockResolvedValue(false);
+      const res = response();
+
+      try {
+        await completeAccountLink(res, state, await storedFlow(state), 'code', config);
+      } finally {
+        claim.mockRestore();
+      }
+
+      expect(res.status).toHaveBeenCalledWith(500);
+      expect(await sessionStore.getAuthCodeFlow(state)).toBeDefined();
+      expect((await sessionStore.getSession('old-link'))?.gitlabAccessToken).toBe('old-token');
+      expect(mockRevoke).not.toHaveBeenCalledWith('old-token', config, comApp);
+    });
+
+    // Ending the displaced grant and releasing the lease are best effort: the new grant is
+    // stored, so the link succeeds when either fails.
+    it('links the account when ending the old grant or releasing the lease fails', async () => {
+      await sessionStore.createSession({
+        ...primary,
+        id: 'old-link',
+        mcpAccessToken: '',
+        mcpRefreshToken: '',
+        gitlabAccessToken: 'old-token',
+        gitlabRefreshToken: 'old-refresh',
+        gitlabUserId: 99,
+        gitlabUsername: 'alice-personal',
+        gitlabApiUrl: 'https://gitlab.com',
+        linkedToSessionId: 'primary',
+      });
+      const state = await verified();
+      mockExchange.mockResolvedValueOnce(tokens('new-token'));
+      mockUser.mockResolvedValueOnce({ id: 99, username: 'alice-personal' });
+      mockRevoke.mockRejectedValueOnce(new Error('GitLab returned 502'));
+      // The lease is released, then the call reports a failure: a lease left held would
+      // block the account in the tests that follow.
+      const releaseLease = sessionStore.releaseGitLabRefresh.bind(sessionStore);
+      const release = jest
+        .spyOn(sessionStore, 'releaseGitLabRefresh')
+        .mockImplementationOnce(async (id, leaseUntil) => {
+          await releaseLease(id, leaseUntil);
+          throw new Error('database unavailable');
+        });
+      const res = response();
+
+      try {
+        await completeAccountLink(res, state, await storedFlow(state), 'code', config);
+      } finally {
+        release.mockRestore();
+      }
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect((await sessionStore.getSession('old-link'))?.gitlabAccessToken).toBe('new-token');
+    });
+
     it('refuses a connect step whose instance is no longer configured', async () => {
       const state = await verified();
       const flow = { ...(await storedFlow(state)), selectedInstance: 'https://gone.example.com' };
@@ -686,6 +781,25 @@ describe('account linking', () => {
 
     expect(res.send.mock.calls[0][0]).toContain('has signed out');
     expect(mockRevoke).toHaveBeenCalledWith('cached-token', config, corpApp);
+    expect(await sessionStore.getAuthCodeFlow(state)).toBeUndefined();
+  });
+
+  // Ending a cached grant is best effort: a failed revocation still discards the flow.
+  it('discards an expired link whose cached grant cannot be ended', async () => {
+    const link = await startAsAlice('https://gitlab.com');
+    const state = stateOf(link.url);
+    const flow = {
+      ...(await storedFlow(state)),
+      gitlabTokens: tokens('cached-token'),
+      expiresAt: Date.now() - 1,
+    };
+    await sessionStore.storeAuthCodeFlow(state, flow);
+    mockRevoke.mockRejectedValueOnce(new Error('GitLab returned 502'));
+    const res = response();
+
+    await completeAccountLink(res, state, flow, 'code', config);
+
+    expect(res.send.mock.calls[0][0]).toContain('expired');
     expect(await sessionStore.getAuthCodeFlow(state)).toBeUndefined();
   });
 

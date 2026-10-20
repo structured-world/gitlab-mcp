@@ -24,11 +24,11 @@
     "postinstall": "node -e \"if (require('fs').existsSync('prisma/schema.prisma')) require('child_process').execSync('prisma generate', { stdio: 'inherit' })\""
   },
   "dependencies": {
-    "@prisma/adapter-pg": "^7.10.0",
-    "@prisma/client": "^7.10.0",
-    "dotenv": "^18.0.7",
+    "@prisma/adapter-pg": "^7.10.1",
+    "@prisma/client": "^7.10.1",
+    "dotenv": "^18.0.8",
     "pg": "^8.16.3",
-    "prisma": "^7.10.0"
+    "prisma": "^7.10.1"
   },
   "devDependencies": {
     "@structured-world/gitlab-mcp": "workspace:^",
@@ -36,7 +36,7 @@
     "@types/node": "^25.9.9",
     "@types/pg": "^8.16.0",
     "jest": "^30.5.2",
-    "ts-jest": "^29.4.14",
+    "ts-jest": "^29.4.15",
     "typescript": "^6.0.3"
   },
   "publishConfig": {

@@ -28,6 +28,8 @@ One connection to GitLab MCP can work with several GitLab accounts, on one insta
 
 After a switch, every call of the chat runs as that account on its instance, with its permissions, its account settings and the tools its instance's version and tier offer; the server sends `tools/list_changed` and the client fetches the new list. Other chats of the same connection are not affected, and a call already running finishes with the account it started with.
 
+A chat's choice lasts as long as its MCP session and is held by the server process that serves it, like the chat's other overrides. A new session (after the server restarts, the session idles out, or the client reconnects) starts with the first account; check with `list_accounts` and switch again. The accounts themselves stay linked to the connection.
+
 An account that cannot be used refuses the chat's calls with the reason and what to do; the chat never falls back to another account on its own. The account actions of `manage_context` keep working, so the chat can switch to another account or link this one again.
 
 ### Linking another account (OAuth)

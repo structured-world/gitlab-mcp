@@ -59,6 +59,7 @@ import {
   getConnectionTracker,
   runWithRequestContextAsync,
 } from './logging/index';
+import type { ConnectionCloseReason } from './logging/index';
 
 /**
  * Token context of a request the OAuth middleware authenticated (it stores the account in
@@ -765,6 +766,24 @@ export async function startServer(): Promise<void> {
             const newSessionId = crypto.randomUUID();
             effectiveSessionId = newSessionId;
 
+            // Forget a session once, whichever way its transport ends: a DELETE from the
+            // client, or a close by the server (idle eviction, shutdown) that never reaches
+            // onsessionclosed and would otherwise leave the entry here for good.
+            const endSession = (closedSessionId: string, reason: ConnectionCloseReason) => {
+              if (streamableTransports.get(closedSessionId)?.transport !== transport) return;
+              streamableTransports.delete(closedSessionId);
+              sessionStore.removeMcpSessionAssociation(closedSessionId).catch((err: unknown) => {
+                logWarn('Failed to remove MCP session association', { err });
+              });
+
+              connectionTracker.closeConnection(closedSessionId, reason);
+
+              sessionManager.removeSession(closedSessionId).catch((err: unknown) => {
+                logDebug('Error removing closed session', { err, sessionId: closedSessionId });
+              });
+              logInfo('StreamableHTTP session closed', { sessionId: closedSessionId, reason });
+            };
+
             transport = new StreamableHTTPServerTransport({
               sessionIdGenerator: () => newSessionId,
               onsessioninitialized: (initializedSessionId: string) => {
@@ -795,23 +814,13 @@ export async function startServer(): Promise<void> {
                     });
                 }
               },
-              onsessionclosed: (closedSessionId: string) => {
-                streamableTransports.delete(closedSessionId);
-                sessionStore.removeMcpSessionAssociation(closedSessionId).catch((err: unknown) => {
-                  logWarn('Failed to remove MCP session association', { err });
-                });
-
-                connectionTracker.closeConnection(closedSessionId, 'session_closed');
-
-                sessionManager.removeSession(closedSessionId).catch((err: unknown) => {
-                  logDebug('Error removing closed session', { err, sessionId: closedSessionId });
-                });
-                logInfo('StreamableHTTP session closed', {
-                  sessionId: closedSessionId,
-                  reason: 'session_closed',
-                });
-              },
+              onsessionclosed: (closedSessionId: string) =>
+                endSession(closedSessionId, 'session_closed'),
             });
+            // Set before the Server connects: Protocol.connect chains an existing onclose.
+            // A shutdown has already closed the tracked connections, so the reason below
+            // labels only an idle eviction.
+            transport.onclose = () => endSession(newSessionId, 'idle_timeout');
 
             // Connect per-session Server BEFORE handling request — ensures
             // message routing is ready before the transport processes the request

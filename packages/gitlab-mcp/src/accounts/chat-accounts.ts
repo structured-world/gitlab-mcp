@@ -55,7 +55,15 @@ export class AccountUnavailableError extends Error {
 /** Chat key of a request without an MCP session id (the stdio transport). */
 const SESSIONLESS = 'stdio';
 
-/** Chat key -> id of the account it switched to; absent: the first account. */
+/**
+ * Chat key -> id of the account it switched to; absent: the first account.
+ *
+ * Held in process like the chat's other overrides: the key is the MCP session id, and a
+ * request carrying an id this process no longer serves (restart, idle eviction, another
+ * replica) is answered 404 before it reaches a handler, so the client opens a new session
+ * under a new id. Persisting the choice would serve no session: under the MCP session id
+ * nothing reads it again, and under the OAuth session it would leak into every other chat.
+ */
 const selections = new Map<string, string>();
 
 /** Passes over a linked account before an unlink gives up and asks for a retry. */

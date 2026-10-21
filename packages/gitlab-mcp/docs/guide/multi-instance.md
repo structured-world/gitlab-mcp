@@ -143,5 +143,5 @@ See [Rate Limiting Configuration](/configuration/rate-limiting) for details.
 - [Configuration Reference](/configuration/instances) - All configuration options
 - [Federation Architecture](/advanced/federation) - Technical deep dive
 - [Tier Detection](/advanced/tier-detection) - How namespace tier detection works
-- [Context Switching](/advanced/context-switching) - Which instance a connection uses
+- [Context Switching](/advanced/context-switching) - Accounts of a connection and how each chat switches between them
 - [CLI Commands](/cli/instances) - Instance management commands

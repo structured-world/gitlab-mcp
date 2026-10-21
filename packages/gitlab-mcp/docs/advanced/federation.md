@@ -266,5 +266,5 @@ Example: on GitLab 16.0 to 16.3 the work item actions `add_link` and `remove_lin
 
 - [Multi-Instance Setup](/guide/multi-instance) - Getting started guide
 - [Tier Detection](/advanced/tier-detection) - Namespace tier detection
-- [Context Switching](/advanced/context-switching) - Which instance a connection uses
+- [Context Switching](/advanced/context-switching) - Accounts of a connection and how each chat switches between them
 - [Configuration Reference](/configuration/instances) - Configuration options

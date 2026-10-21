@@ -10,7 +10,10 @@ import { normalizeInstanceUrl } from '../utils/url';
 
 /**
  * The static token for an instance: the server's own token for its instance, else the
- * token variable configured for that instance; undefined when there is none.
+ * token variable configured for that instance; undefined when there is none. The server's
+ * own instance is the one GITLAB_API_URL names, so a configured instance without a token
+ * variable has no token even when it is the only one configured: GITLAB_TOKEN never goes
+ * to a host other than the server's own.
  */
 export function configuredInstanceToken(instanceUrl: string): string | undefined {
   const url = normalizeInstanceUrl(instanceUrl);

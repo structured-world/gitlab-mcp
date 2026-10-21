@@ -997,6 +997,20 @@ describe('MemoryStorageBackend', () => {
         expect(sessions[0].id).toBe('imported');
       });
 
+      // An import replaces every session, so the leases held on the replaced ones go too: a
+      // session imported under the same id is not held by a holder of the old one.
+      it('drops the refresh leases of the sessions it replaces', async () => {
+        const session = createTestSession({ gitlabRefreshToken: 'grt' });
+        await storage.createSession(session);
+        expect(await storage.claimGitLabRefresh(session.id, 'grt', 1000, 31000)).toBe(true);
+
+        storage.importData({
+          sessions: [createTestSession({ id: session.id, gitlabRefreshToken: 'grt' })],
+        });
+
+        expect(await storage.claimGitLabRefresh(session.id, 'grt', 2000, 32000)).toBe(true);
+      });
+
       it('should import sessions with token indexes', async () => {
         const session = createTestSession({
           id: 'imported-session',

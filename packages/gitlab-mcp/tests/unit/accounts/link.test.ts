@@ -614,7 +614,11 @@ describe('account linking', () => {
       const state = await verified();
       mockExchange.mockResolvedValueOnce(tokens('new-token'));
       mockUser.mockResolvedValueOnce({ id: 99, username: 'alice-personal' });
-      const claim = jest.spyOn(sessionStore, 'claimGitLabRefresh').mockResolvedValue(false);
+      // Only the account is held; the session is free for the link to take its turn.
+      const claimLease = sessionStore.claimGitLabRefresh.bind(sessionStore);
+      const claim = jest
+        .spyOn(sessionStore, 'claimGitLabRefresh')
+        .mockImplementation(async (id, ...rest) => id !== 'old-link' && claimLease(id, ...rest));
       const res = response();
 
       try {
@@ -680,14 +684,27 @@ describe('account linking', () => {
       expect(await sessionStore.getLinkedSessions('primary')).toEqual([]);
     });
 
-    // Another delivery of the same callback completed the link and reported it linked; the
-    // account it reported is the one this delivery stored (one id per account), so the
-    // losing delivery must not delete it.
+    // Another delivery of the same callback completed the link and reported the account it
+    // stored as linked. The losing delivery leaves that account as it is and ends nothing:
+    // the grant both deliveries got is the stored one.
     it('keeps the account when another delivery of the callback completed the link', async () => {
       const state = await verified();
       const flow = await storedFlow(state);
       mockExchange.mockResolvedValueOnce(tokens('com-token'));
       mockUser.mockImplementationOnce(async () => {
+        // The winning delivery: it stores the account, then spends the link.
+        await sessionStore.createSession({
+          ...primary,
+          id: 'winner-link',
+          mcpAccessToken: '',
+          mcpRefreshToken: '',
+          gitlabAccessToken: 'com-token',
+          gitlabRefreshToken: 'com-token-refresh',
+          gitlabUserId: 99,
+          gitlabUsername: 'stored-by-winner',
+          gitlabApiUrl: 'https://gitlab.com',
+          linkedToSessionId: 'primary',
+        });
         await sessionStore.consumeAuthCodeFlow(state);
         return { id: 99, username: 'alice-personal' };
       });
@@ -698,7 +715,10 @@ describe('account linking', () => {
       expect(res.send.mock.calls[0][0]).toContain('already completed');
       const linked = await sessionStore.getLinkedSessions('primary');
       expect(linked).toHaveLength(1);
-      expect(linked[0]).toMatchObject({ gitlabUserId: 99, gitlabAccessToken: 'com-token' });
+      expect(linked[0]).toMatchObject({
+        gitlabAccessToken: 'com-token',
+        gitlabUsername: 'stored-by-winner',
+      });
       expect(mockRevoke).not.toHaveBeenCalledWith('com-token', config, comApp);
     });
 
@@ -842,10 +862,10 @@ describe('account linking', () => {
       expect(mockRevoke).not.toHaveBeenCalledWith('com-token', config, comApp);
     });
 
-    // Duplicate deliveries of one callback both replace an account linked before: the first
-    // displaces the old grant, the second stores the same grant again and completes the link.
-    // The first still ends the grant it displaced, which no row refers to any more.
-    it('ends the grant it displaced when another delivery completed the link', async () => {
+    // The link replaced the grant of an account linked before, then found its flow gone (it
+    // expired and was discarded meanwhile). The account keeps the new grant, and the grant it
+    // displaced, which no row refers to any more, is ended.
+    it('ends the grant it displaced when the link was spent meanwhile', async () => {
       await sessionStore.createSession({
         ...primary,
         id: 'old-link',
@@ -878,8 +898,9 @@ describe('account linking', () => {
       expect(mockRevoke).not.toHaveBeenCalledWith('com-token', config, comApp);
     });
 
-    // Two links replacing the grant of an account linked before: every grant either ends up
-    // stored or is ended; none stays authorized at GitLab without a row to revoke it by.
+    // Two links replacing the grant of an account linked before, their callbacks arriving
+    // together: the completions take turns, and every grant either ends up stored or is ended;
+    // none stays authorized at GitLab without a row to revoke it by.
     it('ends every displaced grant when two links replace an account at once', async () => {
       await sessionStore.createSession({
         ...primary,
@@ -898,7 +919,7 @@ describe('account linking', () => {
       mockExchange
         .mockResolvedValueOnce(tokens('new-token-1'))
         .mockResolvedValueOnce(tokens('new-token-2'));
-      // Both callbacks look the account up before either replaces its grant.
+      // Both callbacks have their account from GitLab before either completes.
       let arrived = 0;
       let release!: () => void;
       const barrier = new Promise<void>((resolve) => (release = resolve));
@@ -911,20 +932,11 @@ describe('account linking', () => {
       mockUser
         .mockImplementationOnce(meetThenReturnUser)
         .mockImplementationOnce(meetThenReturnUser);
+      // Copies, as a database returns: the memory backend hands out its live records.
       const linkedSessions = sessionStore.getLinkedSessions.bind(sessionStore);
-      let lookups = 0;
-      let lookedUp!: () => void;
-      const bothLookedUp = new Promise<void>((resolve) => (lookedUp = resolve));
       const lookup = jest
         .spyOn(sessionStore, 'getLinkedSessions')
-        .mockImplementation(async (id) => {
-          // Copies, as a database returns: the memory backend hands out its live records.
-          const rows = (await linkedSessions(id)).map((row) => ({ ...row }));
-          lookups += 1;
-          if (lookups === 2) lookedUp();
-          if (lookups <= 2) await bothLookedUp;
-          return rows;
-        });
+        .mockImplementation(async (id) => (await linkedSessions(id)).map((row) => ({ ...row })));
       const [firstFlow, secondFlow] = [await storedFlow(first), await storedFlow(second)];
 
       try {
@@ -983,6 +995,41 @@ describe('account linking', () => {
       const linked = await sessionStore.getLinkedSessions('primary');
       expect(linked).toHaveLength(1);
       expect(linked[0]).toMatchObject({ gitlabUserId: 99, gitlabAccessToken: 'new-token' });
+    });
+
+    // Both deliveries of link A's callback got its grant; one completed A, then link B of the
+    // same account replaced and ended A's grant. The delayed delivery of A must not put the
+    // ended grant back over B's and end B's: a spent link stores nothing.
+    it('does not let a delayed delivery of a completed link replace a later link', async () => {
+      const a = await verified();
+      const flowA = await storedFlow(a);
+      const cookiesOfA = new Map(browserCookies);
+      const b = await verified();
+      const flowB = await storedFlow(b);
+      mockExchange
+        .mockResolvedValueOnce(tokens('token-a'))
+        .mockResolvedValueOnce(tokens('token-b'));
+      mockUser.mockResolvedValue({ id: 99, username: 'alice-personal' });
+      await completeAccountLink(response(), a, flowA, 'code', config);
+      await completeAccountLink(response(), b, flowB, 'code', config);
+      expect(mockRevoke).toHaveBeenCalledWith('token-a', config, comApp);
+      mockRevoke.mockClear();
+
+      // The duplicate delivery of A, from the same browser, with the grant A1 obtained.
+      for (const [name, value] of cookiesOfA) browserCookies.set(name, value);
+      const res = response();
+      await completeAccountLink(
+        res,
+        a,
+        { ...flowA, gitlabTokens: tokens('token-a') },
+        'code',
+        config,
+      );
+
+      expect(res.send.mock.calls[0][0]).toContain('already completed');
+      const [linked] = await sessionStore.getLinkedSessions('primary');
+      expect(linked.gitlabAccessToken).toBe('token-b');
+      expect(mockRevoke).not.toHaveBeenCalledWith('token-b', config, comApp);
     });
 
     // A retry after a failed completion reuses the cached grant the first attempt already

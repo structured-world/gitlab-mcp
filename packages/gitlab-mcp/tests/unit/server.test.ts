@@ -1280,6 +1280,39 @@ describe('server', () => {
       expect(mockSessionManager.removeSession).not.toHaveBeenCalled();
     });
 
+    // A session that closes while its association is still being written must not have the
+    // write land after the removal and leave a mapping for a session that no longer exists.
+    it('removes the MCP session association only after writing it finished', async () => {
+      process.env.PORT = '3000';
+      let finishAssociation!: () => void;
+      (mockSessionStore.associateMcpSession as jest.Mock).mockImplementationOnce(
+        () => new Promise<void>((resolve) => (finishAssociation = resolve)),
+      );
+      await startServer();
+      const mcpHandler = mockApp.all.mock.calls.find(
+        (call) => Array.isArray(call[0]) && call[0].includes('/mcp'),
+      )[1];
+      await mcpHandler(
+        { headers: {}, method: 'POST', path: '/mcp', body: {} },
+        {
+          status: jest.fn().mockReturnThis(),
+          json: jest.fn(),
+          headersSent: false,
+          locals: { oauthSessionId: 'oauth-session-123' },
+        },
+      );
+      const sessionId = lastStreamableOpts!.sessionIdGenerator!();
+      lastStreamableOpts!.onsessioninitialized!(sessionId);
+
+      lastStreamableOpts!.onsessionclosed!(sessionId);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(mockSessionStore.removeMcpSessionAssociation).not.toHaveBeenCalled();
+
+      finishAssociation();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(mockSessionStore.removeMcpSessionAssociation).toHaveBeenCalledWith(sessionId);
+    });
+
     // A transport closed without a DELETE (idle eviction, shutdown) must leave the session
     // map: otherwise every evicted session stays in it for the life of the process.
     it('drops a StreamableHTTP transport closed without a DELETE', async () => {

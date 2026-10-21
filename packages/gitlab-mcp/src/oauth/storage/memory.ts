@@ -519,6 +519,7 @@ export class MemoryStorageBackend implements SessionStorageBackend {
       this.accountSettings.set(record.accountKey, record);
     }
     this.sessions.clear();
+    this.gitlabRefreshLeases.clear();
     this.deviceFlows.clear();
     this.authCodeFlows.clear();
     this.authCodes.clear();

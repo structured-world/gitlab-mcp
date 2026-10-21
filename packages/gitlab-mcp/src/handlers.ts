@@ -556,6 +556,27 @@ async function pinSessionInstance(
   getSessionManager().setSessionInstanceUrl(sessionId, instanceUrl);
 }
 
+const HANDLER_TIMEOUT = Symbol('handler_timeout');
+
+/** The time a call has from its arrival; resolving its account and running it share it. */
+interface CallDeadline {
+  expired: Promise<typeof HANDLER_TIMEOUT>;
+  isExpired: () => boolean;
+  clear: () => void;
+}
+
+function startCallDeadline(): CallDeadline {
+  let expired = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const promise = new Promise<typeof HANDLER_TIMEOUT>((resolve) => {
+    timer = setTimeout(() => {
+      expired = true;
+      resolve(HANDLER_TIMEOUT);
+    }, HANDLER_TIMEOUT_MS);
+  });
+  return { expired: promise, isExpired: () => expired, clear: () => clearTimeout(timer) };
+}
+
 /**
  * The response to a call whose handler ran out of time; the handler may still be running.
  * A bootstrap it left unfinished is reported to the health monitor.
@@ -1077,6 +1098,7 @@ export async function setupHandlers(server: Server): Promise<void> {
   const callTool = async (
     request: CallToolRequest,
     extra: { sessionId?: string } | undefined,
+    deadline: CallDeadline,
   ): Promise<CallToolResult> => {
     // Capture instance URL early — used for both handlerWork and timeout reporting.
     // Must be resolved before Promise.race so timeout branch doesn't re-derive a
@@ -1114,24 +1136,14 @@ export async function setupHandlers(server: Server): Promise<void> {
     // Whose settings apply, from the authenticated request only.
     const caller = resolveCaller(callSessionId, requestInstanceUrl);
 
-    // Flag to prevent late reportSuccess/reportError from a timed-out handlerWork()
-    // overwriting the timeout signal already sent to HealthMonitor.
-    let timedOut = false;
     // Tracks whether bootstrap was entered and whether it completed.
     // started: true once we enter the init/introspection path (not set for the
     //   disconnected manage_context bypass which does no GitLab I/O)
     // complete: true after init + introspection succeed (before cache rebuild)
     const bootstrapState: BootstrapState = { started: false, complete: false };
-
-    // Create a timeout promise that rejects after HANDLER_TIMEOUT_MS
-    const HANDLER_TIMEOUT_SYMBOL = Symbol('handler_timeout');
-    let handlerTimeoutId: ReturnType<typeof setTimeout> | undefined;
-    const timeoutPromise = new Promise<typeof HANDLER_TIMEOUT_SYMBOL>((resolve) => {
-      handlerTimeoutId = setTimeout(() => {
-        timedOut = true;
-        resolve(HANDLER_TIMEOUT_SYMBOL);
-      }, HANDLER_TIMEOUT_MS);
-    });
+    // A late reportSuccess/reportError from a timed-out handlerWork() must not overwrite the
+    // timeout signal already sent to HealthMonitor.
+    const timedOut = deadline.isExpired;
 
     // The actual handler logic as a separate async function
     const handlerWork = async (): Promise<CallToolResult> => {
@@ -1206,7 +1218,7 @@ export async function setupHandlers(server: Server): Promise<void> {
         requestScopes,
         connectionManager,
         healthMonitor,
-        isTimedOut: () => timedOut,
+        isTimedOut: timedOut,
         bootstrapState,
       });
       if (bootstrapFailure) return bootstrapFailure;
@@ -1277,13 +1289,13 @@ export async function setupHandlers(server: Server): Promise<void> {
 
         // Report success — skip if handler already timed out (late completion
         // must not overwrite the timeout error already sent to HealthMonitor)
-        if (!timedOut) {
+        if (!timedOut()) {
           healthMonitor.reportSuccess(effectiveInstanceUrl);
         }
 
         return formatToolResult(result, definition);
       } catch (error) {
-        throwDispatchError(error, toolName, effectiveInstanceUrl, healthMonitor, timedOut);
+        throwDispatchError(error, toolName, effectiveInstanceUrl, healthMonitor, timedOut());
       }
     };
 
@@ -1293,10 +1305,10 @@ export async function setupHandlers(server: Server): Promise<void> {
       // complete — but the alternative (no timeout) leaves bootstrap unbounded
       // if the instance is hung. The timedOut flag prevents late reportSuccess/
       // reportError from overwriting the timeout health signal.
-      const result = await Promise.race([runWithCaller(caller, handlerWork), timeoutPromise]);
+      const result = await Promise.race([runWithCaller(caller, handlerWork), deadline.expired]);
 
-      // timedOut already set in timer callback — handler is still running but we respond
-      if (result === HANDLER_TIMEOUT_SYMBOL) {
+      // The deadline expired — handler is still running but we respond
+      if (result === HANDLER_TIMEOUT) {
         return handlerTimeoutResult(
           request,
           declaredIdempotent,
@@ -1324,21 +1336,44 @@ export async function setupHandlers(server: Server): Promise<void> {
       // Fallback to original error format
       const errorMessage = error instanceof Error ? error.message : String(error);
       return withReauthChallenge(errorToolResult({ error: errorMessage }), error);
-    } finally {
-      clearTimeout(handlerTimeoutId);
     }
   };
   // A call runs as the account its chat works with; one that cannot be used refuses it.
   // Managing the accounts needs no account's token, so it also runs when the chosen one
   // cannot be used: that is how the chat switches away from it.
+  // The timeout starts when the call arrives: resolving the account (a token refresh, a
+  // wait for another replica's refresh lease) counts against it like the handler does.
   server.setRequestHandler(CallToolRequestSchema, (request, extra) =>
     runWithMcpServer(server, async () => {
-      if (managesAccounts(request)) return callTool(request, extra);
+      const deadline = startCallDeadline();
       try {
-        return await withChatAccount(extra?.sessionId, () => callTool(request, extra));
+        if (managesAccounts(request)) return await callTool(request, extra, deadline);
+        let running = false;
+        const call = withChatAccount(extra?.sessionId, async () => {
+          // The client was already answered with a timeout: the tool must not run behind it.
+          if (deadline.isExpired()) return undefined;
+          running = true;
+          return callTool(request, extra, deadline);
+        });
+        const first = await Promise.race([call, deadline.expired]);
+        if (first !== HANDLER_TIMEOUT && first !== undefined) return first;
+        // A running handler answers its own timeout, with what its bootstrap reached.
+        const answered = running ? await call : undefined;
+        if (answered) return answered;
+        call.catch((error: unknown) =>
+          logDebug('Account resolution failed after the call timed out', { err: error }),
+        );
+        return handlerTimeoutResult(
+          request,
+          undefined,
+          { started: false, complete: false },
+          GITLAB_BASE_URL,
+        );
       } catch (error) {
         if (!(error instanceof AccountUnavailableError)) throw error;
         return errorToolResult({ error: error.message });
+      } finally {
+        deadline.clear();
       }
     }),
   );

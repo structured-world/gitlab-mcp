@@ -2048,6 +2048,55 @@ describe('handlers', () => {
       expect(mockHealthMonitor.reportError).not.toHaveBeenCalled();
     }, 5000);
 
+    // Resolving the chat's account (a token refresh, a wait for another replica's refresh
+    // lease) is part of the call: the timeout bounds it too.
+    it('times out a call whose account resolution does not finish', async () => {
+      const resolve = jest
+        .spyOn(chatAccounts, 'withChatAccount')
+        .mockImplementation(() => new Promise<never>(() => {}));
+      try {
+        const result = await callToolHandler(
+          { params: { name: 'browse_projects', arguments: { action: 'list' } } },
+          { sessionId: 'sess-1' },
+        );
+
+        expect(result.isError).toBe(true);
+        expect(JSON.parse(result.content![0].text).error_code).toBe('TIMEOUT');
+      } finally {
+        resolve.mockRestore();
+      }
+    }, 5000);
+
+    // The client was already told the call timed out: an account resolved late must not
+    // run the tool behind that answer.
+    it('does not run the tool once the call timed out during account resolution', async () => {
+      let resumeResolution!: () => void;
+      const resolve = jest
+        .spyOn(chatAccounts, 'withChatAccount')
+        .mockImplementation(async (_sessionId, fn) => {
+          await new Promise<void>((done) => {
+            resumeResolution = done;
+          });
+          return fn();
+        });
+      mockRegistryManager.executeTool.mockResolvedValue({ result: 'late' });
+      try {
+        const result = await callToolHandler(
+          { params: { name: 'browse_projects', arguments: { action: 'list' } } },
+          { sessionId: 'sess-1' },
+        );
+        expect(JSON.parse(result.content![0].text).error_code).toBe('TIMEOUT');
+
+        resumeResolution();
+        await new Promise((r) => setTimeout(r, 0));
+        await new Promise((r) => setTimeout(r, 0));
+
+        expect(mockRegistryManager.executeTool).not.toHaveBeenCalled();
+      } finally {
+        resolve.mockRestore();
+      }
+    }, 5000);
+
     it('should not trigger timeout when tool completes within HANDLER_TIMEOUT_MS', async () => {
       // Tool resolves immediately (well within 100ms timeout)
       mockRegistryManager.executeTool.mockResolvedValue({ result: 'fast' });

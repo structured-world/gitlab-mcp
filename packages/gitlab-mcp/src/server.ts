@@ -766,15 +766,21 @@ export async function startServer(): Promise<void> {
             const newSessionId = crypto.randomUUID();
             effectiveSessionId = newSessionId;
 
+            // The write of this session's association; its removal waits for it, so a write
+            // still in flight cannot land after the removal and outlive the session.
+            let associated: Promise<void> = Promise.resolve();
+
             // Forget a session once, whichever way its transport ends: a DELETE from the
             // client, or a close by the server (idle eviction, shutdown) that never reaches
             // onsessionclosed and would otherwise leave the entry here for good.
             const endSession = (closedSessionId: string, reason: ConnectionCloseReason) => {
               if (streamableTransports.get(closedSessionId)?.transport !== transport) return;
               streamableTransports.delete(closedSessionId);
-              sessionStore.removeMcpSessionAssociation(closedSessionId).catch((err: unknown) => {
-                logWarn('Failed to remove MCP session association', { err });
-              });
+              associated
+                .then(() => sessionStore.removeMcpSessionAssociation(closedSessionId))
+                .catch((err: unknown) => {
+                  logWarn('Failed to remove MCP session association', { err });
+                });
 
               connectionTracker.closeConnection(closedSessionId, reason);
 
@@ -807,7 +813,7 @@ export async function startServer(): Promise<void> {
 
                 // Associate MCP session with OAuth session if authenticated
                 if (oauthSessionId) {
-                  sessionStore
+                  associated = sessionStore
                     .associateMcpSession(initializedSessionId, oauthSessionId)
                     .catch((err: unknown) => {
                       logWarn('Failed to store MCP session association', { err });

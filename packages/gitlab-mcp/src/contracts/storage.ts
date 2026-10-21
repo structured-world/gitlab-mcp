@@ -7,11 +7,14 @@
  * the db package lazily, keeping the dependency one-directional.
  */
 export type {
+  AbandonedFlowGrantHandler,
+  ExpiredSessionHandler,
   SessionStorageBackend,
   SessionStorageStats,
   StorageConfig,
 } from '../oauth/storage/types';
 export type {
+  AccountLinkStep,
   OAuthSession,
   DeviceFlowState,
   AuthCodeFlowState,

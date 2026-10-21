@@ -237,5 +237,5 @@ always runs under the current ones.
 ## Related Documentation
 
 - [Read-Only Mode](/security/read-only) - Server-wide read-only mode
-- [Context Switching](/advanced/context-switching) - Switching GitLab instances
+- [Context Switching](/advanced/context-switching) - Accounts of a connection and how each chat switches between them
 - [Instance Configuration](/configuration/instances) - Configuring GitLab instances

@@ -1,5 +1,7 @@
 // Integration fixtures belong under the existing root "test" group. Cleanup
 // verifies the provider's live group before deleting a suite-owned subgroup.
+const fs = require('node:fs');
+
 async function findTestRoot(request, apiUrl, token) {
   const response = await request(`${apiUrl}/api/v4/groups/test`, {
     headers: { Authorization: `Bearer ${token}` },
@@ -28,6 +30,7 @@ async function deleteLifecycleGroup(request, apiUrl, token, saved) {
   const root = await findTestRoot(request, apiUrl, token);
   const headers = { Authorization: `Bearer ${token}` };
   const response = await request(`${apiUrl}/api/v4/groups/${saved.id}`, { headers });
+  if (response.status === 404) return 'removed';
   if (!response.ok) throw new Error(`Cannot verify cleanup group: ${response.status}`);
   const live = await response.json();
   if (live.id !== saved.id || live.full_path !== saved.full_path || live.parent_id !== root.id) {
@@ -92,4 +95,57 @@ async function deleteLifecycleGroup(request, apiUrl, token, saved) {
   throw new Error(`Cannot permanently remove test subgroup: ${removed.status}`);
 }
 
-module.exports = { findTestRoot, deleteLifecycleGroup };
+// The record a run keeps of its group outlives a run killed before its teardown; the
+// next run deletes that group first, and keeps the record when it cannot.
+async function cleanupStaleRun(request, apiUrl, token, dataFile) {
+  if (!fs.existsSync(dataFile)) return 'none';
+  let saved;
+  try {
+    saved = JSON.parse(fs.readFileSync(dataFile, 'utf8'))?.group;
+  } catch {
+    // A record cut short by a kill names no group; yarn cleanup:test-groups finds orphans
+    // by listing the lifecycle subgroups.
+    fs.unlinkSync(dataFile);
+    return 'none';
+  }
+  let result = 'none';
+  if (saved?.id) {
+    try {
+      result = await deleteLifecycleGroup(request, apiUrl, token, saved);
+    } catch (error) {
+      throw new Error(
+        `Cannot clean up ${saved.full_path} left by an interrupted run (${error.message}); ` +
+          `its record stays in ${dataFile}. Remove it with yarn cleanup:test-groups.`,
+        { cause: error },
+      );
+    }
+  }
+  fs.unlinkSync(dataFile);
+  return result;
+}
+
+// Every lifecycle subgroup of the root test group, for removing the ones no record names.
+async function listLifecycleGroups(request, apiUrl, token) {
+  const root = await findTestRoot(request, apiUrl, token);
+  const headers = { Authorization: `Bearer ${token}` };
+  const groups = [];
+  // Pages are read one after another: each names the next in its x-next-page header.
+  for (let page = 1; page > 0; ) {
+    const response = await request(
+      `${apiUrl}/api/v4/groups/${root.id}/subgroups?search=lifecycle-test&per_page=100&page=${page}`,
+      { headers },
+    );
+    if (!response.ok) throw new Error(`Cannot list test subgroups: ${response.status}`);
+    for (const group of await response.json()) {
+      if (group.parent_id === root.id && /^test\/lifecycle-test-\d+$/.test(group.full_path)) {
+        groups.push(group);
+      }
+    }
+    // Empty on the last page; anything but a page number ends the listing.
+    const next = Number.parseInt(response.headers.get('x-next-page') ?? '', 10);
+    page = Number.isSafeInteger(next) && next > page ? next : 0;
+  }
+  return groups;
+}
+
+module.exports = { findTestRoot, deleteLifecycleGroup, cleanupStaleRun, listLifecycleGroups };

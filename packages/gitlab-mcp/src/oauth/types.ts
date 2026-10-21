@@ -64,10 +64,40 @@ export interface OAuthSession {
   scopes: string[];
   /** RFC 8707 resource the tokens are issued for; absent in sessions persisted by older servers. */
   resource?: string;
+  /**
+   * Set on a GitLab account linked to another session: that session's id. Such a record
+   * holds only the account and its GitLab tokens; the session it belongs to issues the MCP
+   * tokens, and removing that session removes it.
+   */
+  linkedToSessionId?: string;
   /** Session creation timestamp (milliseconds since epoch) */
   createdAt: number;
   /** Last update timestamp (milliseconds since epoch) */
   updatedAt: number;
+}
+
+/**
+ * Step of linking another GitLab account to a signed-in session. The browser first signs
+ * in with the session's own account (`verify`), so a link opened by another person cannot
+ * attach their account to this session; then with the account to link (`connect`).
+ */
+export interface AccountLinkStep {
+  /** Session the account is linked to */
+  sessionId: string;
+  stage: 'verify' | 'connect';
+  /** Instance of the account to link */
+  instance: string;
+  /** Label of that instance */
+  instanceLabel?: string;
+  /**
+   * At `connect`: SHA-256 (hex) of the nonce the browser that passed `verify` holds in a
+   * cookie, so the step completes only in that browser, never in one it was forwarded to.
+   */
+  browserBinding?: string;
+  /** MCP session of the chat whose client opened the link through URL elicitation */
+  mcpSessionId?: string;
+  /** That elicitation's id, announced to the chat as complete once the account is linked */
+  elicitationId?: string;
 }
 
 /**
@@ -135,6 +165,8 @@ export interface AuthCodeFlowState {
    * until the account is set up and a retried callback finishes with them.
    */
   gitlabTokens?: GitLabTokenResponse;
+  /** Set when the flow links another account to a session instead of signing a client in. */
+  link?: AccountLinkStep;
 }
 
 /**

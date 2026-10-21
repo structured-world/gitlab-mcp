@@ -11,6 +11,7 @@ jest.mock('@modelcontextprotocol/sdk/server/index.js', () => ({
     notification: jest.fn().mockResolvedValue(undefined),
     oninitialized: null,
     getClientVersion: jest.fn().mockReturnValue({ name: 'test-client' }),
+    createElicitationCompletionNotifier: jest.fn(),
   })),
 }));
 
@@ -282,6 +283,37 @@ describe('SessionManager', () => {
     });
   });
 
+  // A completed URL elicitation is announced only to the session that started it, and only
+  // when this process holds that session.
+  describe('notifyElicitationComplete', () => {
+    it('announces the completion to the named session only', async () => {
+      manager.start();
+      const server1 = await manager.createSession('session-1', mockTransport);
+      const server2 = await manager.createSession('session-2', mockTransport);
+      const send = jest.fn().mockResolvedValue(undefined);
+      (server1.createElicitationCompletionNotifier as jest.Mock).mockReturnValue(send);
+
+      await manager.notifyElicitationComplete('session-1', 'elicit-1');
+      await manager.notifyElicitationComplete('held-elsewhere', 'elicit-2');
+
+      expect(server1.createElicitationCompletionNotifier).toHaveBeenCalledWith('elicit-1');
+      expect(send).toHaveBeenCalledTimes(1);
+      expect(server2.createElicitationCompletionNotifier).not.toHaveBeenCalled();
+    });
+
+    it('does not fail when the session cannot be told', async () => {
+      manager.start();
+      const server1 = await manager.createSession('session-1', mockTransport);
+      (server1.createElicitationCompletionNotifier as jest.Mock).mockReturnValue(
+        jest.fn().mockRejectedValue(new Error('Disconnected')),
+      );
+
+      await expect(
+        manager.notifyElicitationComplete('session-1', 'elicit-1'),
+      ).resolves.toBeUndefined();
+    });
+  });
+
   describe('per-session instance URL tracking (#398)', () => {
     it('should default instanceUrl to GITLAB_BASE_URL on session creation', async () => {
       manager.start();
@@ -308,26 +340,6 @@ describe('SessionManager', () => {
       manager.setSessionInstanceUrl('session-1', 'https://other.gitlab.com');
 
       expect(manager.getSessionInstanceUrl('session-1')).toBe('https://other.gitlab.com');
-    });
-
-    // A switch of the shared static-token instance moves every session; the caller notifies
-    // them once afterwards, so pinning itself sends nothing.
-    it('pins every session to an instance without notifying them', async () => {
-      manager.start();
-      const first = await manager.createSession('session-1', mockTransport);
-      const second = await manager.createSession(
-        'session-2',
-        mockTransport,
-        'https://a.example.com',
-      );
-
-      manager.pinAllSessions('https://other.gitlab.com/');
-
-      expect(manager.getSessionInstanceUrl('session-1')).toBe('https://other.gitlab.com');
-      expect(manager.getSessionInstanceUrl('session-2')).toBe('https://other.gitlab.com');
-      await Promise.resolve();
-      expect(first.notification).not.toHaveBeenCalled();
-      expect(second.notification).not.toHaveBeenCalled();
     });
 
     it('should send tools/list_changed notification when instanceUrl changes', async () => {

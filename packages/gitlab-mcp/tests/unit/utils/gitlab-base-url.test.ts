@@ -1,7 +1,8 @@
 /**
  * Every REST call is sent to the GitLab instance of its caller: the OAuth token's
- * instance, else the instance the server's own token works with now (it changes on
- * switch_instance), else the configured GITLAB_API_URL.
+ * instance, else the configured instance a static-token chat switched to, else the
+ * instance the call started with or the server's own token works with, else the configured
+ * GITLAB_API_URL.
  */
 
 let mockOAuth = false;
@@ -14,6 +15,7 @@ jest.mock('../../../src/oauth/index', () => ({
 
 import { getGitLabBaseUrl, setActiveInstanceSource } from '../../../src/utils/gitlab-base-url';
 import { resolveCaller, runWithCaller } from '../../../src/configuration/caller';
+import { runWithTokenAccount } from '../../../src/accounts/token-account';
 
 describe('getGitLabBaseUrl', () => {
   const originalUrl = process.env.GITLAB_API_URL;
@@ -53,8 +55,22 @@ describe('getGitLabBaseUrl', () => {
     expect(getGitLabBaseUrl()).toBe('https://switched.example.com');
   });
 
-  // A switch_instance by another chat must not move a call already running: its requests
-  // stay on the instance the call started with.
+  // A static-token chat that switched to another configured instance sends its calls there,
+  // whatever instance the call was pinned to by default.
+  it('uses the configured instance a static-token chat switched to', () => {
+    const caller = resolveCaller('s1', 'https://configured.example.com');
+
+    const url = runWithCaller(caller, () =>
+      runWithTokenAccount({ instanceUrl: 'https://gitlab.com', token: 'pat' }, () =>
+        getGitLabBaseUrl(),
+      ),
+    );
+
+    expect(url).toBe('https://gitlab.com');
+  });
+
+  // The instance the server's token works with must not move a call already running: its
+  // requests stay on the instance the call started with.
   it('keeps a running call on the instance it started with', () => {
     let active = 'https://first.example.com';
     setActiveInstanceSource(() => active);

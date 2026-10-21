@@ -603,6 +603,7 @@ describe('Fetch Configuration Edge Cases', () => {
             isInitialized: () => true,
             getDispatcher: () => mockDispatcher,
             acquireSlot: jest.fn(async () => () => {}),
+            getUrls: () => [],
           }),
         },
       }));

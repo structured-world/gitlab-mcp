@@ -12,6 +12,9 @@
  */
 
 import type {
+  AbandonedFlowGrantHandler,
+  AccountLinkStep,
+  ExpiredSessionHandler,
   OAuthSession,
   DeviceFlowState as DeviceFlowStateType,
   AuthCodeFlowState as AuthCodeFlowStateType,
@@ -24,6 +27,26 @@ import type {
   AccountSettingsRecord,
 } from '@structured-world/gitlab-mcp/storage-contract';
 import { logInfo, logError, logDebug } from './logger';
+
+/** Key prefix of an expired flow cleanup took over to end its grant. */
+const CLAIMED_FLOW_PREFIX = 'cleanup:';
+
+/**
+ * How many grants cleanup ends at once: a backlog (after an outage, say) goes out in steps
+ * instead of one burst against the database pool and GitLab's rate limits.
+ */
+const CLEANUP_BATCH = 5;
+
+/** Run `run` over `items`, at most CLEANUP_BATCH at a time. */
+async function inBatches<T>(
+  items: readonly T[],
+  run: (item: T) => Promise<void>,
+  from = 0,
+): Promise<void> {
+  if (from >= items.length) return;
+  await Promise.all(items.slice(from, from + CLEANUP_BATCH).map((item) => run(item)));
+  return inBatches(items, run, from + CLEANUP_BATCH);
+}
 
 /**
  * Explicit interfaces for Prisma model results.
@@ -45,6 +68,7 @@ interface PrismaOAuthSessionRow {
   clientId: string;
   scopes: string[];
   resource?: string | null;
+  linkedToSessionId?: string | null;
   createdAt: bigint;
   updatedAt: bigint;
 }
@@ -81,6 +105,7 @@ interface PrismaDeviceFlowStateRow {
 interface PrismaAuthCodeFlowStateRow {
   requestedGitlabScopes?: unknown;
   gitlabTokens?: unknown;
+  link?: unknown;
   selectedInstance?: string | null;
   selectedInstanceLabel?: string | null;
   mcpScopes?: unknown;
@@ -163,6 +188,24 @@ function storedGitlabTokens(value: unknown): GitLabTokenResponse | undefined {
   return value as GitLabTokenResponse;
 }
 
+/** Account linking step of a flow; a corrupt value is refused rather than half-used. */
+function storedLinkStep(value: unknown): AccountLinkStep | undefined {
+  if (value == null) return undefined;
+  const step = value as Partial<Record<keyof AccountLinkStep, unknown>>;
+  if (
+    typeof step.sessionId !== 'string' ||
+    (step.stage !== 'verify' && step.stage !== 'connect') ||
+    typeof step.instance !== 'string' ||
+    (step.instanceLabel !== undefined && typeof step.instanceLabel !== 'string') ||
+    (step.browserBinding !== undefined && typeof step.browserBinding !== 'string') ||
+    (step.mcpSessionId !== undefined && typeof step.mcpSessionId !== 'string') ||
+    (step.elicitationId !== undefined && typeof step.elicitationId !== 'string')
+  ) {
+    throw new Error('Invalid stored account link step');
+  }
+  return value as AccountLinkStep;
+}
+
 /** Optional row values come back as null; the contract uses absent properties. */
 function optional<T>(value: T | null | undefined): T | undefined {
   return value ?? undefined;
@@ -180,7 +223,7 @@ interface GenericPrismaClient {
     create(args: unknown): Promise<unknown>;
     findUnique(args: unknown): Promise<unknown>;
     findFirst(args: unknown): Promise<unknown>;
-    findMany(): Promise<unknown>;
+    findMany(args?: unknown): Promise<unknown>;
     update(args: unknown): Promise<unknown>;
     updateMany(args: unknown): Promise<unknown>;
     delete(args: unknown): Promise<unknown>;
@@ -207,6 +250,8 @@ interface GenericPrismaClient {
   authCodeFlowState: {
     upsert(args: unknown): Promise<unknown>;
     findUnique(args: unknown): Promise<unknown>;
+    findMany(args: unknown): Promise<unknown>;
+    updateMany(args: unknown): Promise<unknown>;
     delete(args: unknown): Promise<unknown>;
     deleteMany(args: unknown): Promise<unknown>;
     count(): Promise<number>;
@@ -242,6 +287,8 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
 
   private prisma: GenericPrismaClient | null = null;
   private cleanupIntervalId: ReturnType<typeof setInterval> | null = null;
+  private abandonedFlowGrant: AbandonedFlowGrantHandler | undefined;
+  private expiredSession: ExpiredSessionHandler | undefined;
   private readonly connectionString: string | undefined;
 
   constructor(options: PostgreSQLStorageOptions = {}) {
@@ -316,6 +363,7 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
         clientId: session.clientId,
         scopes: session.scopes,
         resource: session.resource ?? null,
+        linkedToSessionId: session.linkedToSessionId ?? null,
         createdAt: BigInt(session.createdAt),
         updatedAt: BigInt(session.updatedAt),
       },
@@ -399,6 +447,9 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
     if (updates.gitlabScopes !== undefined) {
       data.gitlabScopes = updates.gitlabScopes;
     }
+    if (updates.gitlabUsername !== undefined) {
+      data.gitlabUsername = updates.gitlabUsername;
+    }
     if (updates.resource !== undefined) {
       data.resource = updates.resource;
     }
@@ -407,6 +458,7 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
 
   async deleteSession(sessionId: string): Promise<boolean> {
     const prisma = this.getPrisma();
+    // Linked accounts go with the session through their foreign key (ON DELETE CASCADE).
     const result = (await prisma.oAuthSession.deleteMany({
       where: { id: sessionId },
     })) as PrismaBatchPayload;
@@ -416,6 +468,15 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
   async getAllSessions(): Promise<OAuthSession[]> {
     const prisma = this.getPrisma();
     const rows = (await prisma.oAuthSession.findMany()) as PrismaOAuthSessionRow[];
+    return rows.map((row) => this.rowToSession(row));
+  }
+
+  async getLinkedSessions(sessionId: string): Promise<OAuthSession[]> {
+    const prisma = this.getPrisma();
+    const rows = (await prisma.oAuthSession.findMany({
+      where: { linkedToSessionId: sessionId },
+      orderBy: { createdAt: 'asc' },
+    })) as PrismaOAuthSessionRow[];
     return rows.map((row) => this.rowToSession(row));
   }
 
@@ -436,6 +497,7 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
       clientId: row.clientId,
       scopes: row.scopes,
       resource: optional(row.resource),
+      linkedToSessionId: optional(row.linkedToSessionId),
       createdAt: Number(row.createdAt),
       updatedAt: Number(row.updatedAt),
     };
@@ -541,6 +603,7 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
       mcpScopes: flow.scopes,
       resource: flow.resource ?? null,
       gitlabTokens: flow.gitlabTokens,
+      link: flow.link,
     };
     await prisma.authCodeFlowState.upsert({
       where: { internalState },
@@ -582,6 +645,7 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
       scopes: storedMcpScopes(row.mcpScopes),
       resource: optional(row.resource),
       gitlabTokens: storedGitlabTokens(row.gitlabTokens),
+      link: storedLinkStep(row.link),
     };
   }
 
@@ -842,6 +906,75 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
     return { accountKey, settings, version, updatedAt };
   }
 
+  onAbandonedFlowGrant(handler: AbandonedFlowGrantHandler): void {
+    this.abandonedFlowGrant = handler;
+  }
+
+  onExpiredSession(handler: ExpiredSessionHandler): void {
+    this.expiredSession = handler;
+  }
+
+  /**
+   * Hand each session past its age limit to the handler, which removes it with its linked
+   * accounts (their foreign key keeps them from outliving it) and ends their grants. A
+   * handler failure leaves the session to the delete that follows.
+   */
+  private async expireSessions(cutoff: bigint): Promise<void> {
+    const handler = this.expiredSession;
+    if (!handler) return;
+    const rows = (await this.getPrisma().oAuthSession.findMany({
+      where: { createdAt: { lt: cutoff }, linkedToSessionId: null },
+    })) as PrismaOAuthSessionRow[];
+    await inBatches(rows, (row) =>
+      handler(this.rowToSession(row)).catch((error: unknown) => {
+        logError('Could not end the grants of an expired session', { err: error as Error });
+      }),
+    );
+  }
+
+  /**
+   * Take an expired flow away from its callback without deleting it: its row moves to a
+   * claimed key, so a callback finishing now finds nothing to consume, while the tokens stay
+   * stored until their grant is ended. A row already claimed by a cleanup that stopped
+   * before ending it is taken as it is. Resolves to the claimed key, or undefined when the
+   * callback consumed the flow first.
+   */
+  private async claimAbandonedFlow(internalState: string): Promise<string | undefined> {
+    if (internalState.startsWith(CLAIMED_FLOW_PREFIX)) return internalState;
+    const claimedState = CLAIMED_FLOW_PREFIX + internalState;
+    const claimed = (await this.getPrisma().authCodeFlowState.updateMany({
+      where: { internalState },
+      data: { internalState: claimedState },
+    })) as PrismaBatchPayload;
+    return claimed.count === 1 ? claimedState : undefined;
+  }
+
+  /**
+   * End the grant of each expired flow that still holds one, then remove the flow; a flow
+   * whose grant could not be ended stays claimed for the next cleanup. A row is claimed
+   * before it is read, so one that cannot be read keeps its tokens out of the bulk delete.
+   */
+  private async endAbandonedFlows(now: bigint): Promise<void> {
+    const handler = this.abandonedFlowGrant;
+    if (!handler) return;
+    const prisma = this.getPrisma();
+    const rows = (
+      (await prisma.authCodeFlowState.findMany({
+        where: { expiresAt: { lt: now } },
+      })) as PrismaAuthCodeFlowStateRow[]
+    ).filter((row) => row.gitlabTokens != null);
+    await inBatches(rows, async (row) => {
+      try {
+        const claimedState = await this.claimAbandonedFlow(row.internalState);
+        if (!claimedState) return;
+        await handler(this.rowToAuthCodeFlow(row));
+        await prisma.authCodeFlowState.deleteMany({ where: { internalState: claimedState } });
+      } catch (error: unknown) {
+        logError('Could not end the grant of an abandoned flow', { err: error as Error });
+      }
+    });
+  }
+
   // Cleanup
   async cleanup(): Promise<void> {
     const prisma = this.getPrisma();
@@ -849,6 +982,10 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
     const maxSessionAge = BigInt(7 * 24 * 60 * 60 * 1000); // 7 days
 
     try {
+      // Grants first, each ended before its record goes: the bulk delete below then removes
+      // only flows and sessions that hold none, or whose handler left them.
+      await this.endAbandonedFlows(now);
+      await this.expireSessions(now - maxSessionAge);
       // Use transaction for atomic cleanup
       const results = (await prisma.$transaction([
         prisma.oAuthSession.deleteMany({
@@ -859,8 +996,12 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
         prisma.deviceFlowState.deleteMany({
           where: { expiresAt: { lt: now } },
         }),
+        // A claimed flow whose grant could not be ended waits for the next cleanup.
         prisma.authCodeFlowState.deleteMany({
-          where: { expiresAt: { lt: now } },
+          where: {
+            expiresAt: { lt: now },
+            NOT: { internalState: { startsWith: CLAIMED_FLOW_PREFIX } },
+          },
         }),
         prisma.authorizationCode.deleteMany({
           where: { expiresAt: { lt: now } },

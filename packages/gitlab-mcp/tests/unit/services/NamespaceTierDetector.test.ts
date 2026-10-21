@@ -358,6 +358,46 @@ describe('NamespaceTierDetector', () => {
       expect(result1.cachedAt.getTime()).toBe(result2.cachedAt.getTime());
     });
 
+    // A chat switched to a linked account keeps the connection's session id; the tier its
+    // account sees must not come from the previous account's or instance's cache entry.
+    it('keeps the tiers of different accounts of one session apart', async () => {
+      const corp = {
+        sessionId: 'session-1',
+        gitlabToken: 'corp-token',
+        gitlabUserId: 7,
+        gitlabUsername: 'alice',
+        apiUrl: 'https://git.corp.example.com',
+      };
+      mockedEnhancedFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ data: { namespace: { plan: 'ultimate' } } }),
+        } as Response)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ data: { namespace: { plan: 'free' } } }),
+        } as Response)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ data: { namespace: { plan: 'premium' } } }),
+        } as Response);
+
+      mockedGetTokenContext.mockReturnValue(corp);
+      expect((await getNamespaceTier('group/project')).tier).toBe('ultimate');
+      mockedGetTokenContext.mockReturnValue({
+        ...corp,
+        gitlabToken: 'com-token',
+        gitlabUserId: 99,
+        apiUrl: 'https://gitlab.com',
+      });
+      expect((await getNamespaceTier('group/project')).tier).toBe('free');
+      mockedGetTokenContext.mockReturnValue({ ...corp, gitlabToken: 'bob-token', gitlabUserId: 8 });
+      expect((await getNamespaceTier('group/project')).tier).toBe('premium');
+
+      expect(mockedEnhancedFetch).toHaveBeenCalledTimes(3);
+      expect(getNamespaceTierCacheMetrics().entriesBySession.get('session-1')).toBe(3);
+    });
+
     it('should expire cache after TTL (5 minutes)', async () => {
       // Tests that cache entries are invalidated after TTL expires
       jest.useFakeTimers();
@@ -726,12 +766,11 @@ describe('NamespaceTierDetector', () => {
       await getNamespaceTier('test-namespace');
 
       const metrics = getNamespaceTierCacheMetrics();
-      // Session ID extraction uses lastIndexOf to find the delimiter
-      // Key format: `${sessionId}:${namespacePath}`
-      // With sessionId "complex-session-id-with-colons:and:special:chars" and namespace "test-namespace"
-      // The key is "complex-session-id-with-colons:and:special:chars:test-namespace"
-      // lastIndexOf(":") correctly extracts "complex-session-id-with-colons:and:special:chars"
+      // Entries are grouped by session id, so separators inside the id do not matter.
       expect(metrics.totalEntries).toBe(1);
+      expect(metrics.entriesBySession.get('complex-session-id-with-colons:and:special:chars')).toBe(
+        1,
+      );
     });
   });
 });

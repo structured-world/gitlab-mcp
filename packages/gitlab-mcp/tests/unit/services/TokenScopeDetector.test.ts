@@ -90,6 +90,30 @@ describe('TokenScopeDetector', () => {
       );
     });
 
+    // Another configured instance is probed with its own token, never the server's.
+    it("should probe another instance with that instance's token", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          id: 44,
+          name: 'com-token',
+          scopes: ['read_api'],
+          expires_at: null,
+          active: true,
+          revoked: false,
+        }),
+      });
+
+      await detectTokenScopes('https://gitlab.com', 'com-pat');
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://gitlab.com/api/v4/personal_access_tokens/self',
+        expect.objectContaining({
+          headers: expect.objectContaining({ 'PRIVATE-TOKEN': 'com-pat' }),
+        }),
+      );
+    });
+
     it('should detect read_api scope as having GraphQL access', async () => {
       // read_api provides read-only GraphQL access
       mockFetch.mockResolvedValueOnce({

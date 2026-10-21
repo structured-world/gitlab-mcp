@@ -377,6 +377,25 @@ describe('FileStorageBackend', () => {
       expect(await storage.deleteSession(session.id)).toBe(true);
     });
 
+    // The accounts linked to the session go with it; a deletion that could not be written
+    // brings them back too, so the retried revocation still finds and ends their grants.
+    it('keeps the linked accounts of a session whose deletion cannot be written', async () => {
+      const { session } = await seeded();
+      await storage.createSession(
+        createTestSession({ id: 'linked', mcpAccessToken: '', linkedToSessionId: session.id }),
+      );
+      const open = failNextWrite();
+      try {
+        await expect(storage.deleteSession(session.id)).rejects.toThrow('EACCES');
+      } finally {
+        open.mockRestore();
+      }
+
+      expect((await storage.getLinkedSessions(session.id)).map((s) => s.id)).toEqual(['linked']);
+      expect(await storage.deleteSession(session.id)).toBe(true);
+      expect(await storage.getSession('linked')).toBeUndefined();
+    });
+
     // Tokens of an update that could not be written were never handed out: the session
     // keeps its previous tokens, and no later write may persist the failed ones.
     it('keeps the previous tokens when an update cannot be written', async () => {
@@ -743,7 +762,9 @@ describe('FileStorageBackend', () => {
       expect(session?.id).toBe('existing-session');
     });
 
-    it('should filter expired sessions on load', async () => {
+    // A session that expired while the server was stopped still holds GitLab grants: it is
+    // loaded, and the next cleanup ends them as it removes the session.
+    it('keeps expired sessions on load for cleanup to end their grants', async () => {
       // Create a storage file with expired and valid sessions
       const eightDaysAgo = Date.now() - 8 * 24 * 60 * 60 * 1000;
       const existingData: StorageData = {
@@ -762,9 +783,102 @@ describe('FileStorageBackend', () => {
 
       storage = new FileStorageBackend({ filePath });
       await storage.initialize();
+      const expired: string[] = [];
+      storage.onExpiredSession(async (session) => {
+        expired.push(session.id);
+      });
 
+      expect(await storage.getSession('expired-session')).toBeDefined();
+      await storage.cleanup();
+
+      expect(expired).toEqual(['expired-session']);
       expect(await storage.getSession('expired-session')).toBeUndefined();
       expect(await storage.getSession('valid-session')).toBeDefined();
+    });
+
+    // A linked account goes with its session, also when the session expires while the server
+    // is stopped: the account is younger, so its own age would keep it.
+    it('removes linked accounts with their session that expired while stopped', async () => {
+      const eightDaysAgo = Date.now() - 8 * 24 * 60 * 60 * 1000;
+      const existingData: StorageData = {
+        version: STORAGE_DATA_VERSION,
+        exportedAt: Date.now(),
+        sessions: [
+          createTestSession({ id: 'expired-parent', createdAt: eightDaysAgo }),
+          createTestSession({
+            id: 'orphan-link',
+            mcpAccessToken: '',
+            mcpRefreshToken: '',
+            linkedToSessionId: 'expired-parent',
+            createdAt: Date.now(),
+          }),
+          createTestSession({ id: 'live-parent', createdAt: Date.now() }),
+          createTestSession({
+            id: 'live-link',
+            mcpAccessToken: '',
+            mcpRefreshToken: '',
+            linkedToSessionId: 'live-parent',
+            createdAt: Date.now(),
+          }),
+        ],
+        deviceFlows: [],
+        authCodeFlows: [],
+        authCodes: [],
+        mcpSessionMappings: [],
+      };
+      fs.writeFileSync(filePath, JSON.stringify(existingData), 'utf-8');
+
+      storage = new FileStorageBackend({ filePath });
+      await storage.initialize();
+      const expired: string[] = [];
+      storage.onExpiredSession(async (session) => {
+        expired.push(session.id);
+      });
+
+      await storage.cleanup();
+
+      expect(expired).toEqual(['expired-parent']);
+      expect(await storage.getSession('orphan-link')).toBeUndefined();
+      expect(await storage.getSession('live-link')).toBeDefined();
+    });
+
+    // An expired flow holding exchanged GitLab tokens is kept on load, so the next cleanup
+    // ends its grant before removing it; dropping it here would leave the grant authorized.
+    it('keeps expired flows holding a grant on load for cleanup to end', async () => {
+      const gitlabTokens = {
+        access_token: 'cached-token',
+        refresh_token: 'cached-refresh',
+        token_type: 'Bearer',
+        expires_in: 7200,
+        created_at: 0,
+      };
+      const abandoned = createTestAuthCodeFlow({ expiresAt: Date.now() - 1000, gitlabTokens });
+      const existingData: StorageData = {
+        version: STORAGE_DATA_VERSION,
+        exportedAt: Date.now(),
+        sessions: [],
+        deviceFlows: [],
+        authCodeFlows: [
+          { internalState: 'abandoned', flow: abandoned },
+          {
+            internalState: 'expired-no-grant',
+            flow: createTestAuthCodeFlow({ expiresAt: Date.now() - 1000 }),
+          },
+        ],
+        authCodes: [],
+        mcpSessionMappings: [],
+      };
+      fs.writeFileSync(filePath, JSON.stringify(existingData), 'utf-8');
+      storage = new FileStorageBackend({ filePath });
+      await storage.initialize();
+      const handler = jest.fn(async () => {});
+      storage.onAbandonedFlowGrant(handler);
+
+      await storage.cleanup();
+
+      expect(handler).toHaveBeenCalledWith(expect.objectContaining({ gitlabTokens }));
+      expect(await storage.getAuthCodeFlow('abandoned')).toBeUndefined();
+      expect(await storage.getAuthCodeFlow('expired-no-grant')).toBeUndefined();
     });
 
     it('should filter expired device flows on load', async () => {

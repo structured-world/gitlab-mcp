@@ -31,6 +31,13 @@ jest.mock('../../../../src/profiles/loader', () => ({
   })),
 }));
 
+jest.mock('../../../../src/entities/context/accounts', () => ({
+  handleListAccounts: jest.fn().mockResolvedValue(['listed']),
+  handleSwitchAccount: jest.fn().mockResolvedValue({ switched: true }),
+  handleLinkAccount: jest.fn().mockResolvedValue({ linked: true }),
+  handleUnlinkAccount: jest.fn().mockResolvedValue({ unlinked: true }),
+}));
+
 describe('handleManageContext', () => {
   const originalEnv = process.env;
 
@@ -48,6 +55,36 @@ describe('handleManageContext', () => {
 
   afterAll(() => {
     process.env = originalEnv;
+  });
+
+  // Each account action reaches its own handler with the input it was called with.
+  describe('account actions', () => {
+    it('dispatches list, switch, link and unlink to the account handlers', async () => {
+      const accounts = jest.requireMock('../../../../src/entities/context/accounts');
+
+      expect(await handleManageContext({ action: 'list_accounts' })).toEqual(['listed']);
+      expect(await handleManageContext({ action: 'switch_account', account: 'a' })).toEqual({
+        switched: true,
+      });
+      expect(
+        await handleManageContext({ action: 'link_account', instance: 'https://gitlab.com' }),
+      ).toEqual({ linked: true });
+      expect(await handleManageContext({ action: 'unlink_account', account: 'b' })).toEqual({
+        unlinked: true,
+      });
+      expect(accounts.handleSwitchAccount).toHaveBeenCalledWith({
+        action: 'switch_account',
+        account: 'a',
+      });
+      expect(accounts.handleLinkAccount).toHaveBeenCalledWith({
+        action: 'link_account',
+        instance: 'https://gitlab.com',
+      });
+      expect(accounts.handleUnlinkAccount).toHaveBeenCalledWith({
+        action: 'unlink_account',
+        account: 'b',
+      });
+    });
   });
 
   describe('action: show', () => {

@@ -23,6 +23,8 @@ import {
   RegisteredOAuthClient,
 } from '../types';
 import {
+  AbandonedFlowGrantHandler,
+  ExpiredSessionHandler,
   SessionStorageBackend,
   SessionStorageStats,
   StorageData,
@@ -142,16 +144,17 @@ export class FileStorageBackend implements SessionStorageBackend {
         // Future: add migration logic here
       }
 
-      // Filter expired data before import
+      // Filter expired data before import. Sessions past their age limit are kept: they hold
+      // GitLab grants, and cleanup (run as the server starts) ends those as it removes them.
       const now = Date.now();
-      const validSessions = data.sessions.filter((s) => {
-        // Sessions are valid for 7 days
-        const maxAge = 7 * 24 * 60 * 60 * 1000;
-        return s.createdAt + maxAge > now;
-      });
+      const validSessions = data.sessions;
 
       const validDeviceFlows = data.deviceFlows.filter((d) => d.flow.expiresAt > now);
-      const validAuthCodeFlows = data.authCodeFlows.filter((a) => a.flow.expiresAt > now);
+      // An expired flow holding exchanged GitLab tokens is kept for cleanup, which ends that
+      // grant as it removes the flow; nothing else holds those tokens.
+      const validAuthCodeFlows = data.authCodeFlows.filter(
+        (a) => a.flow.expiresAt > now || a.flow.gitlabTokens !== undefined,
+      );
       const validAuthCodes = data.authCodes.filter((a) => a.expiresAt > now);
 
       // A damaged settings record is dropped, not loaded: settings of the wrong shape would
@@ -180,7 +183,6 @@ export class FileStorageBackend implements SessionStorageBackend {
       const stats = await this.memory.getStats();
       logInfo('Loaded sessions from file', {
         loadedSessions: stats.sessions,
-        expiredSessions: data.sessions.length - validSessions.length,
         loadedDeviceFlows: stats.deviceFlows,
         loadedAuthCodes: stats.authCodes,
       });
@@ -392,19 +394,28 @@ export class FileStorageBackend implements SessionStorageBackend {
 
   deleteSession(sessionId: string): Promise<boolean> {
     // A revoked session must not come back after a crash; a revocation whose write failed
-    // restores the session, so the retry revokes it instead of finding nothing to revoke.
+    // restores the session and its linked accounts, so the retry revokes it instead of
+    // finding nothing to revoke.
     return this.transition(
       async () => {
-        const removed = await this.memory.getSession(sessionId);
+        const session = await this.memory.getSession(sessionId);
+        const linked = await this.memory.getLinkedSessions(sessionId);
+        const removed = session ? [session, ...linked] : undefined;
         return (await this.memory.deleteSession(sessionId)) ? removed : undefined;
       },
       isPresent,
-      (removed) => this.memory.createSession(removed),
+      async (removed) => {
+        await Promise.all(removed.map((session) => this.memory.createSession(session)));
+      },
     ).then((removed) => removed !== undefined);
   }
 
   async getAllSessions(): Promise<OAuthSession[]> {
     return this.memory.getAllSessions();
+  }
+
+  async getLinkedSessions(sessionId: string): Promise<OAuthSession[]> {
+    return this.memory.getLinkedSessions(sessionId);
   }
 
   // Device flow operations
@@ -594,6 +605,14 @@ export class FileStorageBackend implements SessionStorageBackend {
       (rotated): rotated is true => rotated,
       () => this.memory.updateSession(sessionId, previous),
     );
+  }
+
+  onAbandonedFlowGrant(handler: AbandonedFlowGrantHandler): void {
+    this.memory.onAbandonedFlowGrant(handler);
+  }
+
+  onExpiredSession(handler: ExpiredSessionHandler): void {
+    this.memory.onExpiredSession(handler);
   }
 
   // Cleanup

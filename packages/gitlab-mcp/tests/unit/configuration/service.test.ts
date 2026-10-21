@@ -306,40 +306,6 @@ describe('ConfigurationService', () => {
     expect((await service.resolve(caller('alice', 's1'))).session).toEqual({});
   });
 
-  describe('moveSessions', () => {
-    // A tracked session without overrides moves too, so account changes still reach it.
-    it('moves every session of the account, overrides without the scope', async () => {
-      await service.updateSession(caller('old', 's1'), {
-        readOnly: true,
-        scope: { type: 'group', path: 'team', includeSubgroups: true },
-      });
-      await service.updateSession(caller('old', 's2'), {
-        scope: { type: 'group', path: 'team', includeSubgroups: true },
-      });
-      await service.resolve(caller('old', 's3'));
-      notified.length = 0;
-
-      await service.moveSessions('old', 'new');
-      await service.updateAccount(caller('new', 's9'), { readOnly: true });
-
-      expect((await service.resolve(caller('new', 's1'))).session).toEqual({ readOnly: true });
-      expect((await service.resolve(caller('new', 's2'))).session).toEqual({});
-      expect(notified[0]).toEqual(['s1', 's2', 's3']);
-      expect(notified[1]).toEqual(['s1', 's2', 's3', 's9']);
-    });
-
-    it('does nothing when the account key stays the same or has no sessions', async () => {
-      await service.updateSession(caller('same', 's1'), { readOnly: true });
-      notified.length = 0;
-
-      await service.moveSessions('same', 'same');
-      await service.moveSessions('unknown', 'other');
-
-      expect((await service.resolve(caller('same', 's1'))).session).toEqual({ readOnly: true });
-      expect(notified).toEqual([[]]);
-    });
-  });
-
   // A patch field left undefined means "unchanged", unlike null which clears it.
   it('ignores patch fields that are undefined', async () => {
     await service.updateSession(caller('alice', 's1'), { preset: 'readonly' });

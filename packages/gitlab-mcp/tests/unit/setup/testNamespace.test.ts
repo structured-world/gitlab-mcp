@@ -1,4 +1,13 @@
-const { findTestRoot, deleteLifecycleGroup } = require('../../setup/testNamespace.js');
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+
+const {
+  findTestRoot,
+  deleteLifecycleGroup,
+  cleanupStaleRun,
+  listLifecycleGroups,
+} = require('../../setup/testNamespace.js');
 
 describe('Integration namespace boundary', () => {
   const apiUrl = 'https://gitlab.example';
@@ -219,5 +228,85 @@ describe('Integration namespace boundary', () => {
     request.mockResolvedValueOnce(ok(root)).mockResolvedValueOnce(ok(group));
     request.mockResolvedValueOnce({ ok: false, status: 403 });
     await expect(deleteLifecycleGroup(request, apiUrl, token, group)).rejects.toThrow('403');
+  });
+
+  // A saved group someone already removed leaves nothing to clean; failing on it would
+  // block every later run that finds the same record.
+  it('reports a saved group that no longer exists as removed without deleting', async () => {
+    request.mockResolvedValueOnce(ok(root)).mockResolvedValueOnce({ ok: false, status: 404 });
+    await expect(deleteLifecycleGroup(request, apiUrl, token, group)).resolves.toBe('removed');
+    expect(request).toHaveBeenCalledTimes(2);
+  });
+
+  describe('a run interrupted before its teardown', () => {
+    let dir: string;
+    let dataFile: string;
+
+    beforeEach(() => {
+      dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lifecycle-stale-test-'));
+      dataFile = path.join(dir, 'gitlab-mcp-test-data.json');
+    });
+
+    afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+    it('does nothing without a record of a previous run', async () => {
+      await expect(cleanupStaleRun(request, apiUrl, token, dataFile)).resolves.toBe('none');
+      expect(request).not.toHaveBeenCalled();
+    });
+
+    // Dropping the record alone would leave the previous run's group in GitLab for good.
+    it('deletes the recorded group before dropping the record', async () => {
+      fs.writeFileSync(dataFile, JSON.stringify({ group }));
+      request
+        .mockResolvedValueOnce(ok(root))
+        .mockResolvedValueOnce(ok(group))
+        .mockResolvedValueOnce({ ok: true })
+        .mockResolvedValueOnce({ ok: false, status: 404 });
+      await expect(cleanupStaleRun(request, apiUrl, token, dataFile)).resolves.toBe('removed');
+      expect(request.mock.calls.map((call) => call[1].method || 'GET')).toContain('DELETE');
+      expect(fs.existsSync(dataFile)).toBe(false);
+    });
+
+    // A failed cleanup keeps the only record of the group so it can still be removed.
+    it('keeps the record when the recorded group cannot be deleted', async () => {
+      fs.writeFileSync(dataFile, JSON.stringify({ group }));
+      request
+        .mockResolvedValueOnce(ok(root))
+        .mockResolvedValueOnce(ok(group))
+        .mockResolvedValueOnce({ ok: false, status: 403 });
+      await expect(cleanupStaleRun(request, apiUrl, token, dataFile)).rejects.toThrow(
+        group.full_path,
+      );
+      expect(fs.existsSync(dataFile)).toBe(true);
+    });
+
+    // A record written before the run created its group has nothing to clean.
+    it('drops a record without a group', async () => {
+      fs.writeFileSync(dataFile, JSON.stringify({}));
+      await expect(cleanupStaleRun(request, apiUrl, token, dataFile)).resolves.toBe('none');
+      expect(request).not.toHaveBeenCalled();
+      expect(fs.existsSync(dataFile)).toBe(false);
+    });
+  });
+
+  // Orphans are found under the root test group only, across every page, and only
+  // the suite's own lifecycle subgroups are returned.
+  it('lists lifecycle subgroups of the root test group across pages', async () => {
+    const other = { id: 92, full_path: 'test/backend', parent_id: root.id };
+    const second = { id: 93, full_path: 'test/lifecycle-test-1791488999999', parent_id: root.id };
+    request
+      .mockResolvedValueOnce(ok(root))
+      .mockResolvedValueOnce({
+        ...ok([group, other]),
+        headers: new Headers({ 'x-next-page': '2' }),
+      })
+      .mockResolvedValueOnce({ ...ok([second]), headers: new Headers({ 'x-next-page': '' }) });
+    await expect(listLifecycleGroups(request, apiUrl, token)).resolves.toEqual([group, second]);
+    expect(request).toHaveBeenNthCalledWith(
+      2,
+      `${apiUrl}/api/v4/groups/${root.id}/subgroups?search=lifecycle-test&per_page=100&page=1`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    expect(request).toHaveBeenCalledTimes(3);
   });
 });

@@ -10,6 +10,7 @@ const fs = require('fs');
 const os = require('os');
 const crypto = require('crypto');
 const { config } = require('dotenv');
+const { cleanupStaleRun } = require('./testNamespace');
 
 // Namespace tmp artefacts by checkout root so concurrent runs across multiple
 // worktrees (or different machines sharing a tmpdir over NFS) cannot clobber
@@ -28,13 +29,6 @@ module.exports = async () => {
     config({ path: envTestPath, quiet: true });
   }
 
-  // Clean up any stale test data from previous interrupted runs
-  const testDataFile = path.join(os.tmpdir(), 'gitlab-mcp-test-data.json');
-  if (fs.existsSync(testDataFile)) {
-    fs.unlinkSync(testDataFile);
-    console.log('🧹 Cleaned up stale test data file from previous run');
-  }
-
   console.log('🚀 Starting GitLab Integration Test Suite with Data Lifecycle');
   console.log('📋 Test execution plan:');
   console.log('  1. data-lifecycle.test.ts - Create complete test infrastructure');
@@ -50,6 +44,16 @@ module.exports = async () => {
   if (missing.length > 0) {
     throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
   }
+
+  // A previous run killed before its teardown left its record, and its group in GitLab.
+  const testDataFile = path.join(os.tmpdir(), 'gitlab-mcp-test-data.json');
+  const stale = await cleanupStaleRun(
+    fetch,
+    process.env.GITLAB_API_URL,
+    process.env.GITLAB_TOKEN,
+    testDataFile,
+  );
+  if (stale !== 'none') console.log(`🧹 Group left by an interrupted run: ${stale}`);
 
   // Detect GitLab tier once. Premium/Ultimate-only test suites use this to
   // skip rather than fail on Free instances. Result lives in a tmp file so

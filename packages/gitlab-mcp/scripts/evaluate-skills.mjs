@@ -1,5 +1,5 @@
 import { runEvaluation, launchSync, resolveExecutable, isMutationCall } from './evaluation-process.mjs';
-import { mkdtemp, mkdir, writeFile, cp } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, cp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -16,6 +16,8 @@ const yarn = resolveExecutable('yarn');
 const tar = resolveExecutable('tar');
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const workspace = await mkdtemp(join(tmpdir(), `gitlab-skills-${engine}-`));
+// Set once a scenario wrote its transcript: only then does the workspace hold evidence.
+let evidence = false;
 const fixture = await startWorkflowGitLab();
 try {
   const version = launchSync(command, ['--version'], { encoding: 'utf8' }).trim();
@@ -203,6 +205,7 @@ try {
       writeFile(join(workspace, `${scenario.name}.jsonl`), output.stdout),
       writeFile(join(workspace, `${scenario.name}.stderr`), output.stderr),
     ]);
+    evidence = true;
     return { scenario, output, start };
   }
 
@@ -344,6 +347,8 @@ try {
   console.log(`PASS: ${reports.length} installed-skill scenarios. Evidence: ${workspace}`);
 } finally {
   await fixture.close();
-  // Retain artifacts and transcripts for review; nothing is installed globally.
-  console.log(`Evaluation artifacts: ${workspace}`);
+  // Retain artifacts and transcripts for review; nothing is installed globally. A run that
+  // failed before any scenario has nothing to review, so its workspace goes.
+  if (evidence) console.log(`Evaluation artifacts: ${workspace}`);
+  else await rm(workspace, { recursive: true, force: true });
 }

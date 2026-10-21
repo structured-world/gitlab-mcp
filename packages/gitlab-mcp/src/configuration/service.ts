@@ -216,27 +216,6 @@ export class ConfigurationService {
     await this.notify([caller.sessionKey]);
   }
 
-  /**
-   * Move every session of an account to another account key, keeping their overrides
-   * except the scope. A static token's account is keyed by its instance, so a switch of
-   * instance re-keys every chat; their scopes named projects of the previous instance.
-   */
-  async moveSessions(fromAccountKey: string, toAccountKey: string): Promise<void> {
-    if (fromAccountKey === toAccountKey) return;
-    const sessions = [...(this.accountSessions.get(fromAccountKey) ?? [])];
-    this.accountSessions.delete(fromAccountKey);
-    const moved = this.accountSessions.get(toAccountKey) ?? new Set<string>();
-    for (const sessionKey of sessions) {
-      const old = `${fromAccountKey}\n${sessionKey}`;
-      const kept = applyPatch(this.overrides.get(old) ?? {}, { scope: null });
-      this.overrides.delete(old);
-      if (Object.keys(kept).length > 0) this.overrides.set(`${toAccountKey}\n${sessionKey}`, kept);
-      moved.add(sessionKey);
-    }
-    this.accountSessions.set(toAccountKey, moved);
-    await this.notify(sessions);
-  }
-
   /** Forget a closed session. */
   forgetSession(sessionKey: string): void {
     for (const [accountKey, sessions] of this.accountSessions) {

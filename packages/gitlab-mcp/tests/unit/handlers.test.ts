@@ -16,6 +16,8 @@ import { StructuredToolError, parseGitLabApiError } from '../../src/utils/error-
 import { GitLabTimeoutError } from '../../src/utils/fetch';
 import { ConfigurationService } from '../../src/configuration/service';
 import { resolveCaller } from '../../src/configuration/caller';
+import { runWithTokenAccount } from '../../src/accounts/token-account';
+import * as chatAccounts from '../../src/accounts/chat-accounts';
 
 // Mock ConnectionManager
 const mockConnectionManager = {
@@ -233,6 +235,7 @@ describe('handlers', () => {
     mockServer = {
       setRequestHandler: jest.fn(),
       getClientVersion: jest.fn().mockReturnValue({ name: 'claude-code', version: 'test' }),
+      sendToolListChanged: jest.fn().mockResolvedValue(undefined),
     } as unknown as jest.Mocked<Server>;
 
     // Mock ConnectionManager methods — re-seed defaults that tests may flip
@@ -551,6 +554,20 @@ describe('handlers', () => {
       );
     });
 
+    // Account actions run as the connection's own account, not the one the chat switched
+    // to: pinning the session to that account's instance would list the wrong instance's
+    // tools until the next ordinary call.
+    it('keeps the session instance when a call manages accounts', async () => {
+      mockRegistryManager.executeTool.mockResolvedValue({ accounts: [] });
+
+      await callToolHandler(
+        { params: { name: 'manage_context', arguments: { action: 'list_accounts' } } },
+        { sessionId: 'sess-xyz' },
+      );
+
+      expect(mockSessionManager.setSessionInstanceUrl).not.toHaveBeenCalled();
+    });
+
     it('should not update session instanceUrl when sessionId is absent (#398)', async () => {
       // No extra.sessionId — no crash, no spurious session update
       const request = {
@@ -766,6 +783,38 @@ describe('handlers', () => {
 
       // Connection manager initialize called from the handler when not connected
       expect(mockConnectionManager.initialize).toHaveBeenCalledTimes(1);
+    });
+
+    // A tool list sent before an instance was first initialized could not be filtered by its
+    // version, tier and token scopes; once a call initialized it, clients are told to list
+    // again. An instance already initialized changes nothing, so nobody is told.
+    it('announces the tool list again after a call first initializes an instance', async () => {
+      mockConnectionManager.isConnected.mockReturnValue(false);
+
+      await callToolHandler({ params: { name: 'test_tool', arguments: {} } }, { sessionId: 's1' });
+      // The announcement is not awaited by the call: wait for it before asserting, so it
+      // cannot land after the mocks are cleared below.
+      for (
+        let tick = 0;
+        tick < 50 && mockSessionManager.broadcastToolsListChanged.mock.calls.length === 0;
+        tick++
+      ) {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+
+      expect(mockConnectionManager.initialize).toHaveBeenCalledTimes(1);
+      expect(mockSessionManager.broadcastToolsListChanged).toHaveBeenCalledWith(
+        'https://gitlab.example.com',
+      );
+      expect(mockServer.sendToolListChanged).toHaveBeenCalledTimes(1);
+
+      jest.clearAllMocks();
+      mockConnectionManager.isConnected.mockReturnValue(true);
+      await callToolHandler({ params: { name: 'test_tool', arguments: {} } }, { sessionId: 's1' });
+      for (let tick = 0; tick < 10; tick++) await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(mockSessionManager.broadcastToolsListChanged).not.toHaveBeenCalled();
+      expect(mockServer.sendToolListChanged).not.toHaveBeenCalled();
     });
 
     it('should return error if connection initialization fails', async () => {
@@ -2906,23 +2955,117 @@ describe('handlers', () => {
       });
     });
 
-    // A sessionless static-token client (stdio) after switch_instance: the list is filtered
-    // with the settings of the instance the calls now run against, not the startup one.
-    it('lists a sessionless caller with the settings of the active instance', async () => {
-      const active = 'https://other.example.com';
-      mockConnectionManager.getCurrentInstanceUrl.mockReturnValue(active);
+    // A sessionless static-token chat (stdio) that switched to another configured instance:
+    // the list is filtered with that instance's settings, not the startup one's.
+    it('lists a sessionless caller with the settings of the instance it switched to', async () => {
+      const switched = 'https://other.example.com';
+      await service().updateAccount(resolveCaller(undefined, switched), { readOnly: true });
+
+      const result = await runWithTokenAccount({ instanceUrl: switched, token: 'other' }, () =>
+        listToolsHandler({}, {}),
+      );
+
+      expect(result.tools?.map((t) => t.name)).toEqual(['browse_merge_requests', 'manage_context']);
+    });
+
+    // Another chat initializing a configured instance moves the connection manager's latest
+    // instance; a chat that did not switch keeps its own instance and settings.
+    it('keeps a chat that did not switch on the server instance', async () => {
+      mockConnectionManager.getCurrentInstanceUrl.mockReturnValue('https://other.example.com');
       try {
-        await service().updateAccount(resolveCaller(undefined, active), { readOnly: true });
+        await service().updateAccount(resolveCaller(undefined, 'https://other.example.com'), {
+          readOnly: true,
+        });
 
         const result = await listToolsHandler({}, {});
 
-        expect(result.tools?.map((t) => t.name)).toEqual([
-          'browse_merge_requests',
-          'manage_context',
-        ]);
+        expect(result.tools?.map((t) => t.name)).toContain('manage_merge_request');
       } finally {
         mockConnectionManager.getCurrentInstanceUrl.mockReturnValue('https://gitlab.example.com');
       }
+    });
+
+    // A chat whose chosen account cannot be used lists the connection's own tools, so it
+    // still sees manage_context to switch away; other failures of the list surface.
+    it('lists the connection tools while the chosen account cannot be used', async () => {
+      const resolve = jest
+        .spyOn(chatAccounts, 'withChatAccount')
+        .mockRejectedValueOnce(new chatAccounts.AccountUnavailableError('account gone'))
+        .mockRejectedValueOnce(new Error('settings store down'));
+
+      try {
+        const result = await listToolsHandler({}, { sessionId: 'sess-1' });
+        expect(result.tools?.map((t) => t.name)).toContain('manage_context');
+        await expect(listToolsHandler({}, { sessionId: 'sess-1' })).rejects.toThrow(
+          'settings store down',
+        );
+      } finally {
+        resolve.mockRestore();
+      }
+    });
+
+    // A chat whose chosen account became unusable (unlinked, token removed, grant revoked)
+    // can still list, switch, link and unlink accounts; every other call is refused.
+    it('runs the account actions of a chat whose chosen account cannot be used', async () => {
+      const resolve = jest
+        .spyOn(chatAccounts, 'withChatAccount')
+        .mockRejectedValue(new chatAccounts.AccountUnavailableError('account gone'));
+      mockRegistryManager.executeTool.mockResolvedValue({ success: true });
+
+      try {
+        const recovery = await callToolHandler(
+          {
+            params: {
+              name: 'manage_context',
+              arguments: { action: 'switch_account', account: 'gitlab:1' },
+            },
+          },
+          { sessionId: 'sess-1' },
+        );
+        expect(recovery.isError).toBeUndefined();
+        // It runs on the connection's own instance, never the unusable account's.
+        expect(mockRegistryManager.executeTool).toHaveBeenCalledWith(
+          'manage_context',
+          expect.objectContaining({ action: 'switch_account' }),
+          'https://gitlab.example.com',
+          undefined,
+        );
+
+        mockRegistryManager.executeTool.mockClear();
+        const refused = await callToolHandler(
+          { params: { name: 'browse_merge_requests', arguments: { action: 'list' } } },
+          { sessionId: 'sess-1' },
+        );
+        expect(refused.isError).toBe(true);
+        expect(refused.content?.[0].text).toContain('account gone');
+        expect(mockRegistryManager.executeTool).not.toHaveBeenCalled();
+      } finally {
+        resolve.mockRestore();
+      }
+    });
+
+    // The connection's instance fails to start while the health monitor still reports it
+    // reachable: listing and switching accounts need no GitLab connection, so the chat can
+    // still move to an account that works.
+    it('runs the account actions when the instance cannot be initialized', async () => {
+      mockConnectionManager.isConnected.mockReturnValue(false);
+      mockConnectionManager.initialize.mockRejectedValue(new Error('Connection failed'));
+      mockRegistryManager.hasToolHandler.mockReturnValue(true);
+      mockRegistryManager.executeTool.mockResolvedValue([{ id: 'gitlab:1' }]);
+
+      const result = await callToolHandler(
+        { params: { name: 'manage_context', arguments: { action: 'list_accounts' } } },
+        { sessionId: 'sess-1' },
+      );
+
+      expect(result.isError).toBeUndefined();
+      expect(mockConnectionManager.initialize).not.toHaveBeenCalled();
+      expect(mockRegistryManager.executeTool).toHaveBeenCalledWith(
+        'manage_context',
+        expect.objectContaining({ action: 'list_accounts' }),
+        'https://gitlab.example.com',
+        undefined,
+      );
     });
 
     // Listing is visibility only: an unreadable settings store does not empty the list.
@@ -3429,7 +3572,9 @@ describe('handlers', () => {
           if (tool === 'browse_todos') return args.page === 1 ? todos : [];
           inFlight++;
           peak = Math.max(peak, inFlight);
-          await new Promise((resolve) => setTimeout(resolve, 1));
+          // Yield without a timer: concurrent requests still overlap here, and the call
+          // stays far inside this file's 100 ms handler timeout on a loaded machine.
+          await Promise.resolve();
           inFlight--;
           if (args.id === 3) throw new Error('GitLab API error: 429 Too Many Requests');
           return { id: args.id, state: 'done' };
@@ -3441,7 +3586,8 @@ describe('handlers', () => {
         { sessionId: 'sess-1' },
       );
 
-      expect(peak).toBeLessThanOrEqual(5);
+      // Requests overlap, a few at a time: the bound is reached and never exceeded.
+      expect(peak).toBe(5);
       expect(JSON.parse(result.content?.[0].text ?? '')).toEqual({
         success: false,
         marked: 11,

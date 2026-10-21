@@ -35,9 +35,9 @@ import {
   HEALTH_CHECK_INTERVAL_MS,
   FAILURE_THRESHOLD,
   GITLAB_BASE_URL,
-  GITLAB_TOKEN,
 } from '../config';
 import { isOAuthEnabled } from '../oauth/index';
+import { configuredInstanceToken } from '../accounts/instance-tokens';
 
 // ============================================================================
 // Types
@@ -234,7 +234,7 @@ const performHealthCheck = fromPromise<{ degraded: boolean }, { instanceUrl: str
     // Throws GitLab API 401/403 when the token is invalid or lacks required scope.
     // healthCheckErrorIsAuth guard detects these by parsing the error message
     // and routes to '#connection.failed' (no auto-reconnect).
-    // No-op in OAuth mode (no global token) and when GITLAB_TOKEN is unset.
+    // No-op in OAuth mode (no global token) and for an instance without a static token.
     await authenticatedTokenCheck(input.instanceUrl, HEALTH_CHECK_PROBE_MS);
 
     const connectionManager = ConnectionManager.getInstance();
@@ -301,8 +301,10 @@ async function quickHealthCheck(
 async function authenticatedTokenCheck(instanceUrl: string, timeoutMs: number): Promise<void> {
   // OAuth mode: token is per-request context, unavailable during background checks
   if (isOAuthEnabled()) return;
-  // No static token configured — nothing to validate
-  if (!GITLAB_TOKEN) return;
+  // The token of this instance: the server's own for its instance, else the one configured
+  // for it. Probing another instance with the server's own token would read as revoked.
+  const token = configuredInstanceToken(instanceUrl);
+  if (!token) return;
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
@@ -317,7 +319,7 @@ async function authenticatedTokenCheck(instanceUrl: string, timeoutMs: number): 
       // The explicit PRIVATE-TOKEN header ensures we validate ONLY the static token —
       // a valid session cookie must not mask a revoked token and keep the probe alive.
       skipAuth: true,
-      headers: { 'PRIVATE-TOKEN': GITLAB_TOKEN },
+      headers: { 'PRIVATE-TOKEN': token },
     });
 
     if (response.status === 401 || response.status === 403) {

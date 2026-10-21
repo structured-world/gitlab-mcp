@@ -4,6 +4,7 @@
  */
 
 import {
+  claimSessionLease,
   withFreshGitLabToken,
   GitLabGrantRevokedError,
 } from '../../../src/oauth/gitlab-token-refresh';
@@ -319,5 +320,43 @@ describe('withFreshGitLabToken', () => {
     mockStore.getSession.mockResolvedValue(undefined);
 
     expect(await withFreshGitLabToken(expiring, config)).toBeUndefined();
+  });
+});
+
+describe('claimSessionLease', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockStore.getSession.mockResolvedValue(refreshed);
+  });
+
+  // The lease is claimed against the refresh token the session holds now.
+  it('claims the lease of an existing session', async () => {
+    mockStore.claimGitLabRefresh.mockResolvedValueOnce(true);
+
+    const leaseUntil = await claimSessionLease('session-1', 5_000);
+
+    expect(leaseUntil).toBeGreaterThan(Date.now());
+    expect(mockStore.claimGitLabRefresh).toHaveBeenCalledWith(
+      'session-1',
+      'gl-refresh-new',
+      expect.any(Number),
+      leaseUntil,
+    );
+  });
+
+  it('reports a session that no longer exists', async () => {
+    mockStore.getSession.mockResolvedValue(undefined);
+
+    expect(await claimSessionLease('session-1', 5_000)).toBeUndefined();
+    expect(mockStore.claimGitLabRefresh).not.toHaveBeenCalled();
+  });
+
+  // A holder that never lets go makes the caller fail rather than wait forever.
+  it('gives up when the lease stays held past the deadline', async () => {
+    mockStore.claimGitLabRefresh.mockResolvedValue(false);
+
+    await expect(claimSessionLease('session-1', 5_000, Date.now() - 1)).rejects.toThrow(
+      'held by another operation',
+    );
   });
 });

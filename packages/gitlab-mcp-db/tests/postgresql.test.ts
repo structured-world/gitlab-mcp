@@ -6,7 +6,8 @@ import type {
 } from '@structured-world/gitlab-mcp/storage-contract';
 import { PostgreSQLStorageBackend } from '../src/postgresql';
 
-let mockPrisma: any;
+type MockPrisma = ReturnType<typeof createMockPrisma>;
+let mockPrisma: MockPrisma;
 
 jest.mock('../generated/prisma/client', () => ({
   PrismaClient: jest.fn(() => mockPrisma),
@@ -56,6 +57,8 @@ const createMockPrisma = () => ({
   authCodeFlowState: {
     upsert: jest.fn().mockResolvedValue({}),
     findUnique: jest.fn(),
+    findMany: jest.fn().mockResolvedValue([]),
+    updateMany: jest.fn().mockResolvedValue({ count: 0 }),
     delete: jest.fn().mockResolvedValue({}),
     deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
     count: jest.fn().mockResolvedValue(0),
@@ -80,6 +83,16 @@ const createMockPrisma = () => ({
     updateMany: jest.fn().mockResolvedValue({ count: 0 }),
   },
 });
+
+/** Give the backend the Prisma mock in place of the client `initialize` would connect. */
+function attachPrisma(target: PostgreSQLStorageBackend, prisma: MockPrisma): void {
+  (target as unknown as { prisma: MockPrisma }).prisma = prisma;
+}
+
+/** A model of the Prisma mock by name, for tests parameterized over models. */
+function mockModel(name: string): Record<string, jest.Mock> {
+  return (mockPrisma as unknown as Record<string, Record<string, jest.Mock>>)[name];
+}
 
 const createSession = (): OAuthSession => ({
   id: 'session-1',
@@ -195,7 +208,7 @@ describe('PostgreSQLStorageBackend', () => {
   });
 
   it('creates, reads, updates, and deletes sessions', async () => {
-    (backend as any).prisma = mockPrisma;
+    attachPrisma(backend, mockPrisma);
 
     const session = createSession();
     await backend.createSession(session);
@@ -320,14 +333,14 @@ describe('PostgreSQLStorageBackend', () => {
       (b: PostgreSQLStorageBackend) => b.removeMcpSessionAssociation('mcp-1'),
     ],
   ] as const)('%s reports database errors', async (_name, model, method, call) => {
-    (backend as any).prisma = mockPrisma;
-    (mockPrisma as any)[model][method].mockRejectedValueOnce(new Error('connection lost'));
+    attachPrisma(backend, mockPrisma);
+    mockModel(model)[method].mockRejectedValueOnce(new Error('connection lost'));
 
     await expect(call(backend)).rejects.toThrow('connection lost');
   });
 
   it('lists sessions', async () => {
-    (backend as any).prisma = mockPrisma;
+    attachPrisma(backend, mockPrisma);
 
     const session = createSession();
     mockPrisma.oAuthSession.findMany.mockResolvedValueOnce([
@@ -357,7 +370,7 @@ describe('PostgreSQLStorageBackend', () => {
     'persists upstream grants independently of MCP scopes: %j',
     async (grants) => {
       // Unknown grants stay unknown; an explicitly empty grant is never upgraded.
-      (backend as any).prisma = mockPrisma;
+      attachPrisma(backend, mockPrisma);
       const session = { ...createSession(), gitlabScopes: grants };
       await backend.createSession(session);
       expect(mockPrisma.oAuthSession.create.mock.calls[0][0].data.gitlabScopes).toEqual(grants);
@@ -381,7 +394,7 @@ describe('PostgreSQLStorageBackend', () => {
 
   it('rejects malformed stored grants instead of granting access', async () => {
     // Corrupt durable permissions must not become the unknown/fail-open state.
-    (backend as any).prisma = mockPrisma;
+    attachPrisma(backend, mockPrisma);
     mockPrisma.oAuthSession.findUnique.mockResolvedValueOnce({
       ...createSession(),
       gitlabScopes: ['api', 1],
@@ -390,7 +403,7 @@ describe('PostgreSQLStorageBackend', () => {
   });
 
   it('handles device flow operations', async () => {
-    (backend as any).prisma = mockPrisma;
+    attachPrisma(backend, mockPrisma);
 
     const flow = createDeviceFlow();
     await backend.storeDeviceFlow(flow.state, flow);
@@ -442,7 +455,7 @@ describe('PostgreSQLStorageBackend', () => {
     'retains requested scopes across persisted OAuth flows: %j',
     async (requestedGitlabScopes) => {
       // Callback/poll may run on another replica; omitted upstream scope must use the saved request.
-      (backend as any).prisma = mockPrisma;
+      attachPrisma(backend, mockPrisma);
       const device = { ...createDeviceFlow(), requestedGitlabScopes };
       await backend.storeDeviceFlow(device.state, device);
       const deviceData = mockPrisma.deviceFlowState.upsert.mock.calls[0][0];
@@ -475,7 +488,7 @@ describe('PostgreSQLStorageBackend', () => {
   // GitLab issues device tokens once; a poll on another replica finishes the setup with
   // the copy stored here.
   it('keeps the GitLab tokens of a completed device flow', async () => {
-    (backend as any).prisma = mockPrisma;
+    attachPrisma(backend, mockPrisma);
     const gitlabTokens = {
       access_token: 'gl-at',
       refresh_token: 'gl-rt',
@@ -497,7 +510,7 @@ describe('PostgreSQLStorageBackend', () => {
   });
 
   it('rejects corrupt GitLab tokens in a device flow', async () => {
-    (backend as any).prisma = mockPrisma;
+    attachPrisma(backend, mockPrisma);
     mockPrisma.deviceFlowState.findUnique.mockResolvedValueOnce({
       ...createDeviceFlow(),
       expiresAt: BigInt(Date.now()),
@@ -509,7 +522,7 @@ describe('PostgreSQLStorageBackend', () => {
 
   it.each(['device', 'auth'])('rejects corrupt requested scopes in a %s flow', async (kind) => {
     // Corrupt stored requests must not turn into an unknown, unrestricted account grant.
-    (backend as any).prisma = mockPrisma;
+    attachPrisma(backend, mockPrisma);
     const invalid = { requestedGitlabScopes: ['api', 1] };
     if (kind === 'device') {
       mockPrisma.deviceFlowState.findUnique.mockResolvedValueOnce(invalid);
@@ -525,7 +538,7 @@ describe('PostgreSQLStorageBackend', () => {
   });
 
   it('handles auth code flow operations', async () => {
-    (backend as any).prisma = mockPrisma;
+    attachPrisma(backend, mockPrisma);
 
     const flow = createAuthCodeFlow();
     await backend.storeAuthCodeFlow(flow.internalState, flow);
@@ -554,7 +567,7 @@ describe('PostgreSQLStorageBackend', () => {
   });
 
   it('handles authorization code operations', async () => {
-    (backend as any).prisma = mockPrisma;
+    attachPrisma(backend, mockPrisma);
 
     const code = createAuthCode();
     await backend.storeAuthCode(code);
@@ -582,7 +595,7 @@ describe('PostgreSQLStorageBackend', () => {
   });
 
   it('handles mcp session mapping', async () => {
-    (backend as any).prisma = mockPrisma;
+    attachPrisma(backend, mockPrisma);
 
     await backend.associateMcpSession('mcp-1', 'session-1');
     expect(mockPrisma.mcpSessionMapping.upsert).toHaveBeenCalled();
@@ -628,9 +641,142 @@ describe('PostgreSQLStorageBackend', () => {
     expect(deleteMissing).toBe(false);
   });
 
+  // Linked accounts belong to their session: stored with its id, listed for it oldest first,
+  // and removed with it by the foreign key's cascade.
+  describe('linked accounts', () => {
+    beforeEach(() => {
+      attachPrisma(backend, mockPrisma);
+    });
+
+    it('stores and reads the session an account is linked to', async () => {
+      await backend.createSession({ ...createSession(), id: 'linked', linkedToSessionId: 'session-1' });
+      const data = mockPrisma.oAuthSession.create.mock.calls[0][0].data;
+      expect(data.linkedToSessionId).toBe('session-1');
+
+      mockPrisma.oAuthSession.findUnique.mockResolvedValueOnce({
+        ...data,
+        gitlabApiUrl: null,
+        instanceLabel: null,
+      });
+      expect((await backend.getSession('linked'))?.linkedToSessionId).toBe('session-1');
+    });
+
+    it('stores a session without a link as null and reads it back without one', async () => {
+      await backend.createSession(createSession());
+      const data = mockPrisma.oAuthSession.create.mock.calls[0][0].data;
+      expect(data.linkedToSessionId).toBeNull();
+
+      mockPrisma.oAuthSession.findUnique.mockResolvedValueOnce({
+        ...data,
+        gitlabApiUrl: null,
+        instanceLabel: null,
+      });
+      expect(await backend.getSession('session-1')).not.toHaveProperty(
+        'linkedToSessionId',
+        expect.anything(),
+      );
+    });
+
+    it('lists the accounts linked to a session, oldest first', async () => {
+      mockPrisma.oAuthSession.findMany.mockResolvedValueOnce([
+        {
+          ...createSession(),
+          id: 'linked',
+          linkedToSessionId: 'session-1',
+          mcpTokenExpiry: BigInt(1),
+          gitlabTokenExpiry: BigInt(2),
+          createdAt: BigInt(3),
+          updatedAt: BigInt(4),
+          gitlabApiUrl: 'https://gitlab.com',
+          instanceLabel: null,
+        },
+      ]);
+
+      const linked = await backend.getLinkedSessions('session-1');
+
+      expect(mockPrisma.oAuthSession.findMany).toHaveBeenCalledWith({
+        where: { linkedToSessionId: 'session-1' },
+        orderBy: { createdAt: 'asc' },
+      });
+      expect(linked).toEqual([
+        expect.objectContaining({ id: 'linked', linkedToSessionId: 'session-1' }),
+      ]);
+    });
+
+    it('keeps the account linking step of a flow', async () => {
+      const link = {
+        sessionId: 'session-1',
+        stage: 'verify' as const,
+        instance: 'https://gitlab.com',
+        instanceLabel: 'GitLab.com',
+      };
+      await backend.storeAuthCodeFlow('link-state', { ...createAuthCodeFlow(), link });
+      const call = mockPrisma.authCodeFlowState.upsert.mock.calls[0][0];
+      expect(call.create.link).toEqual(link);
+
+      mockPrisma.authCodeFlowState.findUnique.mockResolvedValueOnce({
+        ...call.create,
+        expiresAt: BigInt(6666),
+      });
+      expect((await backend.getAuthCodeFlow('link-state'))?.link).toEqual(link);
+    });
+
+    // The connect step carries the digest that ties it to the browser that passed verify,
+    // and the elicitation whose chat learns the link completed; both survive the round trip.
+    it('keeps the browser binding and the elicitation of a connect step', async () => {
+      const link = {
+        sessionId: 'session-1',
+        stage: 'connect' as const,
+        instance: 'https://gitlab.com',
+        browserBinding: 'ab'.repeat(32),
+        mcpSessionId: 'chat-1',
+        elicitationId: 'elicit-1',
+      };
+      mockPrisma.authCodeFlowState.findUnique.mockResolvedValueOnce({
+        ...createAuthCodeFlow(),
+        expiresAt: BigInt(6666),
+        link,
+      });
+
+      expect((await backend.getAuthCodeFlow('link-state'))?.link).toEqual(link);
+    });
+
+    it.each(['browserBinding', 'mcpSessionId', 'elicitationId'])(
+      'refuses a link step whose %s is not a string',
+      async (field) => {
+        mockPrisma.authCodeFlowState.findUnique.mockResolvedValueOnce({
+          ...createAuthCodeFlow(),
+          expiresAt: BigInt(6666),
+          link: {
+            sessionId: 'session-1',
+            stage: 'connect',
+            instance: 'https://gitlab.com',
+            [field]: 42,
+          },
+        });
+
+        await expect(backend.getAuthCodeFlow('internal-1')).rejects.toThrow(
+          'Invalid stored account link step',
+        );
+      },
+    );
+
+    it('refuses a corrupt account linking step instead of half-using it', async () => {
+      mockPrisma.authCodeFlowState.findUnique.mockResolvedValueOnce({
+        ...createAuthCodeFlow(),
+        expiresAt: BigInt(6666),
+        link: { sessionId: 'session-1', stage: 'unknown', instance: 'https://gitlab.com' },
+      });
+
+      await expect(backend.getAuthCodeFlow('internal-1')).rejects.toThrow(
+        'Invalid stored account link step',
+      );
+    });
+  });
+
   describe('durable flow and session binding', () => {
     beforeEach(() => {
-      (backend as any).prisma = mockPrisma;
+      attachPrisma(backend, mockPrisma);
     });
 
     // Only the lease holder spends the single-use GitLab refresh token: the lease is a
@@ -827,16 +973,18 @@ describe('PostgreSQLStorageBackend', () => {
         verificationUriComplete: null,
         redirectUri: null,
       };
-      mockPrisma[model].findUnique.mockResolvedValue(row);
-      mockPrisma[model].deleteMany.mockResolvedValueOnce({ count: 1 });
-      mockPrisma[model].deleteMany.mockResolvedValueOnce({ count: 0 });
+      mockModel(model).findUnique.mockResolvedValue(row);
+      mockModel(model).deleteMany.mockResolvedValueOnce({ count: 1 });
+      mockModel(model).deleteMany.mockResolvedValueOnce({ count: 0 });
+      const consume = (code: string): Promise<unknown> =>
+        (backend as unknown as Record<string, (code: string) => Promise<unknown>>)[method](code);
 
-      const winner = await (backend as any)[method]('code-1');
-      const loser = await (backend as any)[method]('code-1');
+      const winner = await consume('code-1');
+      const loser = await consume('code-1');
 
       expect(winner).toBeDefined();
       expect(loser).toBeUndefined();
-      expect(mockPrisma[model].deleteMany).toHaveBeenCalledWith({ where });
+      expect(mockModel(model).deleteMany).toHaveBeenCalledWith({ where });
     });
 
     it('returns nothing when the record does not exist', async () => {
@@ -932,8 +1080,213 @@ describe('PostgreSQLStorageBackend', () => {
     });
   });
 
+  // An expired flow whose callback exchanged the code but never finished holds the only
+  // copy of that GitLab grant; cleanup hands it over to be ended as it removes the flow.
+  it('hands over the grant of each expired auth code flow cleanup removes', async () => {
+    attachPrisma(backend, mockPrisma);
+    const gitlabTokens = {
+      access_token: 'cached-token',
+      refresh_token: 'cached-refresh',
+      token_type: 'Bearer',
+      expires_in: 7200,
+      created_at: 0,
+    };
+    const row = (internalState: string, tokens: unknown) => ({
+      ...createAuthCodeFlow(),
+      internalState,
+      expiresAt: BigInt(1),
+      gitlabTokens: tokens,
+    });
+    mockPrisma.authCodeFlowState.findMany.mockResolvedValueOnce([
+      row('abandoned', gitlabTokens),
+      row('completed', gitlabTokens),
+      row('no-grant', null),
+    ]);
+    // The callback of "completed" finished after the read above and consumed its flow:
+    // cleanup takes over only the flow still there, and ends only that one's grant.
+    mockPrisma.authCodeFlowState.updateMany.mockImplementation(
+      async ({ where }: { where: { internalState: string } }) => ({
+        count: where.internalState === 'abandoned' ? 1 : 0,
+      }),
+    );
+    const handler = jest.fn(async () => {});
+    backend.onAbandonedFlowGrant(handler);
+
+    await backend.cleanup();
+
+    expect(mockPrisma.authCodeFlowState.findMany).toHaveBeenCalledWith({
+      where: { expiresAt: { lt: expect.any(BigInt) } },
+    });
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(handler).toHaveBeenCalledWith(
+      expect.objectContaining({ internalState: 'abandoned', gitlabTokens }),
+    );
+    expect(mockPrisma.authCodeFlowState.updateMany).toHaveBeenCalledWith({
+      where: { internalState: 'abandoned' },
+      data: { internalState: 'cleanup:abandoned' },
+    });
+    expect(mockPrisma.authCodeFlowState.deleteMany).toHaveBeenCalledWith({
+      where: { internalState: 'cleanup:abandoned' },
+    });
+  });
+
+  // The flow is the only stored copy of the grant: it stays (claimed, out of its callback's
+  // reach) until the grant is ended, so a cleanup that fails or stops leaves it for the next.
+  it('keeps a claimed flow whose grant could not be ended', async () => {
+    attachPrisma(backend, mockPrisma);
+    const gitlabTokens = {
+      access_token: 'cached-token',
+      refresh_token: 'cached-refresh',
+      token_type: 'Bearer',
+      expires_in: 7200,
+      created_at: 0,
+    };
+    mockPrisma.authCodeFlowState.findMany.mockResolvedValueOnce([
+      { ...createAuthCodeFlow(), internalState: 'abandoned', expiresAt: BigInt(1), gitlabTokens },
+    ]);
+    mockPrisma.authCodeFlowState.updateMany.mockResolvedValueOnce({ count: 1 });
+    backend.onAbandonedFlowGrant(async () => {
+      throw new Error('GitLab unavailable');
+    });
+
+    await backend.cleanup();
+
+    expect(mockPrisma.authCodeFlowState.deleteMany).not.toHaveBeenCalledWith({
+      where: { internalState: 'cleanup:abandoned' },
+    });
+    expect(mockPrisma.authCodeFlowState.deleteMany).toHaveBeenCalledWith({
+      where: {
+        expiresAt: { lt: expect.any(BigInt) },
+        NOT: { internalState: { startsWith: 'cleanup:' } },
+      },
+    });
+  });
+
+  // An expired flow whose tokens are intact but whose other fields cannot be read still
+  // holds the only copy of a live grant: cleanup takes it out of the bulk delete instead
+  // of dropping it, so the tokens are never lost while the grant stays active.
+  it('keeps an unreadable expired flow that holds GitLab tokens', async () => {
+    attachPrisma(backend, mockPrisma);
+    const gitlabTokens = {
+      access_token: 'cached-token',
+      refresh_token: 'cached-refresh',
+      token_type: 'Bearer',
+      expires_in: 7200,
+      created_at: 0,
+    };
+    mockPrisma.authCodeFlowState.findMany.mockResolvedValueOnce([
+      {
+        ...createAuthCodeFlow(),
+        internalState: 'unreadable',
+        expiresAt: BigInt(1),
+        gitlabTokens,
+        link: { sessionId: 'session-1', stage: 'unknown', instance: 'https://gitlab.com' },
+      },
+    ]);
+    mockPrisma.authCodeFlowState.updateMany.mockResolvedValueOnce({ count: 1 });
+    const handler = jest.fn(async () => {});
+    backend.onAbandonedFlowGrant(handler);
+
+    await backend.cleanup();
+
+    expect(handler).not.toHaveBeenCalled();
+    expect(mockPrisma.authCodeFlowState.updateMany).toHaveBeenCalledWith({
+      where: { internalState: 'unreadable' },
+      data: { internalState: 'cleanup:unreadable' },
+    });
+    expect(mockPrisma.authCodeFlowState.deleteMany).not.toHaveBeenCalledWith({
+      where: { internalState: 'cleanup:unreadable' },
+    });
+  });
+
+  // A flow a stopped cleanup claimed earlier is ended without claiming it again.
+  it('ends the grant of a flow claimed by an earlier cleanup', async () => {
+    attachPrisma(backend, mockPrisma);
+    const gitlabTokens = {
+      access_token: 'cached-token',
+      refresh_token: 'cached-refresh',
+      token_type: 'Bearer',
+      expires_in: 7200,
+      created_at: 0,
+    };
+    mockPrisma.authCodeFlowState.findMany.mockResolvedValueOnce([
+      {
+        ...createAuthCodeFlow(),
+        internalState: 'cleanup:abandoned',
+        expiresAt: BigInt(1),
+        gitlabTokens,
+      },
+    ]);
+    const handler = jest.fn(async () => {});
+    backend.onAbandonedFlowGrant(handler);
+
+    await backend.cleanup();
+
+    expect(mockPrisma.authCodeFlowState.updateMany).not.toHaveBeenCalled();
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(mockPrisma.authCodeFlowState.deleteMany).toHaveBeenCalledWith({
+      where: { internalState: 'cleanup:abandoned' },
+    });
+  });
+
+  // A backlog of expired sessions is ended a few at a time, not in one burst.
+  it('ends the grants of expired sessions a few at a time', async () => {
+    attachPrisma(backend, mockPrisma);
+    const rows = Array.from({ length: 12 }, (_, i) => ({
+      ...createSession(),
+      id: `expired-${i}`,
+      createdAt: BigInt(1),
+      linkedToSessionId: null,
+    }));
+    mockPrisma.oAuthSession.findMany.mockResolvedValueOnce(rows);
+    let running = 0;
+    let peak = 0;
+    backend.onExpiredSession(async () => {
+      running++;
+      peak = Math.max(peak, running);
+      await new Promise((resolve) => setTimeout(resolve, 1));
+      running--;
+    });
+
+    await backend.cleanup();
+
+    expect(peak).toBe(5);
+  });
+
+  // An expired session and its linked accounts hold GitLab grants: cleanup hands each
+  // expired session (never a linked account, which goes with it) to the handler that ends
+  // them, before its own delete removes whatever is left.
+  it('hands each expired session to the expiry handler before deleting it', async () => {
+    attachPrisma(backend, mockPrisma);
+    const expired = { ...createSession(), createdAt: BigInt(1), linkedToSessionId: null };
+    mockPrisma.oAuthSession.findMany.mockResolvedValueOnce([expired]);
+    const handler = jest.fn(async () => {
+      throw new Error('GitLab unavailable');
+    });
+    backend.onExpiredSession(handler);
+
+    await backend.cleanup();
+
+    expect(mockPrisma.oAuthSession.findMany).toHaveBeenCalledWith({
+      where: { createdAt: { lt: expect.any(BigInt) }, linkedToSessionId: null },
+    });
+    expect(handler).toHaveBeenCalledWith(expect.objectContaining({ id: 'session-1' }));
+    expect(mockPrisma.$transaction).toHaveBeenCalled();
+  });
+
+  // Linking an account again after a GitLab username change stores the new username.
+  it('updates the GitLab username of a session', async () => {
+    attachPrisma(backend, mockPrisma);
+
+    await backend.updateSession('session-1', { gitlabUsername: 'renamed' });
+
+    expect(mockPrisma.oAuthSession.updateMany.mock.calls[0][0].data.gitlabUsername).toBe(
+      'renamed',
+    );
+  });
+
   it('runs cleanup and stats', async () => {
-    (backend as any).prisma = mockPrisma;
+    attachPrisma(backend, mockPrisma);
 
     await backend.cleanup();
     expect(mockPrisma.$transaction).toHaveBeenCalled();
@@ -963,7 +1316,7 @@ describe('PostgreSQLStorageBackend', () => {
   // writing the same version exactly one succeeds and a stale edit changes nothing.
   describe('account settings', () => {
     beforeEach(() => {
-      (backend as any).prisma = mockPrisma;
+      attachPrisma(backend, mockPrisma);
     });
 
     it('reads stored settings with their version', async () => {

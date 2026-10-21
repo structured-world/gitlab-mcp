@@ -68,13 +68,12 @@ test('timeout stops the client tree before rejecting the evaluation', async (con
     runEvaluation(process.execPath, ['-e', parent], { cwd: directory, timeoutMs: 500 }),
     /timed out/,
   );
-  const stopped = readFileSync(heartbeat, 'utf8');
+  // On a loaded machine the timeout can fire before the descendant first writes; nothing
+  // written after the rejection is still the property under test.
+  const written = () => (existsSync(heartbeat) ? readFileSync(heartbeat, 'utf8') : '');
+  const stopped = written();
   await new Promise((resolve) => setTimeout(resolve, 100));
-  assert.equal(
-    readFileSync(heartbeat, 'utf8'),
-    stopped,
-    'descendant still runs after timeout rejection',
-  );
+  assert.equal(written(), stopped, 'descendant still runs after timeout rejection');
 });
 
 test('evaluator setup failure closes the loopback server and exits', () => {

@@ -405,7 +405,7 @@ describe('OAuth Callback Handler', () => {
 
       await callbackHandler(mockRequest as Request, mockResponse as Response);
 
-      expect(mockSessionStore.deleteAuthCodeFlow).toHaveBeenCalledWith('expired-state');
+      expect(mockSessionStore.consumeAuthCodeFlow).toHaveBeenCalledWith('expired-state');
       expect(statusMock).toHaveBeenCalledWith(400);
       expect(jsonMock).toHaveBeenCalledWith({
         error: 'invalid_request',
@@ -433,7 +433,8 @@ describe('OAuth Callback Handler', () => {
       await callbackHandler(mockRequest as Request, mockResponse as Response);
 
       expect(revokeGitLabToken).toHaveBeenCalledWith('cached-token', mockOAuthConfig, selectedApp);
-      expect(mockSessionStore.deleteAuthCodeFlow).toHaveBeenCalledWith('expired-state');
+      // Taken out of its callbacks' reach before its grant is ended.
+      expect(mockSessionStore.consumeAuthCodeFlow).toHaveBeenCalledWith('expired-state');
       expect(statusMock).toHaveBeenCalledWith(400);
     });
 
@@ -441,7 +442,7 @@ describe('OAuth Callback Handler', () => {
     it('reports an expired flow even when it cannot be removed', async () => {
       mockRequest.query = { code: 'gitlab-code-123', state: 'expired-state' };
       withFlow({ ...mockAuthCodeFlow, expiresAt: Date.now() - 1000 });
-      mockSessionStore.deleteAuthCodeFlow.mockRejectedValueOnce(new Error('database down'));
+      mockSessionStore.consumeAuthCodeFlow.mockRejectedValueOnce(new Error('database down'));
 
       await callbackHandler(mockRequest as Request, mockResponse as Response);
 

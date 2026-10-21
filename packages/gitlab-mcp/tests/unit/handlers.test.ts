@@ -817,6 +817,31 @@ describe('handlers', () => {
       expect(mockServer.sendToolListChanged).not.toHaveBeenCalled();
     });
 
+    // The announcement is best effort: a client that cannot be told keeps the call's result.
+    it('answers the call when the tool list cannot be announced', async () => {
+      mockConnectionManager.isConnected.mockReturnValue(false);
+      mockSessionManager.broadcastToolsListChanged.mockRejectedValueOnce(new Error('closed'));
+      mockServer.sendToolListChanged.mockRejectedValueOnce(new Error('not connected'));
+      mockRegistryManager.executeTool.mockResolvedValueOnce({ result: 'ok' });
+
+      const result = await callToolHandler(
+        { params: { name: 'test_tool', arguments: {} } },
+        { sessionId: 's1' },
+      );
+      for (
+        let tick = 0;
+        tick < 50 && mockServer.sendToolListChanged.mock.calls.length === 0;
+        tick++
+      ) {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(result.isError).toBeUndefined();
+      expect(mockSessionManager.broadcastToolsListChanged).toHaveBeenCalled();
+      expect(mockServer.sendToolListChanged).toHaveBeenCalled();
+    });
+
     it('should return error if connection initialization fails', async () => {
       // Simulate uninitialized + init failure
       mockConnectionManager.isConnected.mockReturnValue(false);
@@ -2096,6 +2121,54 @@ describe('handlers', () => {
         resolve.mockRestore();
       }
     }, 5000);
+
+    // An account resolution that fails after the client got its timeout has nobody to tell:
+    // the failure is logged, never left as an unhandled rejection.
+    it('settles an account resolution that fails after the call timed out', async () => {
+      let failResolution!: () => void;
+      const resolve = jest.spyOn(chatAccounts, 'withChatAccount').mockImplementation(
+        () =>
+          new Promise<never>((_ok, fail) => {
+            failResolution = () => fail(new chatAccounts.AccountUnavailableError('gone'));
+          }),
+      );
+      const unhandled = jest.fn();
+      process.on('unhandledRejection', unhandled);
+      try {
+        const result = await callToolHandler(
+          { params: { name: 'browse_projects', arguments: { action: 'list' } } },
+          { sessionId: 'sess-1' },
+        );
+        expect(JSON.parse(result.content![0].text).error_code).toBe('TIMEOUT');
+
+        failResolution();
+        await new Promise((r) => setTimeout(r, 0));
+        await new Promise((r) => setTimeout(r, 0));
+
+        expect(unhandled).not.toHaveBeenCalled();
+      } finally {
+        process.off('unhandledRejection', unhandled);
+        resolve.mockRestore();
+      }
+    }, 5000);
+
+    // Only an unusable account becomes a tool error; any other failure of the resolution
+    // surfaces as the request's error.
+    it('surfaces a failure of the account resolution that is not an unusable account', async () => {
+      const resolve = jest
+        .spyOn(chatAccounts, 'withChatAccount')
+        .mockRejectedValueOnce(new Error('settings store down'));
+      try {
+        await expect(
+          callToolHandler(
+            { params: { name: 'browse_projects', arguments: { action: 'list' } } },
+            { sessionId: 'sess-1' },
+          ),
+        ).rejects.toThrow('settings store down');
+      } finally {
+        resolve.mockRestore();
+      }
+    });
 
     it('should not trigger timeout when tool completes within HANDLER_TIMEOUT_MS', async () => {
       // Tool resolves immediately (well within 100ms timeout)

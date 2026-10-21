@@ -146,6 +146,17 @@ describe('MemoryStorageBackend', () => {
         const retrieved = await storage.getSession(session.id);
         expect(retrieved).toBeDefined();
       });
+
+      // Two links of one account collide on its id, as on the database's primary key: the
+      // second create is refused and the stored account keeps its grant.
+      it('refuses a session whose id is taken', async () => {
+        await storage.createSession(createTestSession({ id: 'taken', gitlabAccessToken: 'first' }));
+
+        await expect(
+          storage.createSession(createTestSession({ id: 'taken', gitlabAccessToken: 'second' })),
+        ).rejects.toThrow('already exists');
+        expect((await storage.getSession('taken'))?.gitlabAccessToken).toBe('first');
+      });
     });
 
     describe('getSession', () => {
@@ -726,6 +737,30 @@ describe('MemoryStorageBackend', () => {
         expect(seen).toEqual(['expired']);
         expect(await storage.getSession('expired')).toBeUndefined();
         expect(await storage.getSession('linked')).toBeUndefined();
+      });
+
+      // A linked account goes with its session; one whose session is already gone has no one
+      // to take it along, so it expires by itself.
+      it('expires a linked account whose session is already gone', async () => {
+        const eightDaysAgo = Date.now() - 8 * 24 * 60 * 60 * 1000;
+        await storage.createSession(
+          createTestSession({
+            id: 'orphan',
+            mcpAccessToken: '',
+            mcpRefreshToken: '',
+            linkedToSessionId: 'gone',
+            createdAt: eightDaysAgo,
+          }),
+        );
+        const seen: string[] = [];
+        storage.onExpiredSession(async (session) => {
+          seen.push(session.id);
+        });
+
+        await storage.cleanup();
+
+        expect(seen).toEqual(['orphan']);
+        expect(await storage.getSession('orphan')).toBeUndefined();
       });
 
       // A backlog of expired sessions is ended a few at a time, not in one burst.

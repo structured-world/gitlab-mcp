@@ -145,6 +145,9 @@ jest.mock('../../src/oauth/index', () => ({
 // OAuth routes have their own HTTP tests; here only their registration matters.
 jest.mock('../../src/oauth/routes', () => ({ registerOAuthEndpoints: jest.fn() }));
 
+// The session store's start has its own tests; here only that OAuth starts it matters.
+jest.mock('../../src/oauth/grant-revocation', () => ({ startSessionStore: jest.fn() }));
+
 // Mock session manager
 jest.mock('../../src/session-manager', () => ({
   getSessionManager: jest.fn(() => mockSessionManager),
@@ -158,7 +161,9 @@ import {
   sessionStore as mockSessionStore,
   runWithTokenContext,
   isOAuthEnabled,
+  loadOAuthConfig,
 } from '../../src/oauth/index';
+import { startSessionStore } from '../../src/oauth/grant-revocation';
 import { oauthAuthMiddleware } from '../../src/middleware';
 
 describe('server', () => {
@@ -463,6 +468,17 @@ describe('server', () => {
       await messagesHandler(mockReq, mockRes);
 
       expect(mockLogDebug).toHaveBeenCalledWith('SSE messages endpoint hit!');
+    });
+
+    // With OAuth the session store holds every connection, and its start runs the cleanup
+    // that ends the grants of sessions that expired while the server was stopped.
+    it('starts the session store with the OAuth configuration', async () => {
+      const oauthConfig = { gitlabClientId: 'app', issuer: 'https://mcp.example.com' };
+      (loadOAuthConfig as jest.Mock).mockReturnValueOnce(oauthConfig);
+
+      await startServer();
+
+      expect(startSessionStore).toHaveBeenCalledWith(oauthConfig);
     });
 
     // In OAuth mode the legacy SSE transport ran tools without any credentials check.

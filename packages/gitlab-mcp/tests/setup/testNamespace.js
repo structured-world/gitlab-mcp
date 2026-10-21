@@ -148,4 +148,59 @@ async function listLifecycleGroups(request, apiUrl, token) {
   return groups;
 }
 
-module.exports = { findTestRoot, deleteLifecycleGroup, cleanupStaleRun, listLifecycleGroups };
+/** Whether a process with this id runs: a signal 0 checks it without touching it. */
+function isRunning(pid) {
+  if (!Number.isSafeInteger(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    // EPERM: it runs under another user.
+    return error.code === 'EPERM';
+  }
+}
+
+function lockOwner(lockFile) {
+  try {
+    return Number.parseInt(fs.readFileSync(lockFile, 'utf8'), 10);
+  } catch {
+    return Number.NaN;
+  }
+}
+
+// Runs on one machine share the record of their group, so one runs at a time, from setup to
+// teardown: a second run would otherwise take the first one's live group for a leftover.
+// The lock names the run's process; one left by a run that died is taken over.
+function acquireRunLock(lockFile, pid = process.pid) {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      fs.writeFileSync(lockFile, String(pid), { flag: 'wx' });
+      return;
+    } catch (error) {
+      if (error.code !== 'EEXIST') throw error;
+    }
+    const owner = lockOwner(lockFile);
+    if (owner === pid) return;
+    if (isRunning(owner)) {
+      throw new Error(
+        `Another integration run (process ${owner}) is using the shared test record; wait ` +
+          `for it to finish, or remove ${lockFile} if that process is not a test run.`,
+      );
+    }
+    fs.rmSync(lockFile, { force: true });
+  }
+  throw new Error(`Another integration run took ${lockFile} at the same time; try again.`);
+}
+
+function releaseRunLock(lockFile, pid = process.pid) {
+  if (lockOwner(lockFile) === pid) fs.rmSync(lockFile, { force: true });
+}
+
+module.exports = {
+  findTestRoot,
+  deleteLifecycleGroup,
+  cleanupStaleRun,
+  listLifecycleGroups,
+  acquireRunLock,
+  releaseRunLock,
+};

@@ -846,6 +846,52 @@ describe('RegistryManager', () => {
   });
 
   describe('Per-URL Cache Resolution', () => {
+    // A static-token chat that switched to a configured instance lists that instance's tools,
+    // gated by its version, not the server instance's.
+    it('resolves no-arg calls of a switched static-token chat via its instance', () => {
+      const { ConnectionManager } = require('../../src/services/ConnectionManager');
+      const { runWithTokenAccount } = require('../../src/accounts/token-account');
+      const labelsRegistry = require('../../src/entities/labels/registry').labelsToolRegistry;
+      const switchedUrl = 'https://switched.example.com';
+      const labelsTool = labelsRegistry.get('labels_tool_1');
+      labelsTool.requirements = { default: { tier: 'free', minVersion: '17.0' } };
+      const getInstanceInfo = jest
+        .fn()
+        .mockImplementation((url?: string) =>
+          url === switchedUrl
+            ? { tier: 'free', version: '16.0.0' }
+            : { tier: 'free', version: '17.0.0' },
+        );
+      ConnectionManager.getInstance.mockReturnValue({
+        getInstanceInfo,
+        getTokenScopeInfo: jest.fn().mockReturnValue(null),
+        getAdminInfo: jest.fn().mockReturnValue(null),
+        getCurrentInstanceUrl: jest.fn().mockReturnValue('https://gitlab.example.com'),
+      });
+
+      try {
+        resetRegistryManagerSingleton();
+        const manager = RegistryManager.getInstance();
+
+        const names = runWithTokenAccount({ instanceUrl: switchedUrl, token: 'pat' }, () =>
+          manager.getAvailableToolNames(),
+        ) as string[];
+
+        expect(names).toContain('core_tool_1');
+        expect(names).not.toContain('labels_tool_1');
+        expect(getInstanceInfo).toHaveBeenCalledWith(switchedUrl);
+      } finally {
+        delete labelsTool.requirements;
+        ConnectionManager.getInstance.mockReturnValue({
+          getInstanceInfo: jest.fn().mockReturnValue({ tier: 'free', version: '17.0.0' }),
+          getTokenScopeInfo: jest.fn().mockReturnValue(null),
+          getAdminInfo: jest.fn().mockReturnValue(null),
+          getCurrentInstanceUrl: jest.fn().mockReturnValue('https://gitlab.example.com'),
+        });
+        resetRegistryManagerSingleton();
+      }
+    });
+
     it('should resolve no-arg calls via OAuth context URL and verify it was used', () => {
       const { getGitLabApiUrlFromContext } = require('../../src/oauth/token-context');
       const { ConnectionManager } = require('../../src/services/ConnectionManager');

@@ -159,6 +159,50 @@ describe('chat accounts with OAuth', () => {
     ]);
   });
 
+  // The stored instance of a session is optional (a nullable column): an account stored
+  // without one belongs to the server's instance; one without a label is named by its host,
+  // or by its stored address when that is not a URL.
+  it('lists accounts stored without an instance or a label', async () => {
+    await sessionStore.createSession(
+      session({
+        id: 'linked-no-instance',
+        mcpAccessToken: '',
+        mcpRefreshToken: '',
+        gitlabUserId: 41,
+        gitlabUsername: 'bob',
+        gitlabApiUrl: undefined,
+        instanceLabel: undefined,
+        linkedToSessionId: 'primary',
+        createdAt: 3000,
+      }),
+    );
+    await sessionStore.createSession(
+      session({
+        id: 'linked-odd',
+        mcpAccessToken: '',
+        mcpRefreshToken: '',
+        gitlabUserId: 42,
+        gitlabUsername: 'carol',
+        gitlabApiUrl: 'not-a-url',
+        instanceLabel: undefined,
+        linkedToSessionId: 'primary',
+        createdAt: 4000,
+      }),
+    );
+
+    const accounts = await asSignedIn(() => listChatAccounts('chat-1'));
+
+    expect(accounts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          label: 'bob @ git.corp.example.com',
+          instanceUrl: 'https://git.corp.example.com',
+        }),
+        expect.objectContaining({ label: 'carol @ not-a-url' }),
+      ]),
+    );
+  });
+
   it('switches one chat to a linked account and leaves the other chats on theirs', async () => {
     const switched = await asSignedIn(() => switchChatAccount('chat-1', personalId));
 
@@ -546,6 +590,16 @@ describe('chat accounts with a static token', () => {
     expect(configuredInstanceToken('https://gitlab.com')).toBe('com-pat');
     expect(configuredInstanceToken('https://gl.unset.example.com')).toBeUndefined();
     expect(configuredInstanceToken('https://unknown.example.com')).toBeUndefined();
+  });
+
+  // A token variable that is set but empty holds no token: the instance is not offered and
+  // its requests carry none.
+  it('gives no token to an instance whose token variable is empty', async () => {
+    process.env.COM_TOKEN = '';
+
+    expect(configuredInstanceToken('https://gitlab.com')).toBeUndefined();
+    const accounts = await listChatAccounts(undefined);
+    expect(accounts.map((account) => account.id)).toEqual(['https://git.corp.example.com']);
   });
 
   // A request belongs to the configured instance its URL starts with, segment-wise, so a

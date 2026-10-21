@@ -137,7 +137,7 @@ Equivalent JSON format:
 | `url` | string | Yes | GitLab instance URL (e.g., `https://gitlab.com`) |
 | `label` | string | No | Human-readable name for UI |
 | `oauth` | object | No | OAuth configuration |
-| `tokenEnv` | string | No | Environment variable holding an access token for this instance. A server started with a static token lists the instance among the accounts a chat can switch to (`manage_context switch_account`); see [Context Switching](/advanced/context-switching) |
+| `tokenEnv` | string | No | Environment variable holding an access token for this instance. `GITLAB_TOKEN` is sent only to the instance `GITLAB_API_URL` names (`https://gitlab.com` when unset), so with a static token every other instance needs its own `tokenEnv`; the server lists it among the accounts a chat can switch to (`manage_context switch_account`); see [Context Switching](/advanced/context-switching) |
 | `rateLimit` | object | No | Rate limiting configuration |
 | `insecureSkipVerify` | boolean | No | Skip TLS verification (dev only!) |
 

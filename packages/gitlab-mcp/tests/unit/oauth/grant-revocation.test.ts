@@ -4,6 +4,7 @@
  */
 
 import {
+  discardAuthCodeFlow,
   endSession,
   revokeAbandonedFlowGrant,
   startSessionStore,
@@ -26,6 +27,8 @@ jest.mock('../../../src/oauth/session-store', () => ({
     getSession: jest.fn(),
     deleteSession: jest.fn(),
     releaseGitLabRefresh: jest.fn(),
+    consumeAuthCodeFlow: jest.fn(),
+    storeAuthCodeFlow: jest.fn(),
   },
 }));
 jest.mock('../../../src/oauth/gitlab-device-flow', () => ({ revokeGitLabToken: jest.fn() }));
@@ -79,6 +82,7 @@ beforeEach(() => {
   mockStore.getSession.mockResolvedValue(session);
   mockStore.deleteSession.mockResolvedValue(true);
   mockStore.cleanup.mockResolvedValue(undefined);
+  mockStore.storeAuthCodeFlow.mockResolvedValue(undefined);
   mockLease.mockResolvedValue(Date.now() + 15_000);
   mockAppFor.mockResolvedValue(app);
   mockRevoke.mockResolvedValue(undefined);
@@ -174,5 +178,39 @@ describe('revokeAbandonedFlowGrant', () => {
     await revokeAbandonedFlowGrant({ ...linkFlow, link: undefined }, config);
 
     expect(mockRevoke).not.toHaveBeenCalled();
+  });
+
+  // The link's session is gone, and its linked accounts with it: nothing holds the grant.
+  it('ends the grant of a link flow whose session is gone', async () => {
+    mockLease.mockResolvedValueOnce(undefined);
+
+    await revokeAbandonedFlowGrant(linkFlow, config);
+
+    expect(mockStore.getLinkedSessions).not.toHaveBeenCalled();
+    expect(mockRevoke).toHaveBeenCalledWith('cached-access', config, app);
+  });
+});
+
+describe('discardAuthCodeFlow', () => {
+  // The flow is the grant's only copy: when the grant cannot be ended, the flow goes back
+  // for storage cleanup to retry once it expires.
+  it('keeps the flow for cleanup when its grant cannot be ended', async () => {
+    mockStore.consumeAuthCodeFlow.mockResolvedValueOnce(linkFlow);
+    mockRevoke.mockRejectedValueOnce(new Error('GitLab returned 502'));
+
+    await discardAuthCodeFlow('state-1', linkFlow, config);
+
+    expect(mockStore.storeAuthCodeFlow).toHaveBeenCalledWith('state-1', linkFlow);
+  });
+
+  // Someone else took the flow first (its callback completed it, or another discard): that
+  // one decided its grant, so this discard ends nothing.
+  it('ends nothing when the flow was already taken', async () => {
+    mockStore.consumeAuthCodeFlow.mockResolvedValueOnce(undefined);
+
+    await discardAuthCodeFlow('state-1', linkFlow, config);
+
+    expect(mockRevoke).not.toHaveBeenCalled();
+    expect(mockStore.storeAuthCodeFlow).not.toHaveBeenCalled();
   });
 });

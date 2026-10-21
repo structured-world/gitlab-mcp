@@ -196,22 +196,31 @@ export async function startSessionStore(config: OAuthConfig): Promise<void> {
 }
 
 /**
- * Discard an authorization flow that will not finish, ending the grant it cached. A flow
- * whose grant could not be ended, or whose removal failed, is left to storage cleanup,
- * which ends the grant once it expires (revocation is idempotent).
+ * Discard an authorization flow that will not finish, ending the grant it cached. The flow is
+ * taken out of its callbacks' reach first, as storage cleanup does: a retry that comes after
+ * finds it spent and stores nothing, so it cannot store the grant being ended. A flow whose
+ * grant could not be ended goes back for storage cleanup, which ends the grant once it
+ * expires (revocation is idempotent).
  */
 export async function discardAuthCodeFlow(
   state: string,
   flow: AuthCodeFlowState,
   config: OAuthConfig,
 ): Promise<void> {
+  const taken = await sessionStore.consumeAuthCodeFlow(state).catch(() => undefined);
+  // Spent or discarded already: whoever took it decided its grant.
+  if (!taken) return;
   try {
-    await endAbandonedFlowGrant(flow, config);
+    await endAbandonedFlowGrant(taken, config);
   } catch (error: unknown) {
     logWarn('Failed to revoke the GitLab grant of an abandoned authorization', {
       err: error as Error,
     });
-    return;
+    await sessionStore.storeAuthCodeFlow(state, taken).catch((restoreError: unknown) => {
+      logWarn('Could not keep an abandoned authorization for cleanup', {
+        err: restoreError as Error,
+        expiresAt: flow.expiresAt,
+      });
+    });
   }
-  await sessionStore.deleteAuthCodeFlow(state).catch(() => false);
 }

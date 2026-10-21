@@ -52,7 +52,13 @@ The account the connection signed in with cannot be unlinked, and a chat must sw
 
 ### Configured instances (static token)
 
-A server started with a token can work with more instances when the instance configuration names a token for each:
+A server started with a token can work with more instances when the instance configuration names a token for each. `GITLAB_TOKEN` belongs to the server's own instance, the one `GITLAB_API_URL` names (`https://gitlab.com` when it is not set); every other configured instance needs its own `tokenEnv`:
+
+```bash
+GITLAB_API_URL=https://git.company.com
+GITLAB_TOKEN=glpat-company-token
+GITLAB_COM_TOKEN=glpat-gitlab-com-token
+```
 
 ```yaml
 # GITLAB_INSTANCES_FILE

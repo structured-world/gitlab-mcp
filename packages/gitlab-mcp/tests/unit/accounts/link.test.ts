@@ -64,6 +64,7 @@ import { runWithTokenContext } from '../../../src/oauth/token-context';
 import { getGitLabUser, revokeGitLabToken } from '../../../src/oauth/gitlab-device-flow';
 import { exchangeFlowCode } from '../../../src/oauth/code-exchange';
 import {
+  discardAuthCodeFlow,
   endAbandonedFlowGrant,
   revokeAbandonedFlowGrant,
 } from '../../../src/oauth/grant-revocation';
@@ -1069,6 +1070,86 @@ describe('account linking', () => {
       const [linked] = await sessionStore.getLinkedSessions('primary');
       expect(linked.gitlabAccessToken).toBe('com-token');
       expect(mockRevoke).not.toHaveBeenCalledWith('com-token', config, comApp);
+    });
+
+    // The step is opened in another browser and discarded while the browser it belongs to
+    // retries it with the grant cached by a failed attempt: the retry must not store the
+    // grant the discard is ending, or the account is left linked with an ended grant.
+    it('does not let a retry store the grant a discard of its flow ends', async () => {
+      const state = await verified();
+      const cached = { ...(await storedFlow(state)), gitlabTokens: tokens('com-token') };
+      await sessionStore.storeAuthCodeFlow(state, cached);
+      mockUser.mockResolvedValue({ id: 99, username: 'alice-personal' });
+      // The retry from the bound browser lands while the discard ends the grant.
+      mockRevoke.mockImplementationOnce(async () => {
+        await completeAccountLink(response(), state, cached, 'code', config);
+      });
+
+      await discardAuthCodeFlow(state, cached, config);
+
+      const linked = await sessionStore.getLinkedSessions('primary');
+      expect(mockRevoke).toHaveBeenCalledWith('com-token', config, comApp);
+      expect(linked.map((account) => account.gitlabAccessToken)).not.toContain('com-token');
+    });
+
+    // The store committed the account but reported a failure (a connection lost after the
+    // commit): the next pass finds the account and completes the link with it.
+    it('completes a link whose store committed before reporting a failure', async () => {
+      const state = await verified();
+      mockExchange.mockResolvedValueOnce(tokens('com-token'));
+      mockUser.mockResolvedValueOnce({ id: 99, username: 'alice-personal' });
+      const createSession = sessionStore.createSession.bind(sessionStore);
+      const create = jest
+        .spyOn(sessionStore, 'createSession')
+        .mockImplementationOnce(async (row) => {
+          await createSession(row);
+          throw new Error('connection reset');
+        });
+      const res = response();
+
+      try {
+        await completeAccountLink(res, state, await storedFlow(state), 'code', config);
+      } finally {
+        create.mockRestore();
+      }
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      const linked = await sessionStore.getLinkedSessions('primary');
+      expect(linked).toHaveLength(1);
+      expect(linked[0].gitlabAccessToken).toBe('com-token');
+    });
+
+    // The connection signed out after the account was signed in at GitLab but before the
+    // link completed: nothing is stored, the link is spent and its grant is ended.
+    it('ends the grant of a link whose connection signed out before it completed', async () => {
+      const state = await verified();
+      mockExchange.mockResolvedValueOnce(tokens('com-token'));
+      mockUser.mockImplementationOnce(async () => {
+        await sessionStore.deleteSession('primary');
+        return { id: 99, username: 'alice-personal' };
+      });
+      const res = response();
+
+      await completeAccountLink(res, state, await storedFlow(state), 'code', config);
+
+      expect(res.send.mock.calls[0][0]).toContain('has signed out');
+      expect(mockRevoke).toHaveBeenCalledWith('com-token', config, comApp);
+      expect(await sessionStore.getAuthCodeFlow(state)).toBeUndefined();
+      expect(await sessionStore.getLinkedSessions('primary')).toEqual([]);
+    });
+
+    // The page is already sent when the chat is told: a failed announcement changes nothing.
+    it('links the account when the chat cannot be told', async () => {
+      const state = await verified({ mcpSessionId: 'chat-1', elicitationId: 'elicit-1' });
+      mockExchange.mockResolvedValueOnce(tokens('com-token'));
+      mockUser.mockResolvedValueOnce({ id: 99, username: 'alice-personal' });
+      mockElicitationComplete.mockRejectedValueOnce(new Error('session closed'));
+      const res = response();
+
+      await completeAccountLink(res, state, await storedFlow(state), 'code', config);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(await sessionStore.getLinkedSessions('primary')).toHaveLength(1);
     });
 
     // A retry after a failed completion reuses the cached grant the first attempt already

@@ -207,7 +207,15 @@ export async function discardAuthCodeFlow(
   flow: AuthCodeFlowState,
   config: OAuthConfig,
 ): Promise<void> {
-  const taken = await sessionStore.consumeAuthCodeFlow(state).catch(() => undefined);
+  const taken = await sessionStore.consumeAuthCodeFlow(state).catch((error: unknown) => {
+    // Not taken, so not this call's grant to end: the flow stays stored and storage cleanup
+    // ends its grant once it expires.
+    logWarn('Could not take an abandoned authorization out of reach; cleanup ends its grant', {
+      err: error as Error,
+      expiresAt: flow.expiresAt,
+    });
+    return undefined;
+  });
   // Spent or discarded already: whoever took it decided its grant.
   if (!taken) return;
   try {

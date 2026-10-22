@@ -1,4 +1,6 @@
+import { spawn, type ChildProcess } from 'node:child_process';
 import * as fs from 'node:fs';
+import type * as net from 'node:net';
 import * as os from 'node:os';
 import * as path from 'node:path';
 
@@ -303,52 +305,67 @@ describe('Integration namespace boundary', () => {
   // Runs on one machine share the record of their group, so only one runs at a time: a
   // second run must not take the first one's live group for an interrupted run's leftover.
   describe('the integration run lock', () => {
-    let dir: string;
-    let lockFile: string;
-    // No process has this id: the highest a system hands out is far below it.
-    const deadPid = 2 ** 30;
+    // A port the system just handed out and took back, so free for this test.
+    async function freePort(): Promise<number> {
+      const probe = await acquireRunLock(0);
+      const { port } = probe.address() as net.AddressInfo;
+      await releaseRunLock(probe);
+      return port;
+    }
 
-    beforeEach(() => {
-      dir = fs.mkdtempSync(path.join(os.tmpdir(), 'run-lock-test-'));
-      lockFile = path.join(dir, 'gitlab-mcp-integration.lock');
+    // Another run in its own process, holding the lock until it is killed.
+    async function runInAnotherProcess(port: number): Promise<ChildProcess> {
+      const lockModule = path.resolve(__dirname, '../../setup/testNamespace.js');
+      const child = spawn(
+        process.execPath,
+        [
+          '-e',
+          `require(${JSON.stringify(lockModule)}).acquireRunLock(${port})` +
+            `.then(() => { console.log('held'); setInterval(() => {}, 1000); });`,
+        ],
+        { stdio: ['ignore', 'pipe', 'inherit'] },
+      );
+      await new Promise<void>((resolve, reject) => {
+        child.stdout?.once('data', () => resolve());
+        child.once('exit', (code) => reject(new Error(`lock holder exited with ${code}`)));
+      });
+      return child;
+    }
+
+    async function kill(child: ChildProcess): Promise<void> {
+      const exited = new Promise((resolve) => child.once('exit', resolve));
+      child.kill('SIGKILL');
+      await exited;
+    }
+
+    it('refuses to start while another run holds the lock', async () => {
+      const port = await freePort();
+      const other = await runInAnotherProcess(port);
+      try {
+        await expect(acquireRunLock(port)).rejects.toThrow('Another integration run');
+      } finally {
+        await kill(other);
+      }
     });
 
-    afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
-
-    it('takes a free lock for the run', () => {
-      acquireRunLock(lockFile, 4242);
-      expect(fs.readFileSync(lockFile, 'utf8')).toBe('4242');
+    // A run killed before its teardown leaves nothing to take over: the next run starts and
+    // then cleans up after the dead run.
+    it('is free again once the run holding it is killed', async () => {
+      const port = await freePort();
+      await kill(await runInAnotherProcess(port));
+      const lock = await acquireRunLock(port);
+      await releaseRunLock(lock);
     });
 
-    it('refuses to start while another live run holds the lock', () => {
-      fs.writeFileSync(lockFile, String(process.ppid));
-      expect(() => acquireRunLock(lockFile, 4242)).toThrow(String(process.ppid));
-      expect(fs.readFileSync(lockFile, 'utf8')).toBe(String(process.ppid));
-    });
-
-    // A run killed before its teardown leaves its lock: the next run takes it over and then
-    // cleans up after the dead run.
-    it('takes over the lock of a run that is no longer running', () => {
-      fs.writeFileSync(lockFile, String(deadPid));
-      acquireRunLock(lockFile, 4242);
-      expect(fs.readFileSync(lockFile, 'utf8')).toBe('4242');
-    });
-
-    it('takes over an unreadable lock', () => {
-      fs.writeFileSync(lockFile, 'not a process');
-      acquireRunLock(lockFile, 4242);
-      expect(fs.readFileSync(lockFile, 'utf8')).toBe('4242');
-    });
-
-    it('releases only its own lock', () => {
-      fs.writeFileSync(lockFile, String(process.ppid));
-      releaseRunLock(lockFile, 4242);
-      expect(fs.existsSync(lockFile)).toBe(true);
-      acquireRunLock(path.join(dir, 'own.lock'), 4242);
-      releaseRunLock(path.join(dir, 'own.lock'), 4242);
-      expect(fs.existsSync(path.join(dir, 'own.lock'))).toBe(false);
-      // Nothing to release is not an error.
-      expect(() => releaseRunLock(path.join(dir, 'own.lock'), 4242)).not.toThrow();
+    it('is free again once the run releases it, and releasing twice is harmless', async () => {
+      const port = await freePort();
+      const lock = await acquireRunLock(port);
+      await expect(acquireRunLock(port)).rejects.toThrow(String(port));
+      await releaseRunLock(lock);
+      await expect(releaseRunLock(lock)).resolves.toBeUndefined();
+      // A setup that failed before taking the lock leaves nothing to release.
+      await expect(releaseRunLock(undefined)).resolves.toBeUndefined();
+      await releaseRunLock(await acquireRunLock(port));
     });
   });
 

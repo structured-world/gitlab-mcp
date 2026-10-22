@@ -19,7 +19,7 @@ module.exports = async () => {
     await teardown();
   } finally {
     // The next run may start once this one has cleaned up, or failed to.
-    releaseRunLock(path.join(os.tmpdir(), 'gitlab-mcp-integration.lock'));
+    await releaseRunLock(globalThis.__integrationRunLock);
   }
 };
 

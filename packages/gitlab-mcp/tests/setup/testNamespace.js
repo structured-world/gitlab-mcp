@@ -1,6 +1,7 @@
 // Integration fixtures belong under the existing root "test" group. Cleanup
 // verifies the provider's live group before deleting a suite-owned subgroup.
 const fs = require('node:fs');
+const net = require('node:net');
 
 async function findTestRoot(request, apiUrl, token) {
   const response = await request(`${apiUrl}/api/v4/groups/test`, {
@@ -148,52 +149,39 @@ async function listLifecycleGroups(request, apiUrl, token) {
   return groups;
 }
 
-/** Whether a process with this id runs: a signal 0 checks it without touching it. */
-function isRunning(pid) {
-  if (!Number.isSafeInteger(pid) || pid <= 0) return false;
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    // EPERM: it runs under another user.
-    return error.code === 'EPERM';
-  }
-}
-
-function lockOwner(lockFile) {
-  try {
-    return Number.parseInt(fs.readFileSync(lockFile, 'utf8'), 10);
-  } catch {
-    return Number.NaN;
-  }
-}
-
 // Runs on one machine share the record of their group, so one runs at a time, from setup to
 // teardown: a second run would otherwise take the first one's live group for a leftover.
-// The lock names the run's process; one left by a run that died is taken over.
-function acquireRunLock(lockFile, pid = process.pid) {
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    try {
-      fs.writeFileSync(lockFile, String(pid), { flag: 'wx' });
-      return;
-    } catch (error) {
-      if (error.code !== 'EEXIST') throw error;
-    }
-    const owner = lockOwner(lockFile);
-    if (owner === pid) return;
-    if (isRunning(owner)) {
-      throw new Error(
-        `Another integration run (process ${owner}) is using the shared test record; wait ` +
-          `for it to finish, or remove ${lockFile} if that process is not a test run.`,
+// A run holds a loopback port rather than a lock file: the kernel gives a port to one
+// listener at once and frees it when the process exits, however it exits, so no lock is
+// left behind by a killed run and there is no takeover to race.
+function acquireRunLock(port) {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer((socket) => socket.destroy());
+    server.once('error', (error) => {
+      if (error.code !== 'EADDRINUSE') return reject(error);
+      reject(
+        new Error(
+          `Another integration run is using the shared test record (it holds port ${port} ` +
+            'on 127.0.0.1); wait for it to finish, or free the port if another program holds it.',
+        ),
       );
-    }
-    fs.rmSync(lockFile, { force: true });
-  }
-  throw new Error(`Another integration run took ${lockFile} at the same time; try again.`);
+    });
+    server.listen({ host: '127.0.0.1', port, exclusive: true }, () => {
+      // Held, not served: the lock does not keep the test process alive.
+      server.unref();
+      resolve(server);
+    });
+  });
 }
 
-function releaseRunLock(lockFile, pid = process.pid) {
-  if (lockOwner(lockFile) === pid) fs.rmSync(lockFile, { force: true });
+// The port every integration run on a machine takes; any fixed port other programs leave free.
+const RUN_LOCK_PORT = 47321;
+
+function releaseRunLock(lock) {
+  return new Promise((resolve) => {
+    if (!lock?.listening) return resolve();
+    lock.close(() => resolve());
+  });
 }
 
 module.exports = {
@@ -201,6 +189,7 @@ module.exports = {
   deleteLifecycleGroup,
   cleanupStaleRun,
   listLifecycleGroups,
+  RUN_LOCK_PORT,
   acquireRunLock,
   releaseRunLock,
 };

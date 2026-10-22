@@ -13,6 +13,7 @@ import { sessionStore } from '../../../src/oauth/session-store';
 import { revokeGitLabToken } from '../../../src/oauth/gitlab-device-flow';
 import { oauthAppFor } from '../../../src/oauth/instance-app';
 import { claimSessionLease } from '../../../src/oauth/gitlab-token-refresh';
+import { logWarn } from '../../../src/logger';
 import type { OAuthConfig } from '../../../src/oauth/config';
 import type { AuthCodeFlowState, OAuthSession } from '../../../src/oauth/types';
 
@@ -212,5 +213,20 @@ describe('discardAuthCodeFlow', () => {
 
     expect(mockRevoke).not.toHaveBeenCalled();
     expect(mockStore.storeAuthCodeFlow).not.toHaveBeenCalled();
+  });
+
+  // A storage failure leaves the flow stored, so its grant is not this discard's to end:
+  // it is left to cleanup, and the delay is logged.
+  it('leaves the grant to cleanup and says so when the flow cannot be taken', async () => {
+    mockStore.consumeAuthCodeFlow.mockRejectedValueOnce(new Error('disk full'));
+
+    await discardAuthCodeFlow('state-1', linkFlow, config);
+
+    expect(mockRevoke).not.toHaveBeenCalled();
+    expect(mockStore.storeAuthCodeFlow).not.toHaveBeenCalled();
+    expect(logWarn).toHaveBeenCalledWith(
+      expect.stringContaining('cleanup ends its grant'),
+      expect.objectContaining({ err: expect.any(Error) }),
+    );
   });
 });

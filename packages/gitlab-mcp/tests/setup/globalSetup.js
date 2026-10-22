@@ -10,7 +10,7 @@ const fs = require('fs');
 const os = require('os');
 const crypto = require('crypto');
 const { config } = require('dotenv');
-const { acquireRunLock, cleanupStaleRun } = require('./testNamespace');
+const { RUN_LOCK_PORT, acquireRunLock, cleanupStaleRun } = require('./testNamespace');
 
 // Namespace tmp artefacts by checkout root so concurrent runs across multiple
 // worktrees (or different machines sharing a tmpdir over NFS) cannot clobber
@@ -45,8 +45,9 @@ module.exports = async () => {
     throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
   }
 
-  // One run at a time on this machine, released by the teardown: the record is shared.
-  acquireRunLock(path.join(os.tmpdir(), 'gitlab-mcp-integration.lock'));
+  // One run at a time on this machine, released by the teardown (Jest runs both in this
+  // process): the record is shared.
+  globalThis.__integrationRunLock = await acquireRunLock(RUN_LOCK_PORT);
 
   // A previous run killed before its teardown left its record, and its group in GitLab.
   const testDataFile = path.join(os.tmpdir(), 'gitlab-mcp-test-data.json');

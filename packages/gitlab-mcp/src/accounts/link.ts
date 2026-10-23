@@ -20,12 +20,25 @@ import { sessionStore } from '../oauth/session-store';
 import { getTokenContext } from '../oauth/token-context';
 import { oauthAppFor, selectableOAuthApps } from '../oauth/instance-app';
 import type { GitLabOAuthApp } from '../oauth/oauth-app';
-import { buildGitLabAuthUrl, getGitLabUser, revokeGitLabToken } from '../oauth/gitlab-device-flow';
+import {
+  buildGitLabAuthUrl,
+  getGitLabUser,
+  revokeGitLabToken,
+  GitLabOAuthHttpError,
+} from '../oauth/gitlab-device-flow';
 import { exchangeFlowCode } from '../oauth/code-exchange';
 import { discardAuthCodeFlow } from '../oauth/grant-revocation';
-import { claimSessionLease } from '../oauth/gitlab-token-refresh';
+import {
+  claimSessionLease,
+  withFreshGitLabToken,
+  GitLabGrantRevokedError,
+} from '../oauth/gitlab-token-refresh';
 import { grantedGitlabScopes } from '../oauth/granted-scopes';
-import { calculateTokenExpiry, generateRandomString } from '../oauth/token-utils';
+import {
+  calculateTokenExpiry,
+  generateRandomString,
+  isTokenExpiringSoon,
+} from '../oauth/token-utils';
 import type { AccountLinkStep, AuthCodeFlowState, OAuthSession } from '../oauth/types';
 import { normalizeInstanceUrl } from '../utils/url';
 import { escapeHtml } from '../utils/html';
@@ -346,7 +359,12 @@ interface LinkedAccountWrite {
 }
 
 /** What one pass over the stored account achieved; `wait` asks for a pause before the next. */
-type StorePass = { done: true; displaced: string | undefined } | { done: false; wait: boolean };
+type StorePass =
+  | { done: true; displaced: string | undefined }
+  | { done: false; wait: boolean; refresh?: OAuthSession };
+
+type StoreResult =
+  { done: true; displaced: string | undefined } | { done: false; refresh: OAuthSession };
 
 async function findLinkedAccount(write: LinkedAccountWrite): Promise<OAuthSession | undefined> {
   return (await sessionStore.getLinkedSessions(write.session.id)).find(
@@ -392,7 +410,18 @@ async function createLinkedAccount(write: LinkedAccountWrite): Promise<StorePass
 async function replaceLinkedGrant(
   write: LinkedAccountWrite,
   stored: OAuthSession,
+  revokedRefreshToken: string | undefined,
 ): Promise<StorePass> {
+  const revoked = stored.gitlabRefreshToken === revokedRefreshToken;
+  if (
+    !revoked &&
+    stored.gitlabRefreshToken !== write.grant.gitlabRefreshToken &&
+    isTokenExpiringSoon(stored.gitlabTokenExpiry)
+  ) {
+    // Doorkeeper 5.6.6 skips expired access tokens on revoke. Keep both credentials
+    // until a refresh yields a live token; the next pass re-reads the stored grant.
+    return { done: false, wait: false, refresh: stored };
+  }
   const now = Date.now();
   const leaseUntil = now + REPLACE_LEASE_MS;
   const claimed = await sessionStore.claimGitLabRefresh(
@@ -407,7 +436,7 @@ async function replaceLinkedGrant(
   }
   try {
     // Read before the update: a backend may hand out the stored record, which it changes.
-    const displaced = stored.gitlabAccessToken;
+    const displaced = revoked ? undefined : stored.gitlabAccessToken;
     const updates = { ...write.grant, gitlabUsername: write.user.username };
     if (await sessionStore.updateSession(stored.id, updates)) return { done: true, displaced };
     // Unlinked meanwhile in another chat: the next pass stores the account again.
@@ -425,16 +454,20 @@ async function replaceLinkedGrant(
  */
 async function storeLinkedAccount(
   write: LinkedAccountWrite,
+  revokedRefreshToken: string | undefined,
   attempt = 1,
-): Promise<string | undefined> {
+): Promise<StoreResult> {
   const stored = await findLinkedAccount(write);
-  const pass = stored ? await replaceLinkedGrant(write, stored) : await createLinkedAccount(write);
-  if (pass.done) return pass.displaced;
+  const pass = stored
+    ? await replaceLinkedGrant(write, stored, revokedRefreshToken)
+    : await createLinkedAccount(write);
+  if (pass.done) return pass;
+  if (pass.refresh) return { done: false, refresh: pass.refresh };
   if (attempt >= STORE_ATTEMPTS) {
     throw new Error('The linked account is being changed elsewhere');
   }
   if (pass.wait) await new Promise((resolve) => setTimeout(resolve, STORE_RETRY_MS));
-  return storeLinkedAccount(write, attempt + 1);
+  return storeLinkedAccount(write, revokedRefreshToken, attempt + 1);
 }
 
 /** How a link's completion ended, and the grant its store displaced, if any. */
@@ -455,7 +488,8 @@ interface LinkCompletion {
 async function completeUnderSessionLease(
   state: string,
   write: LinkedAccountWrite,
-): Promise<LinkCompletion> {
+  revokedRefreshToken: string | undefined,
+): Promise<LinkCompletion | { outcome: 'refresh'; account: OAuthSession }> {
   const { session, instance, user } = write;
   const turn = await claimSessionLease(session.id, LINK_COMPLETION_LEASE_MS);
   if (turn === undefined) {
@@ -467,7 +501,9 @@ async function completeUnderSessionLease(
     // From here the grant is the account's: if a step below fails, the flow keeps its
     // tokens for a retry, and ending that flow later leaves a grant a linked account stores
     // alone. A retry reuses the grant a failed attempt already stored.
-    const replacedToken = await storeLinkedAccount(write);
+    const result = await storeLinkedAccount(write, revokedRefreshToken);
+    if (!result.done) return { outcome: 'refresh', account: result.refresh };
+    const replacedToken = result.displaced;
     // The flow can still go between the check and here (expired and discarded): the account
     // is stored all the same, so only the page says so.
     const spent = (await sessionStore.consumeAuthCodeFlow(state)) === undefined;
@@ -480,6 +516,35 @@ async function completeUnderSessionLease(
   } finally {
     await sessionStore.releaseGitLabRefresh(session.id, turn).catch(() => undefined);
   }
+}
+
+/** Refresh a displaced grant outside the primary lease, then retry the serialized store. */
+async function completeWithLiveDisplacedGrant(
+  state: string,
+  write: LinkedAccountWrite,
+  config: OAuthConfig,
+): Promise<LinkCompletion> {
+  let revokedRefreshToken: string | undefined;
+  for (let attempt = 0; attempt < STORE_ATTEMPTS; attempt++) {
+    const result = await completeUnderSessionLease(state, write, revokedRefreshToken);
+    if (result.outcome !== 'refresh') return result;
+    const spent = result.account.gitlabRefreshToken;
+    try {
+      await withFreshGitLabToken(result.account, config);
+    } catch (error: unknown) {
+      // Only invalid_grant proves this particular credential is already unusable.
+      // A missing application or a temporary failure must leave the old pair stored.
+      if (
+        !(error instanceof GitLabGrantRevokedError) ||
+        !(error.cause instanceof GitLabOAuthHttpError) ||
+        error.cause.oauthError !== 'invalid_grant'
+      ) {
+        throw error;
+      }
+      revokedRefreshToken = spent;
+    }
+  }
+  throw new Error('The linked account is being changed elsewhere');
 }
 
 /** Second step: store the signed-in account with the session, or refresh it when linked. */
@@ -525,18 +590,22 @@ async function connectAccount(
     return;
   }
 
-  const { outcome, replacedToken } = await completeUnderSessionLease(state, {
-    session,
-    link,
-    user,
-    instance,
-    grant: {
-      gitlabAccessToken: tokens.access_token,
-      gitlabRefreshToken: tokens.refresh_token,
-      gitlabTokenExpiry: calculateTokenExpiry(tokens.expires_in),
-      gitlabScopes: grantedGitlabScopes(tokens.scope, flow.requestedGitlabScopes),
+  const { outcome, replacedToken } = await completeWithLiveDisplacedGrant(
+    state,
+    {
+      session,
+      link,
+      user,
+      instance,
+      grant: {
+        gitlabAccessToken: tokens.access_token,
+        gitlabRefreshToken: tokens.refresh_token,
+        gitlabTokenExpiry: calculateTokenExpiry(tokens.expires_in),
+        gitlabScopes: grantedGitlabScopes(tokens.scope, flow.requestedGitlabScopes),
+      },
     },
-  });
+    config,
+  );
   // The displaced grant is no longer stored. A grant this link already stored is not one.
   if (replacedToken && replacedToken !== tokens.access_token) {
     await revokeQuietly(replacedToken, config, app);

@@ -10,7 +10,12 @@ jest.mock('../../../src/oauth/config', () => ({
   loadOAuthConfig: () => (mockOAuth ? { issuer: 'https://mcp.example.com' } : null),
 }));
 
-jest.mock('../../../src/config', () => ({ GITLAB_BASE_URL: 'https://git.corp.example.com' }));
+jest.mock('../../../src/config', () => ({
+  GITLAB_BASE_URL: 'https://git.corp.example.com',
+  CONNECT_TIMEOUT_MS: 100,
+  HEADERS_TIMEOUT_MS: 100,
+  BODY_TIMEOUT_MS: 100,
+}));
 
 jest.mock('../../../src/oauth/session-store', () => {
   const { SessionStore } = jest.requireActual('../../../src/oauth/session-store');
@@ -42,15 +47,19 @@ jest.mock('../../../src/oauth/instance-app', () => ({
 }));
 
 jest.mock('../../../src/oauth/gitlab-device-flow', () => ({
+  ...jest.requireActual('../../../src/oauth/gitlab-device-flow'),
   buildGitLabAuthUrl: jest.fn(
     (_config: unknown, _redirect: string, state: string, app: { baseUrl: string }) =>
       `${app.baseUrl}/oauth/authorize?state=${state}`,
   ),
   getGitLabUser: jest.fn(),
   revokeGitLabToken: jest.fn(),
+  refreshGitLabToken: jest.fn(),
 }));
 
 jest.mock('../../../src/oauth/code-exchange', () => ({ exchangeFlowCode: jest.fn() }));
+// Only the OAuth error class is real here; HTTP is mocked at the device-flow boundary.
+jest.mock('../../../src/utils/fetch', () => ({ enhancedFetch: jest.fn() }));
 
 const mockElicitationComplete = jest.fn();
 jest.mock('../../../src/session-manager', () => ({
@@ -61,7 +70,12 @@ import type { Response } from 'express';
 import { completeAccountLink, startAccountLink } from '../../../src/accounts/link';
 import { sessionStore } from '../../../src/oauth/session-store';
 import { runWithTokenContext } from '../../../src/oauth/token-context';
-import { getGitLabUser, revokeGitLabToken } from '../../../src/oauth/gitlab-device-flow';
+import {
+  getGitLabUser,
+  revokeGitLabToken,
+  refreshGitLabToken,
+  GitLabOAuthHttpError,
+} from '../../../src/oauth/gitlab-device-flow';
 import { exchangeFlowCode } from '../../../src/oauth/code-exchange';
 import {
   discardAuthCodeFlow,
@@ -77,6 +91,7 @@ import type {
 
 const mockUser = getGitLabUser as jest.MockedFunction<typeof getGitLabUser>;
 const mockRevoke = revokeGitLabToken as jest.MockedFunction<typeof revokeGitLabToken>;
+const mockRefresh = refreshGitLabToken as jest.MockedFunction<typeof refreshGitLabToken>;
 const mockExchange = exchangeFlowCode as jest.MockedFunction<typeof exchangeFlowCode>;
 const config = { issuer: 'https://mcp.example.com' } as OAuthConfig;
 
@@ -97,13 +112,15 @@ const primary: OAuthSession = {
   updatedAt: 1000,
 };
 
+const tokenCreatedAt = Math.floor(Date.now() / 1000);
+
 function tokens(access: string): GitLabTokenResponse {
   return {
     access_token: access,
     refresh_token: `${access}-refresh`,
     token_type: 'Bearer',
     expires_in: 7200,
-    created_at: 0,
+    created_at: tokenCreatedAt,
     scope: 'api',
   };
 }
@@ -534,6 +551,92 @@ describe('account linking', () => {
       expect(linked[0]).toMatchObject({ id: 'old-link', gitlabAccessToken: 'new-com-token' });
       expect(mockRevoke).toHaveBeenCalledWith('old-com-token', config, comApp);
     });
+
+    // Doorkeeper 5.6.6 skips expired access tokens on revoke. Rotate the old grant while
+    // its refresh credential is still stored, then revoke the live replacement token.
+    it('refreshes an expired displaced grant before replacing the account', async () => {
+      await sessionStore.createSession({
+        ...primary,
+        id: 'old-link',
+        gitlabAccessToken: 'expired-old-token',
+        gitlabRefreshToken: 'old-refresh',
+        gitlabTokenExpiry: Date.now() - 1,
+        gitlabUserId: 99,
+        gitlabApiUrl: 'https://gitlab.com',
+        linkedToSessionId: primary.id,
+      });
+      const state = await verified();
+      mockExchange.mockResolvedValueOnce(tokens('new-token'));
+      mockUser.mockResolvedValueOnce({ id: 99, username: 'alice-personal' });
+      mockRefresh.mockImplementationOnce(async () => {
+        // A slow linked-account refresh must not hold the primary account's lease.
+        const now = Date.now();
+        const leaseUntil = now + 1000;
+        expect(
+          await sessionStore.claimGitLabRefresh(
+            primary.id,
+            primary.gitlabRefreshToken,
+            now,
+            leaseUntil,
+          ),
+        ).toBe(true);
+        await sessionStore.releaseGitLabRefresh(primary.id, leaseUntil);
+        expect((await sessionStore.getSession('old-link'))?.gitlabRefreshToken).toBe('old-refresh');
+        return tokens('live-old-token');
+      });
+      const res = response();
+
+      await completeAccountLink(res, state, await storedFlow(state), 'code', config);
+
+      expect(mockRefresh).toHaveBeenCalledWith('old-refresh', config, comApp);
+      expect(mockRevoke).toHaveBeenCalledWith('live-old-token', config, comApp);
+      expect(mockRevoke).not.toHaveBeenCalledWith('expired-old-token', config, comApp);
+      expect((await sessionStore.getSession('old-link'))?.gitlabAccessToken).toBe('new-token');
+      expect(res.status).toHaveBeenCalledWith(200);
+    });
+
+    // Re-linking can replace a grant GitLab has already revoked; application failures
+    // and temporary outages do not prove revocation and must retain both old credentials.
+    it.each([
+      ['invalid_grant', 400, true],
+      ['invalid_client', 400, false],
+      [undefined, 502, false],
+    ] as const)(
+      'handles displaced refresh error %s (%s) without losing credentials',
+      async (code, status, ended) => {
+        await sessionStore.createSession({
+          ...primary,
+          id: 'old-link',
+          gitlabAccessToken: 'old-token',
+          gitlabRefreshToken: 'old-refresh',
+          gitlabTokenExpiry: Date.now() - 1,
+          gitlabUserId: 99,
+          gitlabApiUrl: 'https://gitlab.com',
+          linkedToSessionId: primary.id,
+        });
+        const state = await verified();
+        mockExchange.mockResolvedValueOnce(tokens('new-token'));
+        mockUser.mockResolvedValueOnce({ id: 99, username: 'alice-personal' });
+        mockRefresh.mockRejectedValueOnce(new GitLabOAuthHttpError('Refresh failed', status, code));
+        const res = response();
+
+        await completeAccountLink(res, state, await storedFlow(state), 'code', config);
+
+        expect(mockRefresh).toHaveBeenCalledWith('old-refresh', config, comApp);
+        expect((await sessionStore.getSession('old-link'))?.gitlabAccessToken).toBe(
+          ended ? 'new-token' : 'old-token',
+        );
+        if (ended) {
+          expect(await sessionStore.getAuthCodeFlow(state)).toBeUndefined();
+          expect(res.status).toHaveBeenCalledWith(200);
+        } else {
+          expect(await sessionStore.getAuthCodeFlow(state)).toBeDefined();
+          expect(res.status).toHaveBeenCalledWith(500);
+        }
+        expect(mockRevoke).not.toHaveBeenCalledWith('old-token', config, comApp);
+        expect(mockRevoke).not.toHaveBeenCalledWith('new-token', config, comApp);
+      },
+    );
 
     it('refuses the account the connection already uses', async () => {
       const link = await startAsAlice();

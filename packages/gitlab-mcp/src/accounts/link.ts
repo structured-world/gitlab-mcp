@@ -366,6 +366,12 @@ type StorePass =
 type StoreResult =
   { done: true; displaced: string | undefined } | { done: false; refresh: OAuthSession };
 
+/** The exact refresh credential prepared by this completion's preceding refresh attempt. */
+interface PreparedGrant {
+  refreshToken: string;
+  unusable: boolean;
+}
+
 async function findLinkedAccount(write: LinkedAccountWrite): Promise<OAuthSession | undefined> {
   return (await sessionStore.getLinkedSessions(write.session.id)).find(
     (row) =>
@@ -410,18 +416,8 @@ async function createLinkedAccount(write: LinkedAccountWrite): Promise<StorePass
 async function replaceLinkedGrant(
   write: LinkedAccountWrite,
   stored: OAuthSession,
-  revokedRefreshToken: string | undefined,
+  preparedGrant: PreparedGrant | undefined,
 ): Promise<StorePass> {
-  const revoked = stored.gitlabRefreshToken === revokedRefreshToken;
-  if (
-    !revoked &&
-    stored.gitlabRefreshToken !== write.grant.gitlabRefreshToken &&
-    isTokenExpiringSoon(stored.gitlabTokenExpiry)
-  ) {
-    // Doorkeeper 5.6.6 skips expired access tokens on revoke. Keep both credentials
-    // until a refresh yields a live token; the next pass re-reads the stored grant.
-    return { done: false, wait: false, refresh: stored };
-  }
   const now = Date.now();
   const leaseUntil = now + REPLACE_LEASE_MS;
   const claimed = await sessionStore.claimGitLabRefresh(
@@ -435,8 +431,20 @@ async function replaceLinkedGrant(
     return { done: false, wait: true };
   }
   try {
+    if (
+      stored.gitlabRefreshToken !== write.grant.gitlabRefreshToken &&
+      isTokenExpiringSoon(stored.gitlabTokenExpiry) &&
+      (preparedGrant?.refreshToken !== stored.gitlabRefreshToken ||
+        (!preparedGrant.unusable && stored.gitlabTokenExpiry <= Date.now()))
+    ) {
+      // Doorkeeper 5.6.6 skips expired access tokens on revoke. Keep both credentials
+      // until refreshed. A just-refreshed short-lived grant need not refresh again,
+      // but recheck its actual expiry under the lease after waiting for the primary.
+      return { done: false, wait: false, refresh: stored };
+    }
     // Read before the update: a backend may hand out the stored record, which it changes.
-    const displaced = revoked ? undefined : stored.gitlabAccessToken;
+    // A refused refresh does not prove this access token is unusable; still revoke it.
+    const displaced = stored.gitlabAccessToken;
     const updates = { ...write.grant, gitlabUsername: write.user.username };
     if (await sessionStore.updateSession(stored.id, updates)) return { done: true, displaced };
     // Unlinked meanwhile in another chat: the next pass stores the account again.
@@ -454,12 +462,12 @@ async function replaceLinkedGrant(
  */
 async function storeLinkedAccount(
   write: LinkedAccountWrite,
-  revokedRefreshToken: string | undefined,
+  preparedGrant: PreparedGrant | undefined,
   attempt = 1,
 ): Promise<StoreResult> {
   const stored = await findLinkedAccount(write);
   const pass = stored
-    ? await replaceLinkedGrant(write, stored, revokedRefreshToken)
+    ? await replaceLinkedGrant(write, stored, preparedGrant)
     : await createLinkedAccount(write);
   if (pass.done) return pass;
   if (pass.refresh) return { done: false, refresh: pass.refresh };
@@ -467,7 +475,7 @@ async function storeLinkedAccount(
     throw new Error('The linked account is being changed elsewhere');
   }
   if (pass.wait) await new Promise((resolve) => setTimeout(resolve, STORE_RETRY_MS));
-  return storeLinkedAccount(write, revokedRefreshToken, attempt + 1);
+  return storeLinkedAccount(write, preparedGrant, attempt + 1);
 }
 
 /** How a link's completion ended, and the grant its store displaced, if any. */
@@ -488,7 +496,7 @@ interface LinkCompletion {
 async function completeUnderSessionLease(
   state: string,
   write: LinkedAccountWrite,
-  revokedRefreshToken: string | undefined,
+  preparedGrant: PreparedGrant | undefined,
 ): Promise<LinkCompletion | { outcome: 'refresh'; account: OAuthSession }> {
   const { session, instance, user } = write;
   const turn = await claimSessionLease(session.id, LINK_COMPLETION_LEASE_MS);
@@ -501,7 +509,7 @@ async function completeUnderSessionLease(
     // From here the grant is the account's: if a step below fails, the flow keeps its
     // tokens for a retry, and ending that flow later leaves a grant a linked account stores
     // alone. A retry reuses the grant a failed attempt already stored.
-    const result = await storeLinkedAccount(write, revokedRefreshToken);
+    const result = await storeLinkedAccount(write, preparedGrant);
     if (!result.done) return { outcome: 'refresh', account: result.refresh };
     const replacedToken = result.displaced;
     // The flow can still go between the check and here (expired and discarded): the account
@@ -524,13 +532,16 @@ async function completeWithLiveDisplacedGrant(
   write: LinkedAccountWrite,
   config: OAuthConfig,
 ): Promise<LinkCompletion> {
-  let revokedRefreshToken: string | undefined;
+  let preparedGrant: PreparedGrant | undefined;
   for (let attempt = 0; attempt < STORE_ATTEMPTS; attempt++) {
-    const result = await completeUnderSessionLease(state, write, revokedRefreshToken);
+    const result = await completeUnderSessionLease(state, write, preparedGrant);
     if (result.outcome !== 'refresh') return result;
     const spent = result.account.gitlabRefreshToken;
     try {
-      await withFreshGitLabToken(result.account, config);
+      const refreshed = await withFreshGitLabToken(result.account, config);
+      if (refreshed) {
+        preparedGrant = { refreshToken: refreshed.gitlabRefreshToken, unusable: false };
+      }
     } catch (error: unknown) {
       // Only invalid_grant proves this particular credential is already unusable.
       // A missing application or a temporary failure must leave the old pair stored.
@@ -541,7 +552,7 @@ async function completeWithLiveDisplacedGrant(
       ) {
         throw error;
       }
-      revokedRefreshToken = spent;
+      preparedGrant = { refreshToken: spent, unusable: true };
     }
   }
   throw new Error('The linked account is being changed elsewhere');

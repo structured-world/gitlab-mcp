@@ -582,7 +582,8 @@ describe('account linking', () => {
         ).toBe(true);
         await sessionStore.releaseGitLabRefresh(primary.id, leaseUntil);
         expect((await sessionStore.getSession('old-link'))?.gitlabRefreshToken).toBe('old-refresh');
-        return tokens('live-old-token');
+        // A live token shorter than the proactive refresh buffer is still revocable.
+        return { ...tokens('live-old-token'), expires_in: 60 };
       });
       const res = response();
 
@@ -609,7 +610,7 @@ describe('account linking', () => {
           id: 'old-link',
           gitlabAccessToken: 'old-token',
           gitlabRefreshToken: 'old-refresh',
-          gitlabTokenExpiry: Date.now() - 1,
+          gitlabTokenExpiry: Date.now() + 1000,
           gitlabUserId: 99,
           gitlabApiUrl: 'https://gitlab.com',
           linkedToSessionId: primary.id,
@@ -629,11 +630,13 @@ describe('account linking', () => {
         if (ended) {
           expect(await sessionStore.getAuthCodeFlow(state)).toBeUndefined();
           expect(res.status).toHaveBeenCalledWith(200);
+          // A refused refresh does not prove the access token itself has expired.
+          expect(mockRevoke).toHaveBeenCalledWith('old-token', config, comApp);
         } else {
           expect(await sessionStore.getAuthCodeFlow(state)).toBeDefined();
           expect(res.status).toHaveBeenCalledWith(500);
+          expect(mockRevoke).not.toHaveBeenCalledWith('old-token', config, comApp);
         }
-        expect(mockRevoke).not.toHaveBeenCalledWith('old-token', config, comApp);
         expect(mockRevoke).not.toHaveBeenCalledWith('new-token', config, comApp);
       },
     );

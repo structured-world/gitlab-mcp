@@ -1,18 +1,20 @@
 /** Real PostgreSQL transactions across two replicas. Docker owns one isolated test DB;
- * migrations run once, fixtures have unique parents, FK cascade removes their accounts.
+ * migrations run once, fixtures have unique parents, TRUNCATE CASCADE cleans the suite.
  * Run serially with `yarn workspace @structured-world/gitlab-mcp-db test:integration`.
  */
-const { after, afterEach, before, beforeEach, test } = require('node:test');
+const { after, before, beforeEach, test } = require('node:test');
 const assert = require('node:assert/strict');
 const { execFileSync } = require('node:child_process');
 const { randomUUID } = require('node:crypto');
 const { setTimeout: delay } = require('node:timers/promises');
 const path = require('node:path');
+const { Client } = require('pg');
 const { PostgreSQLStorageBackend } = require('../dist/src/postgresql.js');
 
 const directory = path.resolve(__dirname, '..');
 const container = `gitlab-mcp-account-link-test-${randomUUID()}`;
 let created = false;
+let connectionString;
 let replicas = [];
 let parent;
 let flow;
@@ -53,6 +55,7 @@ before(() => {
     env: { ...process.env, OAUTH_STORAGE_POSTGRESQL_URL: url },
     stdio: 'pipe',
   });
+  connectionString = url;
   replicas = [
     new PostgreSQLStorageBackend({ connectionString: url }),
     new PostgreSQLStorageBackend({ connectionString: url }),
@@ -65,13 +68,28 @@ before(async () => {
 
 after(async () => {
   try {
-    await Promise.all(replicas.map((replica) => replica.close()));
+    if (connectionString) {
+      const client = new Client({ connectionString, connectionTimeoutMillis: 5_000 });
+      try {
+        await client.connect();
+        await client.query('TRUNCATE TABLE oauth_sessions CASCADE');
+        await client.query('TRUNCATE TABLE oauth_auth_code_flows CASCADE');
+      } finally {
+        await client.end();
+      }
+    }
   } finally {
-    if (created) execFileSync('docker', ['rm', '--force', container], { stdio: 'pipe' });
+    try {
+      await Promise.all(replicas.map((replica) => replica.close()));
+    } finally {
+      if (created) execFileSync('docker', ['rm', '--force', container], { stdio: 'pipe' });
+    }
   }
 });
 
-beforeEach(async () => {
+/** Parent fixture shared by the flow and linked-account fixtures of the current test. */
+async function primaryFixture() {
+  if (parent) return parent;
   const now = Date.now();
   parent = {
     id: randomUUID(),
@@ -88,6 +106,14 @@ beforeEach(async () => {
     createdAt: now,
     updatedAt: now,
   };
+  await replicas[0].createSession(parent);
+  return parent;
+}
+
+beforeEach(async () => {
+  parent = undefined;
+  await primaryFixture();
+  const now = Date.now();
   flow = {
     internalState: randomUUID(),
     clientId: parent.clientId,
@@ -122,7 +148,6 @@ beforeEach(async () => {
       gitlabScopes: ['read_api'],
     },
   };
-  await replicas[0].createSession(parent);
   await replicas[0].storeAuthCodeFlow(flow.internalState, flow);
   assert.equal(
     await replicas[0].claimGitLabRefresh(
@@ -133,12 +158,6 @@ beforeEach(async () => {
     ),
     true,
   );
-});
-
-afterEach(async () => {
-  if (!parent || replicas.length === 0) return;
-  await replicas[0].deleteSession(parent.id);
-  await replicas[0].deleteAuthCodeFlow(flow.internalState);
 });
 
 // Both replicas may have passed the browser/preflight checks; only one may spend the flow.
@@ -198,6 +217,7 @@ test('rejects an expired primary lease and retains the unspent flow', async () =
 });
 
 async function replacement() {
+  await primaryFixture();
   const old = {
     ...commit.account,
     gitlabAccessToken: randomUUID(),

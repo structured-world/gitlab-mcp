@@ -11,13 +11,14 @@ let mockPrisma: MockPrisma;
 
 jest.mock('../generated/prisma/client', () => ({
   PrismaClient: jest.fn(() => mockPrisma),
+  Prisma: { AnyNull: Symbol('AnyNull') },
 }));
 
 jest.mock('@prisma/adapter-pg', () => ({
   PrismaPg: jest.fn((options: unknown) => ({ adapterFor: options })),
 }));
 
-import { PrismaClient } from '../generated/prisma/client';
+import { PrismaClient, Prisma } from '../generated/prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 
 const createMockPrisma = () => ({
@@ -1193,8 +1194,39 @@ describe('PostgreSQLStorageBackend', () => {
       where: {
         expiresAt: { lt: expect.any(BigInt) },
         NOT: { internalState: { startsWith: 'cleanup:' } },
+        gitlabTokens: { equals: Prisma.AnyNull },
       },
     });
+  });
+
+  // A failed claim leaves the credentials under their original key. Bulk cleanup must
+  // still run for other data, but can delete only flows with SQL NULL or JSON null tokens.
+  it('protects unclaimed token-bearing flows after a transient claim failure', async () => {
+    attachPrisma(backend, mockPrisma);
+    mockPrisma.authCodeFlowState.findMany.mockResolvedValueOnce([
+      {
+        ...createAuthCodeFlow(),
+        expiresAt: BigInt(1),
+        gitlabTokens: { access_token: 'live', refresh_token: 'refresh' },
+      },
+    ]);
+    mockPrisma.authCodeFlowState.updateMany.mockRejectedValueOnce(new Error('connection reset'));
+    const handler = jest.fn(async () => {});
+    backend.onAbandonedFlowGrant(handler, 60_000);
+
+    await backend.cleanup();
+
+    expect(handler).not.toHaveBeenCalled();
+    expect(mockPrisma.authCodeFlowState.deleteMany).toHaveBeenCalledTimes(1);
+    expect(mockPrisma.authCodeFlowState.deleteMany).toHaveBeenCalledWith({
+      where: {
+        expiresAt: { lt: expect.any(BigInt) },
+        NOT: { internalState: { startsWith: 'cleanup:' } },
+        gitlabTokens: { equals: Prisma.AnyNull },
+      },
+    });
+    expect(mockPrisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(mockPrisma.oAuthClient.deleteMany).toHaveBeenCalled();
   });
 
   // An expired flow whose tokens are intact but whose other fields cannot be read still

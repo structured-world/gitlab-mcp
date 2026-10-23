@@ -1020,6 +1020,17 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
       // only flows and sessions that hold none, or whose handler left them.
       await this.endAbandonedFlows(now);
       await this.expireSessions(now - maxSessionAge);
+      const expiredFlowWhere: Record<string, unknown> = {
+        expiresAt: { lt: now },
+        NOT: { internalState: { startsWith: CLAIMED_FLOW_PREFIX } },
+      };
+      if (this.abandonedFlowGrant) {
+        // A failed claim leaves the original key intact. Only the grant handler may
+        // remove credentials; AnyNull admits both SQL NULL and JSON null, never tokens.
+        // https://www.prisma.io/docs/orm/v7/prisma-client/special-fields-and-types/working-with-json-fields#using-null-values
+        const { Prisma } = await import('../generated/prisma/client');
+        expiredFlowWhere.gitlabTokens = { equals: Prisma.AnyNull };
+      }
       // Use transaction for atomic cleanup
       const results = (await prisma.$transaction([
         prisma.oAuthSession.deleteMany({
@@ -1032,10 +1043,7 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
         }),
         // A claimed flow whose grant could not be ended waits for the next cleanup.
         prisma.authCodeFlowState.deleteMany({
-          where: {
-            expiresAt: { lt: now },
-            NOT: { internalState: { startsWith: CLAIMED_FLOW_PREFIX } },
-          },
+          where: expiredFlowWhere,
         }),
         prisma.authorizationCode.deleteMany({
           where: { expiresAt: { lt: now } },

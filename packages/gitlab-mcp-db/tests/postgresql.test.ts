@@ -1282,9 +1282,11 @@ describe('PostgreSQLStorageBackend', () => {
         expiresAt: expect.any(BigInt),
       },
     });
-    expect(mockPrisma.authCodeFlowState.deleteMany).not.toHaveBeenCalledWith({
-      where: { internalState: 'cleanup:unreadable' },
-    });
+    expect(
+      mockPrisma.authCodeFlowState.deleteMany.mock.calls.some(
+        ([request]) => request.where.internalState === 'cleanup:unreadable',
+      ),
+    ).toBe(false);
   });
 
   // A stopped worker's claim becomes retryable after its lease, with a new lease

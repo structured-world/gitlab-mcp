@@ -9,6 +9,7 @@
 export type {
   AbandonedFlowGrantHandler,
   ExpiredSessionHandler,
+  LinkedAccountCommit,
   SessionStorageBackend,
   SessionStorageStats,
   StorageConfig,

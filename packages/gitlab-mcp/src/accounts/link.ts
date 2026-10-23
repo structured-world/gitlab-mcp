@@ -358,13 +358,21 @@ interface LinkedAccountWrite {
   grant: LinkedGrant;
 }
 
+/** Ownership evidence checked by storage in the same commit that spends the flow. */
+interface LinkFence {
+  internalState: string;
+  primaryLeaseUntil: number;
+}
+
 /** What one pass over the stored account achieved; `wait` asks for a pause before the next. */
 type StorePass =
   | { done: true; displaced: string | undefined }
-  | { done: false; wait: boolean; refresh?: OAuthSession };
+  | { done: false; wait: boolean; refresh?: OAuthSession; retry?: true };
 
 type StoreResult =
-  { done: true; displaced: string | undefined } | { done: false; refresh: OAuthSession };
+  | { done: true; displaced: string | undefined }
+  | { done: false; refresh: OAuthSession }
+  | { done: false; retry: true };
 
 /** The exact refresh credential prepared by this completion's preceding refresh attempt. */
 interface PreparedGrant {
@@ -381,13 +389,17 @@ async function findLinkedAccount(write: LinkedAccountWrite): Promise<OAuthSessio
 }
 
 /** Store the account's row; another pass is needed when another link stored it meanwhile. */
-async function createLinkedAccount(write: LinkedAccountWrite): Promise<StorePass> {
+async function createLinkedAccount(
+  write: LinkedAccountWrite,
+  fence: LinkFence,
+): Promise<StorePass> {
   const { session, link, user, instance, grant } = write;
   const now = Date.now();
-  try {
-    // The id follows from the session and the account, so a concurrent link of the same
-    // account collides on it in storage instead of storing the account twice.
-    await sessionStore.createSession({
+  // The id follows from the session and the account, so a concurrent link of the same
+  // account collides on it in storage instead of storing the account twice.
+  const committed = await sessionStore.commitLinkedAccount({
+    ...fence,
+    account: {
       id: linkedAccountId(session.id, instance, user.id),
       mcpAccessToken: '',
       mcpRefreshToken: '',
@@ -402,14 +414,11 @@ async function createLinkedAccount(write: LinkedAccountWrite): Promise<StorePass
       linkedToSessionId: session.id,
       createdAt: now,
       updatedAt: now,
-    });
-    return { done: true, displaced: undefined };
-  } catch (error: unknown) {
-    // Only a collision with another link that stored the account meanwhile is retried
-    // (the next pass replaces its grant); a storage failure surfaces at once.
-    if (!(await findLinkedAccount(write))) throw error;
-    return { done: false, wait: false };
-  }
+    },
+  });
+  return committed
+    ? { done: true, displaced: undefined }
+    : { done: false, wait: false, retry: true };
 }
 
 /** Give the stored account the new grant while holding its lease. */
@@ -417,6 +426,7 @@ async function replaceLinkedGrant(
   write: LinkedAccountWrite,
   stored: OAuthSession,
   preparedGrant: PreparedGrant | undefined,
+  fence: LinkFence,
 ): Promise<StorePass> {
   const now = Date.now();
   const leaseUntil = now + REPLACE_LEASE_MS;
@@ -445,10 +455,17 @@ async function replaceLinkedGrant(
     // Read before the update: a backend may hand out the stored record, which it changes.
     // A refused refresh does not prove this access token is unusable; still revoke it.
     const displaced = stored.gitlabAccessToken;
-    const updates = { ...write.grant, gitlabUsername: write.user.username };
-    if (await sessionStore.updateSession(stored.id, updates)) return { done: true, displaced };
-    // Unlinked meanwhile in another chat: the next pass stores the account again.
-    return { done: false, wait: false };
+    const committed = await sessionStore.commitLinkedAccount({
+      ...fence,
+      account: {
+        ...stored,
+        ...write.grant,
+        gitlabUsername: write.user.username,
+        linkedToSessionId: write.session.id,
+      },
+      existing: { refreshToken: stored.gitlabRefreshToken, leaseUntil },
+    });
+    return committed ? { done: true, displaced } : { done: false, wait: false, retry: true };
   } finally {
     await sessionStore.releaseGitLabRefresh(stored.id, leaseUntil).catch(() => undefined);
   }
@@ -463,19 +480,21 @@ async function replaceLinkedGrant(
 async function storeLinkedAccount(
   write: LinkedAccountWrite,
   preparedGrant: PreparedGrant | undefined,
+  fence: LinkFence,
   attempt = 1,
 ): Promise<StoreResult> {
   const stored = await findLinkedAccount(write);
   const pass = stored
-    ? await replaceLinkedGrant(write, stored, preparedGrant)
-    : await createLinkedAccount(write);
+    ? await replaceLinkedGrant(write, stored, preparedGrant, fence)
+    : await createLinkedAccount(write, fence);
   if (pass.done) return pass;
+  if (pass.retry) return { done: false, retry: true };
   if (pass.refresh) return { done: false, refresh: pass.refresh };
   if (attempt >= STORE_ATTEMPTS) {
     throw new Error('The linked account is being changed elsewhere');
   }
   if (pass.wait) await new Promise((resolve) => setTimeout(resolve, STORE_RETRY_MS));
-  return storeLinkedAccount(write, preparedGrant, attempt + 1);
+  return storeLinkedAccount(write, preparedGrant, fence, attempt + 1);
 }
 
 /** How a link's completion ended, and the grant its store displaced, if any. */
@@ -497,7 +516,7 @@ async function completeUnderSessionLease(
   state: string,
   write: LinkedAccountWrite,
   preparedGrant: PreparedGrant | undefined,
-): Promise<LinkCompletion | { outcome: 'refresh'; account: OAuthSession }> {
+): Promise<LinkCompletion | { outcome: 'refresh'; account: OAuthSession } | { outcome: 'retry' }> {
   const { session, instance, user } = write;
   const turn = await claimSessionLease(session.id, LINK_COMPLETION_LEASE_MS);
   if (turn === undefined) {
@@ -505,22 +524,23 @@ async function completeUnderSessionLease(
     return { outcome: 'signed-out' };
   }
   try {
-    if (!(await sessionStore.getAuthCodeFlow(state))) return { outcome: 'spent' };
-    // From here the grant is the account's: if a step below fails, the flow keeps its
-    // tokens for a retry, and ending that flow later leaves a grant a linked account stores
-    // alone. A retry reuses the grant a failed attempt already stored.
-    const result = await storeLinkedAccount(write, preparedGrant);
-    if (!result.done) return { outcome: 'refresh', account: result.refresh };
+    const flow = await sessionStore.getAuthCodeFlow(state);
+    if (!flow || flow.expiresAt <= Date.now()) return { outcome: 'spent' };
+    const result = await storeLinkedAccount(write, preparedGrant, {
+      internalState: state,
+      primaryLeaseUntil: turn,
+    });
+    if (!result.done) {
+      if ('retry' in result) return { outcome: 'retry' };
+      return { outcome: 'refresh', account: result.refresh };
+    }
     const replacedToken = result.displaced;
-    // The flow can still go between the check and here (expired and discarded): the account
-    // is stored all the same, so only the page says so.
-    const spent = (await sessionStore.consumeAuthCodeFlow(state)) === undefined;
     // A session removed without its lease (storage cleanup) leaves the row behind.
     if (!(await sessionStore.getSession(session.id))) {
       await sessionStore.deleteSession(linkedAccountId(session.id, instance, user.id));
       return { outcome: 'signed-out', replacedToken };
     }
-    return { outcome: spent ? 'spent' : 'completed', replacedToken };
+    return { outcome: 'completed', replacedToken };
   } finally {
     await sessionStore.releaseGitLabRefresh(session.id, turn).catch(() => undefined);
   }
@@ -535,6 +555,7 @@ async function completeWithLiveDisplacedGrant(
   let preparedGrant: PreparedGrant | undefined;
   for (let attempt = 0; attempt < STORE_ATTEMPTS; attempt++) {
     const result = await completeUnderSessionLease(state, write, preparedGrant);
+    if (result.outcome === 'retry') continue;
     if (result.outcome !== 'refresh') return result;
     const spent = result.account.gitlabRefreshToken;
     try {
@@ -627,7 +648,7 @@ async function connectAccount(
     return;
   }
   if (outcome === 'spent') {
-    failAccountLink(res, 'This link was already completed.');
+    failAccountLink(res, 'This link was already completed or has expired.');
     return;
   }
   res.clearCookie(bindingCookieName(state), { path: new URL(callbackUri(config)).pathname });

@@ -24,7 +24,11 @@ import {
 } from './types';
 import { SessionStorageBackend, createStorageBackend } from './storage';
 import { isPastAgeLimit } from './storage/types';
-import type { AbandonedFlowGrantHandler, ExpiredSessionHandler } from './storage/types';
+import type {
+  AbandonedFlowGrantHandler,
+  ExpiredSessionHandler,
+  LinkedAccountCommit,
+} from './storage/types';
 import type { AccountSettings, AccountSettingsRecord } from '../configuration/types';
 import { MemoryStorageBackend } from './storage/memory';
 import { logInfo, logError, logDebug } from '../logger';
@@ -154,17 +158,28 @@ export class SessionStore {
   }
 
   /**
-   * Whether the backend keeps accounts linked to a session; a database package older than
-   * this server has no such method (nor the column it needs).
+   * Whether the backend can read and atomically commit linked accounts. Older database
+   * packages must not enable linking with only part of its storage contract implemented.
    */
   linksAccounts(): boolean {
     const backend = this.backend as Partial<SessionStorageBackend>;
-    return typeof backend.getLinkedSessions === 'function';
+    return (
+      typeof backend.getLinkedSessions === 'function' &&
+      typeof backend.commitLinkedAccount === 'function'
+    );
   }
 
   /** The GitLab accounts linked to a session, oldest first. */
   async getLinkedSessions(sessionId: string): Promise<OAuthSession[]> {
     return this.backend.getLinkedSessions(sessionId);
+  }
+
+  /** Commit an account and consume its flow under the same storage transaction. */
+  async commitLinkedAccount(commit: LinkedAccountCommit): Promise<boolean> {
+    if (!this.backend.commitLinkedAccount) {
+      throw new Error('The session storage backend cannot commit account links atomically');
+    }
+    return this.backend.commitLinkedAccount(commit);
   }
 
   /**

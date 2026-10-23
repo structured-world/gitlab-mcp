@@ -40,6 +40,18 @@ export type AbandonedFlowGrantHandler = (
 /** Removes a session that reached its age limit with its linked accounts, ending their grants. */
 export type ExpiredSessionHandler = (session: OAuthSession) => Promise<void>;
 
+/** Inputs to the single storage commit of a browser-verified account link. */
+export interface LinkedAccountCommit {
+  /** Server-generated key of the unexpired connect flow, consumed only on success. */
+  internalState: string;
+  /** Exact primary-session lease claimed by this callback, in epoch milliseconds. */
+  primaryLeaseUntil: number;
+  /** New account record; on replacement only its grant and username are updated. */
+  account: OAuthSession & { linkedToSessionId: string };
+  /** Absent for insertion; replacement must still own this exact account grant and lease. */
+  existing?: { refreshToken: string; leaseUntil: number };
+}
+
 /**
  * Session storage backend interface
  *
@@ -65,6 +77,13 @@ export interface SessionStorageBackend {
   getAllSessions(): Promise<OAuthSession[]>;
   /** The GitLab accounts linked to a session, oldest first. */
   getLinkedSessions(sessionId: string): Promise<OAuthSession[]>;
+  /**
+   * Atomically validate the primary lease, unspent/unexpired connect flow and (for a
+   * replacement) account lease/token, store the account and consume the flow. False means
+   * a precondition changed and nothing was written. Storage errors reject with no partial
+   * commit. Older external backends without this operation cannot safely link accounts.
+   */
+  commitLinkedAccount?(commit: LinkedAccountCommit): Promise<boolean>;
 
   // Device flow operations
   storeDeviceFlow(state: string, flow: DeviceFlowState): Promise<void>;

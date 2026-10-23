@@ -163,6 +163,24 @@ The server handles GitLab connectivity issues gracefully:
 
 See [CONTRIBUTING.md](https://github.com/structured-world/gitlab-mcp/blob/HEAD/CONTRIBUTING.md) for development setup, testing, and PR guidelines.
 
+Account linking requires the backend's atomic `commitLinkedAccount` operation: it checks
+the primary session lease, an unexpired connect flow and the account's lease and refresh
+token, then stores the account and consumes the flow in one transaction. A callback whose
+lease was superseded cannot overwrite a newer link. Token refresh and revocation run
+outside the transaction. Core and DB remain separate packages; upgrade both together
+to use account linking.
+
+After building the workspace, run the real PostgreSQL account-link tests with Docker on
+your `PATH`:
+
+```bash
+yarn workspace @structured-world/gitlab-mcp-db test:integration
+```
+
+The suite starts one isolated PostgreSQL container on a dynamically assigned localhost
+port, applies the shipped migrations once and exercises two independent backend clients.
+It removes only its own container on completion and does not use an existing database.
+
 ## Support the Project
 
 <div align="center">

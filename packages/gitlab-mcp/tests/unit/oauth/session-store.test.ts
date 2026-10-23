@@ -67,6 +67,26 @@ describe('OAuth Session Store', () => {
   });
 
   describe('Session Operations', () => {
+    // Backends from an older external DB package must not advertise unsafe partial linking.
+    it('requires atomic commit support before enabling account linking', async () => {
+      const backend = new MemoryStorageBackend({ silent: true });
+      Object.defineProperty(backend, 'commitLinkedAccount', { value: undefined });
+      const legacy = new SessionStore(backend);
+      expect(legacy.linksAccounts()).toBe(false);
+      await expect(
+        legacy.commitLinkedAccount({
+          internalState: 'unspent-flow',
+          primaryLeaseUntil: Date.now() + 1_000,
+          account: { ...createTestSession(), linkedToSessionId: 'primary' },
+        }),
+      ).rejects.toThrow('cannot commit account links atomically');
+    });
+
+    // Native memory/file and the matching DB package provide the whole linking contract.
+    it('enables account linking with atomic backend support', () => {
+      expect(store.linksAccounts()).toBe(true);
+    });
+
     describe('createSession', () => {
       it('should create a new session', async () => {
         const session = createTestSession();

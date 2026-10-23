@@ -50,6 +50,11 @@ The instance must be configured on the server with its OAuth application (see [I
 
 The account the connection signed in with cannot be unlinked, and a chat must switch away from an account before unlinking it.
 
+Completing a link stores the account and spends the link together. The commit rejects a
+callback whose session or account lease expired or was taken over by another request.
+PostgreSQL deployments need matching core and DB package versions; account linking is
+unavailable with a backend that lacks atomic link commits.
+
 ### Configured instances (static token)
 
 A server started with a token can work with more instances when the instance configuration names a token for each. `GITLAB_TOKEN` belongs to the server's own instance, the one `GITLAB_API_URL` names (`https://gitlab.com` when it is not set); every other configured instance needs its own `tokenEnv`:

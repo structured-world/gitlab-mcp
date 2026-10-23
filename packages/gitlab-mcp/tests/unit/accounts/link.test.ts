@@ -641,6 +641,60 @@ describe('account linking', () => {
       },
     );
 
+    // A delayed storage read can outlive the primary lease. A callback already completed
+    // elsewhere must not restore its grant after a subsequent link replaced and revoked it.
+    it('does not restore a spent link after its primary lease expires', async () => {
+      await sessionStore.createSession({
+        ...primary,
+        id: 'old-link',
+        gitlabAccessToken: 'old-token',
+        gitlabRefreshToken: 'old-refresh',
+        gitlabUserId: 99,
+        gitlabApiUrl: 'https://gitlab.com',
+        linkedToSessionId: primary.id,
+      });
+      const first = await verified();
+      const second = await verified();
+      const firstFlow = { ...(await storedFlow(first)), gitlabTokens: tokens('first-token') };
+      const secondFlow = { ...(await storedFlow(second)), gitlabTokens: tokens('second-token') };
+      await sessionStore.storeAuthCodeFlow(first, firstFlow);
+      await sessionStore.storeAuthCodeFlow(second, secondFlow);
+      mockUser.mockResolvedValue({ id: 99, username: 'alice-personal' });
+      let resume!: () => void;
+      let entered!: () => void;
+      const pause = new Promise<void>((resolve) => {
+        resume = resolve;
+      });
+      const reading = new Promise<void>((resolve) => {
+        entered = resolve;
+      });
+      const read = sessionStore.getLinkedSessions.bind(sessionStore);
+      const delayed = jest
+        .spyOn(sessionStore, 'getLinkedSessions')
+        .mockImplementationOnce(async (id) => {
+          const rows = await read(id);
+          entered();
+          await pause;
+          return rows;
+        });
+      const pending = completeAccountLink(response(), first, firstFlow, 'code', config);
+      await reading;
+      const clock = jest.spyOn(Date, 'now').mockReturnValue(Date.now() + 30_000);
+      try {
+        await completeAccountLink(response(), first, firstFlow, 'code', config);
+        await completeAccountLink(response(), second, secondFlow, 'code', config);
+        resume();
+        await pending;
+
+        expect((await sessionStore.getSession('old-link'))?.gitlabAccessToken).toBe('second-token');
+      } finally {
+        resume();
+        await pending;
+        clock.mockRestore();
+        delayed.mockRestore();
+      }
+    });
+
     it('refuses the account the connection already uses', async () => {
       const link = await startAsAlice();
       const verifyState = stateOf(link.url);
@@ -684,14 +738,14 @@ describe('account linking', () => {
       expect(mockRevoke).toHaveBeenCalledWith(lost, config, comApp);
     });
 
-    // Only a create that collided with another link of the account is retried; a storage
+    // Only a commit that collided with another link of the account is retried; a storage
     // failure surfaces at once (the page asks for a reload, the flow keeps its tokens).
-    it('does not retry a create that failed for a storage reason', async () => {
+    it('does not retry a commit that failed for a storage reason', async () => {
       const state = await verified();
       mockExchange.mockResolvedValueOnce(tokens('com-token'));
       mockUser.mockResolvedValueOnce({ id: 99, username: 'alice-personal' });
       const create = jest
-        .spyOn(sessionStore, 'createSession')
+        .spyOn(sessionStore, 'commitLinkedAccount')
         .mockRejectedValue(new Error('database unavailable'));
       const res = response();
 
@@ -840,12 +894,13 @@ describe('account linking', () => {
       const flow = await storedFlow(state);
       mockExchange.mockResolvedValueOnce(tokens('com-token'));
       mockUser.mockResolvedValueOnce({ id: 99, username: 'alice-personal' });
-      const createSession = sessionStore.createSession.bind(sessionStore);
+      const commitAccount = sessionStore.commitLinkedAccount.bind(sessionStore);
       const create = jest
-        .spyOn(sessionStore, 'createSession')
-        .mockImplementationOnce(async (row) => {
-          await createSession(row);
+        .spyOn(sessionStore, 'commitLinkedAccount')
+        .mockImplementationOnce(async (commit) => {
+          const result = await commitAccount(commit);
           await sessionStore.deleteSession('primary');
+          return result;
         });
       const res = response();
 
@@ -860,15 +915,15 @@ describe('account linking', () => {
       expect(await sessionStore.getAuthCodeFlow(state)).toBeUndefined();
     });
 
-    // The account was stored, then completing the link failed: the flow keeps its tokens for
-    // a retry. Its grant is the account's now, so ending the abandoned flow leaves it alone.
-    it('keeps the grant of a stored account when its unfinished flow is discarded', async () => {
+    // A failed atomic commit leaves both the account absent and the flow available to
+    // cleanup, which must end the unclaimed incoming grant.
+    it('ends the unused grant when a failed commit is discarded', async () => {
       const state = await verified();
       const flow = await storedFlow(state);
       mockExchange.mockResolvedValueOnce(tokens('com-token'));
       mockUser.mockResolvedValueOnce({ id: 99, username: 'alice-personal' });
       const consume = jest
-        .spyOn(sessionStore, 'consumeAuthCodeFlow')
+        .spyOn(sessionStore, 'commitLinkedAccount')
         .mockRejectedValueOnce(new Error('database unavailable'));
       const res = response();
 
@@ -879,15 +934,16 @@ describe('account linking', () => {
       }
       expect(res.status).toHaveBeenCalledWith(500);
       const left = await sessionStore.getAuthCodeFlow(state);
+      expect(left).toBeDefined();
 
       await revokeAbandonedFlowGrant(
         { ...(left as AuthCodeFlowState), gitlabTokens: tokens('com-token') },
         config,
       );
 
-      expect(mockRevoke).not.toHaveBeenCalledWith('com-token', config, comApp);
+      expect(mockRevoke).toHaveBeenCalledWith('com-token', config, comApp);
       const linked = await sessionStore.getLinkedSessions('primary');
-      expect(linked[0]).toMatchObject({ gitlabAccessToken: 'com-token' });
+      expect(linked).toEqual([]);
     });
 
     // A revocation of the session cannot slip in between the check of the session and the
@@ -898,11 +954,11 @@ describe('account linking', () => {
       const flow = await storedFlow(state);
       mockExchange.mockResolvedValueOnce(tokens('com-token'));
       mockUser.mockResolvedValueOnce({ id: 99, username: 'alice-personal' });
-      const consumeFlow = sessionStore.consumeAuthCodeFlow.bind(sessionStore);
+      const commitAccount = sessionStore.commitLinkedAccount.bind(sessionStore);
       let revocationGotIn: boolean | undefined;
       const consume = jest
-        .spyOn(sessionStore, 'consumeAuthCodeFlow')
-        .mockImplementationOnce(async (s) => {
+        .spyOn(sessionStore, 'commitLinkedAccount')
+        .mockImplementationOnce(async (commit) => {
           const now = Date.now();
           revocationGotIn = await sessionStore.claimGitLabRefresh(
             'primary',
@@ -910,7 +966,7 @@ describe('account linking', () => {
             now,
             now + 1_000,
           );
-          return consumeFlow(s);
+          return commitAccount(commit);
         });
 
       try {
@@ -972,10 +1028,9 @@ describe('account linking', () => {
       expect(mockRevoke).not.toHaveBeenCalledWith('com-token', config, comApp);
     });
 
-    // The link replaced the grant of an account linked before, then found its flow gone (it
-    // expired and was discarded meanwhile). The account keeps the new grant, and the grant it
-    // displaced, which no row refers to any more, is ended.
-    it('ends the grant it displaced when the link was spent meanwhile', async () => {
+    // A flow spent between the initial read and the atomic commit cannot replace a live
+    // account or cause the callback to revoke that account's existing grant.
+    it('preserves the existing account when the link was spent before commit', async () => {
       await sessionStore.createSession({
         ...primary,
         id: 'old-link',
@@ -991,9 +1046,13 @@ describe('account linking', () => {
       const flow = await storedFlow(state);
       mockExchange.mockResolvedValueOnce(tokens('com-token'));
       mockUser.mockResolvedValueOnce({ id: 99, username: 'alice-personal' });
+      const commitAccount = sessionStore.commitLinkedAccount.bind(sessionStore);
       const consume = jest
-        .spyOn(sessionStore, 'consumeAuthCodeFlow')
-        .mockResolvedValueOnce(undefined);
+        .spyOn(sessionStore, 'commitLinkedAccount')
+        .mockImplementationOnce(async (commit) => {
+          await sessionStore.consumeAuthCodeFlow(commit.internalState);
+          return commitAccount(commit);
+        });
       const res = response();
 
       try {
@@ -1003,9 +1062,41 @@ describe('account linking', () => {
       }
 
       expect(res.send.mock.calls[0][0]).toContain('already completed');
-      expect((await sessionStore.getSession('old-link'))?.gitlabAccessToken).toBe('com-token');
-      expect(mockRevoke).toHaveBeenCalledWith('old-com-token', config, comApp);
+      expect((await sessionStore.getSession('old-link'))?.gitlabAccessToken).toBe('old-com-token');
+      expect(mockRevoke).not.toHaveBeenCalledWith('old-com-token', config, comApp);
       expect(mockRevoke).not.toHaveBeenCalledWith('com-token', config, comApp);
+    });
+
+    // Expiry between preflight and storage is terminal: retain the cached grant for
+    // cleanup, store nothing, and do not keep reacquiring leases for the expired flow.
+    it('stops retrying when its flow expires before the atomic commit', async () => {
+      const state = await verified();
+      const flow = { ...(await storedFlow(state)), gitlabTokens: tokens('com-token') };
+      await sessionStore.storeAuthCodeFlow(state, flow);
+      mockUser.mockResolvedValueOnce({ id: 99, username: 'alice-personal' });
+      const getLinked = sessionStore.getLinkedSessions.bind(sessionStore);
+      const expire = jest
+        .spyOn(sessionStore, 'getLinkedSessions')
+        .mockImplementationOnce(async (id) => {
+          const accounts = await getLinked(id);
+          await sessionStore.storeAuthCodeFlow(state, { ...flow, expiresAt: Date.now() - 1 });
+          return accounts;
+        });
+      const commit = jest.spyOn(sessionStore, 'commitLinkedAccount');
+      const res = response();
+      try {
+        await completeAccountLink(res, state, flow, 'code', config);
+        expect(res.status).toHaveBeenCalledWith(400);
+        expect(res.send.mock.calls[0][0]).toContain('expired');
+        expect(commit).toHaveBeenCalledTimes(1);
+        expect(await sessionStore.getLinkedSessions('primary')).toEqual([]);
+        expect((await sessionStore.getAuthCodeFlow(state))?.gitlabTokens).toEqual(
+          flow.gitlabTokens,
+        );
+      } finally {
+        expire.mockRestore();
+        commit.mockRestore();
+      }
     });
 
     // Two links replacing the grant of an account linked before, their callbacks arriving
@@ -1086,12 +1177,12 @@ describe('account linking', () => {
       const state = await verified();
       mockExchange.mockResolvedValueOnce(tokens('new-token'));
       mockUser.mockResolvedValueOnce({ id: 99, username: 'alice-personal' });
-      const update = sessionStore.updateSession.bind(sessionStore);
+      const commitAccount = sessionStore.commitLinkedAccount.bind(sessionStore);
       const race = jest
-        .spyOn(sessionStore, 'updateSession')
-        .mockImplementationOnce(async (id, updates) => {
-          await sessionStore.deleteSession(id);
-          return update(id, updates);
+        .spyOn(sessionStore, 'commitLinkedAccount')
+        .mockImplementationOnce(async (commit) => {
+          await sessionStore.deleteSession(commit.account.id);
+          return commitAccount(commit);
         });
       const res = response();
 
@@ -1142,10 +1233,9 @@ describe('account linking', () => {
       expect(mockRevoke).not.toHaveBeenCalledWith('token-b', config, comApp);
     });
 
-    // Storage cleanup discards the link's flow as it expires, right after the callback found
-    // it unspent and before the callback stores the account: cleanup must not end the grant
-    // the callback is about to store, or the account is left linked with an ended grant.
-    it('does not let cleanup end the grant of a link that is completing', async () => {
+    // Cleanup removed the flow after the initial read. It may end its unused grant once
+    // the callback releases the primary lease, but that callback must not store the grant.
+    it('does not store a grant whose flow cleanup removed before commit', async () => {
       const state = await verified();
       const flow = await storedFlow(state);
       mockExchange.mockResolvedValueOnce(tokens('com-token'));
@@ -1175,9 +1265,8 @@ describe('account linking', () => {
         check.mockRestore();
       }
 
-      const [linked] = await sessionStore.getLinkedSessions('primary');
-      expect(linked.gitlabAccessToken).toBe('com-token');
-      expect(mockRevoke).not.toHaveBeenCalledWith('com-token', config, comApp);
+      expect(await sessionStore.getLinkedSessions('primary')).toEqual([]);
+      expect(mockRevoke).toHaveBeenCalledWith('com-token', config, comApp);
       expect(persistTokens).not.toHaveBeenCalled();
     });
 
@@ -1201,28 +1290,34 @@ describe('account linking', () => {
       expect(linked.map((account) => account.gitlabAccessToken)).not.toContain('com-token');
     });
 
-    // The store committed the account but reported a failure (a connection lost after the
-    // commit): the next pass finds the account and completes the link with it.
-    it('completes a link whose store committed before reporting a failure', async () => {
+    // A lost commit response leaves an account and a spent flow together. Retrying the
+    // callback must acknowledge the spent flow without overwriting or revoking its grant.
+    it('preserves a committed link when its commit response was lost', async () => {
       const state = await verified();
-      mockExchange.mockResolvedValueOnce(tokens('com-token'));
-      mockUser.mockResolvedValueOnce({ id: 99, username: 'alice-personal' });
-      const createSession = sessionStore.createSession.bind(sessionStore);
+      const flow = { ...(await storedFlow(state)), gitlabTokens: tokens('com-token') };
+      await sessionStore.storeAuthCodeFlow(state, flow);
+      mockUser.mockResolvedValue({ id: 99, username: 'alice-personal' });
+      const commitAccount = sessionStore.commitLinkedAccount.bind(sessionStore);
       const create = jest
-        .spyOn(sessionStore, 'createSession')
-        .mockImplementationOnce(async (row) => {
-          await createSession(row);
+        .spyOn(sessionStore, 'commitLinkedAccount')
+        .mockImplementationOnce(async (commit) => {
+          await commitAccount(commit);
           throw new Error('connection reset');
         });
       const res = response();
 
       try {
-        await completeAccountLink(res, state, await storedFlow(state), 'code', config);
+        await completeAccountLink(res, state, flow, 'code', config);
       } finally {
         create.mockRestore();
       }
 
-      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.status).toHaveBeenCalledWith(500);
+      const retry = response();
+      await completeAccountLink(retry, state, flow, 'code', config);
+      expect(retry.send.mock.calls[0][0]).toContain('already completed');
+      expect(await sessionStore.getAuthCodeFlow(state)).toBeUndefined();
+      expect(mockRevoke).not.toHaveBeenCalledWith('com-token', config, comApp);
       const linked = await sessionStore.getLinkedSessions('primary');
       expect(linked).toHaveLength(1);
       expect(linked[0].gitlabAccessToken).toBe('com-token');

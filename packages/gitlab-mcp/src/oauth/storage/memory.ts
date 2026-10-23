@@ -15,6 +15,7 @@ import {
 import {
   AbandonedFlowGrantHandler,
   ExpiredSessionHandler,
+  LinkedAccountCommit,
   isPastAgeLimit,
   SessionStorageBackend,
   SessionStorageStats,
@@ -94,18 +95,93 @@ export class MemoryStorageBackend implements SessionStorageBackend {
   }
 
   // Session operations
+  /** Synchronous insertion shared with the atomic account-link transition. */
+  private insertSession(session: OAuthSession): void {
+    if (this.sessions.has(session.id)) throw new Error(`Session ${session.id} already exists`);
+    this.sessions.set(session.id, session);
+    if (session.mcpAccessToken) this.tokenToSession.set(session.mcpAccessToken, session.id);
+    if (session.mcpRefreshToken)
+      this.refreshTokenToSession.set(session.mcpRefreshToken, session.id);
+  }
+
+  async commitLinkedAccount(
+    commit: LinkedAccountCommit,
+    persist?: () => Promise<void>,
+  ): Promise<boolean> {
+    // No awaits between lease validation, account mutation and spending the flow: other
+    // requests and abandoned-grant cleanup observe both records together. File storage
+    // supplies persistence while holding its write/lease queue until this call returns.
+    const { account, internalState, primaryLeaseUntil, existing } = commit;
+    const now = Date.now();
+    const parent = account.linkedToSessionId;
+    const flow = this.authCodeFlows.get(internalState);
+    if (
+      !this.sessions.has(parent) ||
+      this.gitlabRefreshLeases.get(parent) !== primaryLeaseUntil ||
+      primaryLeaseUntil <= now ||
+      !flow ||
+      flow.expiresAt <= now ||
+      flow.link?.stage !== 'connect' ||
+      flow.link.sessionId !== parent ||
+      this.abandonedFlowsInProgress.has(internalState)
+    )
+      return false;
+
+    const stored = this.sessions.get(account.id);
+    const previous = stored && { ...stored };
+    const previousAccessOwner = this.tokenToSession.get(account.mcpAccessToken);
+    const previousRefreshOwner = this.refreshTokenToSession.get(account.mcpRefreshToken);
+    if (existing) {
+      if (
+        stored?.linkedToSessionId !== parent ||
+        stored.gitlabRefreshToken !== existing.refreshToken ||
+        this.gitlabRefreshLeases.get(account.id) !== existing.leaseUntil ||
+        existing.leaseUntil <= now
+      )
+        return false;
+      Object.assign(stored, {
+        gitlabAccessToken: account.gitlabAccessToken,
+        gitlabRefreshToken: account.gitlabRefreshToken,
+        gitlabTokenExpiry: account.gitlabTokenExpiry,
+        gitlabScopes: account.gitlabScopes,
+        gitlabUsername: account.gitlabUsername,
+        updatedAt: now,
+      });
+    } else {
+      if (stored) return false;
+      this.insertSession(account);
+    }
+    this.authCodeFlows.delete(internalState);
+    if (persist) {
+      try {
+        await persist();
+      } catch (error: unknown) {
+        // File storage serializes this write and lease claims. Undo both records in one
+        // synchronous step, preserving timestamps and indexes as well as credentials.
+        if (stored && previous) Object.assign(stored, previous);
+        else {
+          this.sessions.delete(account.id);
+          if (account.mcpAccessToken) {
+            if (previousAccessOwner === undefined)
+              this.tokenToSession.delete(account.mcpAccessToken);
+            else this.tokenToSession.set(account.mcpAccessToken, previousAccessOwner);
+          }
+          if (account.mcpRefreshToken) {
+            if (previousRefreshOwner === undefined)
+              this.refreshTokenToSession.delete(account.mcpRefreshToken);
+            else this.refreshTokenToSession.set(account.mcpRefreshToken, previousRefreshOwner);
+          }
+        }
+        this.authCodeFlows.set(internalState, flow);
+        throw error;
+      }
+    }
+    return true;
+  }
+
   async createSession(session: OAuthSession): Promise<void> {
     // Creating never replaces a session, as with the primary key of the database backend.
-    if (this.sessions.has(session.id)) {
-      throw new Error(`Session ${session.id} already exists`);
-    }
-    this.sessions.set(session.id, session);
-    if (session.mcpAccessToken) {
-      this.tokenToSession.set(session.mcpAccessToken, session.id);
-    }
-    if (session.mcpRefreshToken) {
-      this.refreshTokenToSession.set(session.mcpRefreshToken, session.id);
-    }
+    this.insertSession(session);
     logDebug('Session created', { sessionId: session.id, userId: session.gitlabUserId });
   }
 

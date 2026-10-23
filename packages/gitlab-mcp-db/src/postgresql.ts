@@ -23,6 +23,7 @@ import type {
   GitLabTokenResponse,
   SessionStorageBackend,
   SessionStorageStats,
+  LinkedAccountCommit,
   AccountSettings,
   AccountSettingsRecord,
 } from '@structured-world/gitlab-mcp/storage-contract';
@@ -30,6 +31,9 @@ import { logInfo, logError, logDebug } from './logger';
 
 /** Key prefix of an expired flow cleanup took over to end its grant. */
 const CLAIMED_FLOW_PREFIX = 'cleanup:';
+
+/** A failed compare-and-set rolls back every write in the link transaction. */
+class LinkCommitConflict extends Error {}
 
 /**
  * How many grants cleanup ends at once: a backlog (after an outage, say) goes out in steps
@@ -219,6 +223,11 @@ interface GenericPrismaClient {
   $connect(): Promise<void>;
   $disconnect(): Promise<void>;
   $transaction(operations: unknown[]): Promise<unknown[]>;
+  $transaction<T>(
+    operation: (
+      transaction: Pick<GenericPrismaClient, 'oAuthSession' | 'authCodeFlowState'>,
+    ) => Promise<T>,
+  ): Promise<T>;
   oAuthSession: {
     create(args: unknown): Promise<unknown>;
     findUnique(args: unknown): Promise<unknown>;
@@ -344,8 +353,85 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
   }
 
   // Session operations
-  async createSession(session: OAuthSession): Promise<void> {
-    const prisma = this.getPrisma();
+  async commitLinkedAccount(commit: LinkedAccountCommit): Promise<boolean> {
+    const { account, internalState, primaryLeaseUntil, existing } = commit;
+    const updates = this.sessionUpdateData({
+      gitlabAccessToken: account.gitlabAccessToken,
+      gitlabRefreshToken: account.gitlabRefreshToken,
+      gitlabTokenExpiry: account.gitlabTokenExpiry,
+      gitlabScopes: account.gitlabScopes,
+      gitlabUsername: account.gitlabUsername,
+    });
+    if (existing && account.gitlabScopes === undefined) {
+      // Unknown permissions belong to this grant, never the displaced grant. SQL NULL
+      // intentionally clears them; undefined would make Prisma preserve stale scopes.
+      const { Prisma } = await import('../generated/prisma/client');
+      updates.gitlabScopes = Prisma.DbNull;
+    }
+    try {
+      // Prisma 7 interactive transactions roll back on throw. Keep HTTP/token refresh
+      // outside: https://www.prisma.io/docs/orm/v7/prisma-client/queries/transactions#interactive-transactions
+      return await this.getPrisma().$transaction(async (tx) => {
+        const now = Date.now();
+        // A conditional write fences the owner and holds the primary row lock until
+        // commit. A later lease claimant cannot interleave with the flow/account writes.
+        const primary = (await tx.oAuthSession.updateMany({
+          where: {
+            id: account.linkedToSessionId,
+            gitlabRefreshLeaseUntil: { equals: BigInt(primaryLeaseUntil), gt: BigInt(now) },
+          },
+          data: { updatedAt: BigInt(now) },
+        })) as PrismaBatchPayload;
+        if (primary.count !== 1) throw new LinkCommitConflict();
+
+        const flow = (await tx.authCodeFlowState.deleteMany({
+          where: {
+            internalState,
+            expiresAt: { gt: BigInt(now) },
+            NOT: { internalState: { startsWith: CLAIMED_FLOW_PREFIX } },
+            AND: [
+              { link: { path: ['sessionId'], equals: account.linkedToSessionId } },
+              { link: { path: ['stage'], equals: 'connect' } },
+            ],
+          },
+        })) as PrismaBatchPayload;
+        if (flow.count !== 1) throw new LinkCommitConflict();
+
+        if (existing) {
+          const updated = (await tx.oAuthSession.updateMany({
+            where: {
+              id: account.id,
+              linkedToSessionId: account.linkedToSessionId,
+              gitlabRefreshToken: existing.refreshToken,
+              gitlabRefreshLeaseUntil: { equals: BigInt(existing.leaseUntil), gt: BigInt(now) },
+            },
+            data: { ...updates, updatedAt: BigInt(now) },
+          })) as PrismaBatchPayload;
+          if (updated.count !== 1) throw new LinkCommitConflict();
+        } else {
+          await this.insertSession(tx, account);
+        }
+        return true;
+      });
+    } catch (error: unknown) {
+      if (error instanceof LinkCommitConflict) return false;
+      // The unique insertion collision rolls back the flow deletion as well.
+      if (
+        !existing &&
+        typeof error === 'object' &&
+        error !== null &&
+        'code' in error &&
+        error.code === 'P2002'
+      )
+        return false;
+      throw error;
+    }
+  }
+
+  private async insertSession(
+    prisma: Pick<GenericPrismaClient, 'oAuthSession'>,
+    session: OAuthSession,
+  ): Promise<void> {
     await prisma.oAuthSession.create({
       data: {
         id: session.id,
@@ -368,6 +454,10 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
         updatedAt: BigInt(session.updatedAt),
       },
     });
+  }
+
+  async createSession(session: OAuthSession): Promise<void> {
+    await this.insertSession(this.getPrisma(), session);
     logDebug('Session created in PostgreSQL', { sessionId: session.id });
   }
 

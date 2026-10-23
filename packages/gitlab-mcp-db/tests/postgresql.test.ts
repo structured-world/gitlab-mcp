@@ -3,6 +3,7 @@ import type {
   DeviceFlowState,
   AuthCodeFlowState,
   AuthorizationCode,
+  LinkedAccountCommit,
 } from '@structured-world/gitlab-mcp/storage-contract';
 import { PostgreSQLStorageBackend } from '../src/postgresql';
 
@@ -11,7 +12,7 @@ let mockPrisma: MockPrisma;
 
 jest.mock('../generated/prisma/client', () => ({
   PrismaClient: jest.fn(() => mockPrisma),
-  Prisma: { AnyNull: Symbol('AnyNull') },
+  Prisma: { AnyNull: Symbol('AnyNull'), DbNull: Symbol('DbNull') },
 }));
 
 jest.mock('@prisma/adapter-pg', () => ({
@@ -206,6 +207,152 @@ describe('PostgreSQLStorageBackend', () => {
 
   it('throws when used before initialization', async () => {
     await expect(backend.getStats()).rejects.toThrow('PostgreSQL/Prisma client not initialized');
+  });
+
+  describe('atomic account-link commits', () => {
+    let tx: MockPrisma;
+    let commit: LinkedAccountCommit;
+
+    beforeEach(() => {
+      attachPrisma(backend, mockPrisma);
+      tx = createMockPrisma();
+      tx.oAuthSession.updateMany.mockResolvedValue({ count: 1 });
+      tx.authCodeFlowState.deleteMany.mockResolvedValue({ count: 1 });
+      mockPrisma.$transaction.mockImplementation(async (callback) => callback(tx));
+      commit = {
+        internalState: createAuthCodeFlow().internalState,
+        primaryLeaseUntil: Date.now() + 30_000,
+        account: {
+          ...createSession(),
+          id: 'linked-account',
+          linkedToSessionId: createSession().id,
+          mcpAccessToken: '',
+          mcpRefreshToken: '',
+          mcpTokenExpiry: 0,
+        },
+      };
+    });
+
+    // Only the transaction client may write: an outer-client write would survive rollback.
+    it('fences the primary, spends a valid connect flow and inserts in one transaction', async () => {
+      expect(await backend.commitLinkedAccount(commit)).toBe(true);
+      expect(mockPrisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(mockPrisma.oAuthSession.create).not.toHaveBeenCalled();
+      expect(mockPrisma.oAuthSession.updateMany).not.toHaveBeenCalled();
+      expect(mockPrisma.authCodeFlowState.deleteMany).not.toHaveBeenCalled();
+      expect(tx.oAuthSession.updateMany).toHaveBeenCalledWith({
+        where: {
+          id: commit.account.linkedToSessionId,
+          gitlabRefreshLeaseUntil: {
+            equals: BigInt(commit.primaryLeaseUntil),
+            gt: expect.any(BigInt),
+          },
+        },
+        data: { updatedAt: expect.any(BigInt) },
+      });
+      expect(tx.authCodeFlowState.deleteMany).toHaveBeenCalledWith({
+        where: {
+          internalState: commit.internalState,
+          expiresAt: { gt: expect.any(BigInt) },
+          NOT: { internalState: { startsWith: 'cleanup:' } },
+          AND: [
+            { link: { path: ['sessionId'], equals: commit.account.linkedToSessionId } },
+            { link: { path: ['stage'], equals: 'connect' } },
+          ],
+        },
+      });
+      expect(tx.oAuthSession.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          id: commit.account.id,
+          linkedToSessionId: commit.account.linkedToSessionId,
+          gitlabAccessToken: commit.account.gitlabAccessToken,
+        }),
+      });
+      expect(tx.oAuthSession.updateMany.mock.invocationCallOrder[0]).toBeLessThan(
+        tx.authCodeFlowState.deleteMany.mock.invocationCallOrder[0],
+      );
+      expect(tx.authCodeFlowState.deleteMany.mock.invocationCallOrder[0]).toBeLessThan(
+        tx.oAuthSession.create.mock.invocationCallOrder[0],
+      );
+    });
+
+    // Replacing a credential must not retain the permissions of the previous grant.
+    it('compares the account lease and refresh token and clears unknown scopes', async () => {
+      commit.existing = { refreshToken: 'old-refresh', leaseUntil: Date.now() + 15_000 };
+      commit.account.gitlabScopes = undefined;
+      expect(await backend.commitLinkedAccount(commit)).toBe(true);
+      expect(tx.oAuthSession.create).not.toHaveBeenCalled();
+      expect(tx.oAuthSession.updateMany).toHaveBeenLastCalledWith({
+        where: {
+          id: commit.account.id,
+          linkedToSessionId: commit.account.linkedToSessionId,
+          gitlabRefreshToken: commit.existing.refreshToken,
+          gitlabRefreshLeaseUntil: {
+            equals: BigInt(commit.existing.leaseUntil),
+            gt: expect.any(BigInt),
+          },
+        },
+        data: {
+          updatedAt: expect.any(BigInt),
+          gitlabAccessToken: commit.account.gitlabAccessToken,
+          gitlabRefreshToken: commit.account.gitlabRefreshToken,
+          gitlabTokenExpiry: BigInt(commit.account.gitlabTokenExpiry),
+          gitlabScopes: Prisma.DbNull,
+          gitlabUsername: commit.account.gitlabUsername,
+        },
+      });
+    });
+
+    // A conflict must throw through Prisma's callback to roll back its earlier writes.
+    it.each(['primary', 'flow', 'account'] as const)(
+      'rolls back a lost %s precondition',
+      async (lost) => {
+        commit.existing = { refreshToken: 'old-refresh', leaseUntil: Date.now() + 15_000 };
+        if (lost === 'primary') tx.oAuthSession.updateMany.mockResolvedValueOnce({ count: 0 });
+        if (lost === 'flow') tx.authCodeFlowState.deleteMany.mockResolvedValueOnce({ count: 0 });
+        if (lost === 'account')
+          tx.oAuthSession.updateMany
+            .mockResolvedValueOnce({ count: 1 })
+            .mockResolvedValueOnce({ count: 0 });
+        let rolledBack = false;
+        mockPrisma.$transaction.mockImplementation(async (callback) => {
+          try {
+            return await callback(tx);
+          } catch (error) {
+            rolledBack = true;
+            throw error;
+          }
+        });
+        expect(await backend.commitLinkedAccount(commit)).toBe(false);
+        expect(rolledBack).toBe(true);
+        expect(tx.oAuthSession.create).not.toHaveBeenCalled();
+        if (lost === 'primary') expect(tx.authCodeFlowState.deleteMany).not.toHaveBeenCalled();
+        if (lost === 'flow') expect(tx.oAuthSession.updateMany).toHaveBeenCalledTimes(1);
+      },
+    );
+
+    // A primary-key collision is retryable only after Prisma rolled the entire attempt back.
+    it('rolls back a colliding insertion instead of consuming its flow', async () => {
+      const collision = Object.assign(new Error('duplicate id'), { code: 'P2002' });
+      tx.oAuthSession.create.mockRejectedValueOnce(collision);
+      let rolledBack = false;
+      mockPrisma.$transaction.mockImplementation(async (callback) => {
+        try {
+          return await callback(tx);
+        } catch (error) {
+          rolledBack = true;
+          throw error;
+        }
+      });
+      expect(await backend.commitLinkedAccount(commit)).toBe(false);
+      expect(rolledBack).toBe(true);
+    });
+
+    // Infrastructure failures are not CAS misses and must reach the caller for a safe retry.
+    it('propagates a transaction failure', async () => {
+      tx.oAuthSession.create.mockRejectedValueOnce(new Error('database unavailable'));
+      await expect(backend.commitLinkedAccount(commit)).rejects.toThrow('database unavailable');
+    });
   });
 
   it('creates, reads, updates, and deletes sessions', async () => {

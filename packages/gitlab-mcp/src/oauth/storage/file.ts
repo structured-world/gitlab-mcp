@@ -25,6 +25,7 @@ import {
 import {
   AbandonedFlowGrantHandler,
   ExpiredSessionHandler,
+  LinkedAccountCommit,
   SessionStorageBackend,
   SessionStorageStats,
   StorageData,
@@ -365,6 +366,13 @@ export class FileStorageBackend implements SessionStorageBackend {
     return this.memory.getSession(sessionId);
   }
 
+  commitLinkedAccount(commit: LinkedAccountCommit): Promise<boolean> {
+    this.cancelPendingSave();
+    // Memory applies/undoes both records synchronously. Persistence and lease ownership
+    // share the write queue, so another callback cannot take over during the disk write.
+    return this.enqueue(() => this.memory.commitLinkedAccount(commit, () => this.writeState()));
+  }
+
   async getSessionByToken(token: string): Promise<OAuthSession | undefined> {
     return this.memory.getSessionByToken(token);
   }
@@ -580,11 +588,14 @@ export class FileStorageBackend implements SessionStorageBackend {
     now: number,
     leaseUntil: number,
   ): Promise<boolean> {
-    return this.memory.claimGitLabRefresh(sessionId, expectedRefreshToken, now, leaseUntil);
+    // Ownership cannot change while an account-link commit is being written through.
+    return this.enqueue(() =>
+      this.memory.claimGitLabRefresh(sessionId, expectedRefreshToken, now, leaseUntil),
+    );
   }
 
   async releaseGitLabRefresh(sessionId: string, leaseUntil: number): Promise<void> {
-    await this.memory.releaseGitLabRefresh(sessionId, leaseUntil);
+    await this.enqueue(() => this.memory.releaseGitLabRefresh(sessionId, leaseUntil));
   }
 
   async rotateSession(

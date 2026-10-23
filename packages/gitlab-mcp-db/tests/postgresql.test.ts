@@ -1509,6 +1509,27 @@ describe('PostgreSQLStorageBackend', () => {
     expect(mockPrisma.$transaction).toHaveBeenCalled();
   });
 
+  // Row conversion can throw synchronously before a handler returns a promise. One
+  // corrupt session must not prevent another session or unrelated expired data cleanup.
+  it('continues expiry cleanup after an unreadable session', async () => {
+    attachPrisma(backend, mockPrisma);
+    const valid = { ...createSession(), createdAt: BigInt(1), linkedToSessionId: null };
+    mockPrisma.oAuthSession.findMany.mockResolvedValueOnce([
+      { ...valid, id: 'unreadable', gitlabScopes: ['api', 123] },
+      valid,
+    ]);
+    const handler = jest.fn(async () => {});
+    backend.onExpiredSession(handler);
+
+    await backend.cleanup();
+
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(handler).toHaveBeenCalledWith(expect.objectContaining({ id: valid.id }));
+    expect(mockPrisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(mockPrisma.deviceFlowState.deleteMany).toHaveBeenCalled();
+    expect(mockPrisma.oAuthClient.deleteMany).toHaveBeenCalled();
+  });
+
   // Linking an account again after a GitLab username change stores the new username.
   it('updates the GitLab username of a session', async () => {
     attachPrisma(backend, mockPrisma);

@@ -931,11 +931,13 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
     const rows = (await this.getPrisma().oAuthSession.findMany({
       where: { createdAt: { lt: cutoff }, linkedToSessionId: null },
     })) as PrismaOAuthSessionRow[];
-    await inBatches(rows, (row) =>
-      handler(this.rowToSession(row)).catch((error: unknown) => {
+    await inBatches(rows, async (row) => {
+      try {
+        await handler(this.rowToSession(row));
+      } catch (error: unknown) {
         logError('Could not end the grants of an expired session', { err: error as Error });
-      }),
-    );
+      }
+    });
   }
 
   /**

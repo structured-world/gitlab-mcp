@@ -607,8 +607,19 @@ export class FileStorageBackend implements SessionStorageBackend {
     );
   }
 
-  onAbandonedFlowGrant(handler: AbandonedFlowGrantHandler): void {
-    this.memory.onAbandonedFlowGrant(handler);
+  onAbandonedFlowGrant(handler: AbandonedFlowGrantHandler, leaseMs: number): void {
+    this.memory.onAbandonedFlowGrant(
+      (flow, persistTokens, leaseUntil) =>
+        handler(
+          flow,
+          async (tokens) => {
+            await persistTokens(tokens);
+            await this.persistNow();
+          },
+          leaseUntil,
+        ),
+      leaseMs,
+    );
   }
 
   onExpiredSession(handler: ExpiredSessionHandler): void {

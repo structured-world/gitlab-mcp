@@ -154,7 +154,7 @@ describe('OAuth Callback Handler', () => {
     token_type: 'Bearer',
     expires_in: 7200,
     refresh_token: 'cached-refresh',
-    created_at: 0,
+    created_at: Math.floor(Date.now() / 1000),
   };
 
   /** The flow the callback reads, and finally consumes. */
@@ -425,7 +425,8 @@ describe('OAuth Callback Handler', () => {
           refresh_token: 'cached-refresh',
           token_type: 'Bearer',
           expires_in: 7200,
-          created_at: 0,
+          // The authorization flow expired, while its GitLab grant is still live.
+          created_at: Math.floor(Date.now() / 1000),
         },
       });
       mockOauthAppFor.mockResolvedValueOnce(selectedApp);

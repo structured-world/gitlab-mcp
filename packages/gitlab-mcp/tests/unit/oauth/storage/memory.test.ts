@@ -861,12 +861,12 @@ describe('MemoryStorageBackend', () => {
           createTestAuthCodeFlow({ expiresAt: Date.now() + 600000, gitlabTokens }),
         );
         const handler = jest.fn(async () => {});
-        storage.onAbandonedFlowGrant(handler);
+        storage.onAbandonedFlowGrant(handler, 60_000);
 
         await storage.cleanup();
 
         expect(handler).toHaveBeenCalledTimes(1);
-        expect(handler).toHaveBeenCalledWith(abandoned);
+        expect(handler).toHaveBeenCalledWith(abandoned, expect.any(Function));
         expect(await storage.getAuthCodeFlow('abandoned')).toBeUndefined();
         expect(await storage.getAuthCodeFlow('live-with-grant')).toBeDefined();
       });
@@ -887,11 +887,72 @@ describe('MemoryStorageBackend', () => {
         );
         storage.onAbandonedFlowGrant(async () => {
           throw new Error('GitLab unavailable');
-        });
+        }, 60_000);
 
         await storage.cleanup();
 
         expect(await storage.getAuthCodeFlow('abandoned')).toBeDefined();
+      });
+
+      it('keeps rotated flow credentials when revocation fails and retries with them', async () => {
+        // Spending the old refresh token is irreversible: cleanup must retain the new
+        // pair on failure, and remove the recovery record only after a successful retry.
+        const fresh = {
+          access_token: 'fresh-access',
+          refresh_token: 'fresh-refresh',
+          token_type: 'Bearer',
+          expires_in: 7200,
+          created_at: Math.floor(Date.now() / 1000),
+        };
+        await storage.storeAuthCodeFlow(
+          'abandoned',
+          createTestAuthCodeFlow({
+            expiresAt: Date.now() - 1000,
+            gitlabTokens: {
+              ...fresh,
+              access_token: 'expired-access',
+              refresh_token: 'spent-refresh',
+              created_at: 0,
+            },
+          }),
+        );
+        let attempt = 0;
+        let duringRefresh: unknown;
+        storage.onAbandonedFlowGrant(async (flow, persistTokens) => {
+          if (attempt++ === 0) {
+            await storage.cleanup();
+            duringRefresh = {
+              readable: await storage.getAuthCodeFlow('abandoned'),
+              consumable: await storage.consumeAuthCodeFlow('abandoned'),
+              deleted: await storage.deleteAuthCodeFlow('abandoned'),
+              retained: storage
+                .exportData()
+                .authCodeFlows.find((entry) => entry.internalState === 'abandoned')?.flow
+                .gitlabTokens,
+              attempts: attempt,
+            };
+            await persistTokens(fresh);
+            throw new Error('GitLab revoke unavailable');
+          }
+          expect(flow.gitlabTokens).toEqual(fresh);
+        }, 60_000);
+
+        await storage.cleanup();
+        expect(duringRefresh).toEqual({
+          readable: undefined,
+          consumable: undefined,
+          deleted: false,
+          retained: {
+            ...fresh,
+            access_token: 'expired-access',
+            refresh_token: 'spent-refresh',
+            created_at: 0,
+          },
+          attempts: 1,
+        });
+        expect((await storage.getAuthCodeFlow('abandoned'))?.gitlabTokens).toEqual(fresh);
+        await storage.cleanup();
+        expect(await storage.getAuthCodeFlow('abandoned')).toBeUndefined();
       });
 
       it('should remove expired auth codes', async () => {

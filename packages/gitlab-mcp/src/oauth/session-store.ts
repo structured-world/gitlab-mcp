@@ -411,9 +411,9 @@ export class SessionStore {
    * A database package older than this server has no such hook; its cleanup removes those
    * flows as before.
    */
-  onAbandonedFlowGrant(handler: AbandonedFlowGrantHandler): void {
+  onAbandonedFlowGrant(handler: AbandonedFlowGrantHandler, leaseMs: number): void {
     const backend = this.backend as Partial<SessionStorageBackend>;
-    backend.onAbandonedFlowGrant?.(handler);
+    backend.onAbandonedFlowGrant?.(handler, leaseMs);
   }
 
   /**

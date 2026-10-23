@@ -287,7 +287,7 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
 
   private prisma: GenericPrismaClient | null = null;
   private cleanupIntervalId: ReturnType<typeof setInterval> | null = null;
-  private abandonedFlowGrant: AbandonedFlowGrantHandler | undefined;
+  private abandonedFlowGrant: { run: AbandonedFlowGrantHandler; leaseMs: number } | undefined;
   private expiredSession: ExpiredSessionHandler | undefined;
   private readonly connectionString: string | undefined;
 
@@ -613,6 +613,8 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
   }
 
   async getAuthCodeFlow(internalState: string): Promise<AuthCodeFlowStateType | undefined> {
+    // Cleanup reservations are never browser callback states, even while leased.
+    if (internalState.startsWith(CLAIMED_FLOW_PREFIX)) return undefined;
     const prisma = this.getPrisma();
     const row = (await prisma.authCodeFlowState.findUnique({
       where: { internalState },
@@ -736,6 +738,7 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
   }
 
   async consumeAuthCodeFlow(internalState: string): Promise<AuthCodeFlowStateType | undefined> {
+    if (internalState.startsWith(CLAIMED_FLOW_PREFIX)) return undefined;
     const prisma = this.getPrisma();
     const row = (await prisma.authCodeFlowState.findUnique({
       where: { internalState },
@@ -906,8 +909,11 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
     return { accountKey, settings, version, updatedAt };
   }
 
-  onAbandonedFlowGrant(handler: AbandonedFlowGrantHandler): void {
-    this.abandonedFlowGrant = handler;
+  onAbandonedFlowGrant(handler: AbandonedFlowGrantHandler, leaseMs: number): void {
+    if (!Number.isSafeInteger(leaseMs) || leaseMs <= 0) {
+      throw new Error('Abandoned-flow cleanup requires a positive integer lease duration');
+    }
+    this.abandonedFlowGrant = { run: handler, leaseMs };
   }
 
   onExpiredSession(handler: ExpiredSessionHandler): void {
@@ -935,16 +941,21 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
   /**
    * Take an expired flow away from its callback without deleting it: its row moves to a
    * claimed key, so a callback finishing now finds nothing to consume, while the tokens stay
-   * stored until their grant is ended. A row already claimed by a cleanup that stopped
-   * before ending it is taken as it is. Resolves to the claimed key, or undefined when the
-   * callback consumed the flow first.
+   * stored until their grant is ended. A stopped worker's row can be claimed again only
+   * after its lease expires. Resolves to the claimed key, or undefined when a callback
+   * consumed the flow or another replica holds its lease.
    */
-  private async claimAbandonedFlow(internalState: string): Promise<string | undefined> {
-    if (internalState.startsWith(CLAIMED_FLOW_PREFIX)) return internalState;
-    const claimedState = CLAIMED_FLOW_PREFIX + internalState;
+  private async claimAbandonedFlow(
+    internalState: string,
+    now: bigint,
+    leaseUntil: bigint,
+  ): Promise<string | undefined> {
+    const claimedState = internalState.startsWith(CLAIMED_FLOW_PREFIX)
+      ? internalState
+      : CLAIMED_FLOW_PREFIX + internalState;
     const claimed = (await this.getPrisma().authCodeFlowState.updateMany({
-      where: { internalState },
-      data: { internalState: claimedState },
+      where: { internalState, expiresAt: { lt: now } },
+      data: { internalState: claimedState, expiresAt: leaseUntil },
     })) as PrismaBatchPayload;
     return claimed.count === 1 ? claimedState : undefined;
   }
@@ -955,8 +966,8 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
    * before it is read, so one that cannot be read keeps its tokens out of the bulk delete.
    */
   private async endAbandonedFlows(now: bigint): Promise<void> {
-    const handler = this.abandonedFlowGrant;
-    if (!handler) return;
+    const registration = this.abandonedFlowGrant;
+    if (!registration) return;
     const prisma = this.getPrisma();
     const rows = (
       (await prisma.authCodeFlowState.findMany({
@@ -965,10 +976,33 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
     ).filter((row) => row.gitlabTokens != null);
     await inBatches(rows, async (row) => {
       try {
-        const claimedState = await this.claimAbandonedFlow(row.internalState);
+        const leaseUntil = BigInt(Date.now() + registration.leaseMs);
+        const claimedState = await this.claimAbandonedFlow(row.internalState, now, leaseUntil);
         if (!claimedState) return;
-        await handler(this.rowToAuthCodeFlow(row));
-        await prisma.authCodeFlowState.deleteMany({ where: { internalState: claimedState } });
+        // Re-read after the atomic claim: a previous cleanup may have rotated the
+        // tokens since this batch was selected. Never spend that stale refresh token.
+        const current = (await prisma.authCodeFlowState.findUnique({
+          where: { internalState: claimedState },
+        })) as PrismaAuthCodeFlowStateRow | null;
+        if (!current) throw new Error('Claimed authorization flow could not be read');
+        const flow = this.rowToAuthCodeFlow(current);
+        const ownership = {
+          internalState: claimedState,
+          expiresAt: leaseUntil,
+        };
+        await registration.run(
+          flow,
+          async (tokens) => {
+            const updated = (await prisma.authCodeFlowState.updateMany({
+              where: ownership,
+              data: { gitlabTokens: tokens },
+            })) as PrismaBatchPayload;
+            if (updated.count !== 1) throw new Error('Authorization-flow cleanup lease was lost');
+            flow.gitlabTokens = tokens;
+          },
+          Number(leaseUntil),
+        );
+        await prisma.authCodeFlowState.deleteMany({ where: ownership });
       } catch (error: unknown) {
         logError('Could not end the grant of an abandoned flow', { err: error as Error });
       }

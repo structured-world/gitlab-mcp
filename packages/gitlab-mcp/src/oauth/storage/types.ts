@@ -11,6 +11,7 @@ import {
   AuthCodeFlowState,
   AuthorizationCode,
   RegisteredOAuthClient,
+  GitLabTokenResponse,
 } from '../types';
 import type { AccountSettings, AccountSettingsRecord } from '../../configuration/types';
 
@@ -25,8 +26,16 @@ export function isPastAgeLimit(session: OAuthSession, now = Date.now()): boolean
 /**
  * Ends the GitLab grant of an auth code flow removed unfinished. Rejects when the grant
  * could not be ended; the backend then keeps the flow, its only copy, for the next cleanup.
+ * Rotated credentials are durably kept through persistTokens for retries. If persistence
+ * is unavailable, the handler can finish only after successfully revoking the new grant.
  */
-export type AbandonedFlowGrantHandler = (flow: AuthCodeFlowState) => Promise<void>;
+export type AbandonedFlowGrantHandler = (
+  flow: AuthCodeFlowState,
+  /** Durably replace rotated credentials while the backend still owns this flow. */
+  persistTokens: (tokens: GitLabTokenResponse) => Promise<void>,
+  /** Shared lease expiry; absent when local ownership cannot expire during the handler. */
+  leaseUntil?: number,
+) => Promise<void>;
 
 /** Removes a session that reached its age limit with its linked accounts, ending their grants. */
 export type ExpiredSessionHandler = (session: OAuthSession) => Promise<void>;
@@ -156,8 +165,12 @@ export interface SessionStorageBackend {
    * holds the only copy of that grant. The flow is removed once the handler resolves and
    * kept for the next cleanup when it rejects. Absent in database packages older than this
    * server.
+   *
+   * Register grant cleanup with a positive integer bound covering ownership checks, GitLab
+   * requests and token persistence. Shared backends lease each flow for this duration,
+   * fence token writes/deletion to that lease, and hide claimed flows from callbacks.
    */
-  onAbandonedFlowGrant?(handler: AbandonedFlowGrantHandler): void;
+  onAbandonedFlowGrant?(handler: AbandonedFlowGrantHandler, leaseMs: number): void;
   /**
    * Hand each session cleanup expires (not an account linked to a session still stored) to
    * `handler`, which removes it with its linked accounts and ends their GitLab grants;

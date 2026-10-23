@@ -5,10 +5,12 @@
 
 import type { OAuthConfig } from './config';
 import { oauthAppFor } from './instance-app';
-import { revokeGitLabToken } from './gitlab-device-flow';
+import { refreshGitLabToken, revokeGitLabToken } from './gitlab-device-flow';
 import { claimSessionLease, withFreshGitLabToken } from './gitlab-token-refresh';
 import { sessionStore } from './session-store';
 import type { AuthCodeFlowState, OAuthSession } from './types';
+import type { AbandonedFlowGrantHandler } from './storage/types';
+import { GITLAB_REQUEST_MAX_MS } from './gitlab-request-bound';
 import { logWarn } from '../logger';
 
 /**
@@ -120,6 +122,17 @@ export async function endSession(session: OAuthSession, config: OAuthConfig): Pr
 
 /** How long a discard holds the link's session: one read of its linked accounts. */
 const OWNERSHIP_CHECK_LEASE_MS = 5_000;
+/** A bounded ownership check, refresh, durable write, and revocation. */
+const FLOW_STORE_BUDGET_MS = 15_000;
+const FLOW_CLEANUP_LEASE_MS =
+  OWNERSHIP_CHECK_LEASE_MS + 2 * GITLAB_REQUEST_MAX_MS + FLOW_STORE_BUDGET_MS;
+
+/** Slow storage reads must not let an expired lease holder spend a refresh token. */
+function assertCleanupLease(leaseUntil: number | undefined, requiredMs: number): void {
+  if (leaseUntil !== undefined && Date.now() + requiredMs > leaseUntil) {
+    throw new Error('Authorization-flow cleanup lease has insufficient time remaining');
+  }
+}
 
 /**
  * Whether an account link stored the flow's grant with the account: that grant is the
@@ -132,7 +145,11 @@ async function linkedAccountHolds(flow: AuthCodeFlowState): Promise<boolean> {
   const tokens = flow.gitlabTokens;
   if (!tokens || flow.link?.stage !== 'connect' || !sessionStore.linksAccounts()) return false;
   const sessionId = flow.link.sessionId;
-  const turn = await claimSessionLease(sessionId, OWNERSHIP_CHECK_LEASE_MS);
+  const turn = await claimSessionLease(
+    sessionId,
+    OWNERSHIP_CHECK_LEASE_MS,
+    Date.now() + OWNERSHIP_CHECK_LEASE_MS,
+  );
   // The session is gone, and its linked accounts with it: nothing holds the grant.
   if (turn === undefined) return false;
   try {
@@ -157,26 +174,74 @@ async function linkedAccountHolds(flow: AuthCodeFlowState): Promise<boolean> {
 export async function endAbandonedFlowGrant(
   flow: AuthCodeFlowState,
   config: OAuthConfig,
+  persistTokens: Parameters<AbandonedFlowGrantHandler>[1],
+  leaseUntil?: number,
 ): Promise<void> {
   if (!flow.gitlabTokens || (await linkedAccountHolds(flow))) return;
   const app = await oauthAppFor(config, flow.selectedInstance);
-  if (app) await revokeGitLabToken(flow.gitlabTokens.access_token, config, app);
+  if (!app) return;
+  let tokens = flow.gitlabTokens;
+  // RFC 7009 section 2.2 also permits HTTP 200 for an invalid token:
+  // https://www.rfc-editor.org/rfc/rfc7009#section-2.2
+  // Doorkeeper 5.6.6 checks accessible? and skips expired tokens:
+  // https://github.com/doorkeeper-gem/doorkeeper/blob/v5.6.6/app/controllers/doorkeeper/tokens_controller.rb#L104-L108
+  // Refresh early enough that the revocation request can reach a live token.
+  if ((tokens.created_at + tokens.expires_in) * 1000 <= Date.now() + GITLAB_REQUEST_MAX_MS) {
+    assertCleanupLease(leaseUntil, 2 * GITLAB_REQUEST_MAX_MS + FLOW_STORE_BUDGET_MS);
+    tokens = await refreshGitLabToken(tokens.refresh_token, config, app);
+    flow.gitlabTokens = tokens;
+    const deadline = Date.now() + FLOW_STORE_BUDGET_MS;
+    for (let delay = 200; ; delay *= 2) {
+      try {
+        await persistTokens(tokens);
+        break;
+      } catch (error: unknown) {
+        if (Date.now() + delay >= deadline) {
+          // Storage cannot keep the rotated grant: end it now rather than leave
+          // only the spent refresh token behind. A failed revoke still rejects.
+          await revokeGitLabToken(tokens.access_token, config, app);
+          return;
+        }
+        logWarn('Could not persist refreshed abandoned-flow tokens, retrying', {
+          err: error as Error,
+        });
+        await new Promise<void>((resolve) => setTimeout(resolve, delay));
+      }
+    }
+  }
+  assertCleanupLease(leaseUntil, GITLAB_REQUEST_MAX_MS);
+  await revokeGitLabToken(tokens.access_token, config, app);
 }
 
 /**
- * End the grant of a flow that is already spent, best effort: there is no record left to
- * keep for a retry.
+ * End a spent flow's grant; keep an expired recovery record if ending it fails.
+ * Expiry prevents a replayed callback from finishing with the retained credentials.
  */
 export async function revokeAbandonedFlowGrant(
   flow: AuthCodeFlowState,
   config: OAuthConfig,
 ): Promise<void> {
+  const pending = { ...flow, expiresAt: Math.min(flow.expiresAt, Date.now() - 1) };
+  let persisted = false;
   try {
-    await endAbandonedFlowGrant(flow, config);
+    await endAbandonedFlowGrant(pending, config, async (tokens) => {
+      pending.gitlabTokens = tokens;
+      await sessionStore.storeAuthCodeFlow(pending.internalState, pending);
+      persisted = true;
+    });
+    if (persisted) await sessionStore.deleteAuthCodeFlow(pending.internalState);
   } catch (error: unknown) {
     logWarn('Failed to revoke the GitLab grant of an abandoned authorization', {
       err: error as Error,
     });
+    await sessionStore
+      .storeAuthCodeFlow(pending.internalState, pending)
+      .catch((restoreError: unknown) => {
+        logWarn('Could not keep an abandoned authorization for cleanup', {
+          err: restoreError as Error,
+          expiresAt: pending.expiresAt,
+        });
+      });
   }
 }
 
@@ -188,7 +253,11 @@ export async function revokeAbandonedFlowGrant(
  */
 export async function startSessionStore(config: OAuthConfig): Promise<void> {
   await sessionStore.initialize();
-  sessionStore.onAbandonedFlowGrant((flow) => endAbandonedFlowGrant(flow, config));
+  sessionStore.onAbandonedFlowGrant(
+    (flow, persistTokens, leaseUntil) =>
+      endAbandonedFlowGrant(flow, config, persistTokens, leaseUntil),
+    FLOW_CLEANUP_LEASE_MS,
+  );
   sessionStore.onExpiredSession((session) => endSession(session, config));
   sessionStore.cleanup().catch((error: unknown) => {
     logWarn('Startup session cleanup failed', { err: error as Error });
@@ -218,17 +287,5 @@ export async function discardAuthCodeFlow(
   });
   // Spent or discarded already: whoever took it decided its grant.
   if (!taken) return;
-  try {
-    await endAbandonedFlowGrant(taken, config);
-  } catch (error: unknown) {
-    logWarn('Failed to revoke the GitLab grant of an abandoned authorization', {
-      err: error as Error,
-    });
-    await sessionStore.storeAuthCodeFlow(state, taken).catch((restoreError: unknown) => {
-      logWarn('Could not keep an abandoned authorization for cleanup', {
-        err: restoreError as Error,
-        expiresAt: flow.expiresAt,
-      });
-    });
-  }
+  await revokeAbandonedFlowGrant({ ...taken, internalState: state }, config);
 }

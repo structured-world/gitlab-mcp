@@ -44,11 +44,16 @@ async function inBatches<T>(
   return inBatches(items, run, from + CLEANUP_BATCH);
 }
 
-/** Remove the entries that expired before `now`; returns how many were removed. */
-function deleteExpired<K>(entries: Map<K, { expiresAt?: number }>, now: number): number {
+/** Remove expired entries except records an asynchronous cleanup still owns. */
+function deleteExpired<K>(
+  entries: Map<K, { expiresAt?: number }>,
+  now: number,
+  retained?: ReadonlySet<K>,
+): number {
   let removed = 0;
   for (const [key, entry] of entries) {
     if (entry.expiresAt !== undefined && entry.expiresAt < now) {
+      if (retained?.has(key)) continue;
       entries.delete(key);
       removed++;
     }
@@ -62,6 +67,8 @@ export class MemoryStorageBackend implements SessionStorageBackend {
   private sessions = new Map<string, OAuthSession>();
   private deviceFlows = new Map<string, DeviceFlowState>();
   private authCodeFlows = new Map<string, AuthCodeFlowState>();
+  /** Hidden from callbacks, but retained in exports until their grant is ended. */
+  private abandonedFlowsInProgress = new Set<string>();
   private authCodes = new Map<string, AuthorizationCode>();
   private tokenToSession = new Map<string, string>();
   private refreshTokenToSession = new Map<string, string>();
@@ -199,10 +206,12 @@ export class MemoryStorageBackend implements SessionStorageBackend {
   }
 
   async getAuthCodeFlow(internalState: string): Promise<AuthCodeFlowState | undefined> {
+    if (this.abandonedFlowsInProgress.has(internalState)) return undefined;
     return this.authCodeFlows.get(internalState);
   }
 
   async deleteAuthCodeFlow(internalState: string): Promise<boolean> {
+    if (this.abandonedFlowsInProgress.has(internalState)) return false;
     const deleted = this.authCodeFlows.delete(internalState);
     if (deleted) {
       logDebug('Auth code flow deleted', { internalState: truncateId(internalState) });
@@ -312,6 +321,7 @@ export class MemoryStorageBackend implements SessionStorageBackend {
   }
 
   async consumeAuthCodeFlow(internalState: string): Promise<AuthCodeFlowState | undefined> {
+    if (this.abandonedFlowsInProgress.has(internalState)) return undefined;
     const record = this.authCodeFlows.get(internalState);
     if (record) this.authCodeFlows.delete(internalState);
     return record;
@@ -365,7 +375,10 @@ export class MemoryStorageBackend implements SessionStorageBackend {
     return this.updateSession(sessionId, updates);
   }
 
-  onAbandonedFlowGrant(handler: AbandonedFlowGrantHandler): void {
+  onAbandonedFlowGrant(handler: AbandonedFlowGrantHandler, leaseMs: number): void {
+    if (!Number.isSafeInteger(leaseMs) || leaseMs <= 0) {
+      throw new Error('Abandoned-flow cleanup requires a positive integer lease duration');
+    }
     this.abandonedFlowGrant = handler;
   }
 
@@ -401,18 +414,35 @@ export class MemoryStorageBackend implements SessionStorageBackend {
     const expiredDeviceFlows = deleteExpired(this.deviceFlows, now);
     const handler = this.abandonedFlowGrant;
     const abandoned = handler
-      ? [...this.authCodeFlows].filter(([, flow]) => flow.gitlabTokens && flow.expiresAt < now)
+      ? [...this.authCodeFlows].filter(
+          ([state, flow]) =>
+            flow.gitlabTokens && flow.expiresAt < now && !this.abandonedFlowsInProgress.has(state),
+        )
       : [];
-    const expiredAuthCodeFlows = deleteExpired(this.authCodeFlows, now);
-    // Each flow is out of its callback's reach while its grant is ended, and comes back
-    // when that fails: it holds the only copy of the grant, for the next cleanup to retry.
+    for (const [state] of abandoned) this.abandonedFlowsInProgress.add(state);
+    let expiredAuthCodeFlows = deleteExpired(
+      this.authCodeFlows,
+      now,
+      this.abandonedFlowsInProgress,
+    );
+    // Keep the only grant copy in exports during the GitLab request too: file autosaves
+    // must not erase it. Callback reads/consumption and concurrent cleanups skip its claim.
     if (handler) {
-      await inBatches(abandoned, ([state, flow]) =>
-        handler(flow).catch((error: unknown) => {
+      await inBatches(abandoned, async ([state, flow]) => {
+        try {
+          await handler(flow, async (tokens) => {
+            flow.gitlabTokens = tokens;
+            this.authCodeFlows.set(state, flow);
+          });
+          this.authCodeFlows.delete(state);
+          expiredAuthCodeFlows++;
+        } catch (error: unknown) {
           logWarn('Could not end the grant of an abandoned flow', { err: error as Error });
           this.authCodeFlows.set(state, flow);
-        }),
-      );
+        } finally {
+          this.abandonedFlowsInProgress.delete(state);
+        }
+      });
     }
     const expiredAuthCodes = deleteExpired(this.authCodes, now);
     // Registrations that never completed an authorization expire; used ones have no expiry

@@ -872,13 +872,72 @@ describe('FileStorageBackend', () => {
       storage = new FileStorageBackend({ filePath });
       await storage.initialize();
       const handler = jest.fn(async () => {});
-      storage.onAbandonedFlowGrant(handler);
+      storage.onAbandonedFlowGrant(handler, 60_000);
 
       await storage.cleanup();
 
-      expect(handler).toHaveBeenCalledWith(expect.objectContaining({ gitlabTokens }));
+      expect(handler).toHaveBeenCalledWith(
+        expect.objectContaining({ gitlabTokens }),
+        expect.any(Function),
+        undefined,
+      );
       expect(await storage.getAuthCodeFlow('abandoned')).toBeUndefined();
       expect(await storage.getAuthCodeFlow('expired-no-grant')).toBeUndefined();
+    });
+
+    it('persists rotated flow credentials before revocation and retains them across restart', async () => {
+      // A failed revoke after refresh must survive a process restart with the replacement
+      // refresh token; writing only after cleanup completes would lose that grant.
+      const oldTokens = {
+        access_token: 'expired-access',
+        refresh_token: 'spent-refresh',
+        token_type: 'Bearer',
+        expires_in: 7200,
+        created_at: 0,
+      };
+      const fresh = {
+        ...oldTokens,
+        access_token: 'fresh-access',
+        refresh_token: 'fresh-refresh',
+        created_at: Math.floor(Date.now() / 1000),
+      };
+      storage = new FileStorageBackend({ filePath });
+      await storage.initialize();
+      await storage.storeAuthCodeFlow(
+        'abandoned',
+        createTestAuthCodeFlow({ expiresAt: Date.now() - 1000, gitlabTokens: oldTokens }),
+      );
+      let persistedDuringRevocation: unknown;
+      let retainedDuringRefresh: unknown;
+      storage.onAbandonedFlowGrant(async (_flow, persistTokens) => {
+        // An automatic save while GitLab is still refreshing must retain the old
+        // credentials too; otherwise a crash loses the only grant copy mid-request.
+        await storage.forceSave();
+        const beforeRefresh = JSON.parse(fs.readFileSync(filePath, 'utf8')) as StorageData;
+        retainedDuringRefresh = beforeRefresh.authCodeFlows.find(
+          (entry) => entry.internalState === 'abandoned',
+        )?.flow.gitlabTokens;
+        await persistTokens(fresh);
+        const saved = JSON.parse(fs.readFileSync(filePath, 'utf8')) as StorageData;
+        persistedDuringRevocation = saved.authCodeFlows.find(
+          (entry) => entry.internalState === 'abandoned',
+        )?.flow.gitlabTokens;
+        throw new Error('GitLab revoke unavailable');
+      }, 60_000);
+
+      await storage.cleanup();
+      expect(retainedDuringRefresh).toEqual(oldTokens);
+      expect(persistedDuringRevocation).toEqual(fresh);
+      await storage.close();
+      storage = new FileStorageBackend({ filePath });
+      await storage.initialize();
+
+      expect((await storage.getAuthCodeFlow('abandoned'))?.gitlabTokens).toEqual(fresh);
+      storage.onAbandonedFlowGrant(async (flow) => {
+        expect(flow.gitlabTokens).toEqual(fresh);
+      }, 60_000);
+      await storage.cleanup();
+      expect(await storage.getAuthCodeFlow('abandoned')).toBeUndefined();
     });
 
     it('should filter expired device flows on load', async () => {

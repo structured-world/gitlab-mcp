@@ -1046,6 +1046,7 @@ describe('account linking', () => {
       mockUser.mockResolvedValueOnce({ id: 99, username: 'alice-personal' });
       const getFlow = sessionStore.getAuthCodeFlow.bind(sessionStore);
       let cleanup: Promise<void> | undefined;
+      const persistTokens = jest.fn();
       const check = jest
         .spyOn(sessionStore, 'getAuthCodeFlow')
         .mockImplementationOnce(async (s) => {
@@ -1055,6 +1056,7 @@ describe('account linking', () => {
           cleanup = endAbandonedFlowGrant(
             { ...(found as AuthCodeFlowState), gitlabTokens: tokens('com-token') },
             config,
+            persistTokens,
           );
           await new Promise((resolve) => setTimeout(resolve, 20));
           return found;
@@ -1070,6 +1072,7 @@ describe('account linking', () => {
       const [linked] = await sessionStore.getLinkedSessions('primary');
       expect(linked.gitlabAccessToken).toBe('com-token');
       expect(mockRevoke).not.toHaveBeenCalledWith('com-token', config, comApp);
+      expect(persistTokens).not.toHaveBeenCalled();
     });
 
     // The step is opened in another browser and discarded while the browser it belongs to

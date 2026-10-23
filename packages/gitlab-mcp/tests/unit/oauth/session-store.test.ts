@@ -378,9 +378,9 @@ describe('OAuth Session Store', () => {
         const register = jest.spyOn(backend, 'onAbandonedFlowGrant');
         const handler = jest.fn(async () => {});
 
-        new SessionStore(backend).onAbandonedFlowGrant(handler);
+        new SessionStore(backend).onAbandonedFlowGrant(handler, 60_000);
 
-        expect(register).toHaveBeenCalledWith(handler);
+        expect(register).toHaveBeenCalledWith(handler, 60_000);
       });
 
       it('accepts a backend without the hook', () => {
@@ -393,6 +393,7 @@ describe('OAuth Session Store', () => {
         expect(() =>
           new SessionStore(backend as unknown as SessionStorageBackend).onAbandonedFlowGrant(
             jest.fn(async () => {}),
+            60_000,
           ),
         ).not.toThrow();
       });

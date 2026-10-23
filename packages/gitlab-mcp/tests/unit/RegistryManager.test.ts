@@ -846,6 +846,50 @@ describe('RegistryManager', () => {
   });
 
   describe('Per-URL Cache Resolution', () => {
+    it.each([
+      { mode: 'static-token', oauth: false },
+      { mode: 'OAuth', oauth: true },
+    ])('selects the default catalog for $mode without a request account', ({ oauth }) => {
+      // Static chats must not inherit the singleton's last OAuth instance; OAuth
+      // callers without a request context still use that connection's instance.
+      const { ConnectionManager } = require('../../src/services/ConnectionManager');
+      const oauthConfig = require('../../src/oauth/config');
+      const oauthEnabled = jest.spyOn(oauthConfig, 'isOAuthEnabled').mockReturnValue(oauth);
+      const originalConnection = ConnectionManager.getInstance();
+      const labelsRegistry = require('../../src/entities/labels/registry').labelsToolRegistry;
+      const labelsTool = labelsRegistry.get('labels_tool_1');
+      labelsTool.requirements = { default: { tier: 'free', minVersion: '17.0' } };
+      const otherUrl = 'https://other.example.com';
+      const currentUrl = jest.fn().mockReturnValue(otherUrl);
+      ConnectionManager.getInstance.mockReturnValue({
+        ...originalConnection,
+        getCurrentInstanceUrl: currentUrl,
+        getInstanceInfo: jest.fn().mockImplementation((url?: string) => ({
+          tier: 'free',
+          version: url === otherUrl ? '16.0.0' : '17.0.0',
+        })),
+      });
+
+      try {
+        resetRegistryManagerSingleton();
+        const names = RegistryManager.getInstance().getAvailableToolNames();
+
+        expect(names).toContain('core_tool_1');
+        if (oauth) {
+          expect(names).not.toContain('labels_tool_1');
+          expect(currentUrl).toHaveBeenCalled();
+        } else {
+          expect(names).toContain('labels_tool_1');
+          expect(currentUrl).not.toHaveBeenCalled();
+        }
+      } finally {
+        oauthEnabled.mockRestore();
+        delete labelsTool.requirements;
+        ConnectionManager.getInstance.mockReturnValue(originalConnection);
+        resetRegistryManagerSingleton();
+      }
+    });
+
     // A static-token chat that switched to a configured instance lists that instance's tools,
     // gated by its version, not the server instance's.
     it('resolves no-arg calls of a switched static-token chat via its instance', () => {

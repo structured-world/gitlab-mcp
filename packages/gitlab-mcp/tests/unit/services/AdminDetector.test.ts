@@ -138,6 +138,14 @@ describe('detectAdminStatus', () => {
     expect(mockEnhancedFetch).toHaveBeenCalledTimes(2);
   });
 
+  it('does not probe an instance with an explicitly empty token', async () => {
+    // Missing instance credentials must not fall back to the server's token.
+    const result = await detectAdminStatus('https://other.example.com', '');
+
+    expect(result).toBeNull();
+    expect(mockEnhancedFetch).not.toHaveBeenCalled();
+  });
+
   it('treats only a 403 probe as role-without-elevation', async () => {
     mockEnhancedFetch.mockResolvedValueOnce(userResponse(true));
     mockEnhancedFetch.mockResolvedValueOnce({ ok: false, status: 403, json: jest.fn() });

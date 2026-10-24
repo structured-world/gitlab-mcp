@@ -48,6 +48,13 @@ tests/
 
 ## 🚀 How to Run Tests
 
+### Jest runtime
+
+Run the core Jest scripts on Node.js 24 LTS (24.15 or later). They share `test:jest`, which
+enables `--experimental-vm-modules` so Jest can load jsdom's ESM dependencies from
+the CommonJS settings-panel tests. Use `test`, `test:cov`, `test:integration` or
+`test:all` rather than invoking Jest without that runtime option.
+
 ### Complete Integration Test Suite (Recommended)
 ```bash
 yarn test

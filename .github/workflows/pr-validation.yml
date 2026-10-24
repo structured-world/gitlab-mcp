@@ -95,7 +95,7 @@ jobs:
         run: yarn tsc --noEmit
         working-directory: packages/gitlab-mcp
 
-  # Coverage report - only on Node 22
+  # Coverage uses Node 24 for Jest's synchronous ESM loading.
   coverage:
     name: Coverage
     runs-on: ubuntu-latest
@@ -108,7 +108,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: "22"
+          node-version: "24"
 
       - name: Enable Corepack
         run: corepack enable

@@ -2,9 +2,9 @@
 
 [![npm version](https://img.shields.io/npm/v/@structured-world/gitlab-mcp)](https://www.npmjs.com/package/@structured-world/gitlab-mcp) [![npm downloads](https://img.shields.io/npm/dm/@structured-world/gitlab-mcp)](https://www.npmjs.com/package/@structured-world/gitlab-mcp) [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://github.com/structured-world/gitlab-mcp/blob/HEAD/LICENSE) [![Release](https://github.com/structured-world/gitlab-mcp/workflows/Release/badge.svg)](https://github.com/structured-world/gitlab-mcp/actions) [![Coverage](https://codecov.io/gh/structured-world/gitlab-mcp/graph/badge.svg)](https://codecov.io/gh/structured-world/gitlab-mcp) [![Coverage Report](https://img.shields.io/badge/Coverage-Live%20Report-brightgreen?logo=github)](https://gitlab-mcp.sw.foundation/coverage/)
 
-Advanced GitLab MCP server — 64 CQRS tools exposing 230 GitLab operations across 26 entity types. The tool catalog and parameters are filtered to each instance's GitLab version, tier, and token scopes, so the agent sees only what the connected instance actually supports.
+Advanced GitLab MCP server — 64 CQRS tools exposing 234 GitLab operations across 26 entity types. The tool catalog and parameters are filtered to each instance's GitLab version, tier, and token scopes, so the agent sees only what the connected instance actually supports.
 
-[![Install in Claude Desktop](https://img.shields.io/badge/Claude_Desktop-Install_Extension-F97316?style=for-the-badge)](https://gitlab-mcp.sw.foundation/downloads/gitlab-mcp-11.0.0.mcpb)
+[![Install in Claude Desktop](https://img.shields.io/badge/Claude_Desktop-Install_Extension-F97316?style=for-the-badge)](https://gitlab-mcp.sw.foundation/downloads/gitlab-mcp-12.0.0.mcpb)
 [![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_MCP_Server-007ACC?style=for-the-badge&logo=visualstudiocode&logoColor=white)](vscode:mcp/install?%7B%22name%22%3A%22gitlab-mcp%22%2C%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40structured-world%2Fgitlab-mcp%22%5D%7D)
 [![Install in VS Code Insiders](https://img.shields.io/badge/VS_Code_Insiders-Install_MCP_Server-24bfa5?style=for-the-badge&logo=visualstudiocode&logoColor=white)](vscode-insiders:mcp/install?%7B%22name%22%3A%22gitlab-mcp%22%2C%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40structured-world%2Fgitlab-mcp%22%5D%7D)
 
@@ -39,7 +39,7 @@ This is a monorepo with two npm packages:
 - **64 tools** across 26 entity types — projects, merge requests, pipelines, work items, wiki, and more
 - **CQRS architecture** — `browse_*` for queries, `manage_*` for commands
 - **Connection resilience** — Bounded startup, auto-reconnect with exponential backoff, disconnected mode when GitLab is unreachable
-- **Multi-instance support** — Connect to GitLab.com, self-managed, and self-hosted instances with per-instance OAuth and rate limiting
+- **Multi-instance support** — Connect to GitLab.com, self-managed, and self-hosted instances with per-instance OAuth and rate limiting; one connection can link several accounts, such as a company GitLab and a personal GitLab.com account, and each chat switches between them
 - **Multiple transports** — stdio, SSE, StreamableHTTP
 - **OAuth 2.1** — Per-user authentication via Claude Custom Connector
 - **Read-only mode** — Safe operation for production environments
@@ -52,7 +52,7 @@ This is a monorepo with two npm packages:
 GitLab exposes hundreds of API operations. Giving each its own MCP tool floods an
 agent's context; a thin API wrapper pushes that complexity back onto the agent. This
 server takes a third path: 64 CQRS tools, each holding several typed
-actions, expose 230 operations across 26 entity types.
+actions, expose 234 operations across 26 entity types.
 
 - `browse_*` tools are read-only queries; `manage_*` tools are writes.
 - Sub-resources fold into actions rather than new tools — `browse_pipelines` covers
@@ -162,28 +162,6 @@ The server handles GitLab connectivity issues gracefully:
 ## Contributing
 
 See [CONTRIBUTING.md](https://github.com/structured-world/gitlab-mcp/blob/HEAD/CONTRIBUTING.md) for development setup, testing, and PR guidelines.
-
-Account linking requires `cacheLinkedFlowTokens` and `commitLinkedAccount`. The atomic
-commit validates the primary session lease, an unexpired connect flow, any cached grant
-and, for a replacement, the account's lease and refresh token. It stores the account and
-consumes the flow in one transaction.
-Token caching updates only a live link flow. Late or competing grants are retained under
-separate callback-invisible cleanup keys; retries cannot recreate a consumed flow or
-overwrite cleanup leases and rotated credentials. A callback whose lease was superseded
-cannot overwrite a newer link. Token refresh and revocation run outside the transaction.
-Core and DB remain separate packages; upgrade both together
-to use account linking.
-
-After building the workspace, run the real PostgreSQL account-link tests with Docker on
-your `PATH`:
-
-```bash
-yarn workspace @structured-world/gitlab-mcp-db test:integration
-```
-
-The suite starts one isolated PostgreSQL container on a dynamically assigned localhost
-port, applies the shipped migrations once and exercises two independent backend clients.
-It removes only its own container on completion and does not use an existing database.
 
 ## Support the Project
 

@@ -4,7 +4,7 @@ const { spawn } = require('node:child_process');
 const { once } = require('node:events');
 const process = require('node:process');
 const { Buffer } = require('node:buffer');
-const { setImmediate } = require('node:timers');
+const { setImmediate, setTimeout } = require('node:timers');
 const { test } = require('node:test');
 
 const MiB = 1024 * 1024;
@@ -204,11 +204,17 @@ test(
 test(
   'transport errors, dishonest length, timeout and abort never return partial success',
   { timeout: 60000 },
-  async () => {
+  async (t) => {
     // Exercise real response bodies so cancellation reaches the socket as well as the reader.
     const closed = [];
     const server = createServer((request, response) => {
-      response.on('close', () => closed.push(request.url));
+      response.on('close', () => {
+        // Make the final close observation arrive after the child exits, as it
+        // can when socket teardown reaches the server on a later event-loop turn.
+        if (request.url.startsWith('/api/')) {
+          setTimeout(() => closed.push(request.url), 250);
+        } else closed.push(request.url);
+      });
       if (request.url.startsWith('/api/')) response.statusCode = 403;
       if (request.url === '/length') response.setHeader('Content-Length', '10000');
       response.write('partial\n');
@@ -222,7 +228,7 @@ test(
         await measure(`http://127.0.0.1:${server.address().port}`, { failures: true }),
         { failedReads: 4, httpError: 403 },
       );
-      assert.equal(closed.length, 5);
+      await t.waitFor(() => assert.equal(closed.length, 5), { timeout: 5000, interval: 20 });
     } finally {
       server.closeAllConnections();
       await new Promise((resolve) => server.close(resolve));

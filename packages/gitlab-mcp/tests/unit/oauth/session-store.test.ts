@@ -83,6 +83,23 @@ describe('OAuth Session Store', () => {
     });
 
     // Native memory/file and the matching DB package provide the whole linking contract.
+    it('requires conditional token caching before enabling account linking', async () => {
+      // Atomic completion alone cannot prevent a delayed cache write from reviving a flow.
+      const backend = new MemoryStorageBackend({ silent: true });
+      Object.defineProperty(backend, 'cacheLinkedFlowTokens', { value: undefined });
+      const legacy = new SessionStore(backend);
+      expect(legacy.linksAccounts()).toBe(false);
+      await expect(
+        legacy.cacheLinkedFlowTokens({} as AuthCodeFlowState, {
+          access_token: 'access',
+          refresh_token: 'refresh',
+          token_type: 'Bearer',
+          created_at: Math.floor(Date.now() / 1000),
+          expires_in: 7200,
+        }),
+      ).rejects.toThrow('cannot safely cache account-link tokens');
+    });
+
     it('enables account linking with atomic backend support', () => {
       expect(store.linksAccounts()).toBe(true);
     });

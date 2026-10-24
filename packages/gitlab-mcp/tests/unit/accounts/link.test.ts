@@ -57,7 +57,10 @@ jest.mock('../../../src/oauth/gitlab-device-flow', () => ({
   refreshGitLabToken: jest.fn(),
 }));
 
-jest.mock('../../../src/oauth/code-exchange', () => ({ exchangeFlowCode: jest.fn() }));
+jest.mock('../../../src/oauth/code-exchange', () => ({
+  ...jest.requireActual('../../../src/oauth/code-exchange'),
+  exchangeFlowCode: jest.fn(),
+}));
 // Only the OAuth error class is real here; HTTP is mocked at the device-flow boundary.
 jest.mock('../../../src/utils/fetch', () => ({ enhancedFetch: jest.fn() }));
 
@@ -76,7 +79,10 @@ import {
   refreshGitLabToken,
   GitLabOAuthHttpError,
 } from '../../../src/oauth/gitlab-device-flow';
-import { exchangeFlowCode } from '../../../src/oauth/code-exchange';
+import {
+  AccountLinkFlowUnavailableError,
+  exchangeFlowCode,
+} from '../../../src/oauth/code-exchange';
 import {
   discardAuthCodeFlow,
   endAbandonedFlowGrant,
@@ -427,6 +433,19 @@ describe('account linking', () => {
       await completeAccountLink(res, state, await storedFlow(state), 'code', config);
       return stateOf(res.redirect.mock.calls[0][0] as string);
     }
+
+    it('shows a terminal error when the late grant was retained for cleanup', async () => {
+      // A spent cache must not trigger another GitLab user lookup or a link commit.
+      const state = await verified();
+      mockUser.mockClear();
+      mockExchange.mockRejectedValueOnce(new AccountLinkFlowUnavailableError());
+      const res = response();
+      await completeAccountLink(res, state, await storedFlow(state), 'code', config);
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.send.mock.calls[0][0]).toContain('already used or has expired');
+      expect(mockUser).not.toHaveBeenCalled();
+      expect(await sessionStore.getLinkedSessions('primary')).toEqual([]);
+    });
 
     // The connect step is only the GitLab sign-in URL: forwarded to someone else, it would
     // link their GitLab account to this session. It completes only in the browser that

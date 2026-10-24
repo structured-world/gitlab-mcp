@@ -78,12 +78,19 @@ export interface SessionStorageBackend {
   /** The GitLab accounts linked to a session, oldest first. */
   getLinkedSessions(sessionId: string): Promise<OAuthSession[]>;
   /**
-   * Atomically validate the primary lease, unspent/unexpired connect flow and (for a
+   * Atomically validate the primary lease, unspent/unexpired flow, any cached grant and (for a
    * replacement) account lease/token, store the account and consume the flow. False means
    * a precondition changed and nothing was written. Storage errors reject with no partial
    * commit. Older external backends without this operation cannot safely link accounts.
    */
   commitLinkedAccount?(commit: LinkedAccountCommit): Promise<boolean>;
+  /**
+   * Cache a grant only on its live, unclaimed link flow, without replacing a different
+   * cached grant. Return true when that flow holds these tokens. Otherwise retain them
+   * under an idempotent, callback-invisible cleanup key and return false. Retries must
+   * neither recreate the original state nor overwrite cleanup leases/rotated tokens.
+   */
+  cacheLinkedFlowTokens?(flow: AuthCodeFlowState, tokens: GitLabTokenResponse): Promise<boolean>;
 
   // Device flow operations
   storeDeviceFlow(state: string, flow: DeviceFlowState): Promise<void>;

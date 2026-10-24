@@ -5,7 +5,11 @@ import * as path from 'path';
 import { MemoryStorageBackend } from '../../../../src/oauth/storage/memory';
 import { FileStorageBackend } from '../../../../src/oauth/storage/file';
 import type { LinkedAccountCommit } from '../../../../src/oauth/storage/types';
-import type { AuthCodeFlowState, OAuthSession } from '../../../../src/oauth/types';
+import type {
+  AuthCodeFlowState,
+  OAuthSession,
+  GitLabTokenResponse,
+} from '../../../../src/oauth/types';
 
 describe.each(['memory', 'file'] as const)('%s atomic account-link commit', (kind) => {
   let storage: MemoryStorageBackend | FileStorageBackend;
@@ -84,6 +88,133 @@ describe.each(['memory', 'file'] as const)('%s atomic account-link commit', (kin
     jest.restoreAllMocks();
     await storage.close();
     fs.rmSync(directory, { recursive: true, force: true });
+  });
+
+  it('rejects a different grant from the one cached by the flow', async () => {
+    // Two codes can finish concurrently; consuming one flow must not lose its cached grant.
+    await storage.storeAuthCodeFlow(flow.internalState, {
+      ...flow,
+      gitlabTokens: {
+        access_token: 'other-access',
+        refresh_token: 'other-refresh',
+        token_type: 'Bearer',
+        created_at: Math.floor(Date.now() / 1000),
+        expires_in: 7200,
+      },
+    });
+    expect(await storage.commitLinkedAccount(commit)).toBe(false);
+    expect(await storage.getAuthCodeFlow(flow.internalState)).toBeDefined();
+    expect(await storage.getSession(commit.account.id)).toBeUndefined();
+  });
+
+  const issued = (): GitLabTokenResponse => ({
+    access_token: commit.account.gitlabAccessToken,
+    refresh_token: commit.account.gitlabRefreshToken,
+    token_type: 'Bearer',
+    created_at: Math.floor(parent.createdAt / 1000),
+    expires_in: 7200,
+  });
+
+  it('caches tokens without replacing current flow metadata and accepts the same grant again', async () => {
+    // A retry may carry an older snapshot; only the tokens belong to that write.
+    const current = { ...flow, clientState: 'latest-state' };
+    await storage.storeAuthCodeFlow(flow.internalState, current);
+    expect(await storage.cacheLinkedFlowTokens(flow, issued())).toBe(true);
+    expect(await storage.cacheLinkedFlowTokens(flow, issued())).toBe(true);
+    expect(await storage.getAuthCodeFlow(flow.internalState)).toEqual({
+      ...current,
+      gitlabTokens: issued(),
+    });
+    expect(await storage.commitLinkedAccount(commit)).toBe(true);
+  });
+
+  it('keeps late credentials for cleanup without exposing a replayable callback', async () => {
+    // Even after restart, a consumed callback stays consumed and its late grant stays recoverable.
+    await storage.consumeAuthCodeFlow(flow.internalState);
+    expect(await storage.cacheLinkedFlowTokens(flow, issued())).toBe(false);
+    expect(await storage.cacheLinkedFlowTokens(flow, issued())).toBe(false);
+    if (kind === 'file') {
+      await storage.close();
+      storage = new FileStorageBackend({ filePath: path.join(directory, 'sessions.json') });
+      await storage.initialize();
+    }
+    expect(await storage.getAuthCodeFlow(flow.internalState)).toBeUndefined();
+    expect(await storage.commitLinkedAccount(commit)).toBe(false);
+    const cleanup = jest.fn(async (pending: AuthCodeFlowState) => {
+      expect(pending.internalState).toMatch(/^cleanup:issued:/);
+      expect(await storage.getAuthCodeFlow(pending.internalState)).toBeUndefined();
+      expect(await storage.consumeAuthCodeFlow(pending.internalState)).toBeUndefined();
+      expect(pending.gitlabTokens).toEqual(issued());
+      expect(pending.link).toEqual(flow.link);
+    });
+    storage.onAbandonedFlowGrant(cleanup, 30_000);
+    await storage.cleanup();
+    expect(cleanup).toHaveBeenCalledTimes(1);
+  });
+
+  it('preserves the first cached grant when another code finishes the same flow', async () => {
+    // A different issued grant gets its own cleanup record instead of evicting the winner.
+    const first = issued();
+    const second = { ...first, access_token: 'second-access', refresh_token: 'second-refresh' };
+    expect(await storage.cacheLinkedFlowTokens(flow, first)).toBe(true);
+    expect(await storage.cacheLinkedFlowTokens(flow, second)).toBe(false);
+    expect((await storage.getAuthCodeFlow(flow.internalState))?.gitlabTokens).toEqual(first);
+    expect(await storage.commitLinkedAccount(commit)).toBe(true);
+    const cleanup = jest.fn(async (pending: AuthCodeFlowState) => {
+      expect(pending.gitlabTokens).toEqual(second);
+    });
+    storage.onAbandonedFlowGrant(cleanup, 30_000);
+    await storage.cleanup();
+    expect(cleanup).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['expired', 'session', 'stage'] as const)(
+    'does not update a changed flow (%s)',
+    async (change) => {
+      // A delayed write is tied to the original flow owner, stage and lifetime.
+      const current = { ...flow, link: { ...flow.link! } };
+      if (change === 'expired') current.expiresAt = Date.now() - 1;
+      if (change === 'session') current.link.sessionId = 'another-session';
+      if (change === 'stage') current.link.stage = 'verify';
+      await storage.storeAuthCodeFlow(flow.internalState, current);
+      expect(await storage.cacheLinkedFlowTokens(flow, issued())).toBe(false);
+      expect(await storage.getAuthCodeFlow(flow.internalState)).toEqual(current);
+    },
+  );
+
+  it('does not overwrite tokens rotated by the cleanup owner', async () => {
+    // Retrying a late write while cleanup holds the record must not restore spent credentials.
+    await storage.consumeAuthCodeFlow(flow.internalState);
+    await storage.cacheLinkedFlowTokens(flow, issued());
+    let entered!: () => void;
+    let release!: () => void;
+    const ready = new Promise<void>((resolve) => (entered = resolve));
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const rotated = {
+      ...issued(),
+      access_token: 'rotated-access',
+      refresh_token: 'rotated-refresh',
+    };
+    storage.onAbandonedFlowGrant(async (_pending, persist) => {
+      await persist(rotated);
+      entered();
+      await gate;
+      throw new Error('Revocation temporarily unavailable');
+    }, 30_000);
+    const cleaning = storage.cleanup();
+    try {
+      await ready;
+      expect(await storage.cacheLinkedFlowTokens(flow, issued())).toBe(false);
+    } finally {
+      release();
+      await cleaning;
+    }
+    const retry = jest.fn(async (pending: AuthCodeFlowState) => {
+      expect(pending.gitlabTokens).toEqual(rotated);
+    });
+    storage.onAbandonedFlowGrant(retry, 30_000);
+    await storage.cleanup();
+    expect(retry).toHaveBeenCalledTimes(1);
   });
 
   // A committed link owns its grant exactly once; replay must not create or overwrite a row.
@@ -196,6 +327,22 @@ describe.each(['memory', 'file'] as const)('%s atomic account-link commit', (kin
   });
 
   if (kind === 'file') {
+    it.each([false, true])('rolls back a failed token-cache write (spent=%s)', async (spent) => {
+      // A failed rename must not leave uncommitted tokens visible or save them on the next write.
+      if (spent) await storage.consumeAuthCodeFlow(flow.internalState);
+      const before = await storage.getStats();
+      const rename = jest
+        .spyOn(fs.promises, 'rename')
+        .mockRejectedValueOnce(new Error('disk unavailable'));
+      await expect(storage.cacheLinkedFlowTokens(flow, issued())).rejects.toThrow(
+        'disk unavailable',
+      );
+      rename.mockRestore();
+      expect((await storage.getStats()).authCodeFlows).toBe(before.authCodeFlows);
+      expect(await storage.getAuthCodeFlow(flow.internalState)).toEqual(spent ? undefined : flow);
+      expect(await storage.cacheLinkedFlowTokens(flow, issued())).toBe(!spent);
+    });
+
     // An expired lease cannot be taken over midway through a write-through commit.
     it('serializes lease takeover after the complete disk transition', async () => {
       const realRename = fs.promises.rename.bind(fs.promises);

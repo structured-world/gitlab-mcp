@@ -11,6 +11,7 @@
  * - Automatic cleanup of expired entries
  */
 
+import { createHash } from 'node:crypto';
 import type {
   AbandonedFlowGrantHandler,
   AccountLinkStep,
@@ -257,6 +258,8 @@ interface GenericPrismaClient {
     count(): Promise<number>;
   };
   authCodeFlowState: {
+    createMany(args: unknown): Promise<unknown>;
+    findFirst(args: unknown): Promise<unknown>;
     upsert(args: unknown): Promise<unknown>;
     findUnique(args: unknown): Promise<unknown>;
     findMany(args: unknown): Promise<unknown>;
@@ -354,6 +357,7 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
 
   // Session operations
   async commitLinkedAccount(commit: LinkedAccountCommit): Promise<boolean> {
+    const { Prisma } = await import('../generated/prisma/client');
     const { account, internalState, primaryLeaseUntil, existing } = commit;
     const updates = this.sessionUpdateData({
       gitlabAccessToken: account.gitlabAccessToken,
@@ -365,7 +369,6 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
     if (existing && account.gitlabScopes === undefined) {
       // Unknown permissions belong to this grant, never the displaced grant. SQL NULL
       // intentionally clears them; undefined would make Prisma preserve stale scopes.
-      const { Prisma } = await import('../generated/prisma/client');
       updates.gitlabScopes = Prisma.DbNull;
     }
     try {
@@ -392,6 +395,15 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
             AND: [
               { link: { path: ['sessionId'], equals: account.linkedToSessionId } },
               { link: { path: ['stage'], equals: 'connect' } },
+            ],
+            OR: [
+              { gitlabTokens: { equals: Prisma.AnyNull } },
+              {
+                AND: [
+                  { gitlabTokens: { path: ['access_token'], equals: account.gitlabAccessToken } },
+                  { gitlabTokens: { path: ['refresh_token'], equals: account.gitlabRefreshToken } },
+                ],
+              },
             ],
           },
         })) as PrismaBatchPayload;
@@ -676,10 +688,64 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
   }
 
   // Auth code flow operations
-  async storeAuthCodeFlow(internalState: string, flow: AuthCodeFlowStateType): Promise<void> {
+  async cacheLinkedFlowTokens(
+    flow: AuthCodeFlowStateType,
+    tokens: GitLabTokenResponse,
+  ): Promise<boolean> {
+    if (!flow.link) throw new Error('An account-link flow is required');
     const prisma = this.getPrisma();
-    // The callback stores the flow again with the GitLab tokens it received.
-    const data = {
+    const { Prisma } = await import('../generated/prisma/client');
+    const active = {
+      internalState: flow.internalState,
+      expiresAt: { gt: BigInt(Date.now()) },
+      NOT: { internalState: { startsWith: CLAIMED_FLOW_PREFIX } },
+      AND: [
+        { link: { path: ['sessionId'], equals: flow.link.sessionId } },
+        { link: { path: ['stage'], equals: flow.link.stage } },
+      ],
+    };
+    const updated = (await prisma.authCodeFlowState.updateMany({
+      where: { ...active, gitlabTokens: { equals: Prisma.AnyNull } },
+      data: { gitlabTokens: tokens },
+    })) as PrismaBatchPayload;
+    if (updated.count === 1) return true;
+    const cached = await prisma.authCodeFlowState.findFirst({
+      where: {
+        ...active,
+        expiresAt: { gt: BigInt(Date.now()) },
+        AND: [
+          ...active.AND,
+          { gitlabTokens: { path: ['access_token'], equals: tokens.access_token } },
+          { gitlabTokens: { path: ['refresh_token'], equals: tokens.refresh_token } },
+        ],
+      },
+      select: { internalState: true },
+    });
+    if (cached) return true;
+
+    const grant = createHash('sha256')
+      .update(JSON.stringify([tokens.access_token, tokens.refresh_token]))
+      .digest('hex');
+    const internalState = `${CLAIMED_FLOW_PREFIX}issued:${flow.internalState}:${grant}`;
+    // ON CONFLICT DO NOTHING preserves cleanup ownership and any rotated credentials.
+    await prisma.authCodeFlowState.createMany({
+      skipDuplicates: true,
+      data: [
+        {
+          internalState,
+          ...this.authCodeFlowData({
+            ...flow,
+            gitlabTokens: tokens,
+            expiresAt: Date.now() - 1,
+          }),
+        },
+      ],
+    });
+    return false;
+  }
+
+  private authCodeFlowData(flow: AuthCodeFlowStateType) {
+    return {
       clientId: flow.clientId,
       codeChallenge: flow.codeChallenge,
       codeChallengeMethod: flow.codeChallengeMethod,
@@ -695,6 +761,11 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
       gitlabTokens: flow.gitlabTokens,
       link: flow.link,
     };
+  }
+
+  async storeAuthCodeFlow(internalState: string, flow: AuthCodeFlowStateType): Promise<void> {
+    const prisma = this.getPrisma();
+    const data = this.authCodeFlowData(flow);
     await prisma.authCodeFlowState.upsert({
       where: { internalState },
       update: data,

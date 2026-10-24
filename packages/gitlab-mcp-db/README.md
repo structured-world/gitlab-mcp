@@ -163,11 +163,15 @@ The server handles GitLab connectivity issues gracefully:
 
 See [CONTRIBUTING.md](https://github.com/structured-world/gitlab-mcp/blob/HEAD/CONTRIBUTING.md) for development setup, testing, and PR guidelines.
 
-Account linking requires the backend's atomic `commitLinkedAccount` operation: it checks
-the primary session lease, an unexpired connect flow and the account's lease and refresh
-token, then stores the account and consumes the flow in one transaction. A callback whose
-lease was superseded cannot overwrite a newer link. Token refresh and revocation run
-outside the transaction. Core and DB remain separate packages; upgrade both together
+Account linking requires `cacheLinkedFlowTokens` and `commitLinkedAccount`. The atomic
+commit validates the primary session lease, an unexpired connect flow, any cached grant
+and, for a replacement, the account's lease and refresh token. It stores the account and
+consumes the flow in one transaction.
+Token caching updates only a live link flow. Late or competing grants are retained under
+separate callback-invisible cleanup keys; retries cannot recreate a consumed flow or
+overwrite cleanup leases and rotated credentials. A callback whose lease was superseded
+cannot overwrite a newer link. Token refresh and revocation run outside the transaction.
+Core and DB remain separate packages; upgrade both together
 to use account linking.
 
 After building the workspace, run the real PostgreSQL account-link tests with Docker on

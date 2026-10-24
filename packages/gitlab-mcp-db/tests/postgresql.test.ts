@@ -57,6 +57,8 @@ const createMockPrisma = () => ({
     count: jest.fn().mockResolvedValue(0),
   },
   authCodeFlowState: {
+    createMany: jest.fn().mockResolvedValue({ count: 1 }),
+    findFirst: jest.fn(),
     upsert: jest.fn().mockResolvedValue({}),
     findUnique: jest.fn(),
     findMany: jest.fn().mockResolvedValue([]),
@@ -258,6 +260,25 @@ describe('PostgreSQLStorageBackend', () => {
           AND: [
             { link: { path: ['sessionId'], equals: commit.account.linkedToSessionId } },
             { link: { path: ['stage'], equals: 'connect' } },
+          ],
+          OR: [
+            { gitlabTokens: { equals: Prisma.AnyNull } },
+            {
+              AND: [
+                {
+                  gitlabTokens: {
+                    path: ['access_token'],
+                    equals: commit.account.gitlabAccessToken,
+                  },
+                },
+                {
+                  gitlabTokens: {
+                    path: ['refresh_token'],
+                    equals: commit.account.gitlabRefreshToken,
+                  },
+                },
+              ],
+            },
           ],
         },
       });

@@ -160,6 +160,195 @@ beforeEach(async () => {
   );
 });
 
+/** The credentials issued for an account, shared by cache and commit assertions. */
+function issued(account = commit.account) {
+  return {
+    access_token: account.gitlabAccessToken,
+    refresh_token: account.gitlabRefreshToken,
+    token_type: 'Bearer',
+    created_at: Math.floor(account.createdAt / 1000),
+    expires_in: 7200,
+  };
+}
+
+// A late cache retry with a fresh lease must not restore a grant displaced by a newer link.
+test('keeps a completed flow spent after another replica replaces its grant', async () => {
+  assert.equal(await replicas[0].cacheLinkedFlowTokens(flow, issued()), true);
+  assert.equal(await replicas[0].commitLinkedAccount(commit), true);
+  await replicas[0].releaseGitLabRefresh(parent.id, commit.primaryLeaseUntil);
+  const next = {
+    ...commit,
+    internalState: randomUUID(),
+    primaryLeaseUntil: Date.now() + 40_000,
+    account: {
+      ...commit.account,
+      gitlabAccessToken: randomUUID(),
+      gitlabRefreshToken: randomUUID(),
+    },
+    existing: { refreshToken: commit.account.gitlabRefreshToken, leaseUntil: Date.now() + 20_000 },
+  };
+  assert.equal(
+    await replicas[1].claimGitLabRefresh(
+      parent.id,
+      parent.gitlabRefreshToken,
+      Date.now(),
+      next.primaryLeaseUntil,
+    ),
+    true,
+  );
+  assert.equal(
+    await replicas[1].claimGitLabRefresh(
+      commit.account.id,
+      commit.account.gitlabRefreshToken,
+      Date.now(),
+      next.existing.leaseUntil,
+    ),
+    true,
+  );
+  const nextFlow = { ...flow, internalState: next.internalState };
+  await replicas[1].storeAuthCodeFlow(next.internalState, nextFlow);
+  assert.equal(await replicas[1].cacheLinkedFlowTokens(nextFlow, issued(next.account)), true);
+  assert.equal(await replicas[1].commitLinkedAccount(next), true);
+  await replicas[1].releaseGitLabRefresh(parent.id, next.primaryLeaseUntil);
+  await replicas[1].releaseGitLabRefresh(commit.account.id, next.existing.leaseUntil);
+
+  const late = {
+    ...commit,
+    primaryLeaseUntil: Date.now() + 50_000,
+    existing: { refreshToken: next.account.gitlabRefreshToken, leaseUntil: Date.now() + 25_000 },
+  };
+  assert.equal(
+    await replicas[0].claimGitLabRefresh(
+      parent.id,
+      parent.gitlabRefreshToken,
+      Date.now(),
+      late.primaryLeaseUntil,
+    ),
+    true,
+  );
+  assert.equal(
+    await replicas[0].claimGitLabRefresh(
+      commit.account.id,
+      next.account.gitlabRefreshToken,
+      Date.now(),
+      late.existing.leaseUntil,
+    ),
+    true,
+  );
+  assert.equal(await replicas[0].cacheLinkedFlowTokens(flow, issued()), false);
+  assert.equal(await replicas[1].getAuthCodeFlow(flow.internalState), undefined);
+  assert.equal(await replicas[0].commitLinkedAccount(late), false);
+  assert.equal(
+    (await replicas[1].getSession(commit.account.id)).gitlabAccessToken,
+    next.account.gitlabAccessToken,
+  );
+});
+
+// Concurrent retries create one cleanup record, inaccessible through the callback API.
+test('retains one recovery record for concurrent late writes across replicas', async () => {
+  await replicas[0].consumeAuthCodeFlow(flow.internalState);
+  assert.deepEqual(
+    await Promise.all(replicas.map((replica) => replica.cacheLinkedFlowTokens(flow, issued()))),
+    [false, false],
+  );
+  const recovered = [];
+  replicas[0].onAbandonedFlowGrant(async (pending) => {
+    if (pending.link.sessionId !== parent.id) return;
+    recovered.push(pending);
+    assert.deepEqual(pending.gitlabTokens, issued());
+    assert.equal(await replicas[1].getAuthCodeFlow(pending.internalState), undefined);
+    assert.equal(await replicas[1].consumeAuthCodeFlow(pending.internalState), undefined);
+  }, 30_000);
+  await replicas[0].cleanup();
+  assert.equal(recovered.length, 1);
+});
+
+// Different codes must not evict each other's single-use grants or consume the wrong one.
+test('fences completion to the cached grant and retains a competing grant for cleanup', async () => {
+  const other = { ...issued(), access_token: randomUUID(), refresh_token: randomUUID() };
+  const results = await Promise.all([
+    replicas[0].cacheLinkedFlowTokens(flow, issued()),
+    replicas[1].cacheLinkedFlowTokens(flow, other),
+  ]);
+  assert.deepEqual(results.toSorted(), [false, true]);
+  const cached = (await replicas[0].getAuthCodeFlow(flow.internalState)).gitlabTokens;
+  const winner = cached.access_token === other.access_token ? other : issued();
+  const loser = winner.access_token === other.access_token ? issued() : other;
+  assert.equal(
+    await replicas[1].commitLinkedAccount({
+      ...commit,
+      account: {
+        ...commit.account,
+        gitlabAccessToken: loser.access_token,
+        gitlabRefreshToken: loser.refresh_token,
+      },
+    }),
+    false,
+  );
+  assert.equal(
+    await replicas[0].commitLinkedAccount({
+      ...commit,
+      account: {
+        ...commit.account,
+        gitlabAccessToken: winner.access_token,
+        gitlabRefreshToken: winner.refresh_token,
+      },
+    }),
+    true,
+  );
+  const recovered = [];
+  replicas[0].onAbandonedFlowGrant(async (pending) => {
+    if (pending.link.sessionId === parent.id) recovered.push(pending.gitlabTokens);
+  }, 30_000);
+  await replicas[0].cleanup();
+  assert.deepEqual(recovered, [loser]);
+});
+
+// Retrying the original write cannot reset a cleanup lease or replace its rotated pair.
+test('preserves cleanup ownership and rotated credentials during a late retry', async () => {
+  await replicas[0].consumeAuthCodeFlow(flow.internalState);
+  await replicas[0].cacheLinkedFlowTokens(flow, issued());
+  let enter;
+  let release;
+  const ready = new Promise((resolve) => {
+    enter = resolve;
+  });
+  const gate = new Promise((resolve) => {
+    release = resolve;
+  });
+  const rotated = { ...issued(), access_token: randomUUID(), refresh_token: randomUUID() };
+  let recovery;
+  replicas[0].onAbandonedFlowGrant(async (pending, persist) => {
+    if (pending.link.sessionId !== parent.id) return;
+    recovery = pending;
+    await persist(rotated);
+    enter();
+    await gate;
+    throw new Error('Revocation temporarily unavailable');
+  }, 30_000);
+  const cleaning = replicas[0].cleanup();
+  try {
+    await ready;
+    assert.equal(await replicas[1].cacheLinkedFlowTokens(flow, issued()), false);
+    const client = new Client({ connectionString, connectionTimeoutMillis: 5_000 });
+    try {
+      await client.connect();
+      const { rows } = await client.query(
+        'SELECT gitlab_tokens, expires_at FROM oauth_auth_code_flows WHERE internal_state = $1',
+        [recovery.internalState],
+      );
+      assert.equal(rows.length, 1);
+      assert.deepEqual(rows[0].gitlab_tokens, rotated);
+      assert.equal(Number(rows[0].expires_at), recovery.expiresAt);
+    } finally {
+      await client.end();
+    }
+  } finally {
+    release();
+    await cleaning;
+  }
+});
+
 // Both replicas may have passed the browser/preflight checks; only one may spend the flow.
 test('concurrent deliveries commit exactly one account and consume the flow once', async () => {
   const results = await Promise.all(replicas.map((replica) => replica.commitLinkedAccount(commit)));

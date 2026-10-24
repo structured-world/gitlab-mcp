@@ -26,7 +26,7 @@ import {
   revokeGitLabToken,
   GitLabOAuthHttpError,
 } from '../oauth/gitlab-device-flow';
-import { exchangeFlowCode } from '../oauth/code-exchange';
+import { AccountLinkFlowUnavailableError, exchangeFlowCode } from '../oauth/code-exchange';
 import { discardAuthCodeFlow } from '../oauth/grant-revocation';
 import {
   claimSessionLease,
@@ -707,6 +707,13 @@ export async function completeAccountLink(
     }
   } catch (error: unknown) {
     logWarn('Account link failed', { err: error as Error });
+    if (error instanceof AccountLinkFlowUnavailableError) {
+      failAccountLink(
+        res,
+        'This link was already used or has expired. Ask for a new one in the chat.',
+      );
+      return;
+    }
     // The flow is kept unless it was completed, so reloading the page retries it.
     linkPage(
       res,

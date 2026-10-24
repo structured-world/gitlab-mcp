@@ -21,6 +21,7 @@ import {
   AuthorizationCode,
   AuthCodeFlowState,
   RegisteredOAuthClient,
+  GitLabTokenResponse,
 } from './types';
 import { SessionStorageBackend, createStorageBackend } from './storage';
 import { isPastAgeLimit } from './storage/types';
@@ -165,7 +166,8 @@ export class SessionStore {
     const backend = this.backend as Partial<SessionStorageBackend>;
     return (
       typeof backend.getLinkedSessions === 'function' &&
-      typeof backend.commitLinkedAccount === 'function'
+      typeof backend.commitLinkedAccount === 'function' &&
+      typeof backend.cacheLinkedFlowTokens === 'function'
     );
   }
 
@@ -256,6 +258,16 @@ export class SessionStore {
    */
   async storeAuthCodeFlow(internalState: string, flow: AuthCodeFlowState): Promise<void> {
     await this.backend.storeAuthCodeFlow(internalState, flow);
+  }
+
+  async cacheLinkedFlowTokens(
+    flow: AuthCodeFlowState,
+    tokens: GitLabTokenResponse,
+  ): Promise<boolean> {
+    if (!this.backend.cacheLinkedFlowTokens) {
+      throw new Error('The session storage backend cannot safely cache account-link tokens');
+    }
+    return this.backend.cacheLinkedFlowTokens(flow, tokens);
   }
 
   /**

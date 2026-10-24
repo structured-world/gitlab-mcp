@@ -5,12 +5,14 @@
  * Sessions are lost on server restart.
  */
 
+import { createHash } from 'node:crypto';
 import {
   OAuthSession,
   DeviceFlowState,
   AuthCodeFlowState,
   AuthorizationCode,
   RegisteredOAuthClient,
+  GitLabTokenResponse,
 } from '../types';
 import {
   AbandonedFlowGrantHandler,
@@ -123,6 +125,10 @@ export class MemoryStorageBackend implements SessionStorageBackend {
       flow.expiresAt <= now ||
       flow.link?.stage !== 'connect' ||
       flow.link.sessionId !== parent ||
+      internalState.startsWith('cleanup:') ||
+      (flow.gitlabTokens &&
+        (flow.gitlabTokens.access_token !== account.gitlabAccessToken ||
+          flow.gitlabTokens.refresh_token !== account.gitlabRefreshToken)) ||
       this.abandonedFlowsInProgress.has(internalState)
     )
       return false;
@@ -276,12 +282,60 @@ export class MemoryStorageBackend implements SessionStorageBackend {
   }
 
   // Auth code flow operations
+  async cacheLinkedFlowTokens(
+    flow: AuthCodeFlowState,
+    tokens: GitLabTokenResponse,
+    persist?: () => Promise<void>,
+  ): Promise<boolean> {
+    if (!flow.link) throw new Error('An account-link flow is required');
+    const now = Date.now();
+    const current = this.authCodeFlows.get(flow.internalState);
+    const active =
+      current &&
+      current.expiresAt > now &&
+      !flow.internalState.startsWith('cleanup:') &&
+      !this.abandonedFlowsInProgress.has(flow.internalState) &&
+      current.link?.sessionId === flow.link.sessionId &&
+      current.link.stage === flow.link.stage;
+    if (
+      active &&
+      current.gitlabTokens?.access_token === tokens.access_token &&
+      current.gitlabTokens.refresh_token === tokens.refresh_token
+    )
+      return true;
+
+    let state: string;
+    let pending: AuthCodeFlowState;
+    if (active && !current.gitlabTokens) {
+      state = flow.internalState;
+      pending = { ...current, gitlabTokens: tokens };
+    } else {
+      const grant = createHash('sha256')
+        .update(JSON.stringify([tokens.access_token, tokens.refresh_token]))
+        .digest('hex');
+      state = `cleanup:issued:${flow.internalState}:${grant}`;
+      if (this.authCodeFlows.has(state)) return false;
+      pending = { ...flow, internalState: state, expiresAt: now - 1, gitlabTokens: tokens };
+    }
+    const previous = this.authCodeFlows.get(state);
+    this.authCodeFlows.set(state, pending);
+    try {
+      await persist?.();
+    } catch (error: unknown) {
+      if (previous) this.authCodeFlows.set(state, previous);
+      else this.authCodeFlows.delete(state);
+      throw error;
+    }
+    return state === flow.internalState;
+  }
+
   async storeAuthCodeFlow(internalState: string, flow: AuthCodeFlowState): Promise<void> {
     this.authCodeFlows.set(internalState, flow);
     logDebug('Auth code flow stored', { internalState: truncateId(internalState) });
   }
 
   async getAuthCodeFlow(internalState: string): Promise<AuthCodeFlowState | undefined> {
+    if (internalState.startsWith('cleanup:')) return undefined;
     if (this.abandonedFlowsInProgress.has(internalState)) return undefined;
     return this.authCodeFlows.get(internalState);
   }
@@ -397,6 +451,7 @@ export class MemoryStorageBackend implements SessionStorageBackend {
   }
 
   async consumeAuthCodeFlow(internalState: string): Promise<AuthCodeFlowState | undefined> {
+    if (internalState.startsWith('cleanup:')) return undefined;
     if (this.abandonedFlowsInProgress.has(internalState)) return undefined;
     const record = this.authCodeFlows.get(internalState);
     if (record) this.authCodeFlows.delete(internalState);

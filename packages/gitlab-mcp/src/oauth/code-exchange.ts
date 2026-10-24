@@ -9,6 +9,13 @@ import { sessionStore } from './session-store';
 import { keepIssuedTokens } from './issued-tokens';
 import { exchangeGitLabAuthCode } from './gitlab-device-flow';
 
+/** A late or competing grant is retained for cleanup, never used for another callback. */
+export class AccountLinkFlowUnavailableError extends Error {
+  constructor() {
+    super('The account-link flow is no longer available for this grant');
+  }
+}
+
 /**
  * Exchange GitLab's single-use code and keep the tokens with the flow before anything
  * else can fail. When a concurrent callback already spent the code, its stored tokens are
@@ -29,8 +36,16 @@ export async function exchangeFlowCode(
     if (current?.gitlabTokens) return current.gitlabTokens;
     throw error;
   }
-  await keepIssuedTokens(() =>
-    sessionStore.storeAuthCodeFlow(state, { ...flow, gitlabTokens: tokens }),
-  );
+  if (flow.link) {
+    let active: boolean | undefined;
+    await keepIssuedTokens(async () => {
+      active = await sessionStore.cacheLinkedFlowTokens(flow, tokens);
+    });
+    if (active === false) throw new AccountLinkFlowUnavailableError();
+  } else {
+    await keepIssuedTokens(() =>
+      sessionStore.storeAuthCodeFlow(state, { ...flow, gitlabTokens: tokens }),
+    );
+  }
   return tokens;
 }

@@ -41,7 +41,7 @@ An account that cannot be used refuses the chat's calls with the reason and what
 
 The result carries a sign-in link. A client that supports opening links for a server (MCP URL elicitation) may offer to open it for you; you can decline, and the link is returned either way. When the account is linked, the chat that started linking may receive a completion notification (best effort: it can be missed, for example when the chat has disconnected); `list_accounts` shows the new account in any case. In the browser, GitLab first confirms the account this connection signed in with, then you sign in with the account to link. The first step makes sure the person who asked for the link completes it: a link opened by someone else is refused, so nobody can attach their GitLab account to your connection or yours to theirs. The second step completes only in the browser that passed the first, so its sign-in page cannot be passed on either. The link works once and for 10 minutes. Without `instance` the account is linked on the connection's own instance. There the browser is still signed in as your own account after the first step, so the page stops with a continue button: sign out of GitLab in that browser (or switch to the account to link there), then continue in the same browser.
 
-The instance must be configured on the server with its OAuth application (see [Instance Configuration](/configuration/instances)). Linked accounts are kept with the connection's session: they survive a server restart with file or PostgreSQL session storage, refresh their own GitLab tokens, and are removed with the session when the connection signs out or its session expires, their OAuth grants revoked at GitLab. Revoking a grant ends this server's access to the account; it does not sign anyone out of GitLab in their browser.
+The instance must be configured on the server with its OAuth application (see [Instance Configuration](/configuration/instances)). Linked accounts are kept with the connection's session: they survive a server restart with file or PostgreSQL session storage, refresh their own GitLab tokens, and are removed with the session when the connection signs out or its session expires, their OAuth grants revoked at GitLab. Revoking a grant ends this server's access to the account; it does not sign anyone out of GitLab in their browser. Replaying a completed callback cannot replace a newer account link. Unused grants remain available for revocation if cleanup is temporarily unavailable.
 
 ```json
 // manage_context: remove a linked account and revoke its OAuth grant
@@ -53,7 +53,7 @@ The account the connection signed in with cannot be unlinked, and a chat must sw
 Completing a link stores the account and spends the link together. The commit rejects a
 callback whose session or account lease expired or was taken over by another request.
 PostgreSQL deployments need matching core and DB package versions; account linking is
-unavailable with a backend that lacks atomic link commits.
+unavailable with a backend that lacks atomic link commits or conditional token caching.
 
 ### Configured instances (static token)
 

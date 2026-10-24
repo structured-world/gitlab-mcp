@@ -21,6 +21,7 @@ import {
   AuthCodeFlowState,
   AuthorizationCode,
   RegisteredOAuthClient,
+  GitLabTokenResponse,
 } from '../types';
 import {
   AbandonedFlowGrantHandler,
@@ -447,6 +448,13 @@ export class FileStorageBackend implements SessionStorageBackend {
   }
 
   // Auth code flow operations
+  cacheLinkedFlowTokens(flow: AuthCodeFlowState, tokens: GitLabTokenResponse): Promise<boolean> {
+    this.cancelPendingSave();
+    return this.enqueue(() =>
+      this.memory.cacheLinkedFlowTokens(flow, tokens, () => this.writeState()),
+    );
+  }
+
   async storeAuthCodeFlow(internalState: string, flow: AuthCodeFlowState): Promise<void> {
     await this.memory.storeAuthCodeFlow(internalState, flow);
     await this.persistNow();

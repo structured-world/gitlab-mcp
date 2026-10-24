@@ -23,9 +23,14 @@ function streamed(text: string, chunkSize = 7): Response {
   let offset = 0;
   const response = new Response(
     new ReadableStream({
+      type: 'bytes',
       pull(controller) {
-      if (offset >= bytes.length) return controller.close();
-        controller.enqueue(bytes.subarray(offset, offset + chunkSize));
+        if (offset >= bytes.length) {
+          controller.close();
+          controller.byobRequest?.respond(0);
+          return;
+        }
+        controller.enqueue(bytes.slice(offset, offset + chunkSize));
         offset += chunkSize;
       },
     }),
@@ -69,7 +74,7 @@ describe('streamed job trace pagination', () => {
       const all = source.replace(/^\uFEFF/, '').split('\n');
       for (const start of [undefined, -10000, -3, -1, 0, 1, all.length, all.length + 1]) {
         for (const size of [1, 2, 200, 10000]) {
-          let expected =
+          const expected =
             start === undefined
               ? all.slice(-size)
               : start < 0
@@ -126,15 +131,18 @@ describe('streamed job trace pagination', () => {
     }
   });
 
-  it('does not split a UTF-8 character when the line byte limit cuts it', async () => {
-    // A clipped code point is omitted explicitly rather than changed to U+FFFD.
-    const source = `${'a'.repeat(TRACE_LINE_BYTES - 1)}\u20AC`;
-    const page = await readTracePage(streamed(source, 65536).body, 1);
-    expect(page.lines).toEqual(['a'.repeat(TRACE_LINE_BYTES - 1)]);
-    expect(page.truncation!.lines).toEqual([
-      { line: 0, omittedPrefixBytes: 0, omittedSuffixBytes: 3 },
-    ]);
-  });
+  it.each(['\u00E9', '\u20AC', '\u{1F600}'])(
+    'does not split %s when the line byte limit cuts it',
+    async (character) => {
+      // A clipped code point is omitted explicitly rather than changed to U+FFFD.
+      const source = `${'a'.repeat(TRACE_LINE_BYTES - 1)}${character}`;
+      const page = await readTracePage(streamed(source, 65536).body, 1);
+      expect(page.lines).toEqual(['a'.repeat(TRACE_LINE_BYTES - 1)]);
+      expect(page.truncation!.lines).toEqual([
+        { line: 0, omittedPrefixBytes: 0, omittedSuffixBytes: Buffer.byteLength(character) },
+      ]);
+    },
+  );
 
   it('decodes the surviving UTF-8 suffix after the byte ring wraps', async () => {
     // The oldest retained line can lose a prefix partway through a code point.
@@ -142,7 +150,7 @@ describe('streamed job trace pagination', () => {
     const page = await readTracePage(streamed(source, 32768).body, 100);
     expect(page.lines.join('')).not.toContain('\uFFFD');
     expect(page.lines.at(-1)).toBe('\u20AC'.repeat(5461));
-    expect(page.truncation!.lines.some((line) => line.omittedPrefixBytes % 3 === 0)).toBe(true);
+    expect(page.truncation!.lines.every((line) => line.omittedPrefixBytes % 3 === 0)).toBe(true);
     expect(page.lines.reduce((sum, line) => sum + Buffer.byteLength(line), 0)).toBeLessThanOrEqual(
       TRACE_PAGE_BYTES,
     );
@@ -170,10 +178,40 @@ describe('streamed job trace pagination', () => {
     await expect(readTracePage(null, 200)).rejects.toThrow('no readable body');
   });
 
+  it('preserves decoding of malformed UTF-8 when no byte limit applies', async () => {
+    // Byte-level line scanning must agree with Response.text() on invalid encodings.
+    const bytes = new Uint8Array([0xc0, 0xff, 10, 0xf0, 0x9f]);
+    const decoded = await new Response(bytes).text();
+    await expect(readTracePage(new Response(bytes).body, 200)).resolves.toEqual({
+      lines: decoded.split('\n'),
+      totalLines: 2,
+      startLine: 0,
+    });
+  });
+
+  it('keeps the GitLab status when cancelling an error body also fails', async () => {
+    // Cleanup errors must not replace an authentication or permission error.
+    const cause = new Error('broken error body');
+    const body = new ReadableStream<Uint8Array>({
+      type: 'bytes',
+      start(controller) {
+        controller.error(cause);
+      },
+    });
+    mockEnhancedFetch.mockResolvedValueOnce(
+      new Response(body, { status: 403, statusText: 'Forbidden' }),
+    );
+    await expect(logs()).rejects.toMatchObject({
+      message: 'GitLab API error: 403 Forbidden',
+      cause,
+    });
+  });
+
   it('propagates a mid-stream failure and releases its reader', async () => {
     // Partial data must not be returned as a successfully completed trace.
     let pulls = 0;
     const body = new ReadableStream<Uint8Array>({
+      type: 'bytes',
       pull(controller) {
         if (pulls++ === 0) controller.enqueue(new TextEncoder().encode('partial\n'));
         else controller.error(new Error('broken body'));

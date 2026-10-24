@@ -36,7 +36,7 @@ View pipeline status, job details, and console output.
 | `jobs` | List jobs in a pipeline |
 | `triggers` | List bridge/trigger jobs in a pipeline |
 | `job` | Get single job details |
-| `logs` | Get job console output/logs |
+| `logs` | Read job logs with bounded memory and explicit byte truncation |
 <!-- @autogen:end -->
 
 ### Examples
@@ -68,7 +68,7 @@ View pipeline status, job details, and console output.
   "project_id": "my-org/api",
   "job_id": "5678",
   "start": -100,
-  "limit": 100
+  "per_page": 100
 }
 ```
 
@@ -89,7 +89,33 @@ View pipeline status, job details, and console output.
 | Parameter | Description |
 |-----------|-------------|
 | `start` | Line number (positive from start, negative from end) |
-| `limit` | Maximum lines to return |
+| `per_page` | Maximum source lines to return, default 200, maximum 10000 |
+
+Without `start`, logs return the last `per_page` lines. A negative `start` selects
+from the end, limited to the last `per_page` lines of that selection. A nonnegative
+integer selects a page from the beginning. The response retains `totalLines`,
+`shownLines`, `startLine`, `hasMore` and `nextStart`; pass `nextStart` as the next
+request's `start`. Notice lines do not count toward these fields.
+
+The reader streams the trace through EOF to count all source lines, retaining at
+most **1 MiB of source bytes** for the page and the first **16 KiB per source line**.
+Transport buffers, decoding, line metadata and response serialization need additional
+bounded memory. This limits retained memory, not total network traffic or scan time.
+Empty input counts as one line; a final newline introduces an empty last line.
+
+If the byte budget clips content, the response adds a **LOG CONTENT TRUNCATED**
+notice and `truncation` metadata. Its `reason` is `byte_limits`, `maxLineBytes` is
+16384, `maxPageBytes` is 1048576, and `lines` identifies each affected zero-based
+source line with `omittedPrefixBytes` and `omittedSuffixBytes`. UTF-8 fragments
+never introduce replacement characters solely because a limit splits a character.
+
+For a forward page the byte budget preserves the earliest content; for a tail page
+it preserves the most recent retained content. Some selected lines may therefore
+have no remaining text. Line counts and cursors still describe the source lines,
+including clipped lines. Request fewer lines to reduce page clipping; **line
+pagination cannot recover bytes omitted from an oversized individual line**.
+Inspect the full trace in GitLab when those bytes are needed. A failed or cancelled
+read returns an error rather than a successful partial page.
 
 ## manage_pipeline
 

@@ -217,3 +217,20 @@ To add a new schema test:
 
 The dependency chain pattern ensures your test will have real data to work with while maintaining efficiency and preventing API spam.
 
+## Bounded trace streaming
+
+From `packages/gitlab-mcp`, run `yarn build` followed by `yarn test:trace` on a
+supported Node.js runtime (24 or later). The suite serves synthetic traces through
+loopback HTTP and invokes the built pipeline handler in isolated processes. No real
+GitLab account or test namespace is needed.
+
+The fixture generates 200 MiB incrementally. Tests verify 200-line tail, first,
+middle and negative-offset pages, a 200 MiB single line, concurrent instance/token
+isolation, broken bodies, incorrect Content-Length, deadline expiration and abort.
+Each memory worker uses a 32 MiB V8 old-space limit and reports its Node version,
+elapsed time, baseline/peak heap and external memory, and process peak RSS. The
+assertions bound heap growth to 32 MiB, external growth to 40 MiB, RSS growth to
+80 MiB and the RSS difference from a 4 MiB trace to 64 MiB. These process allowances
+include runtime, transport and garbage collection overhead; the reader itself retains
+at most 1 MiB of source line content plus bounded line metadata and a 64 KiB read buffer.
+

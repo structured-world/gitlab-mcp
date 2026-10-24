@@ -584,6 +584,7 @@
     "test": "cross-env JEST_UNIT_ONLY=true yarn jest",
     "test:cov": "cross-env JEST_UNIT_ONLY=true yarn jest --coverage",
     "test:integration": "yarn jest --testPathPatterns=tests/integration --runInBand",
+    "test:trace": "node --test --test-concurrency=1 tests/trace/streaming.test.cjs",
     "test:all": "yarn jest --runInBand",
     "test:env-gating": "node tests/scripts/test-env-gating.js",
     "evaluate:skills": "node scripts/evaluate-skills.mjs",

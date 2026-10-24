@@ -98,8 +98,15 @@ export const pipelinesToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
             const response = await enhancedFetch(apiUrl);
 
             if (!response.ok) {
-              await response.body?.cancel();
-              throw new Error(`GitLab API error: ${response.status} ${response.statusText}`);
+              const error = new Error(
+                `GitLab API error: ${response.status} ${response.statusText}`,
+              );
+              try {
+                await response.body?.cancel();
+              } catch (cause) {
+                error.cause = cause;
+              }
+              throw error;
             }
 
             const defaultMaxLines = 200;

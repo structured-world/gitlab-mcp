@@ -73,6 +73,10 @@ jobs:
         run: yarn build
         working-directory: packages/gitlab-mcp
 
+      - name: Verify bounded trace streaming over HTTP
+        run: yarn test:trace
+        working-directory: packages/gitlab-mcp
+
       - name: Build optional db package
         run: yarn workspace @structured-world/gitlab-mcp-db build
 

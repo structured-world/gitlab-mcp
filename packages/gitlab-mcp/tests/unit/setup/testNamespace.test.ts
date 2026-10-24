@@ -354,7 +354,12 @@ describe('Integration namespace boundary', () => {
       const port = await freePort();
       await kill(await runInAnotherProcess(port));
       const lock = await acquireRunLock(port);
-      await releaseRunLock(lock);
+      try {
+        expect(lock.listening).toBe(true);
+        expect(lock.address()).toMatchObject({ address: '127.0.0.1', port });
+      } finally {
+        await releaseRunLock(lock);
+      }
     });
 
     it('is free again once the run releases it, and releasing twice is harmless', async () => {

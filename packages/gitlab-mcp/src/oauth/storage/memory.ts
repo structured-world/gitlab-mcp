@@ -106,6 +106,41 @@ export class MemoryStorageBackend implements SessionStorageBackend {
       this.refreshTokenToSession.set(session.mcpRefreshToken, session.id);
   }
 
+  /** Restore both halves of a link after a failed file write, while its queue is held. */
+  private undoLinkedAccount(
+    { account, internalState }: LinkedAccountCommit,
+    {
+      stored,
+      previous,
+      flow,
+      accessOwner,
+      refreshOwner,
+    }: {
+      stored: OAuthSession | undefined;
+      previous: OAuthSession | undefined;
+      flow: AuthCodeFlowState;
+      accessOwner: string | undefined;
+      refreshOwner: string | undefined;
+    },
+  ): void {
+    if (stored && previous) {
+      Object.assign(stored, previous);
+      // Restore unknown scopes even when the persisted legacy session omitted the key.
+      stored.gitlabScopes = previous.gitlabScopes;
+    } else {
+      this.sessions.delete(account.id);
+      if (account.mcpAccessToken) {
+        if (accessOwner === undefined) this.tokenToSession.delete(account.mcpAccessToken);
+        else this.tokenToSession.set(account.mcpAccessToken, accessOwner);
+      }
+      if (account.mcpRefreshToken) {
+        if (refreshOwner === undefined) this.refreshTokenToSession.delete(account.mcpRefreshToken);
+        else this.refreshTokenToSession.set(account.mcpRefreshToken, refreshOwner);
+      }
+    }
+    this.authCodeFlows.set(internalState, flow);
+  }
+
   async commitLinkedAccount(
     commit: LinkedAccountCommit,
     persist?: () => Promise<void>,
@@ -134,7 +169,7 @@ export class MemoryStorageBackend implements SessionStorageBackend {
       return false;
 
     const stored = this.sessions.get(account.id);
-    const previous = stored && { ...stored };
+    const previous = persist && stored && { ...stored };
     const previousAccessOwner = this.tokenToSession.get(account.mcpAccessToken);
     const previousRefreshOwner = this.refreshTokenToSession.get(account.mcpRefreshToken);
     if (existing) {
@@ -164,21 +199,13 @@ export class MemoryStorageBackend implements SessionStorageBackend {
       } catch (error: unknown) {
         // File storage serializes this write and lease claims. Undo both records in one
         // synchronous step, preserving timestamps and indexes as well as credentials.
-        if (stored && previous) Object.assign(stored, previous);
-        else {
-          this.sessions.delete(account.id);
-          if (account.mcpAccessToken) {
-            if (previousAccessOwner === undefined)
-              this.tokenToSession.delete(account.mcpAccessToken);
-            else this.tokenToSession.set(account.mcpAccessToken, previousAccessOwner);
-          }
-          if (account.mcpRefreshToken) {
-            if (previousRefreshOwner === undefined)
-              this.refreshTokenToSession.delete(account.mcpRefreshToken);
-            else this.refreshTokenToSession.set(account.mcpRefreshToken, previousRefreshOwner);
-          }
-        }
-        this.authCodeFlows.set(internalState, flow);
+        this.undoLinkedAccount(commit, {
+          stored,
+          previous,
+          flow,
+          accessOwner: previousAccessOwner,
+          refreshOwner: previousRefreshOwner,
+        });
         throw error;
       }
     }

@@ -227,14 +227,15 @@ describe.each(['memory', 'file'] as const)('%s atomic account-link commit', (kin
     expect((await storage.getSession(parent.id))?.gitlabAccessToken).toBe(parent.gitlabAccessToken);
   });
 
-  async function replacement(): Promise<OAuthSession> {
-    const old = {
+  async function replacement(unknownScopes: boolean): Promise<OAuthSession> {
+    const old: OAuthSession = {
       ...commit.account,
       gitlabAccessToken: 'old-access',
       gitlabRefreshToken: 'old-refresh',
       gitlabScopes: ['api'],
       gitlabUsername: 'old-name',
     };
+    if (unknownScopes) delete old.gitlabScopes;
     await storage.createSession(old);
     commit.existing = { refreshToken: old.gitlabRefreshToken, leaseUntil: Date.now() + 15_000 };
     expect(
@@ -250,7 +251,7 @@ describe.each(['memory', 'file'] as const)('%s atomic account-link commit', (kin
 
   // Unknown permissions of the new grant cannot inherit the previous grant's broader scopes.
   it('replaces only the leased grant and clears unknown scopes', async () => {
-    await replacement();
+    await replacement(false);
     commit.account.gitlabScopes = undefined;
     expect(await storage.commitLinkedAccount(commit)).toBe(true);
     expect(await storage.getSession(commit.account.id)).toMatchObject({
@@ -302,7 +303,7 @@ describe.each(['memory', 'file'] as const)('%s atomic account-link commit', (kin
   it.each(['token', 'lease', 'missing'] as const)(
     'rejects a changed account %s',
     async (reason) => {
-      const old = await replacement();
+      const old = await replacement(false);
       if (reason === 'token')
         await storage.updateSession(old.id, { gitlabRefreshToken: 'rotated' });
       if (reason === 'lease')
@@ -401,11 +402,15 @@ describe.each(['memory', 'file'] as const)('%s atomic account-link commit', (kin
       }
     });
 
-    // The next save after a failed rename must not persist a half-committed link.
-    it.each([false, true])(
-      'rolls back account and flow on write failure (replace=%s)',
-      async (replace) => {
-        if (replace) await replacement();
+    // The next save must preserve the previous grant, including unknown legacy scopes.
+    it.each([
+      [false, false],
+      [true, false],
+      [true, true],
+    ])(
+      'rolls back account and flow on write failure (replace=%s, unknownScopes=%s)',
+      async (replace, unknownScopes) => {
+        if (replace) await replacement(unknownScopes);
         const before = { ...(await storage.getSession(commit.account.id)) };
         const rename = jest
           .spyOn(fs.promises, 'rename')

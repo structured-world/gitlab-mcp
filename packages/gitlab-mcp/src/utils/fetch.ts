@@ -30,6 +30,8 @@ import {
   API_RETRY_MAX_DELAY_MS,
 } from '../config';
 import { isOAuthEnabled, getTokenContext } from '../oauth/index';
+import { currentTokenAccount } from '../accounts/token-account';
+import { configuredInstanceFor, configuredInstanceToken } from '../accounts/instance-tokens';
 import { getGitLabBaseUrl } from './gitlab-base-url';
 import { getRequestTracker } from '../logging/index';
 import { InstanceRegistry } from '../services/InstanceRegistry.js';
@@ -209,7 +211,7 @@ export const DEFAULT_HEADERS: Record<string, string> = {
   Accept: 'application/json',
 };
 
-function getGitLabToken(): string | undefined {
+function getGitLabToken(url: string): string | undefined {
   if (isOAuthEnabled()) {
     const context = getTokenContext();
     if (!context) {
@@ -221,16 +223,22 @@ function getGitLabToken(): string | undefined {
     }
     return context?.gitlabToken;
   }
-  return GITLAB_TOKEN;
+  // A request to a configured instance carries that instance's own token, or none, in any
+  // context: the server's token never goes to another configured host.
+  const instance = configuredInstanceFor(url);
+  if (instance) return configuredInstanceToken(instance);
+  // A chat that switched to another configured instance uses that instance's token.
+  return currentTokenAccount()?.token ?? GITLAB_TOKEN;
 }
 
 /**
- * Get authentication headers based on the current auth mode.
- * - Static mode (PAT): returns { "PRIVATE-TOKEN": token }
+ * Get authentication headers for a request to `url` based on the current auth mode.
+ * - Static mode (PAT): returns { "PRIVATE-TOKEN": token } with the token of the instance
+ *   `url` goes to
  * - OAuth mode: returns { "Authorization": "Bearer <token>" }
  */
-export function getAuthHeaders(): Record<string, string> {
-  const token = getGitLabToken();
+export function getAuthHeaders(url: string): Record<string, string> {
+  const token = getGitLabToken(url);
   if (!token) return {};
 
   if (isOAuthEnabled()) {
@@ -527,7 +535,7 @@ async function doFetch(
   const h = new Headers(baseHeaders);
 
   if (!skipAuth) {
-    for (const [key, value] of Object.entries(getAuthHeaders())) {
+    for (const [key, value] of Object.entries(getAuthHeaders(url))) {
       h.set(key, value);
     }
   }

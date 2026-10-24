@@ -21,6 +21,7 @@
     "prisma:generate": "prisma generate",
     "build": "prisma generate && tsc -p tsconfig.json",
     "test": "jest",
+    "test:integration": "yarn build && node --test --test-concurrency=1 --test-timeout=180000 tests/account-link.integration.cjs",
     "postinstall": "node -e \"if (require('fs').existsSync('prisma/schema.prisma')) require('child_process').execSync('prisma generate', { stdio: 'inherit' })\""
   },
   "dependencies": {

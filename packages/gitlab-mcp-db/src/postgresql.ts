@@ -11,7 +11,11 @@
  * - Automatic cleanup of expired entries
  */
 
+import { createHash } from 'node:crypto';
 import type {
+  AbandonedFlowGrantHandler,
+  AccountLinkStep,
+  ExpiredSessionHandler,
   OAuthSession,
   DeviceFlowState as DeviceFlowStateType,
   AuthCodeFlowState as AuthCodeFlowStateType,
@@ -20,10 +24,34 @@ import type {
   GitLabTokenResponse,
   SessionStorageBackend,
   SessionStorageStats,
+  LinkedAccountCommit,
   AccountSettings,
   AccountSettingsRecord,
 } from '@structured-world/gitlab-mcp/storage-contract';
 import { logInfo, logError, logDebug } from './logger';
+
+/** Key prefix of an expired flow cleanup took over to end its grant. */
+const CLAIMED_FLOW_PREFIX = 'cleanup:';
+
+/** A failed compare-and-set rolls back every write in the link transaction. */
+class LinkCommitConflict extends Error {}
+
+/**
+ * How many grants cleanup ends at once: a backlog (after an outage, say) goes out in steps
+ * instead of one burst against the database pool and GitLab's rate limits.
+ */
+const CLEANUP_BATCH = 5;
+
+/** Run `run` over `items`, at most CLEANUP_BATCH at a time. */
+async function inBatches<T>(
+  items: readonly T[],
+  run: (item: T) => Promise<void>,
+  from = 0,
+): Promise<void> {
+  if (from >= items.length) return;
+  await Promise.all(items.slice(from, from + CLEANUP_BATCH).map((item) => run(item)));
+  return inBatches(items, run, from + CLEANUP_BATCH);
+}
 
 /**
  * Explicit interfaces for Prisma model results.
@@ -45,6 +73,7 @@ interface PrismaOAuthSessionRow {
   clientId: string;
   scopes: string[];
   resource?: string | null;
+  linkedToSessionId?: string | null;
   createdAt: bigint;
   updatedAt: bigint;
 }
@@ -81,6 +110,7 @@ interface PrismaDeviceFlowStateRow {
 interface PrismaAuthCodeFlowStateRow {
   requestedGitlabScopes?: unknown;
   gitlabTokens?: unknown;
+  link?: unknown;
   selectedInstance?: string | null;
   selectedInstanceLabel?: string | null;
   mcpScopes?: unknown;
@@ -163,6 +193,24 @@ function storedGitlabTokens(value: unknown): GitLabTokenResponse | undefined {
   return value as GitLabTokenResponse;
 }
 
+/** Account linking step of a flow; a corrupt value is refused rather than half-used. */
+function storedLinkStep(value: unknown): AccountLinkStep | undefined {
+  if (value == null) return undefined;
+  const step = value as Partial<Record<keyof AccountLinkStep, unknown>>;
+  if (
+    typeof step.sessionId !== 'string' ||
+    (step.stage !== 'verify' && step.stage !== 'connect') ||
+    typeof step.instance !== 'string' ||
+    (step.instanceLabel !== undefined && typeof step.instanceLabel !== 'string') ||
+    (step.browserBinding !== undefined && typeof step.browserBinding !== 'string') ||
+    (step.mcpSessionId !== undefined && typeof step.mcpSessionId !== 'string') ||
+    (step.elicitationId !== undefined && typeof step.elicitationId !== 'string')
+  ) {
+    throw new Error('Invalid stored account link step');
+  }
+  return value as AccountLinkStep;
+}
+
 /** Optional row values come back as null; the contract uses absent properties. */
 function optional<T>(value: T | null | undefined): T | undefined {
   return value ?? undefined;
@@ -176,11 +224,16 @@ interface GenericPrismaClient {
   $connect(): Promise<void>;
   $disconnect(): Promise<void>;
   $transaction(operations: unknown[]): Promise<unknown[]>;
+  $transaction<T>(
+    operation: (
+      transaction: Pick<GenericPrismaClient, 'oAuthSession' | 'authCodeFlowState'>,
+    ) => Promise<T>,
+  ): Promise<T>;
   oAuthSession: {
     create(args: unknown): Promise<unknown>;
     findUnique(args: unknown): Promise<unknown>;
     findFirst(args: unknown): Promise<unknown>;
-    findMany(): Promise<unknown>;
+    findMany(args?: unknown): Promise<unknown>;
     update(args: unknown): Promise<unknown>;
     updateMany(args: unknown): Promise<unknown>;
     delete(args: unknown): Promise<unknown>;
@@ -205,8 +258,12 @@ interface GenericPrismaClient {
     count(): Promise<number>;
   };
   authCodeFlowState: {
+    createMany(args: unknown): Promise<unknown>;
+    findFirst(args: unknown): Promise<unknown>;
     upsert(args: unknown): Promise<unknown>;
     findUnique(args: unknown): Promise<unknown>;
+    findMany(args: unknown): Promise<unknown>;
+    updateMany(args: unknown): Promise<unknown>;
     delete(args: unknown): Promise<unknown>;
     deleteMany(args: unknown): Promise<unknown>;
     count(): Promise<number>;
@@ -242,6 +299,8 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
 
   private prisma: GenericPrismaClient | null = null;
   private cleanupIntervalId: ReturnType<typeof setInterval> | null = null;
+  private abandonedFlowGrant: { run: AbandonedFlowGrantHandler; leaseMs: number } | undefined;
+  private expiredSession: ExpiredSessionHandler | undefined;
   private readonly connectionString: string | undefined;
 
   constructor(options: PostgreSQLStorageOptions = {}) {
@@ -297,8 +356,94 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
   }
 
   // Session operations
-  async createSession(session: OAuthSession): Promise<void> {
-    const prisma = this.getPrisma();
+  async commitLinkedAccount(commit: LinkedAccountCommit): Promise<boolean> {
+    const { Prisma } = await import('../generated/prisma/client');
+    const { account, internalState, primaryLeaseUntil, existing } = commit;
+    const updates = this.sessionUpdateData({
+      gitlabAccessToken: account.gitlabAccessToken,
+      gitlabRefreshToken: account.gitlabRefreshToken,
+      gitlabTokenExpiry: account.gitlabTokenExpiry,
+      gitlabScopes: account.gitlabScopes,
+      gitlabUsername: account.gitlabUsername,
+    });
+    if (existing && account.gitlabScopes === undefined) {
+      // Unknown permissions belong to this grant, never the displaced grant. SQL NULL
+      // intentionally clears them; undefined would make Prisma preserve stale scopes.
+      updates.gitlabScopes = Prisma.DbNull;
+    }
+    try {
+      // Prisma 7 interactive transactions roll back on throw. Keep HTTP/token refresh
+      // outside: https://www.prisma.io/docs/orm/v7/prisma-client/queries/transactions#interactive-transactions
+      return await this.getPrisma().$transaction(async (tx) => {
+        const now = Date.now();
+        // A conditional write fences the owner and holds the primary row lock until
+        // commit. A later lease claimant cannot interleave with the flow/account writes.
+        const primary = (await tx.oAuthSession.updateMany({
+          where: {
+            id: account.linkedToSessionId,
+            gitlabRefreshLeaseUntil: { equals: BigInt(primaryLeaseUntil), gt: BigInt(now) },
+          },
+          data: { updatedAt: BigInt(now) },
+        })) as PrismaBatchPayload;
+        if (primary.count !== 1) throw new LinkCommitConflict();
+
+        const flow = (await tx.authCodeFlowState.deleteMany({
+          where: {
+            internalState,
+            expiresAt: { gt: BigInt(now) },
+            NOT: { internalState: { startsWith: CLAIMED_FLOW_PREFIX } },
+            AND: [
+              { link: { path: ['sessionId'], equals: account.linkedToSessionId } },
+              { link: { path: ['stage'], equals: 'connect' } },
+            ],
+            OR: [
+              { gitlabTokens: { equals: Prisma.AnyNull } },
+              {
+                AND: [
+                  { gitlabTokens: { path: ['access_token'], equals: account.gitlabAccessToken } },
+                  { gitlabTokens: { path: ['refresh_token'], equals: account.gitlabRefreshToken } },
+                ],
+              },
+            ],
+          },
+        })) as PrismaBatchPayload;
+        if (flow.count !== 1) throw new LinkCommitConflict();
+
+        if (existing) {
+          const updated = (await tx.oAuthSession.updateMany({
+            where: {
+              id: account.id,
+              linkedToSessionId: account.linkedToSessionId,
+              gitlabRefreshToken: existing.refreshToken,
+              gitlabRefreshLeaseUntil: { equals: BigInt(existing.leaseUntil), gt: BigInt(now) },
+            },
+            data: { ...updates, updatedAt: BigInt(now) },
+          })) as PrismaBatchPayload;
+          if (updated.count !== 1) throw new LinkCommitConflict();
+        } else {
+          await this.insertSession(tx, account);
+        }
+        return true;
+      });
+    } catch (error: unknown) {
+      if (error instanceof LinkCommitConflict) return false;
+      // The unique insertion collision rolls back the flow deletion as well.
+      if (
+        !existing &&
+        typeof error === 'object' &&
+        error !== null &&
+        'code' in error &&
+        error.code === 'P2002'
+      )
+        return false;
+      throw error;
+    }
+  }
+
+  private async insertSession(
+    prisma: Pick<GenericPrismaClient, 'oAuthSession'>,
+    session: OAuthSession,
+  ): Promise<void> {
     await prisma.oAuthSession.create({
       data: {
         id: session.id,
@@ -316,10 +461,15 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
         clientId: session.clientId,
         scopes: session.scopes,
         resource: session.resource ?? null,
+        linkedToSessionId: session.linkedToSessionId ?? null,
         createdAt: BigInt(session.createdAt),
         updatedAt: BigInt(session.updatedAt),
       },
     });
+  }
+
+  async createSession(session: OAuthSession): Promise<void> {
+    await this.insertSession(this.getPrisma(), session);
     logDebug('Session created in PostgreSQL', { sessionId: session.id });
   }
 
@@ -399,6 +549,9 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
     if (updates.gitlabScopes !== undefined) {
       data.gitlabScopes = updates.gitlabScopes;
     }
+    if (updates.gitlabUsername !== undefined) {
+      data.gitlabUsername = updates.gitlabUsername;
+    }
     if (updates.resource !== undefined) {
       data.resource = updates.resource;
     }
@@ -407,6 +560,7 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
 
   async deleteSession(sessionId: string): Promise<boolean> {
     const prisma = this.getPrisma();
+    // Linked accounts go with the session through their foreign key (ON DELETE CASCADE).
     const result = (await prisma.oAuthSession.deleteMany({
       where: { id: sessionId },
     })) as PrismaBatchPayload;
@@ -416,6 +570,15 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
   async getAllSessions(): Promise<OAuthSession[]> {
     const prisma = this.getPrisma();
     const rows = (await prisma.oAuthSession.findMany()) as PrismaOAuthSessionRow[];
+    return rows.map((row) => this.rowToSession(row));
+  }
+
+  async getLinkedSessions(sessionId: string): Promise<OAuthSession[]> {
+    const prisma = this.getPrisma();
+    const rows = (await prisma.oAuthSession.findMany({
+      where: { linkedToSessionId: sessionId },
+      orderBy: { createdAt: 'asc' },
+    })) as PrismaOAuthSessionRow[];
     return rows.map((row) => this.rowToSession(row));
   }
 
@@ -436,6 +599,7 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
       clientId: row.clientId,
       scopes: row.scopes,
       resource: optional(row.resource),
+      linkedToSessionId: optional(row.linkedToSessionId),
       createdAt: Number(row.createdAt),
       updatedAt: Number(row.updatedAt),
     };
@@ -524,10 +688,64 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
   }
 
   // Auth code flow operations
-  async storeAuthCodeFlow(internalState: string, flow: AuthCodeFlowStateType): Promise<void> {
+  async cacheLinkedFlowTokens(
+    flow: AuthCodeFlowStateType,
+    tokens: GitLabTokenResponse,
+  ): Promise<boolean> {
+    if (!flow.link) throw new Error('An account-link flow is required');
     const prisma = this.getPrisma();
-    // The callback stores the flow again with the GitLab tokens it received.
-    const data = {
+    const { Prisma } = await import('../generated/prisma/client');
+    const active = {
+      internalState: flow.internalState,
+      expiresAt: { gt: BigInt(Date.now()) },
+      NOT: { internalState: { startsWith: CLAIMED_FLOW_PREFIX } },
+      AND: [
+        { link: { path: ['sessionId'], equals: flow.link.sessionId } },
+        { link: { path: ['stage'], equals: flow.link.stage } },
+      ],
+    };
+    const updated = (await prisma.authCodeFlowState.updateMany({
+      where: { ...active, gitlabTokens: { equals: Prisma.AnyNull } },
+      data: { gitlabTokens: tokens },
+    })) as PrismaBatchPayload;
+    if (updated.count === 1) return true;
+    const cached = await prisma.authCodeFlowState.findFirst({
+      where: {
+        ...active,
+        expiresAt: { gt: BigInt(Date.now()) },
+        AND: [
+          ...active.AND,
+          { gitlabTokens: { path: ['access_token'], equals: tokens.access_token } },
+          { gitlabTokens: { path: ['refresh_token'], equals: tokens.refresh_token } },
+        ],
+      },
+      select: { internalState: true },
+    });
+    if (cached) return true;
+
+    const grant = createHash('sha256')
+      .update(JSON.stringify([tokens.access_token, tokens.refresh_token]))
+      .digest('hex');
+    const internalState = `${CLAIMED_FLOW_PREFIX}issued:${flow.internalState}:${grant}`;
+    // ON CONFLICT DO NOTHING preserves cleanup ownership and any rotated credentials.
+    await prisma.authCodeFlowState.createMany({
+      skipDuplicates: true,
+      data: [
+        {
+          internalState,
+          ...this.authCodeFlowData({
+            ...flow,
+            gitlabTokens: tokens,
+            expiresAt: Date.now() - 1,
+          }),
+        },
+      ],
+    });
+    return false;
+  }
+
+  private authCodeFlowData(flow: AuthCodeFlowStateType) {
+    return {
       clientId: flow.clientId,
       codeChallenge: flow.codeChallenge,
       codeChallengeMethod: flow.codeChallengeMethod,
@@ -541,7 +759,13 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
       mcpScopes: flow.scopes,
       resource: flow.resource ?? null,
       gitlabTokens: flow.gitlabTokens,
+      link: flow.link,
     };
+  }
+
+  async storeAuthCodeFlow(internalState: string, flow: AuthCodeFlowStateType): Promise<void> {
+    const prisma = this.getPrisma();
+    const data = this.authCodeFlowData(flow);
     await prisma.authCodeFlowState.upsert({
       where: { internalState },
       update: data,
@@ -550,6 +774,8 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
   }
 
   async getAuthCodeFlow(internalState: string): Promise<AuthCodeFlowStateType | undefined> {
+    // Cleanup reservations are never browser callback states, even while leased.
+    if (internalState.startsWith(CLAIMED_FLOW_PREFIX)) return undefined;
     const prisma = this.getPrisma();
     const row = (await prisma.authCodeFlowState.findUnique({
       where: { internalState },
@@ -582,6 +808,7 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
       scopes: storedMcpScopes(row.mcpScopes),
       resource: optional(row.resource),
       gitlabTokens: storedGitlabTokens(row.gitlabTokens),
+      link: storedLinkStep(row.link),
     };
   }
 
@@ -672,6 +899,7 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
   }
 
   async consumeAuthCodeFlow(internalState: string): Promise<AuthCodeFlowStateType | undefined> {
+    if (internalState.startsWith(CLAIMED_FLOW_PREFIX)) return undefined;
     const prisma = this.getPrisma();
     const row = (await prisma.authCodeFlowState.findUnique({
       where: { internalState },
@@ -842,6 +1070,108 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
     return { accountKey, settings, version, updatedAt };
   }
 
+  onAbandonedFlowGrant(handler: AbandonedFlowGrantHandler, leaseMs: number): void {
+    if (!Number.isSafeInteger(leaseMs) || leaseMs <= 0) {
+      throw new Error('Abandoned-flow cleanup requires a positive integer lease duration');
+    }
+    this.abandonedFlowGrant = { run: handler, leaseMs };
+  }
+
+  onExpiredSession(handler: ExpiredSessionHandler): void {
+    this.expiredSession = handler;
+  }
+
+  /**
+   * Hand each session past its age limit to the handler, which removes it with its linked
+   * accounts (their foreign key keeps them from outliving it) and ends their grants. A
+   * handler failure leaves the session to the delete that follows.
+   */
+  private async expireSessions(cutoff: bigint): Promise<void> {
+    const handler = this.expiredSession;
+    if (!handler) return;
+    const rows = (await this.getPrisma().oAuthSession.findMany({
+      where: { createdAt: { lt: cutoff }, linkedToSessionId: null },
+    })) as PrismaOAuthSessionRow[];
+    await inBatches(rows, async (row) => {
+      try {
+        await handler(this.rowToSession(row));
+      } catch (error: unknown) {
+        logError('Could not end the grants of an expired session', { err: error as Error });
+      }
+    });
+  }
+
+  /**
+   * Take an expired flow away from its callback without deleting it: its row moves to a
+   * claimed key, so a callback finishing now finds nothing to consume, while the tokens stay
+   * stored until their grant is ended. A stopped worker's row can be claimed again only
+   * after its lease expires. Resolves to the claimed key, or undefined when a callback
+   * consumed the flow or another replica holds its lease.
+   */
+  private async claimAbandonedFlow(
+    internalState: string,
+    now: bigint,
+    leaseUntil: bigint,
+  ): Promise<string | undefined> {
+    const claimedState = internalState.startsWith(CLAIMED_FLOW_PREFIX)
+      ? internalState
+      : CLAIMED_FLOW_PREFIX + internalState;
+    const claimed = (await this.getPrisma().authCodeFlowState.updateMany({
+      where: { internalState, expiresAt: { lt: now } },
+      data: { internalState: claimedState, expiresAt: leaseUntil },
+    })) as PrismaBatchPayload;
+    return claimed.count === 1 ? claimedState : undefined;
+  }
+
+  /**
+   * End the grant of each expired flow that still holds one, then remove the flow; a flow
+   * whose grant could not be ended stays claimed for the next cleanup. A row is claimed
+   * before it is read, so one that cannot be read keeps its tokens out of the bulk delete.
+   */
+  private async endAbandonedFlows(now: bigint): Promise<void> {
+    const registration = this.abandonedFlowGrant;
+    if (!registration) return;
+    const prisma = this.getPrisma();
+    const rows = (
+      (await prisma.authCodeFlowState.findMany({
+        where: { expiresAt: { lt: now } },
+      })) as PrismaAuthCodeFlowStateRow[]
+    ).filter((row) => row.gitlabTokens != null);
+    await inBatches(rows, async (row) => {
+      try {
+        const leaseUntil = BigInt(Date.now() + registration.leaseMs);
+        const claimedState = await this.claimAbandonedFlow(row.internalState, now, leaseUntil);
+        if (!claimedState) return;
+        // Re-read after the atomic claim: a previous cleanup may have rotated the
+        // tokens since this batch was selected. Never spend that stale refresh token.
+        const current = (await prisma.authCodeFlowState.findUnique({
+          where: { internalState: claimedState },
+        })) as PrismaAuthCodeFlowStateRow | null;
+        if (!current) throw new Error('Claimed authorization flow could not be read');
+        const flow = this.rowToAuthCodeFlow(current);
+        const ownership = {
+          internalState: claimedState,
+          expiresAt: leaseUntil,
+        };
+        await registration.run(
+          flow,
+          async (tokens) => {
+            const updated = (await prisma.authCodeFlowState.updateMany({
+              where: ownership,
+              data: { gitlabTokens: tokens },
+            })) as PrismaBatchPayload;
+            if (updated.count !== 1) throw new Error('Authorization-flow cleanup lease was lost');
+            flow.gitlabTokens = tokens;
+          },
+          Number(leaseUntil),
+        );
+        await prisma.authCodeFlowState.deleteMany({ where: ownership });
+      } catch (error: unknown) {
+        logError('Could not end the grant of an abandoned flow', { err: error as Error });
+      }
+    });
+  }
+
   // Cleanup
   async cleanup(): Promise<void> {
     const prisma = this.getPrisma();
@@ -849,6 +1179,21 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
     const maxSessionAge = BigInt(7 * 24 * 60 * 60 * 1000); // 7 days
 
     try {
+      // Grants first, each ended before its record goes: the bulk delete below then removes
+      // only flows and sessions that hold none, or whose handler left them.
+      await this.endAbandonedFlows(now);
+      await this.expireSessions(now - maxSessionAge);
+      const expiredFlowWhere: Record<string, unknown> = {
+        expiresAt: { lt: now },
+        NOT: { internalState: { startsWith: CLAIMED_FLOW_PREFIX } },
+      };
+      if (this.abandonedFlowGrant) {
+        // A failed claim leaves the original key intact. Only the grant handler may
+        // remove credentials; AnyNull admits both SQL NULL and JSON null, never tokens.
+        // https://www.prisma.io/docs/orm/v7/prisma-client/special-fields-and-types/working-with-json-fields#using-null-values
+        const { Prisma } = await import('../generated/prisma/client');
+        expiredFlowWhere.gitlabTokens = { equals: Prisma.AnyNull };
+      }
       // Use transaction for atomic cleanup
       const results = (await prisma.$transaction([
         prisma.oAuthSession.deleteMany({
@@ -859,8 +1204,9 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
         prisma.deviceFlowState.deleteMany({
           where: { expiresAt: { lt: now } },
         }),
+        // A claimed flow whose grant could not be ended waits for the next cleanup.
         prisma.authCodeFlowState.deleteMany({
-          where: { expiresAt: { lt: now } },
+          where: expiredFlowWhere,
         }),
         prisma.authorizationCode.deleteMany({
           where: { expiresAt: { lt: now } },

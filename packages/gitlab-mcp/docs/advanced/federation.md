@@ -22,7 +22,7 @@ Technical deep dive into how GitLab MCP manages multiple GitLab instances with p
 │  │ gitlab.com  │ git.corp.io │ gl.dev.net  │               │
 │  │ OAuth App 1 │ OAuth App 2 │ OAuth App 3 │               │
 │  │ Schema ✓    │ Schema ✓    │ Schema (?)  │               │
-│  │ v17.2 SaaS  │ v16.8 Self  │ v15.0 Self  │               │
+│  │ v17.2 SaaS  │ v16.8 Self  │ v16.0 Self  │               │
 │  │ Rate: 0/100 │ Rate: 5/50  │ Rate: 2/20  │               │
 │  └─────────────┴─────────────┴─────────────┘               │
 │  NOTE: No tier here! Tier is per-namespace, not instance   │
@@ -245,29 +245,26 @@ The `apiUrl` is used by `enhancedFetch` to route requests to the correct instanc
 ## Session Isolation
 
 Each OAuth session is isolated:
-- Bound to a specific GitLab instance
+- Holds the account it signed in with and the accounts linked to it, each with its own tokens and instance
 - Has its own namespace tier cache
-- Cannot switch instances (requires re-auth)
+- Never reaches the accounts of another session
 
-In static token mode, instance switching is allowed via `manage_context`:
-- Clears namespace tier cache
-- Triggers re-introspection
-- Re-validates tools against new schema
+Each chat of a session works with one of its accounts; a call runs with that account's token on its instance. A static-token server works with its own instance and the configured instances that name a token. See [Context Switching](/advanced/context-switching).
 
 ## Schema Differences
 
-Different GitLab versions have different GraphQL schemas. When switching instances:
+Different GitLab versions have different GraphQL schemas. For each instance the server:
 
-1. Fetch/cache schema for new instance
-2. Validate each tool against the schema
-3. Disable tools that require unavailable types/widgets
-4. Report disabled tools to user
+1. Detects the version and caches the schema
+2. Checks each tool, action and parameter against its declared minimum version and the schema
+3. Falls back to an older equivalent where one exists
+4. Hides only what the instance cannot do, and refuses it if called
 
-Example: Instance on v15.0 may not support Work Items API, disabling `manage_work_items` tool.
+Example: on GitLab 16.0 to 16.3 the work item actions `add_link` and `remove_link` are hidden; every other work item action works.
 
 ## Related Documentation
 
 - [Multi-Instance Setup](/guide/multi-instance) - Getting started guide
 - [Tier Detection](/advanced/tier-detection) - Namespace tier detection
-- [Context Switching](/advanced/context-switching) - Instance switching behavior
+- [Context Switching](/advanced/context-switching) - Accounts of a connection and how each chat switches between them
 - [Configuration Reference](/configuration/instances) - Configuration options

@@ -2,7 +2,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import {
+  mkdirSync,
   mkdtempSync,
+  readdirSync,
   writeFileSync,
   readFileSync,
   existsSync,
@@ -68,18 +70,20 @@ test('timeout stops the client tree before rejecting the evaluation', async (con
     runEvaluation(process.execPath, ['-e', parent], { cwd: directory, timeoutMs: 500 }),
     /timed out/,
   );
-  const stopped = readFileSync(heartbeat, 'utf8');
+  // On a loaded machine the timeout can fire before the descendant first writes; nothing
+  // written after the rejection is still the property under test.
+  const written = () => (existsSync(heartbeat) ? readFileSync(heartbeat, 'utf8') : '');
+  const stopped = written();
   await new Promise((resolve) => setTimeout(resolve, 100));
-  assert.equal(
-    readFileSync(heartbeat, 'utf8'),
-    stopped,
-    'descendant still runs after timeout rejection',
-  );
+  assert.equal(written(), stopped, 'descendant still runs after timeout rejection');
 });
 
 test('evaluator setup failure closes the loopback server and exits', () => {
-  // A failed version check must release the fixture instead of keeping Node alive.
+  // A failed version check must release the fixture instead of keeping Node alive, and
+  // leave no workspace behind: nothing was evaluated, so there is no evidence to keep.
   const directory = mkdtempSync(join(tmpdir(), 'gitlab-eval-setup-'));
+  const childTmp = join(directory, 'tmp');
+  mkdirSync(childTmp);
   try {
     const shim = process.platform === 'win32' ? 'codex.cmd' : 'codex';
     const body =
@@ -99,6 +103,9 @@ test('evaluator setup failure closes the loopback server and exits', () => {
           directory +
           delimiter +
           Object.entries(process.env).find(([key]) => key.toUpperCase() === 'PATH')[1],
+        TMPDIR: childTmp,
+        TEMP: childTmp,
+        TMP: childTmp,
       },
       encoding: 'utf8',
       timeout: CHILD_TIMEOUT_MS,
@@ -106,6 +113,7 @@ test('evaluator setup failure closes the loopback server and exits', () => {
     assert.equal(result.error, undefined, result.stdout + result.stderr);
     assert.equal(result.status, 1);
     assert.match(result.stderr, /exited with 7/);
+    assert.deepEqual(readdirSync(childTmp), []);
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }

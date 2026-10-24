@@ -11,8 +11,46 @@ import {
   AuthCodeFlowState,
   AuthorizationCode,
   RegisteredOAuthClient,
+  GitLabTokenResponse,
 } from '../types';
 import type { AccountSettings, AccountSettingsRecord } from '../../configuration/types';
+
+/** How long a session lives from its creation; cleanup removes it after that. */
+export const SESSION_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** Whether a session (not a linked account, which goes with it) is past its age limit. */
+export function isPastAgeLimit(session: OAuthSession, now = Date.now()): boolean {
+  return session.createdAt + SESSION_MAX_AGE_MS < now;
+}
+
+/**
+ * Ends the GitLab grant of an auth code flow removed unfinished. Rejects when the grant
+ * could not be ended; the backend then keeps the flow, its only copy, for the next cleanup.
+ * Rotated credentials are durably kept through persistTokens for retries. If persistence
+ * is unavailable, the handler can finish only after successfully revoking the new grant.
+ */
+export type AbandonedFlowGrantHandler = (
+  flow: AuthCodeFlowState,
+  /** Durably replace rotated credentials while the backend still owns this flow. */
+  persistTokens: (tokens: GitLabTokenResponse) => Promise<void>,
+  /** Shared lease expiry; absent when local ownership cannot expire during the handler. */
+  leaseUntil?: number,
+) => Promise<void>;
+
+/** Removes a session that reached its age limit with its linked accounts, ending their grants. */
+export type ExpiredSessionHandler = (session: OAuthSession) => Promise<void>;
+
+/** Inputs to the single storage commit of a browser-verified account link. */
+export interface LinkedAccountCommit {
+  /** Server-generated key of the unexpired connect flow, consumed only on success. */
+  internalState: string;
+  /** Exact primary-session lease claimed by this callback, in epoch milliseconds. */
+  primaryLeaseUntil: number;
+  /** New account record; on replacement only its grant and username are updated. */
+  account: OAuthSession & { linkedToSessionId: string };
+  /** Absent for insertion; replacement must still own this exact account grant and lease. */
+  existing?: { refreshToken: string; leaseUntil: number };
+}
 
 /**
  * Session storage backend interface
@@ -23,19 +61,36 @@ import type { AccountSettings, AccountSettingsRecord } from '../../configuration
  * Methods returning a boolean report a missing record as `false`. A failed read or
  * write rejects instead, so callers never mistake a storage outage for an absent record.
  */
-
 export interface SessionStorageBackend {
   /** Backend type identifier */
   readonly type: 'memory' | 'file' | 'postgresql' | 'redis';
 
   // Session operations
+  /** Store a new session; rejects when a session with its id exists. */
   createSession(session: OAuthSession): Promise<void>;
   getSession(sessionId: string): Promise<OAuthSession | undefined>;
   getSessionByToken(token: string): Promise<OAuthSession | undefined>;
   getSessionByRefreshToken(refreshToken: string): Promise<OAuthSession | undefined>;
   updateSession(sessionId: string, updates: Partial<OAuthSession>): Promise<boolean>;
+  /** Delete a session together with the accounts linked to it. */
   deleteSession(sessionId: string): Promise<boolean>;
   getAllSessions(): Promise<OAuthSession[]>;
+  /** The GitLab accounts linked to a session, oldest first. */
+  getLinkedSessions(sessionId: string): Promise<OAuthSession[]>;
+  /**
+   * Atomically validate the primary lease, unspent/unexpired flow, any cached grant and (for a
+   * replacement) account lease/token, store the account and consume the flow. False means
+   * a precondition changed and nothing was written. Storage errors reject with no partial
+   * commit. Older external backends without this operation cannot safely link accounts.
+   */
+  commitLinkedAccount?(commit: LinkedAccountCommit): Promise<boolean>;
+  /**
+   * Cache a grant only on its live, unclaimed link flow, without replacing a different
+   * cached grant. Return true when that flow holds these tokens. Otherwise retain them
+   * under an idempotent, callback-invisible cleanup key and return false. Retries must
+   * neither recreate the original state nor overwrite cleanup leases/rotated tokens.
+   */
+  cacheLinkedFlowTokens?(flow: AuthCodeFlowState, tokens: GitLabTokenResponse): Promise<boolean>;
 
   // Device flow operations
   storeDeviceFlow(state: string, flow: DeviceFlowState): Promise<void>;
@@ -130,6 +185,25 @@ export interface SessionStorageBackend {
   initialize(): Promise<void>;
   /** Remove expired sessions, flows, codes and expired never-used client registrations. */
   cleanup(): Promise<void>;
+  /**
+   * Call `handler` for each expired auth code flow that holds GitLab tokens, taken out of
+   * its callback's reach: the callback exchanged the code but never finished, so the flow
+   * holds the only copy of that grant. The flow is removed once the handler resolves and
+   * kept for the next cleanup when it rejects. Absent in database packages older than this
+   * server.
+   *
+   * Register grant cleanup with a positive integer bound covering ownership checks, GitLab
+   * requests and token persistence. Shared backends lease each flow for this duration,
+   * fence token writes/deletion to that lease, and hide claimed flows from callbacks.
+   */
+  onAbandonedFlowGrant?(handler: AbandonedFlowGrantHandler, leaseMs: number): void;
+  /**
+   * Hand each session cleanup expires (not an account linked to a session still stored) to
+   * `handler`, which removes it with its linked accounts and ends their GitLab grants;
+   * cleanup deletes whatever the handler left. Absent in database packages older than this
+   * server.
+   */
+  onExpiredSession?(handler: ExpiredSessionHandler): void;
   close(): Promise<void>;
 
   // Statistics

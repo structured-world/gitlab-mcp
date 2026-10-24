@@ -7,21 +7,30 @@
 
 const fs = require('fs');
 const { config } = require('dotenv');
-const { deleteLifecycleGroup } = require('./testNamespace');
+const os = require('os');
+const path = require('path');
+const { deleteLifecycleGroup, releaseRunLock } = require('./testNamespace');
 
 // Use native fetch API (available in Node.js 18+)
 // No import needed - fetch is global in modern Node.js
 
 module.exports = async () => {
+  try {
+    await teardown();
+  } finally {
+    // The next run may start once this one has cleaned up, or failed to.
+    await releaseRunLock(globalThis.__integrationRunLock);
+  }
+};
+
+async function teardown() {
   // Load environment
-  const path = require('path');
   const envTestPath = path.resolve(__dirname, '../../.env.test');
   if (fs.existsSync(envTestPath)) {
     config({ path: envTestPath, quiet: true });
   }
 
   // Get test data from persistent file storage (globalTeardown runs in separate context)
-  const os = require('os');
   const testDataFile = path.join(os.tmpdir(), 'gitlab-mcp-test-data.json');
   let testData = null;
 
@@ -69,4 +78,4 @@ module.exports = async () => {
   } catch (error) {
     console.warn('⚠️ Could not clean up test data file:', error);
   }
-};
+}

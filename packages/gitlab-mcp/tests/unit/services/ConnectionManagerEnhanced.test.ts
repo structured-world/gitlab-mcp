@@ -43,6 +43,17 @@ jest.mock('../../../src/logger', () => ({
 jest.mock('../../../src/services/TokenScopeDetector');
 jest.mock('../../../src/services/AdminDetector');
 jest.mock('../../../src/utils/fetch');
+// Static tokens per instance: the server's own for its instance, one configured for gitlab.com.
+const mockInstanceTokens: Record<string, string> = {
+  'https://test-gitlab.com': 'test-token-123',
+  'https://gitlab.com': 'com-pat',
+  'https://instance-a.example.com': 'instance-a-pat',
+  'https://instance-b.example.com': 'instance-b-pat',
+  'https://new-gitlab.example.com': 'new-gitlab-pat',
+};
+jest.mock('../../../src/accounts/instance-tokens', () => ({
+  configuredInstanceToken: (url: string) => mockInstanceTokens[url],
+}));
 
 import {
   detectTokenScopes,
@@ -222,6 +233,25 @@ describe('ConnectionManager Enhanced Tests', () => {
         manager.reset();
         jest.resetModules();
       }
+    });
+
+    // A static-token chat switched to another configured instance bootstraps it with that
+    // instance's token; the server's own token must never be sent to another host.
+    it("initializes another instance with that instance's own token", async () => {
+      await connectionManager.initialize('https://gitlab.com');
+
+      expect(MockedGraphQLClient).toHaveBeenCalledWith('https://gitlab.com/api/graphql', {
+        headers: { 'PRIVATE-TOKEN': 'com-pat' },
+      });
+      expect(mockedDetectTokenScopes).toHaveBeenCalledWith('https://gitlab.com', 'com-pat');
+      expect(mockedDetectAdminStatus).toHaveBeenCalledWith('https://gitlab.com', 'com-pat');
+    });
+
+    it('refuses to initialize an instance that has no static token', async () => {
+      await expect(connectionManager.initialize('https://no-token.example.com')).rejects.toThrow(
+        'No access token is configured for https://no-token.example.com',
+      );
+      expect(MockedGraphQLClient).not.toHaveBeenCalled();
     });
 
     it('should handle multiple initialization calls gracefully', async () => {
@@ -1192,53 +1222,18 @@ describe('ConnectionManager Enhanced Tests', () => {
     });
   });
 
-  describe('Reinitialize Method', () => {
-    /**
-     * Tests reinitialize() method (lines 502-521)
-     * Should reset state, clear cache for new instance, and re-initialize
-     */
-    it('should switch to new URL and make new client available', async () => {
-      // First, initialize normally
+  // A chat that works with another instance initializes it next to the first; a call that
+  // started on the first instance keeps working with it.
+  describe('Several instances', () => {
+    it('keeps the first instance usable after another one is initialized', async () => {
       await connectionManager.initialize();
-      const previousUrl = connectionManager.getCurrentInstanceUrl();
-      expect(connectionManager.getVersion()).toBe('16.5.0');
+      const firstUrl = connectionManager.getCurrentInstanceUrl() as string;
 
-      // Reinitialize for a different instance
-      await connectionManager.reinitialize('https://new-gitlab.example.com');
+      await connectionManager.initialize('https://new-gitlab.example.com');
 
-      // Verify URL actually switched and new client is accessible
-      expect(connectionManager.getCurrentInstanceUrl()).toBe('https://new-gitlab.example.com');
-      expect(connectionManager.getCurrentInstanceUrl()).not.toBe(previousUrl);
       expect(connectionManager.getClient('https://new-gitlab.example.com')).toBeDefined();
-    });
-
-    // A tool call that started before the switch keeps using the instance it started with;
-    // its state must outlive the switch until it goes idle and is evicted.
-    it('keeps the previous instance usable for calls pinned to it', async () => {
-      await connectionManager.initialize();
-      const previousUrl = connectionManager.getCurrentInstanceUrl() as string;
-
-      await connectionManager.reinitialize('https://new-gitlab.example.com');
-
-      expect(() => connectionManager.getClient(previousUrl)).not.toThrow();
-      expect(connectionManager.getInstanceInfo(previousUrl).version).toBe('16.5.0');
-    });
-
-    it('should complete reinitialize without errors and restore working state', async () => {
-      // Initialize first
-      await connectionManager.initialize();
-      const initialVersion = connectionManager.getVersion();
-      expect(initialVersion).toBe('16.5.0');
-
-      // Reinitialize for a new instance URL - tests lines 502-521
-      await expect(
-        connectionManager.reinitialize('https://new-instance.example.com'),
-      ).resolves.not.toThrow();
-
-      // After reinitialize, manager should be functional
-      expect(connectionManager.getClient()).toBeDefined();
-      expect(connectionManager.getVersionDetector()).toBeDefined();
-      expect(connectionManager.getSchemaIntrospector()).toBeDefined();
+      expect(() => connectionManager.getClient(firstUrl)).not.toThrow();
+      expect(connectionManager.getInstanceInfo(firstUrl).version).toBe('16.5.0');
     });
   });
 

@@ -248,6 +248,28 @@ describe('OAuth Authentication Middleware', () => {
         expect(mockNext).not.toHaveBeenCalled();
       });
 
+      // A JWT may outlive the session's age limit (OAUTH_TOKEN_TTL above it); the session
+      // stays stored until cleanup ends its grants, but must authenticate nothing.
+      it('should return 401 when the session is past its age limit', async () => {
+        mockSessionStore.getSession.mockReturnValue({
+          ...mockSession,
+          createdAt: Date.now() - 8 * 24 * 60 * 60 * 1000,
+        });
+        const req = createMockReq({
+          headers: { authorization: 'Bearer valid-mcp-token' },
+        });
+        const res = createMockRes();
+
+        await oauthAuthMiddleware(req, res, mockNext);
+
+        expect(res.status).toHaveBeenCalledWith(401);
+        expect(res.json).toHaveBeenCalledWith({
+          error: 'invalid_token',
+          error_description: 'Session not found or expired',
+        });
+        expect(mockNext).not.toHaveBeenCalled();
+      });
+
       it('should return 401 when token does not match session', async () => {
         mockSessionStore.getSession.mockReturnValue({
           ...mockSession,
@@ -603,6 +625,22 @@ describe('OAuth Authentication Middleware', () => {
         mockSessionStore.getSession.mockReturnValue(undefined);
         const req = createMockReq({
           headers: { authorization: 'Bearer valid-token' },
+        });
+        const res = createMockRes();
+
+        await optionalOAuthMiddleware(req, res, mockNext);
+
+        expect(mockNext).toHaveBeenCalled();
+        expect(res.locals.oauthSessionId).toBeUndefined();
+      });
+
+      it('should not authenticate a session past its age limit', async () => {
+        mockSessionStore.getSession.mockReturnValue({
+          ...mockSession,
+          createdAt: Date.now() - 8 * 24 * 60 * 60 * 1000,
+        });
+        const req = createMockReq({
+          headers: { authorization: 'Bearer valid-mcp-token' },
         });
         const res = createMockRes();
 

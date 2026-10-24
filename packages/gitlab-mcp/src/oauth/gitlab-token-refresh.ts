@@ -194,6 +194,31 @@ async function claimOrWait(
 }
 
 /**
+ * Claim the session's GitLab refresh lease until `leaseMs` from now, waiting while another
+ * holder (a refresh, a revocation) has it. Resolves to the claimed `leaseUntil`, or to
+ * undefined when the session no longer exists; the caller releases the lease.
+ */
+export async function claimSessionLease(
+  sessionId: string,
+  leaseMs: number,
+  deadline = Date.now() + REFRESH_LEASE_MS + 2 * LEASE_POLL_MS,
+): Promise<number | undefined> {
+  const current = await sessionStore.getSession(sessionId);
+  if (!current) return undefined;
+  const now = Date.now();
+  const leaseUntil = now + leaseMs;
+  const refreshToken = current.gitlabRefreshToken;
+  if (await sessionStore.claimGitLabRefresh(sessionId, refreshToken, now, leaseUntil)) {
+    return leaseUntil;
+  }
+  if (Date.now() >= deadline) {
+    throw new Error('The session is held by another operation');
+  }
+  await sleep(LEASE_POLL_MS);
+  return claimSessionLease(sessionId, leaseMs, deadline);
+}
+
+/**
  * Return the session with GitLab tokens that are not about to expire, refreshing them
  * when needed. Resolves to undefined when the session no longer exists.
  *

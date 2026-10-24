@@ -1,5 +1,8 @@
 // Integration fixtures belong under the existing root "test" group. Cleanup
 // verifies the provider's live group before deleting a suite-owned subgroup.
+const fs = require('node:fs');
+const net = require('node:net');
+
 async function findTestRoot(request, apiUrl, token) {
   const response = await request(`${apiUrl}/api/v4/groups/test`, {
     headers: { Authorization: `Bearer ${token}` },
@@ -28,6 +31,7 @@ async function deleteLifecycleGroup(request, apiUrl, token, saved) {
   const root = await findTestRoot(request, apiUrl, token);
   const headers = { Authorization: `Bearer ${token}` };
   const response = await request(`${apiUrl}/api/v4/groups/${saved.id}`, { headers });
+  if (response.status === 404) return 'removed';
   if (!response.ok) throw new Error(`Cannot verify cleanup group: ${response.status}`);
   const live = await response.json();
   if (live.id !== saved.id || live.full_path !== saved.full_path || live.parent_id !== root.id) {
@@ -92,4 +96,100 @@ async function deleteLifecycleGroup(request, apiUrl, token, saved) {
   throw new Error(`Cannot permanently remove test subgroup: ${removed.status}`);
 }
 
-module.exports = { findTestRoot, deleteLifecycleGroup };
+// The record a run keeps of its group outlives a run killed before its teardown; the
+// next run deletes that group first, and keeps the record when it cannot.
+async function cleanupStaleRun(request, apiUrl, token, dataFile) {
+  if (!fs.existsSync(dataFile)) return 'none';
+  let saved;
+  try {
+    saved = JSON.parse(fs.readFileSync(dataFile, 'utf8'))?.group;
+  } catch {
+    // A record cut short by a kill names no group; yarn cleanup:test-groups finds orphans
+    // by listing the lifecycle subgroups.
+    fs.unlinkSync(dataFile);
+    return 'none';
+  }
+  let result = 'none';
+  if (saved?.id) {
+    try {
+      result = await deleteLifecycleGroup(request, apiUrl, token, saved);
+    } catch (error) {
+      throw new Error(
+        `Cannot clean up ${saved.full_path} left by an interrupted run (${error.message}); ` +
+          `its record stays in ${dataFile}. Remove it with yarn cleanup:test-groups.`,
+        { cause: error },
+      );
+    }
+  }
+  fs.unlinkSync(dataFile);
+  return result;
+}
+
+// Every lifecycle subgroup of the root test group, for removing the ones no record names.
+async function listLifecycleGroups(request, apiUrl, token) {
+  const root = await findTestRoot(request, apiUrl, token);
+  const headers = { Authorization: `Bearer ${token}` };
+  const groups = [];
+  // Pages are read one after another: each names the next in its x-next-page header.
+  for (let page = 1; page > 0; ) {
+    const response = await request(
+      `${apiUrl}/api/v4/groups/${root.id}/subgroups?search=lifecycle-test&per_page=100&page=${page}`,
+      { headers },
+    );
+    if (!response.ok) throw new Error(`Cannot list test subgroups: ${response.status}`);
+    for (const group of await response.json()) {
+      if (group.parent_id === root.id && /^test\/lifecycle-test-\d+$/.test(group.full_path)) {
+        groups.push(group);
+      }
+    }
+    // Empty on the last page; anything but a page number ends the listing.
+    const next = Number.parseInt(response.headers.get('x-next-page') ?? '', 10);
+    page = Number.isSafeInteger(next) && next > page ? next : 0;
+  }
+  return groups;
+}
+
+// Runs on one machine share the record of their group, so one runs at a time, from setup to
+// teardown: a second run would otherwise take the first one's live group for a leftover.
+// A run holds a loopback port rather than a lock file: the kernel gives a port to one
+// listener at once and frees it when the process exits, however it exits, so no lock is
+// left behind by a killed run and there is no takeover to race.
+function acquireRunLock(port) {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer((socket) => socket.destroy());
+    server.once('error', (error) => {
+      if (error.code !== 'EADDRINUSE') return reject(error);
+      reject(
+        new Error(
+          `Another integration run is using the shared test record (it holds port ${port} ` +
+            'on 127.0.0.1); wait for it to finish, or free the port if another program holds it.',
+        ),
+      );
+    });
+    server.listen({ host: '127.0.0.1', port, exclusive: true }, () => {
+      // Held, not served: the lock does not keep the test process alive.
+      server.unref();
+      resolve(server);
+    });
+  });
+}
+
+// The port every integration run on a machine takes; any fixed port other programs leave free.
+const RUN_LOCK_PORT = 47321;
+
+function releaseRunLock(lock) {
+  return new Promise((resolve) => {
+    if (!lock?.listening) return resolve();
+    lock.close(() => resolve());
+  });
+}
+
+module.exports = {
+  findTestRoot,
+  deleteLifecycleGroup,
+  cleanupStaleRun,
+  listLifecycleGroups,
+  RUN_LOCK_PORT,
+  acquireRunLock,
+  releaseRunLock,
+};

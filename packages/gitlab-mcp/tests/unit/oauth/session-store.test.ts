@@ -67,6 +67,43 @@ describe('OAuth Session Store', () => {
   });
 
   describe('Session Operations', () => {
+    // Backends from an older external DB package must not advertise unsafe partial linking.
+    it('requires atomic commit support before enabling account linking', async () => {
+      const backend = new MemoryStorageBackend({ silent: true });
+      Object.defineProperty(backend, 'commitLinkedAccount', { value: undefined });
+      const legacy = new SessionStore(backend);
+      expect(legacy.linksAccounts()).toBe(false);
+      await expect(
+        legacy.commitLinkedAccount({
+          internalState: 'unspent-flow',
+          primaryLeaseUntil: Date.now() + 1_000,
+          account: { ...createTestSession(), linkedToSessionId: 'primary' },
+        }),
+      ).rejects.toThrow('cannot commit account links atomically');
+    });
+
+    // Native memory/file and the matching DB package provide the whole linking contract.
+    it('requires conditional token caching before enabling account linking', async () => {
+      // Atomic completion alone cannot prevent a delayed cache write from reviving a flow.
+      const backend = new MemoryStorageBackend({ silent: true });
+      Object.defineProperty(backend, 'cacheLinkedFlowTokens', { value: undefined });
+      const legacy = new SessionStore(backend);
+      expect(legacy.linksAccounts()).toBe(false);
+      await expect(
+        legacy.cacheLinkedFlowTokens({} as AuthCodeFlowState, {
+          access_token: 'access',
+          refresh_token: 'refresh',
+          token_type: 'Bearer',
+          created_at: Math.floor(Date.now() / 1000),
+          expires_in: 7200,
+        }),
+      ).rejects.toThrow('cannot safely cache account-link tokens');
+    });
+
+    it('enables account linking with atomic backend support', () => {
+      expect(store.linksAccounts()).toBe(true);
+    });
+
     describe('createSession', () => {
       it('should create a new session', async () => {
         const session = createTestSession();
@@ -370,6 +407,82 @@ describe('OAuth Session Store', () => {
   });
 
   describe('Cleanup Operations', () => {
+    // The handler that ends abandoned grants reaches the backend; a database package older
+    // than the server has no hook and keeps cleaning up as before.
+    describe('onAbandonedFlowGrant', () => {
+      it('hands the handler to the backend', () => {
+        const backend = new MemoryStorageBackend({ silent: true });
+        const register = jest.spyOn(backend, 'onAbandonedFlowGrant');
+        const handler = jest.fn(async () => {});
+
+        new SessionStore(backend).onAbandonedFlowGrant(handler, 60_000);
+
+        expect(register).toHaveBeenCalledWith(handler, 60_000);
+      });
+
+      it('accepts a backend without the hook', () => {
+        const backend = new MemoryStorageBackend({ silent: true }) as unknown as Record<
+          string,
+          unknown
+        >;
+        backend.onAbandonedFlowGrant = undefined;
+
+        expect(() =>
+          new SessionStore(backend as unknown as SessionStorageBackend).onAbandonedFlowGrant(
+            jest.fn(async () => {}),
+            60_000,
+          ),
+        ).not.toThrow();
+      });
+    });
+
+    // The handler that removes expired sessions reaches the backend the same way.
+    describe('onExpiredSession', () => {
+      it('hands the handler to the backend', () => {
+        const backend = new MemoryStorageBackend({ silent: true });
+        const register = jest.spyOn(backend, 'onExpiredSession');
+        const handler = jest.fn(async () => {});
+
+        new SessionStore(backend).onExpiredSession(handler);
+
+        expect(register).toHaveBeenCalledWith(handler);
+      });
+
+      it('accepts a backend without the hook', () => {
+        const backend = new MemoryStorageBackend({ silent: true }) as unknown as Record<
+          string,
+          unknown
+        >;
+        backend.onExpiredSession = undefined;
+
+        expect(() =>
+          new SessionStore(backend as unknown as SessionStorageBackend).onExpiredSession(
+            jest.fn(async () => {}),
+          ),
+        ).not.toThrow();
+      });
+    });
+
+    // A session past its age limit authenticates nothing, also before cleanup removes it
+    // (cleanup runs periodically, and after a restart it ends the grants first).
+    it('finds no session past its age limit by its tokens', async () => {
+      const backend = new MemoryStorageBackend({ silent: true });
+      const aged = new SessionStore(backend);
+      await aged.createSession(
+        createTestSession({
+          id: 'aged',
+          mcpAccessToken: 'aged-access',
+          mcpRefreshToken: 'aged-refresh',
+          createdAt: Date.now() - 8 * 24 * 60 * 60 * 1000,
+        }),
+      );
+
+      expect(await aged.getSessionByToken('aged-access')).toBeUndefined();
+      expect(await aged.getSessionByRefreshToken('aged-refresh')).toBeUndefined();
+      // Cleanup still finds it to end its grants.
+      expect(await aged.getSession('aged')).toBeDefined();
+    });
+
     describe('cleanup', () => {
       it('should remove expired sessions', async () => {
         // Session expiration is based on createdAt + 7 days

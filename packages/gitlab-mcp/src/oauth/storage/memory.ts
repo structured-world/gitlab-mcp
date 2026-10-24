@@ -5,14 +5,23 @@
  * Sessions are lost on server restart.
  */
 
+import { createHash } from 'node:crypto';
 import {
   OAuthSession,
   DeviceFlowState,
   AuthCodeFlowState,
   AuthorizationCode,
   RegisteredOAuthClient,
+  GitLabTokenResponse,
 } from '../types';
-import { SessionStorageBackend, SessionStorageStats } from './types';
+import {
+  AbandonedFlowGrantHandler,
+  ExpiredSessionHandler,
+  LinkedAccountCommit,
+  isPastAgeLimit,
+  SessionStorageBackend,
+  SessionStorageStats,
+} from './types';
 import type { AccountSettings, AccountSettingsRecord } from '../../configuration/types';
 import { logInfo, logWarn, logError, logDebug, truncateId } from '../../logger';
 
@@ -21,11 +30,33 @@ export interface MemoryStorageOptions {
   silent?: boolean;
 }
 
-/** Remove the entries that expired before `now`; returns how many were removed. */
-function deleteExpired<K>(entries: Map<K, { expiresAt?: number }>, now: number): number {
+/**
+ * How many grants cleanup ends at once: a backlog (after a restart, say) goes out in steps
+ * instead of one burst against GitLab's rate limits.
+ */
+const CLEANUP_BATCH = 5;
+
+/** Run `run` over `items`, at most CLEANUP_BATCH at a time. */
+async function inBatches<T>(
+  items: readonly T[],
+  run: (item: T) => Promise<void>,
+  from = 0,
+): Promise<void> {
+  if (from >= items.length) return;
+  await Promise.all(items.slice(from, from + CLEANUP_BATCH).map((item) => run(item)));
+  return inBatches(items, run, from + CLEANUP_BATCH);
+}
+
+/** Remove expired entries except records an asynchronous cleanup still owns. */
+function deleteExpired<K>(
+  entries: Map<K, { expiresAt?: number }>,
+  now: number,
+  retained?: ReadonlySet<K>,
+): number {
   let removed = 0;
   for (const [key, entry] of entries) {
     if (entry.expiresAt !== undefined && entry.expiresAt < now) {
+      if (retained?.has(key)) continue;
       entries.delete(key);
       removed++;
     }
@@ -39,6 +70,8 @@ export class MemoryStorageBackend implements SessionStorageBackend {
   private sessions = new Map<string, OAuthSession>();
   private deviceFlows = new Map<string, DeviceFlowState>();
   private authCodeFlows = new Map<string, AuthCodeFlowState>();
+  /** Hidden from callbacks, but retained in exports until their grant is ended. */
+  private abandonedFlowsInProgress = new Set<string>();
   private authCodes = new Map<string, AuthorizationCode>();
   private tokenToSession = new Map<string, string>();
   private refreshTokenToSession = new Map<string, string>();
@@ -48,6 +81,8 @@ export class MemoryStorageBackend implements SessionStorageBackend {
   /** Session id -> end of its GitLab refresh lease (transient, not exported). */
   private gitlabRefreshLeases = new Map<string, number>();
   private cleanupIntervalId: ReturnType<typeof setInterval> | null = null;
+  private abandonedFlowGrant: AbandonedFlowGrantHandler | undefined;
+  private expiredSession: ExpiredSessionHandler | undefined;
   private silent: boolean;
 
   constructor(options?: MemoryStorageOptions) {
@@ -62,14 +97,122 @@ export class MemoryStorageBackend implements SessionStorageBackend {
   }
 
   // Session operations
-  async createSession(session: OAuthSession): Promise<void> {
+  /** Synchronous insertion shared with the atomic account-link transition. */
+  private insertSession(session: OAuthSession): void {
+    if (this.sessions.has(session.id)) throw new Error(`Session ${session.id} already exists`);
     this.sessions.set(session.id, session);
-    if (session.mcpAccessToken) {
-      this.tokenToSession.set(session.mcpAccessToken, session.id);
-    }
-    if (session.mcpRefreshToken) {
+    if (session.mcpAccessToken) this.tokenToSession.set(session.mcpAccessToken, session.id);
+    if (session.mcpRefreshToken)
       this.refreshTokenToSession.set(session.mcpRefreshToken, session.id);
+  }
+
+  /** Restore both halves of a link after a failed file write, while its queue is held. */
+  private restoreLinkedAccount(
+    { account, internalState }: LinkedAccountCommit,
+    stored: OAuthSession | undefined,
+    previous: OAuthSession | undefined,
+    flow: AuthCodeFlowState,
+    accessOwner: string | undefined,
+    refreshOwner: string | undefined,
+  ): void {
+    if (stored && previous) {
+      Object.assign(stored, previous);
+      // Restore unknown scopes even when the persisted legacy session omitted the key.
+      stored.gitlabScopes = previous.gitlabScopes;
+    } else {
+      this.sessions.delete(account.id);
+      if (account.mcpAccessToken) {
+        if (accessOwner === undefined) this.tokenToSession.delete(account.mcpAccessToken);
+        else this.tokenToSession.set(account.mcpAccessToken, accessOwner);
+      }
+      if (account.mcpRefreshToken) {
+        if (refreshOwner === undefined) this.refreshTokenToSession.delete(account.mcpRefreshToken);
+        else this.refreshTokenToSession.set(account.mcpRefreshToken, refreshOwner);
+      }
     }
+    this.authCodeFlows.set(internalState, flow);
+  }
+
+  async commitLinkedAccount(
+    commit: LinkedAccountCommit,
+    persist?: () => Promise<void>,
+  ): Promise<boolean> {
+    // No awaits between lease validation, account mutation and spending the flow: other
+    // requests and abandoned-grant cleanup observe both records together. File storage
+    // supplies persistence while holding its write/lease queue until this call returns.
+    const { account, internalState, primaryLeaseUntil, existing } = commit;
+    const now = Date.now();
+    const parent = account.linkedToSessionId;
+    const flow = this.authCodeFlows.get(internalState);
+    if (
+      !this.sessions.has(parent) ||
+      this.gitlabRefreshLeases.get(parent) !== primaryLeaseUntil ||
+      primaryLeaseUntil <= now ||
+      !flow ||
+      flow.expiresAt <= now ||
+      flow.link?.stage !== 'connect' ||
+      flow.link.sessionId !== parent ||
+      internalState.startsWith('cleanup:') ||
+      (flow.gitlabTokens &&
+        (flow.gitlabTokens.access_token !== account.gitlabAccessToken ||
+          flow.gitlabTokens.refresh_token !== account.gitlabRefreshToken)) ||
+      this.abandonedFlowsInProgress.has(internalState)
+    )
+      return false;
+
+    const stored = this.sessions.get(account.id);
+    let previous: OAuthSession | undefined;
+    let previousAccessOwner: string | undefined;
+    let previousRefreshOwner: string | undefined;
+    if (existing) {
+      if (
+        stored?.linkedToSessionId !== parent ||
+        stored.gitlabRefreshToken !== existing.refreshToken ||
+        this.gitlabRefreshLeases.get(account.id) !== existing.leaseUntil ||
+        existing.leaseUntil <= now
+      )
+        return false;
+      if (persist) previous = { ...stored };
+      Object.assign(stored, {
+        gitlabAccessToken: account.gitlabAccessToken,
+        gitlabRefreshToken: account.gitlabRefreshToken,
+        gitlabTokenExpiry: account.gitlabTokenExpiry,
+        gitlabScopes: account.gitlabScopes,
+        gitlabUsername: account.gitlabUsername,
+        updatedAt: now,
+      });
+    } else {
+      if (stored) return false;
+      if (persist) {
+        previousAccessOwner = this.tokenToSession.get(account.mcpAccessToken);
+        previousRefreshOwner = this.refreshTokenToSession.get(account.mcpRefreshToken);
+      }
+      this.insertSession(account);
+    }
+    this.authCodeFlows.delete(internalState);
+    if (persist) {
+      try {
+        await persist();
+      } catch (error: unknown) {
+        // File storage serializes this write and lease claims. Undo both records in one
+        // synchronous step, preserving timestamps and indexes as well as credentials.
+        this.restoreLinkedAccount(
+          commit,
+          stored,
+          previous,
+          flow,
+          previousAccessOwner,
+          previousRefreshOwner,
+        );
+        throw error;
+      }
+    }
+    return true;
+  }
+
+  async createSession(session: OAuthSession): Promise<void> {
+    // Creating never replaces a session, as with the primary key of the database backend.
+    this.insertSession(session);
     logDebug('Session created', { sessionId: session.id, userId: session.gitlabUserId });
   }
 
@@ -113,6 +256,8 @@ export class MemoryStorageBackend implements SessionStorageBackend {
     const session = this.sessions.get(sessionId);
     if (!session) return false;
 
+    const linked = await this.getLinkedSessions(sessionId);
+    await Promise.all(linked.map((account) => this.deleteSession(account.id)));
     if (session.mcpAccessToken) {
       this.tokenToSession.delete(session.mcpAccessToken);
     }
@@ -128,6 +273,14 @@ export class MemoryStorageBackend implements SessionStorageBackend {
 
   async getAllSessions(): Promise<OAuthSession[]> {
     return Array.from(this.sessions.values());
+  }
+
+  getLinkedSessions(sessionId: string): Promise<OAuthSession[]> {
+    return Promise.resolve(
+      Array.from(this.sessions.values())
+        .filter((session) => session.linkedToSessionId === sessionId)
+        .sort((a, b) => a.createdAt - b.createdAt),
+    );
   }
 
   // Device flow operations
@@ -154,16 +307,66 @@ export class MemoryStorageBackend implements SessionStorageBackend {
   }
 
   // Auth code flow operations
+  async cacheLinkedFlowTokens(
+    flow: AuthCodeFlowState,
+    tokens: GitLabTokenResponse,
+    persist?: () => Promise<void>,
+  ): Promise<boolean> {
+    if (!flow.link) throw new Error('An account-link flow is required');
+    const now = Date.now();
+    const current = this.authCodeFlows.get(flow.internalState);
+    const active =
+      current &&
+      current.expiresAt > now &&
+      !flow.internalState.startsWith('cleanup:') &&
+      !this.abandonedFlowsInProgress.has(flow.internalState) &&
+      current.link?.sessionId === flow.link.sessionId &&
+      current.link.stage === flow.link.stage;
+    if (
+      active &&
+      current.gitlabTokens?.access_token === tokens.access_token &&
+      current.gitlabTokens.refresh_token === tokens.refresh_token
+    )
+      return true;
+
+    let state: string;
+    let pending: AuthCodeFlowState;
+    if (active && !current.gitlabTokens) {
+      state = flow.internalState;
+      pending = { ...current, gitlabTokens: tokens };
+    } else {
+      const grant = createHash('sha256')
+        .update(JSON.stringify([tokens.access_token, tokens.refresh_token]))
+        .digest('hex');
+      state = `cleanup:issued:${flow.internalState}:${grant}`;
+      if (this.authCodeFlows.has(state)) return false;
+      pending = { ...flow, internalState: state, expiresAt: now - 1, gitlabTokens: tokens };
+    }
+    const previous = this.authCodeFlows.get(state);
+    this.authCodeFlows.set(state, pending);
+    try {
+      await persist?.();
+    } catch (error: unknown) {
+      if (previous) this.authCodeFlows.set(state, previous);
+      else this.authCodeFlows.delete(state);
+      throw error;
+    }
+    return state === flow.internalState;
+  }
+
   async storeAuthCodeFlow(internalState: string, flow: AuthCodeFlowState): Promise<void> {
     this.authCodeFlows.set(internalState, flow);
     logDebug('Auth code flow stored', { internalState: truncateId(internalState) });
   }
 
   async getAuthCodeFlow(internalState: string): Promise<AuthCodeFlowState | undefined> {
+    if (internalState.startsWith('cleanup:')) return undefined;
+    if (this.abandonedFlowsInProgress.has(internalState)) return undefined;
     return this.authCodeFlows.get(internalState);
   }
 
   async deleteAuthCodeFlow(internalState: string): Promise<boolean> {
+    if (this.abandonedFlowsInProgress.has(internalState)) return false;
     const deleted = this.authCodeFlows.delete(internalState);
     if (deleted) {
       logDebug('Auth code flow deleted', { internalState: truncateId(internalState) });
@@ -273,6 +476,8 @@ export class MemoryStorageBackend implements SessionStorageBackend {
   }
 
   async consumeAuthCodeFlow(internalState: string): Promise<AuthCodeFlowState | undefined> {
+    if (internalState.startsWith('cleanup:')) return undefined;
+    if (this.abandonedFlowsInProgress.has(internalState)) return undefined;
     const record = this.authCodeFlows.get(internalState);
     if (record) this.authCodeFlows.delete(internalState);
     return record;
@@ -326,22 +531,75 @@ export class MemoryStorageBackend implements SessionStorageBackend {
     return this.updateSession(sessionId, updates);
   }
 
+  onAbandonedFlowGrant(handler: AbandonedFlowGrantHandler, leaseMs: number): void {
+    if (!Number.isSafeInteger(leaseMs) || leaseMs <= 0) {
+      throw new Error('Abandoned-flow cleanup requires a positive integer lease duration');
+    }
+    this.abandonedFlowGrant = handler;
+  }
+
+  onExpiredSession(handler: ExpiredSessionHandler): void {
+    this.expiredSession = handler;
+  }
+
+  /**
+   * Remove a session past its age limit: through the handler, which ends its grants and
+   * those of its linked accounts, then directly if the handler failed or left it.
+   */
+  private async expire(session: OAuthSession): Promise<void> {
+    await this.expiredSession?.(session).catch((error: unknown) => {
+      logWarn('Could not end the grants of an expired session', { err: error as Error });
+    });
+    await this.deleteSession(session.id);
+  }
+
   // Cleanup
   async cleanup(): Promise<void> {
     const now = Date.now();
-    let expiredSessions = 0;
 
-    // Clean up expired sessions (7 days max age)
-    const maxAge = 7 * 24 * 60 * 60 * 1000;
-    for (const [id, session] of this.sessions) {
-      if (session.createdAt + maxAge < now) {
-        await this.deleteSession(id);
-        expiredSessions++;
-      }
-    }
+    // Clean up expired sessions (7 days max age). A linked account goes with its session;
+    // it is younger than the session, so only one left without a session expires by itself.
+    const expired = [...this.sessions.values()].filter(
+      (session) =>
+        isPastAgeLimit(session, now) &&
+        !(session.linkedToSessionId && this.sessions.has(session.linkedToSessionId)),
+    );
+    await inBatches(expired, (session) => this.expire(session));
+    const expiredSessions = expired.length;
 
     const expiredDeviceFlows = deleteExpired(this.deviceFlows, now);
-    const expiredAuthCodeFlows = deleteExpired(this.authCodeFlows, now);
+    const handler = this.abandonedFlowGrant;
+    const abandoned = handler
+      ? [...this.authCodeFlows].filter(
+          ([state, flow]) =>
+            flow.gitlabTokens && flow.expiresAt < now && !this.abandonedFlowsInProgress.has(state),
+        )
+      : [];
+    for (const [state] of abandoned) this.abandonedFlowsInProgress.add(state);
+    let expiredAuthCodeFlows = deleteExpired(
+      this.authCodeFlows,
+      now,
+      this.abandonedFlowsInProgress,
+    );
+    // Keep the only grant copy in exports during the GitLab request too: file autosaves
+    // must not erase it. Callback reads/consumption and concurrent cleanups skip its claim.
+    if (handler) {
+      await inBatches(abandoned, async ([state, flow]) => {
+        try {
+          await handler(flow, async (tokens) => {
+            flow.gitlabTokens = tokens;
+            this.authCodeFlows.set(state, flow);
+          });
+          this.authCodeFlows.delete(state);
+          expiredAuthCodeFlows++;
+        } catch (error: unknown) {
+          logWarn('Could not end the grant of an abandoned flow', { err: error as Error });
+          this.authCodeFlows.set(state, flow);
+        } finally {
+          this.abandonedFlowsInProgress.delete(state);
+        }
+      });
+    }
     const expiredAuthCodes = deleteExpired(this.authCodes, now);
     // Registrations that never completed an authorization expire; used ones have no expiry
     const expiredClients = deleteExpired(this.clients, now);
@@ -447,6 +705,7 @@ export class MemoryStorageBackend implements SessionStorageBackend {
       this.accountSettings.set(record.accountKey, record);
     }
     this.sessions.clear();
+    this.gitlabRefreshLeases.clear();
     this.deviceFlows.clear();
     this.authCodeFlows.clear();
     this.authCodes.clear();

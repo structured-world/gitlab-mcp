@@ -124,6 +124,28 @@ describe('detectAdminStatus', () => {
     expect(result).toBeNull();
   });
 
+  // Another configured instance is probed with its own token, never the server's.
+  it("probes another instance with that instance's token", async () => {
+    mockEnhancedFetch.mockResolvedValueOnce(userResponse(true));
+    mockEnhancedFetch.mockResolvedValueOnce(probeResponse(true));
+
+    await detectAdminStatus('https://gitlab.com', 'com-pat');
+
+    for (const [url, options] of mockEnhancedFetch.mock.calls) {
+      expect(url).toMatch(/^https:\/\/gitlab\.com\/api\/v4\//);
+      expect(options.headers['PRIVATE-TOKEN']).toBe('com-pat');
+    }
+    expect(mockEnhancedFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not probe an instance with an explicitly empty token', async () => {
+    // Missing instance credentials must not fall back to the server's token.
+    const result = await detectAdminStatus('https://other.example.com', '');
+
+    expect(result).toBeNull();
+    expect(mockEnhancedFetch).not.toHaveBeenCalled();
+  });
+
   it('treats only a 403 probe as role-without-elevation', async () => {
     mockEnhancedFetch.mockResolvedValueOnce(userResponse(true));
     mockEnhancedFetch.mockResolvedValueOnce({ ok: false, status: 403, json: jest.fn() });

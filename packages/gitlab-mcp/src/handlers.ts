@@ -39,7 +39,10 @@ import {
   toolScopeRejection,
   withReauthChallenge,
 } from './oauth/tool-auth';
-import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import type { CallToolRequest, CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import { AccountUnavailableError, withChatAccount } from './accounts/chat-accounts';
+import { currentMcpServer, runWithMcpServer } from './mcp-server-context';
+import { currentTokenAccount } from './accounts/token-account';
 import {
   getConfigurationService,
   resolveCaller,
@@ -288,6 +291,57 @@ async function tryManageContextFastPath(
   ) {
     return null;
   }
+  const result = await executeWithoutBootstrap(
+    toolName,
+    toolArguments,
+    effectiveInstanceUrl,
+    requestScopes,
+  );
+  // Not rate-limited: only a user's settings call while GitLab is unreachable asks for this
+  // probe, the monitor drops it while one is running, and a cooldown would keep the other
+  // tools down after GitLab answers again, which is what the probe is for.
+  if (result) healthMonitor.forceReconnect(effectiveInstanceUrl);
+  return result;
+}
+
+/**
+ * Calls that run without bootstrapping the instance: configuration tools while it is
+ * unreachable, and the account actions always. Listing, switching, linking and unlinking
+ * accounts read the session store and the instance configuration, never this instance, so a
+ * chat whose instance fails to start can still move to an account that works. Returns null
+ * to fall through to the bootstrap path.
+ */
+async function tryWithoutBootstrap(
+  request: CallToolRequest,
+  toolArguments: Record<string, unknown> | undefined,
+  effectiveInstanceUrl: string,
+  healthMonitor: HealthMonitor,
+  sessionId: string | undefined,
+  requestScopes: readonly string[] | undefined,
+): Promise<CallToolResult | null> {
+  const toolName = request.params.name;
+  const fastPath = await tryManageContextFastPath(
+    toolName,
+    toolArguments,
+    effectiveInstanceUrl,
+    healthMonitor,
+    sessionId,
+    requestScopes,
+  );
+  if (fastPath || !managesAccounts(request)) return fastPath;
+  return executeWithoutBootstrap(toolName, toolArguments, effectiveInstanceUrl, requestScopes);
+}
+
+/**
+ * Run a tool without bootstrapping its instance. Returns null when the tool is not in the
+ * instance's cache, so the caller falls through to the bootstrap path.
+ */
+async function executeWithoutBootstrap(
+  toolName: string,
+  toolArguments: Record<string, unknown> | undefined,
+  effectiveInstanceUrl: string,
+  requestScopes: readonly string[] | undefined,
+): Promise<CallToolResult | null> {
   if (LOG_FORMAT === 'condensed') {
     const action =
       toolArguments && typeof toolArguments.action === 'string' ? toolArguments.action : undefined;
@@ -300,30 +354,26 @@ async function tryManageContextFastPath(
   // refreshCache() could swap the lookup cache between the two calls. In practice
   // this is benign: executeTool() falls through with undefined and we re-enter the
   // bootstrap path below. A full atomic getTool() refactor is tracked separately.
-  if (registryManager.hasToolHandler(toolName, effectiveInstanceUrl)) {
-    // The request's grants apply here too: a token without the tool's scopes is refused
-    // exactly as on the connected path, whatever GitLab's reachability.
-    const result = await registryManager.executeTool(
-      toolName,
-      toolArguments,
-      effectiveInstanceUrl,
-      requestScopes,
-    );
-    // If executeTool returns undefined (TOCTOU: cache was refreshed between hasToolHandler and
-    // executeTool), fall through to the bootstrap path instead of returning {text: "undefined"}.
-    if (result === undefined) {
-      return null;
-    }
-    // Not rate-limited: only a user's settings call while GitLab is unreachable asks for this
-    // probe, the monitor drops it while one is running, and a cooldown would keep the other
-    // tools down after GitLab answers again, which is what the probe is for.
-    healthMonitor.forceReconnect(effectiveInstanceUrl);
-    return formatToolResult(
-      result,
-      registryManager.getTool(toolName, effectiveInstanceUrl, requestScopes),
-    );
+  if (!registryManager.hasToolHandler(toolName, effectiveInstanceUrl)) {
+    return null; // tool not yet cached — fall through to bootstrap
   }
-  return null; // tool not yet cached — fall through to bootstrap
+  // The request's grants apply here too: a token without the tool's scopes is refused
+  // exactly as on the connected path, whatever GitLab's reachability.
+  const result = await registryManager.executeTool(
+    toolName,
+    toolArguments,
+    effectiveInstanceUrl,
+    requestScopes,
+  );
+  // If executeTool returns undefined (TOCTOU: cache was refreshed between hasToolHandler and
+  // executeTool), fall through to the bootstrap path instead of returning {text: "undefined"}.
+  if (result === undefined) {
+    return null;
+  }
+  return formatToolResult(
+    result,
+    registryManager.getTool(toolName, effectiveInstanceUrl, requestScopes),
+  );
 }
 
 /**
@@ -338,7 +388,8 @@ async function ensureBootstrapped(ctx: BootstrapContext): Promise<CallToolResult
   const { effectiveInstanceUrl, oauthMode, requestScopes, connectionManager, bootstrapState } = ctx;
   bootstrapState.started = true;
   try {
-    if (!connectionManager.isConnected(effectiveInstanceUrl)) {
+    const firstInitialization = !connectionManager.isConnected(effectiveInstanceUrl);
+    if (firstInitialization) {
       if (LOG_FORMAT === 'verbose') {
         logInfo('Connection not initialized, attempting to initialize...');
       }
@@ -367,6 +418,9 @@ async function ensureBootstrapped(ctx: BootstrapContext): Promise<CallToolResult
         err: cacheError as Error,
       });
     }
+    // A list sent before the instance was initialized (a chat that just switched to it,
+    // say) could not be filtered by its version, tier and token scopes: clients list again.
+    if (firstInitialization) announceToolListChange(effectiveInstanceUrl);
     if (LOG_FORMAT === 'verbose') {
       try {
         const instanceInfo = connectionManager.getInstanceInfo(effectiveInstanceUrl);
@@ -381,6 +435,19 @@ async function ensureBootstrapped(ctx: BootstrapContext): Promise<CallToolResult
   } catch (initError) {
     return formatBootstrapFailure(ctx, initError);
   }
+}
+
+/**
+ * Tell the sessions on `instanceUrl` and the calling chat (a sessionless one, or one on the
+ * same instance with another account) that their tool list changed; best effort.
+ */
+function announceToolListChange(instanceUrl: string): void {
+  void import('./session-manager')
+    .then(({ getSessionManager }) => getSessionManager().broadcastToolsListChanged(instanceUrl))
+    .catch((error: unknown) => logDebug('Could not announce the tool list', { err: error }));
+  void currentMcpServer()
+    ?.sendToolListChanged()
+    .catch((error: unknown) => logDebug('Could not announce the tool list', { err: error }));
 }
 
 function bootstrapFailureState(
@@ -435,16 +502,129 @@ function formatBootstrapFailure(ctx: BootstrapContext, initError: unknown): Call
   return withReauthChallenge(errorToolResult(connError), initError);
 }
 
+/** manage_context actions that manage the connection's accounts. */
+const ACCOUNT_ACTIONS: ReadonlySet<string> = new Set([
+  'list_accounts',
+  'switch_account',
+  'link_account',
+  'unlink_account',
+]);
+
+/** Whether a call lists, switches, links or unlinks the connection's accounts. */
+function managesAccounts(request: CallToolRequest): boolean {
+  const action = request.params.arguments?.action;
+  return (
+    request.params.name === 'manage_context' &&
+    typeof action === 'string' &&
+    ACCOUNT_ACTIONS.has(action)
+  );
+}
+
 /**
  * The instance a request works with, normalized: the OAuth token's (the configured one
  * without a request context), else the instance the static token works with now.
  */
 function activeInstanceUrl(oauthEnabled: boolean, oauthContextUrl: string | undefined): string {
+  // A static-token chat works with the server's own instance, or the configured one it
+  // switched to; another chat's switch never moves it.
   const raw = oauthEnabled
     ? (oauthContextUrl ?? GITLAB_BASE_URL)
-    : (ConnectionManager.getInstance().getCurrentInstanceUrl() ?? GITLAB_BASE_URL);
+    : (currentTokenAccount()?.instanceUrl ?? GITLAB_BASE_URL);
   // Normalized so CONNECTION_FAILED instance_url and HealthMonitor keys are consistent.
   return normalizeInstanceUrl(raw);
+}
+
+/**
+ * Keep the session's instance URL in sync so ListTools requests reflect the instance its
+ * calls go to, and no other: in OAuth mode that is the token's instance, so context changes
+ * (switch_preset, reset) need no re-pin of their own. In OAuth mode only a real context URL
+ * is pinned; the GITLAB_BASE_URL fallback of a contextless call (health checks, non-OAuth
+ * transport) must not overwrite a session pinned to a specific instance. In static-token
+ * mode the active instance is always tracked.
+ *
+ * Account actions do not pin: they run as the connection's own account whichever account
+ * the chat switched to, and switch_account pins the instance it moves to itself.
+ */
+async function pinSessionInstance(
+  sessionId: string,
+  oauthEnabled: boolean,
+  oauthContextUrl: string | undefined,
+  instanceUrl: string,
+): Promise<void> {
+  if (oauthEnabled && oauthContextUrl === undefined) return;
+  const { getSessionManager } = await import('./session-manager');
+  getSessionManager().setSessionInstanceUrl(sessionId, instanceUrl);
+}
+
+const HANDLER_TIMEOUT = Symbol('handler_timeout');
+
+/** The time a call has from its arrival; resolving its account and running it share it. */
+interface CallDeadline {
+  expired: Promise<typeof HANDLER_TIMEOUT>;
+  isExpired: () => boolean;
+  clear: () => void;
+}
+
+function startCallDeadline(): CallDeadline {
+  let expired = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const promise = new Promise<typeof HANDLER_TIMEOUT>((resolve) => {
+    timer = setTimeout(() => {
+      expired = true;
+      resolve(HANDLER_TIMEOUT);
+    }, HANDLER_TIMEOUT_MS);
+  });
+  return { expired: promise, isExpired: () => expired, clear: () => clearTimeout(timer) };
+}
+
+/**
+ * The response to a call whose handler ran out of time; the handler may still be running.
+ * A bootstrap it left unfinished is reported to the health monitor.
+ */
+function handlerTimeoutResult(
+  request: CallToolRequest,
+  declaredIdempotent: boolean | undefined,
+  bootstrapState: BootstrapState,
+  requestInstanceUrl: string,
+): CallToolResult {
+  const toolName = request.params.name;
+  const requested = request.params.arguments?.action;
+  const action = typeof requested === 'string' ? requested : 'unknown';
+  const retryable = isIdempotentOperation(toolName, declaredIdempotent);
+  const timeoutError = createTimeoutError(toolName, action, HANDLER_TIMEOUT_MS, retryable);
+
+  logError(`Handler timeout: tool '${toolName}' timed out after ${HANDLER_TIMEOUT_MS}ms`);
+
+  // Only report to health monitor and clear inflight if bootstrap was
+  // actually attempted (not for disconnected manage_context bypass which
+  // does no GitLab I/O and shouldn't affect connection health).
+  if (bootstrapState.started && !bootstrapState.complete) {
+    // Use "timed out" so classifyError() reliably treats this as transient
+    // and triggers disconnected → auto-reconnect. Use a plain Error (not
+    // InitializationTimeoutError) because this is a handler-level timeout,
+    // not the startup init timeout from HealthMonitor.performConnect.
+    HealthMonitor.getInstance().reportError(
+      requestInstanceUrl,
+      new Error(`Handler timed out after ${HANDLER_TIMEOUT_MS}ms — bootstrap did not complete`),
+    );
+    ConnectionManager.getInstance().clearInflight(requestInstanceUrl);
+  }
+
+  recordEarlyReturnError(toolName, action, timeoutError.message);
+
+  return errorToolResult(timeoutError);
+}
+
+/** Record a failed call for the access log and on its connection's stats. */
+function recordToolError(errMsg: string): void {
+  const reqTracker = getRequestTracker();
+  reqTracker.setErrorForCurrentRequest(errMsg);
+
+  const curRequestId = getCurrentRequestId();
+  const sessionId = curRequestId ? reqTracker.getStack(curRequestId)?.sessionId : undefined;
+  if (sessionId) {
+    getConnectionTracker().recordError(sessionId, errMsg);
+  }
 }
 
 /**
@@ -748,7 +928,7 @@ export async function setupHandlers(server: Server): Promise<void> {
   // filtered for its target GitLab instance (#398). The sessionId from RequestHandlerExtra
   // resolves to the instance URL stored in SessionManager (set on session creation and
   // kept in sync by the CallToolRequestSchema handler on every tool call).
-  server.setRequestHandler(ListToolsRequestSchema, async (_request, extra) => {
+  const listTools = async (extra: { sessionId?: string } | undefined) => {
     logInfo('ListToolsRequest received');
 
     // Resolve the instance URL for this session so the tool list reflects the
@@ -788,7 +968,7 @@ export async function setupHandlers(server: Server): Promise<void> {
         ? registryManager.getAllToolDefinitions(sessionInstanceUrl, mode)
         : registryManager.getAllToolDefinitions(sessionInstanceUrl, mode, scopes);
     // A sessionless client (stdio) is listed with the settings of the instance its calls run
-    // against, which follows switch_instance.
+    // against, which follows the account the chat switched to.
     const callerInstanceUrl =
       sessionInstanceUrl ??
       activeInstanceUrl(isCatalogOAuth(), isCatalogOAuth() ? getCatalogUrl() : undefined);
@@ -899,13 +1079,27 @@ export async function setupHandlers(server: Server): Promise<void> {
     return {
       tools: modifiedTools,
     };
+  };
+  // The chat lists the tools of the account it works with. An account it switched to that
+  // cannot be used now lists the connection's own; every call is refused until it switches.
+  server.setRequestHandler(ListToolsRequestSchema, async (_request, extra) => {
+    try {
+      return await withChatAccount(extra?.sessionId, () => listTools(extra));
+    } catch (error) {
+      if (!(error instanceof AccountUnavailableError)) throw error;
+      return listTools(extra);
+    }
   });
 
   // Call tool handler — all tool execution is wrapped with a handler-level timeout
   // using Promise.race() so the client gets a response early on hang. The underlying
   // work may continue running after the timeout fires, but late results are guarded
   // by the timedOut flag to prevent overwriting the timeout error response.
-  server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
+  const callTool = async (
+    request: CallToolRequest,
+    extra: { sessionId?: string } | undefined,
+    deadline: CallDeadline,
+  ): Promise<CallToolResult> => {
     // Capture instance URL early — used for both handlerWork and timeout reporting.
     // Must be resolved before Promise.race so timeout branch doesn't re-derive a
     // potentially different URL after a concurrent instance change.
@@ -935,42 +1129,21 @@ export async function setupHandlers(server: Server): Promise<void> {
     const oauthContextUrl = oauthEnabled ? getUrlFromCtx() : undefined;
     const requestInstanceUrl = activeInstanceUrl(oauthEnabled, oauthContextUrl);
 
-    // Keep per-session instance URL in sync so ListTools requests reflect the correct
-    // instance. In OAuth mode only update when we have a real OAuth context URL —
-    // the GITLAB_BASE_URL fallback must NOT overwrite a session already pinned to a
-    // specific instance (contextless calls occur during health checks / non-OAuth
-    // transport; persisting the fallback would reset multi-tenant tool filtering).
-    // In static-token mode always track the active instance URL.
-    //
-    // The session lists tools of the instance its calls go to and of no other: in OAuth
-    // mode that is the token's instance. Context changes (switch_preset, reset) therefore
-    // need no re-pin of their own.
     const callSessionId = extra?.sessionId;
-    if (callSessionId && (!oauthEnabled || oauthContextUrl !== undefined)) {
-      const { getSessionManager: getSessionMgrForCall } = await import('./session-manager');
-      getSessionMgrForCall().setSessionInstanceUrl(callSessionId, requestInstanceUrl);
+    if (callSessionId && !managesAccounts(request)) {
+      await pinSessionInstance(callSessionId, oauthEnabled, oauthContextUrl, requestInstanceUrl);
     }
     // Whose settings apply, from the authenticated request only.
     const caller = resolveCaller(callSessionId, requestInstanceUrl);
 
-    // Flag to prevent late reportSuccess/reportError from a timed-out handlerWork()
-    // overwriting the timeout signal already sent to HealthMonitor.
-    let timedOut = false;
     // Tracks whether bootstrap was entered and whether it completed.
     // started: true once we enter the init/introspection path (not set for the
     //   disconnected manage_context bypass which does no GitLab I/O)
     // complete: true after init + introspection succeed (before cache rebuild)
     const bootstrapState: BootstrapState = { started: false, complete: false };
-
-    // Create a timeout promise that rejects after HANDLER_TIMEOUT_MS
-    const HANDLER_TIMEOUT_SYMBOL = Symbol('handler_timeout');
-    let handlerTimeoutId: ReturnType<typeof setTimeout> | undefined;
-    const timeoutPromise = new Promise<typeof HANDLER_TIMEOUT_SYMBOL>((resolve) => {
-      handlerTimeoutId = setTimeout(() => {
-        timedOut = true;
-        resolve(HANDLER_TIMEOUT_SYMBOL);
-      }, HANDLER_TIMEOUT_MS);
-    });
+    // A late reportSuccess/reportError from a timed-out handlerWork() must not overwrite the
+    // timeout signal already sent to HealthMonitor.
+    const timedOut = deadline.isExpired;
 
     // The actual handler logic as a separate async function
     const handlerWork = async (): Promise<CallToolResult> => {
@@ -1024,16 +1197,16 @@ export async function setupHandlers(server: Server): Promise<void> {
       );
       if (unreachableResult) return unreachableResult;
 
-      // manage_context fast-path when disconnected: bypass bootstrap and health reporting
-      const fastPathResult = await tryManageContextFastPath(
-        toolName,
+      // Configuration tools while disconnected, and the account actions: no bootstrap
+      const withoutBootstrap = await tryWithoutBootstrap(
+        request,
         toolArguments,
         effectiveInstanceUrl,
         healthMonitor,
         callSessionId,
         requestScopes,
       );
-      if (fastPathResult) return fastPathResult;
+      if (withoutBootstrap) return withoutBootstrap;
 
       // Initialize connection, verify client, and rebuild the per-URL tool cache
       const oauthMode = isOAuthEnabled();
@@ -1045,7 +1218,7 @@ export async function setupHandlers(server: Server): Promise<void> {
         requestScopes,
         connectionManager,
         healthMonitor,
-        isTimedOut: () => timedOut,
+        isTimedOut: timedOut,
         bootstrapState,
       });
       if (bootstrapFailure) return bootstrapFailure;
@@ -1116,13 +1289,13 @@ export async function setupHandlers(server: Server): Promise<void> {
 
         // Report success — skip if handler already timed out (late completion
         // must not overwrite the timeout error already sent to HealthMonitor)
-        if (!timedOut) {
+        if (!timedOut()) {
           healthMonitor.reportSuccess(effectiveInstanceUrl);
         }
 
         return formatToolResult(result, definition);
       } catch (error) {
-        throwDispatchError(error, toolName, effectiveInstanceUrl, healthMonitor, timedOut);
+        throwDispatchError(error, toolName, effectiveInstanceUrl, healthMonitor, timedOut());
       }
     };
 
@@ -1132,60 +1305,23 @@ export async function setupHandlers(server: Server): Promise<void> {
       // complete — but the alternative (no timeout) leaves bootstrap unbounded
       // if the instance is hung. The timedOut flag prevents late reportSuccess/
       // reportError from overwriting the timeout health signal.
-      const result = await Promise.race([runWithCaller(caller, handlerWork), timeoutPromise]);
+      const result = await Promise.race([runWithCaller(caller, handlerWork), deadline.expired]);
 
-      if (result === HANDLER_TIMEOUT_SYMBOL) {
-        // timedOut already set in timer callback — handler is still running but we respond
-        const toolName = request.params.name;
-        const action =
-          request.params.arguments && typeof request.params.arguments.action === 'string'
-            ? request.params.arguments.action
-            : 'unknown';
-        const retryable = isIdempotentOperation(toolName, declaredIdempotent);
-        const timeoutError = createTimeoutError(toolName, action, HANDLER_TIMEOUT_MS, retryable);
-
-        logError(`Handler timeout: tool '${toolName}' timed out after ${HANDLER_TIMEOUT_MS}ms`);
-
-        // Only report to health monitor and clear inflight if bootstrap was
-        // actually attempted (not for disconnected manage_context bypass which
-        // does no GitLab I/O and shouldn't affect connection health).
-        if (bootstrapState.started && !bootstrapState.complete) {
-          // Use "timed out" so classifyError() reliably treats this as transient
-          // and triggers disconnected → auto-reconnect. Use a plain Error (not
-          // InitializationTimeoutError) because this is a handler-level timeout,
-          // not the startup init timeout from HealthMonitor.performConnect.
-          HealthMonitor.getInstance().reportError(
-            requestInstanceUrl,
-            new Error(
-              `Handler timed out after ${HANDLER_TIMEOUT_MS}ms — bootstrap did not complete`,
-            ),
-          );
-          ConnectionManager.getInstance().clearInflight(requestInstanceUrl);
-        }
-
-        recordEarlyReturnError(toolName, action, timeoutError.message);
-
-        return errorToolResult(timeoutError);
+      // The deadline expired — handler is still running but we respond
+      if (result === HANDLER_TIMEOUT) {
+        return handlerTimeoutResult(
+          request,
+          declaredIdempotent,
+          bootstrapState,
+          requestInstanceUrl,
+        );
       }
 
       return result;
     } catch (error) {
       const errMsg = error instanceof Error ? error.message : String(error);
       logError(`Error in tool handler: ${errMsg}`);
-
-      // Record error for access logging
-      const reqTracker = getRequestTracker();
-      reqTracker.setErrorForCurrentRequest(errMsg);
-
-      // Record error on connection stats
-      const curRequestId = getCurrentRequestId();
-      if (curRequestId) {
-        const stack = reqTracker.getStack(curRequestId);
-        if (stack?.sessionId) {
-          const connTracker = getConnectionTracker();
-          connTracker.recordError(stack.sessionId, errMsg);
-        }
-      }
+      recordToolError(errMsg);
 
       // Try to convert to structured error for better LLM feedback
       const toolName = request.params.name;
@@ -1200,8 +1336,45 @@ export async function setupHandlers(server: Server): Promise<void> {
       // Fallback to original error format
       const errorMessage = error instanceof Error ? error.message : String(error);
       return withReauthChallenge(errorToolResult({ error: errorMessage }), error);
-    } finally {
-      clearTimeout(handlerTimeoutId);
     }
-  });
+  };
+  // A call runs as the account its chat works with; one that cannot be used refuses it.
+  // Managing the accounts needs no account's token, so it also runs when the chosen one
+  // cannot be used: that is how the chat switches away from it.
+  // The timeout starts when the call arrives: resolving the account (a token refresh, a
+  // wait for another replica's refresh lease) counts against it like the handler does.
+  server.setRequestHandler(CallToolRequestSchema, (request, extra) =>
+    runWithMcpServer(server, async () => {
+      const deadline = startCallDeadline();
+      try {
+        if (managesAccounts(request)) return await callTool(request, extra, deadline);
+        let running = false;
+        const call = withChatAccount(extra?.sessionId, async () => {
+          // The client was already answered with a timeout: the tool must not run behind it.
+          if (deadline.isExpired()) return undefined;
+          running = true;
+          return callTool(request, extra, deadline);
+        });
+        const first = await Promise.race([call, deadline.expired]);
+        if (first !== HANDLER_TIMEOUT && first !== undefined) return first;
+        // A running handler answers its own timeout, with what its bootstrap reached.
+        const answered = running ? await call : undefined;
+        if (answered) return answered;
+        call.catch((error: unknown) =>
+          logDebug('Account resolution failed after the call timed out', { err: error }),
+        );
+        return handlerTimeoutResult(
+          request,
+          undefined,
+          { started: false, complete: false },
+          GITLAB_BASE_URL,
+        );
+      } catch (error) {
+        if (!(error instanceof AccountUnavailableError)) throw error;
+        return errorToolResult({ error: error.message });
+      } finally {
+        deadline.clear();
+      }
+    }),
+  );
 }

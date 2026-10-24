@@ -21,11 +21,22 @@ import {
   AuthorizationCode,
   AuthCodeFlowState,
   RegisteredOAuthClient,
+  GitLabTokenResponse,
 } from './types';
 import { SessionStorageBackend, createStorageBackend } from './storage';
+import { isPastAgeLimit } from './storage/types';
+import type {
+  AbandonedFlowGrantHandler,
+  ExpiredSessionHandler,
+  LinkedAccountCommit,
+} from './storage/types';
 import type { AccountSettings, AccountSettingsRecord } from '../configuration/types';
 import { MemoryStorageBackend } from './storage/memory';
 import { logInfo, logError, logDebug } from '../logger';
+
+function withinAgeLimit(session: OAuthSession | undefined): OAuthSession | undefined {
+  return session && !isPastAgeLimit(session) ? session : undefined;
+}
 
 /**
  * Session store with pluggable storage backends
@@ -82,17 +93,18 @@ export class SessionStore {
   }
 
   /**
-   * Get session by MCP access token
+   * Get session by MCP access token. A session past its age limit is not found: it may
+   * still be stored until cleanup ends its grants, but it authenticates nothing.
    */
   async getSessionByToken(token: string): Promise<OAuthSession | undefined> {
-    return this.backend.getSessionByToken(token);
+    return withinAgeLimit(await this.backend.getSessionByToken(token));
   }
 
   /**
-   * Get session by MCP refresh token
+   * Get session by MCP refresh token; a session past its age limit is not found.
    */
   async getSessionByRefreshToken(refreshToken: string): Promise<OAuthSession | undefined> {
-    return this.backend.getSessionByRefreshToken(refreshToken);
+    return withinAgeLimit(await this.backend.getSessionByRefreshToken(refreshToken));
   }
 
   /**
@@ -144,6 +156,32 @@ export class SessionStore {
    */
   async getAllSessions(): Promise<OAuthSession[]> {
     return this.backend.getAllSessions();
+  }
+
+  /**
+   * Whether the backend can read and atomically commit linked accounts. Older database
+   * packages must not enable linking with only part of its storage contract implemented.
+   */
+  linksAccounts(): boolean {
+    const backend = this.backend as Partial<SessionStorageBackend>;
+    return (
+      typeof backend.getLinkedSessions === 'function' &&
+      typeof backend.commitLinkedAccount === 'function' &&
+      typeof backend.cacheLinkedFlowTokens === 'function'
+    );
+  }
+
+  /** The GitLab accounts linked to a session, oldest first. */
+  async getLinkedSessions(sessionId: string): Promise<OAuthSession[]> {
+    return this.backend.getLinkedSessions(sessionId);
+  }
+
+  /** Commit an account and consume its flow under the same storage transaction. */
+  async commitLinkedAccount(commit: LinkedAccountCommit): Promise<boolean> {
+    if (!this.backend.commitLinkedAccount) {
+      throw new Error('The session storage backend cannot commit account links atomically');
+    }
+    return this.backend.commitLinkedAccount(commit);
   }
 
   /**
@@ -220,6 +258,16 @@ export class SessionStore {
    */
   async storeAuthCodeFlow(internalState: string, flow: AuthCodeFlowState): Promise<void> {
     await this.backend.storeAuthCodeFlow(internalState, flow);
+  }
+
+  async cacheLinkedFlowTokens(
+    flow: AuthCodeFlowState,
+    tokens: GitLabTokenResponse,
+  ): Promise<boolean> {
+    if (!this.backend.cacheLinkedFlowTokens) {
+      throw new Error('The session storage backend cannot safely cache account-link tokens');
+    }
+    return this.backend.cacheLinkedFlowTokens(flow, tokens);
   }
 
   /**
@@ -360,10 +408,10 @@ export class SessionStore {
   }
 
   /**
-   * Get OAuth session by MCP session ID
+   * Get OAuth session by MCP session ID; a session past its age limit is not found.
    */
   async getSessionByMcpSessionId(mcpSessionId: string): Promise<OAuthSession | undefined> {
-    return this.backend.getSessionByMcpSessionId(mcpSessionId);
+    return withinAgeLimit(await this.backend.getSessionByMcpSessionId(mcpSessionId));
   }
 
   /**
@@ -384,6 +432,26 @@ export class SessionStore {
   // ============================================================
   // Cleanup Operations
   // ============================================================
+
+  /**
+   * End the GitLab grant of each expired authorization flow cleanup removes unfinished.
+   * A database package older than this server has no such hook; its cleanup removes those
+   * flows as before.
+   */
+  onAbandonedFlowGrant(handler: AbandonedFlowGrantHandler, leaseMs: number): void {
+    const backend = this.backend as Partial<SessionStorageBackend>;
+    backend.onAbandonedFlowGrant?.(handler, leaseMs);
+  }
+
+  /**
+   * Remove each session that reaches its age limit through `handler`, which ends its GitLab
+   * grants and those of its linked accounts. A database package older than this server has
+   * no such hook; its cleanup deletes those sessions as before.
+   */
+  onExpiredSession(handler: ExpiredSessionHandler): void {
+    const backend = this.backend as Partial<SessionStorageBackend>;
+    backend.onExpiredSession?.(handler);
+  }
 
   /**
    * Clean up all expired entries

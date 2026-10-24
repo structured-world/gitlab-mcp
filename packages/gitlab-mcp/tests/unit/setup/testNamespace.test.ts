@@ -1,4 +1,17 @@
-const { findTestRoot, deleteLifecycleGroup } = require('../../setup/testNamespace.js');
+import { spawn, type ChildProcess } from 'node:child_process';
+import * as fs from 'node:fs';
+import type * as net from 'node:net';
+import * as os from 'node:os';
+import * as path from 'node:path';
+
+const {
+  findTestRoot,
+  deleteLifecycleGroup,
+  cleanupStaleRun,
+  listLifecycleGroups,
+  acquireRunLock,
+  releaseRunLock,
+} = require('../../setup/testNamespace.js');
 
 describe('Integration namespace boundary', () => {
   const apiUrl = 'https://gitlab.example';
@@ -219,5 +232,166 @@ describe('Integration namespace boundary', () => {
     request.mockResolvedValueOnce(ok(root)).mockResolvedValueOnce(ok(group));
     request.mockResolvedValueOnce({ ok: false, status: 403 });
     await expect(deleteLifecycleGroup(request, apiUrl, token, group)).rejects.toThrow('403');
+  });
+
+  // A saved group someone already removed leaves nothing to clean; failing on it would
+  // block every later run that finds the same record.
+  it('reports a saved group that no longer exists as removed without deleting', async () => {
+    request.mockResolvedValueOnce(ok(root)).mockResolvedValueOnce({ ok: false, status: 404 });
+    await expect(deleteLifecycleGroup(request, apiUrl, token, group)).resolves.toBe('removed');
+    expect(request).toHaveBeenCalledTimes(2);
+  });
+
+  describe('a run interrupted before its teardown', () => {
+    let dir: string;
+    let dataFile: string;
+
+    beforeEach(() => {
+      dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lifecycle-stale-test-'));
+      dataFile = path.join(dir, 'gitlab-mcp-test-data.json');
+    });
+
+    afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+    it('does nothing without a record of a previous run', async () => {
+      await expect(cleanupStaleRun(request, apiUrl, token, dataFile)).resolves.toBe('none');
+      expect(request).not.toHaveBeenCalled();
+    });
+
+    // Dropping the record alone would leave the previous run's group in GitLab for good.
+    it('deletes the recorded group before dropping the record', async () => {
+      fs.writeFileSync(dataFile, JSON.stringify({ group }));
+      request
+        .mockResolvedValueOnce(ok(root))
+        .mockResolvedValueOnce(ok(group))
+        .mockResolvedValueOnce({ ok: true })
+        .mockResolvedValueOnce({ ok: false, status: 404 });
+      await expect(cleanupStaleRun(request, apiUrl, token, dataFile)).resolves.toBe('removed');
+      expect(request.mock.calls.map((call) => call[1].method || 'GET')).toContain('DELETE');
+      expect(fs.existsSync(dataFile)).toBe(false);
+    });
+
+    // A failed cleanup keeps the only record of the group so it can still be removed.
+    it('keeps the record when the recorded group cannot be deleted', async () => {
+      fs.writeFileSync(dataFile, JSON.stringify({ group }));
+      request
+        .mockResolvedValueOnce(ok(root))
+        .mockResolvedValueOnce(ok(group))
+        .mockResolvedValueOnce({ ok: false, status: 403 });
+      await expect(cleanupStaleRun(request, apiUrl, token, dataFile)).rejects.toThrow(
+        group.full_path,
+      );
+      expect(fs.existsSync(dataFile)).toBe(true);
+    });
+
+    // A run killed while it wrote its record leaves it cut short: it names no group, and it
+    // must not stop every later run (orphans are found by listing the subgroups).
+    it('drops an unreadable record', async () => {
+      fs.writeFileSync(dataFile, '{"group": {"id": 9');
+      await expect(cleanupStaleRun(request, apiUrl, token, dataFile)).resolves.toBe('none');
+      expect(request).not.toHaveBeenCalled();
+      expect(fs.existsSync(dataFile)).toBe(false);
+    });
+
+    // A record written before the run created its group has nothing to clean.
+    it('drops a record without a group', async () => {
+      fs.writeFileSync(dataFile, JSON.stringify({}));
+      await expect(cleanupStaleRun(request, apiUrl, token, dataFile)).resolves.toBe('none');
+      expect(request).not.toHaveBeenCalled();
+      expect(fs.existsSync(dataFile)).toBe(false);
+    });
+  });
+
+  // Runs on one machine share the record of their group, so only one runs at a time: a
+  // second run must not take the first one's live group for an interrupted run's leftover.
+  describe('the integration run lock', () => {
+    // A port the system just handed out and took back, so free for this test.
+    async function freePort(): Promise<number> {
+      const probe = await acquireRunLock(0);
+      const { port } = probe.address() as net.AddressInfo;
+      await releaseRunLock(probe);
+      return port;
+    }
+
+    // Another run in its own process, holding the lock until it is killed.
+    async function runInAnotherProcess(port: number): Promise<ChildProcess> {
+      const lockModule = path.resolve(__dirname, '../../setup/testNamespace.js');
+      const child = spawn(
+        process.execPath,
+        [
+          '-e',
+          `require(${JSON.stringify(lockModule)}).acquireRunLock(${port})` +
+            `.then(() => { console.log('held'); setInterval(() => {}, 1000); });`,
+        ],
+        { stdio: ['ignore', 'pipe', 'inherit'] },
+      );
+      await new Promise<void>((resolve, reject) => {
+        child.stdout?.once('data', () => resolve());
+        child.once('exit', (code) => reject(new Error(`lock holder exited with ${code}`)));
+      });
+      return child;
+    }
+
+    async function kill(child: ChildProcess): Promise<void> {
+      const exited = new Promise((resolve) => child.once('exit', resolve));
+      child.kill('SIGKILL');
+      await exited;
+    }
+
+    it('refuses to start while another run holds the lock', async () => {
+      const port = await freePort();
+      const other = await runInAnotherProcess(port);
+      try {
+        await expect(acquireRunLock(port)).rejects.toThrow('Another integration run');
+      } finally {
+        await kill(other);
+      }
+    });
+
+    // A run killed before its teardown leaves nothing to take over: the next run starts and
+    // then cleans up after the dead run.
+    it('is free again once the run holding it is killed', async () => {
+      const port = await freePort();
+      await kill(await runInAnotherProcess(port));
+      const lock = await acquireRunLock(port);
+      try {
+        expect(lock.listening).toBe(true);
+        expect(lock.address()).toMatchObject({ address: '127.0.0.1', port });
+      } finally {
+        await releaseRunLock(lock);
+      }
+    });
+
+    it('is free again once the run releases it, and releasing twice is harmless', async () => {
+      const port = await freePort();
+      const lock = await acquireRunLock(port);
+      await expect(acquireRunLock(port)).rejects.toThrow(String(port));
+      await releaseRunLock(lock);
+      await expect(releaseRunLock(lock)).resolves.toBeUndefined();
+      // A setup that failed before taking the lock leaves nothing to release.
+      await expect(releaseRunLock(undefined)).resolves.toBeUndefined();
+      await releaseRunLock(await acquireRunLock(port));
+    });
+  });
+
+  // Orphans are found under the root test group only, across every page, and only
+  // the suite's own lifecycle subgroups are returned.
+  it('lists lifecycle subgroups of the root test group across pages', async () => {
+    const other = { id: 92, full_path: 'test/backend', parent_id: root.id };
+    const second = { id: 93, full_path: 'test/lifecycle-test-1791488999999', parent_id: root.id };
+    request
+      .mockResolvedValueOnce(ok(root))
+      .mockResolvedValueOnce({
+        ...ok([group, other]),
+        headers: new Headers({ 'x-next-page': '2' }),
+      })
+      .mockResolvedValueOnce({ ...ok([second]), headers: new Headers({ 'x-next-page': '' }) });
+    await expect(listLifecycleGroups(request, apiUrl, token)).resolves.toEqual([group, second]);
+    expect(request).toHaveBeenNthCalledWith(
+      2,
+      `${apiUrl}/api/v4/groups/${root.id}/subgroups?search=lifecycle-test&per_page=100&page=1`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    expect(request).toHaveBeenCalledTimes(3);
   });
 });

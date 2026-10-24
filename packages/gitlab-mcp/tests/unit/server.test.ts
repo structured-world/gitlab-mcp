@@ -145,6 +145,9 @@ jest.mock('../../src/oauth/index', () => ({
 // OAuth routes have their own HTTP tests; here only their registration matters.
 jest.mock('../../src/oauth/routes', () => ({ registerOAuthEndpoints: jest.fn() }));
 
+// The session store's start has its own tests; here only that OAuth starts it matters.
+jest.mock('../../src/oauth/grant-revocation', () => ({ startSessionStore: jest.fn() }));
+
 // Mock session manager
 jest.mock('../../src/session-manager', () => ({
   getSessionManager: jest.fn(() => mockSessionManager),
@@ -158,7 +161,9 @@ import {
   sessionStore as mockSessionStore,
   runWithTokenContext,
   isOAuthEnabled,
+  loadOAuthConfig,
 } from '../../src/oauth/index';
+import { startSessionStore } from '../../src/oauth/grant-revocation';
 import { oauthAuthMiddleware } from '../../src/middleware';
 
 describe('server', () => {
@@ -463,6 +468,17 @@ describe('server', () => {
       await messagesHandler(mockReq, mockRes);
 
       expect(mockLogDebug).toHaveBeenCalledWith('SSE messages endpoint hit!');
+    });
+
+    // With OAuth the session store holds every connection, and its start runs the cleanup
+    // that ends the grants of sessions that expired while the server was stopped.
+    it('starts the session store with the OAuth configuration', async () => {
+      const oauthConfig = { gitlabClientId: 'app', issuer: 'https://mcp.example.com' };
+      (loadOAuthConfig as jest.Mock).mockReturnValueOnce(oauthConfig);
+
+      await startServer();
+
+      expect(startSessionStore).toHaveBeenCalledWith(oauthConfig);
     });
 
     // In OAuth mode the legacy SSE transport ran tools without any credentials check.
@@ -1242,7 +1258,10 @@ describe('server', () => {
       );
 
       // Should not throw when onsessionclosed triggers removeSession error
-      expect(() => lastStreamableOpts!.onsessionclosed!('failing-session')).not.toThrow();
+      const sessionId = lastStreamableOpts!.sessionIdGenerator!();
+      lastStreamableOpts!.onsessioninitialized!(sessionId);
+      expect(() => lastStreamableOpts!.onsessionclosed!(sessionId)).not.toThrow();
+      expect(mockSessionManager.removeSession).toHaveBeenCalledWith(sessionId);
     });
 
     it('should invoke onsessionclosed and cleanup session', async () => {
@@ -1261,13 +1280,88 @@ describe('server', () => {
 
       // Call onsessionclosed to simulate SDK session close
       expect(lastStreamableOpts!.onsessionclosed).toBeDefined();
-      lastStreamableOpts!.onsessionclosed!('closed-session-id');
+      const sessionId = lastStreamableOpts!.sessionIdGenerator!();
+      lastStreamableOpts!.onsessioninitialized!(sessionId);
+      lastStreamableOpts!.onsessionclosed!(sessionId);
 
-      expect(mockSessionManager.removeSession).toHaveBeenCalledWith('closed-session-id');
+      expect(mockSessionManager.removeSession).toHaveBeenCalledWith(sessionId);
       expect(mockLogInfo).toHaveBeenCalledWith('StreamableHTTP session closed', {
-        sessionId: 'closed-session-id',
+        sessionId,
         reason: 'session_closed',
       });
+
+      // The transport's close that follows a DELETE finds the session already gone.
+      mockSessionManager.removeSession.mockClear();
+      (mockTransport as { onclose?: () => void }).onclose?.();
+      expect(mockSessionManager.removeSession).not.toHaveBeenCalled();
+    });
+
+    // A session that closes while its association is still being written must not have the
+    // write land after the removal and leave a mapping for a session that no longer exists.
+    it('removes the MCP session association only after writing it finished', async () => {
+      process.env.PORT = '3000';
+      let finishAssociation!: () => void;
+      (mockSessionStore.associateMcpSession as jest.Mock).mockImplementationOnce(
+        () => new Promise<void>((resolve) => (finishAssociation = resolve)),
+      );
+      await startServer();
+      const mcpHandler = mockApp.all.mock.calls.find(
+        (call) => Array.isArray(call[0]) && call[0].includes('/mcp'),
+      )[1];
+      await mcpHandler(
+        { headers: {}, method: 'POST', path: '/mcp', body: {} },
+        {
+          status: jest.fn().mockReturnThis(),
+          json: jest.fn(),
+          headersSent: false,
+          locals: { oauthSessionId: 'oauth-session-123' },
+        },
+      );
+      const sessionId = lastStreamableOpts!.sessionIdGenerator!();
+      lastStreamableOpts!.onsessioninitialized!(sessionId);
+
+      lastStreamableOpts!.onsessionclosed!(sessionId);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(mockSessionStore.removeMcpSessionAssociation).not.toHaveBeenCalled();
+
+      finishAssociation();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(mockSessionStore.removeMcpSessionAssociation).toHaveBeenCalledWith(sessionId);
+    });
+
+    // A transport closed without a DELETE (idle eviction, shutdown) must leave the session
+    // map: otherwise every evicted session stays in it for the life of the process.
+    it('drops a StreamableHTTP transport closed without a DELETE', async () => {
+      process.env.PORT = '3000';
+      await startServer();
+      const mcpHandler = mockApp.all.mock.calls.find(
+        (call) => Array.isArray(call[0]) && call[0].includes('/mcp'),
+      )[1];
+      await mcpHandler(
+        { headers: {}, method: 'POST', path: '/mcp', body: {} },
+        { status: jest.fn().mockReturnThis(), json: jest.fn(), headersSent: false, locals: {} },
+      );
+      const sessionId = lastStreamableOpts!.sessionIdGenerator!();
+      lastStreamableOpts!.onsessioninitialized!(sessionId);
+
+      // The SDK calls onclose when the session's server closes the transport.
+      (mockTransport as { onclose?: () => void }).onclose?.();
+      mockTransport.handleRequest.mockClear();
+
+      const res = {
+        status: jest.fn().mockReturnThis(),
+        json: jest.fn(),
+        headersSent: false,
+        locals: {},
+      };
+      await mcpHandler(
+        { headers: { 'mcp-session-id': sessionId }, method: 'POST', path: '/mcp', body: {} },
+        res,
+      );
+
+      expect(mockTransport.handleRequest).not.toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(404);
+      expect(mockSessionStore.removeMcpSessionAssociation).toHaveBeenCalledWith(sessionId);
     });
 
     it('should touch session and reuse transport for existing StreamableHTTP sessions', async () => {

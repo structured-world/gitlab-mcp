@@ -27,10 +27,38 @@ Invoke a skill by its installed name, for example `$gitlab-ci` in Codex, or ask
 when they apply; unrelated requests should not select GitLab workflows. Tool prefixes
 depend on the configured connection name, so skills resolve the installed catalog.
 
-This shared workflow foundation does not itself install a desktop plugin, provide
-a native settings panel, or introduce a new OAuth account-linking flow. Use the
-existing host connection/authentication entry points. Never paste access tokens
-into the conversation. Claude Channels remain an optional Claude capability.
+Use the host's connection/authentication entry points to sign in. Additional GitLab
+accounts can then be linked from the chat as described below. Never paste access
+tokens into the conversation. Claude Channels remain an optional Claude capability.
+
+## Work with multiple GitLab accounts
+
+One connection can keep accounts on the same or different GitLab instances. Use
+`manage_context` to select the account for the current chat:
+
+1. Call `{ "action": "list_accounts" }` to see the available accounts and the active one.
+2. With OAuth, call `{ "action": "link_account", "instance": "https://gitlab.com" }`
+   to link another account on a configured instance. Open the returned sign-in link,
+   or accept the client's offer to open it when URL elicitation is supported.
+3. The browser first confirms the account the connection signed in with, then asks
+   you to sign in with the account to link. Complete both steps in the same browser.
+   On the same instance, the flow pauses so you can switch GitLab accounts before
+   continuing. The link expires after ten minutes and works once.
+4. Call `list_accounts` again, then
+   `{ "action": "switch_account", "account": "<id returned by list_accounts>" }`.
+   Requests, settings and tool availability now follow that account. Other chats
+   and calls already in flight keep their account.
+
+To remove an inactive linked account, call
+`{ "action": "unlink_account", "account": "<id returned by list_accounts>" }`.
+The connection's original account cannot be unlinked. A new MCP session starts
+with that original account; the additional OAuth accounts remain linked when
+the server uses persistent session storage.
+
+With a static token, `list_accounts` lists configured instances with their own
+tokens and `switch_account` selects one; browser linking and unlinking are OAuth
+operations. See [Context switching](/advanced/context-switching) for the complete
+flow and [Instance configuration](/configuration/instances) for `tokenEnv` setup.
 
 ## Client contracts
 
@@ -62,7 +90,7 @@ into the conversation. Claude Channels remain an optional Claude capability.
 }
 ```
 
-All eight context actions have declared data shapes. Arrays live inside `data`.
+All context actions have declared data shapes. Arrays live inside `data`.
 The previous domain JSON remains in text content, preserving Claude's readable
 results. Large entity results, diffs and job logs keep their existing text contract
 and are not duplicated as full structured payloads.

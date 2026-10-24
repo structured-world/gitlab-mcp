@@ -107,21 +107,13 @@ export class MemoryStorageBackend implements SessionStorageBackend {
   }
 
   /** Restore both halves of a link after a failed file write, while its queue is held. */
-  private undoLinkedAccount(
+  private restoreLinkedAccount(
     { account, internalState }: LinkedAccountCommit,
-    {
-      stored,
-      previous,
-      flow,
-      accessOwner,
-      refreshOwner,
-    }: {
-      stored: OAuthSession | undefined;
-      previous: OAuthSession | undefined;
-      flow: AuthCodeFlowState;
-      accessOwner: string | undefined;
-      refreshOwner: string | undefined;
-    },
+    stored: OAuthSession | undefined,
+    previous: OAuthSession | undefined,
+    flow: AuthCodeFlowState,
+    accessOwner: string | undefined,
+    refreshOwner: string | undefined,
   ): void {
     if (stored && previous) {
       Object.assign(stored, previous);
@@ -169,9 +161,9 @@ export class MemoryStorageBackend implements SessionStorageBackend {
       return false;
 
     const stored = this.sessions.get(account.id);
-    const previous = persist && stored && { ...stored };
-    const previousAccessOwner = this.tokenToSession.get(account.mcpAccessToken);
-    const previousRefreshOwner = this.refreshTokenToSession.get(account.mcpRefreshToken);
+    let previous: OAuthSession | undefined;
+    let previousAccessOwner: string | undefined;
+    let previousRefreshOwner: string | undefined;
     if (existing) {
       if (
         stored?.linkedToSessionId !== parent ||
@@ -180,6 +172,7 @@ export class MemoryStorageBackend implements SessionStorageBackend {
         existing.leaseUntil <= now
       )
         return false;
+      if (persist) previous = { ...stored };
       Object.assign(stored, {
         gitlabAccessToken: account.gitlabAccessToken,
         gitlabRefreshToken: account.gitlabRefreshToken,
@@ -190,6 +183,10 @@ export class MemoryStorageBackend implements SessionStorageBackend {
       });
     } else {
       if (stored) return false;
+      if (persist) {
+        previousAccessOwner = this.tokenToSession.get(account.mcpAccessToken);
+        previousRefreshOwner = this.refreshTokenToSession.get(account.mcpRefreshToken);
+      }
       this.insertSession(account);
     }
     this.authCodeFlows.delete(internalState);
@@ -199,13 +196,14 @@ export class MemoryStorageBackend implements SessionStorageBackend {
       } catch (error: unknown) {
         // File storage serializes this write and lease claims. Undo both records in one
         // synchronous step, preserving timestamps and indexes as well as credentials.
-        this.undoLinkedAccount(commit, {
+        this.restoreLinkedAccount(
+          commit,
           stored,
           previous,
           flow,
-          accessOwner: previousAccessOwner,
-          refreshOwner: previousRefreshOwner,
-        });
+          previousAccessOwner,
+          previousRefreshOwner,
+        );
         throw error;
       }
     }

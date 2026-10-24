@@ -270,10 +270,8 @@ test('fences completion to the cached grant and retains a competing grant for cl
     replicas[0].cacheLinkedFlowTokens(flow, issued()),
     replicas[1].cacheLinkedFlowTokens(flow, other),
   ]);
-  assert.deepEqual(
-    results.toSorted((left, right) => Number(left) - Number(right)),
-    [false, true],
-  );
+  results.sort((left, right) => Number(left) - Number(right));
+  assert.deepEqual(results, [false, true]);
   const cached = (await replicas[0].getAuthCodeFlow(flow.internalState)).gitlabTokens;
   const winner = cached.access_token === other.access_token ? other : issued();
   const loser = winner.access_token === other.access_token ? issued() : other;
@@ -355,10 +353,8 @@ test('preserves cleanup ownership and rotated credentials during a late retry', 
 // Both replicas may have passed the browser/preflight checks; only one may spend the flow.
 test('concurrent deliveries commit exactly one account and consume the flow once', async () => {
   const results = await Promise.all(replicas.map((replica) => replica.commitLinkedAccount(commit)));
-  assert.deepEqual(
-    results.toSorted((left, right) => Number(left) - Number(right)),
-    [false, true],
-  );
+  results.sort((left, right) => Number(left) - Number(right));
+  assert.deepEqual(results, [false, true]);
   assert.equal(
     (await replicas[1].getSession(commit.account.id)).gitlabAccessToken,
     commit.account.gitlabAccessToken,

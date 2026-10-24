@@ -34,6 +34,7 @@ function response(): Record<string, unknown> {
     headers: { get: () => null },
     json: async () => [],
     text: async () => '',
+    body: new Response('').body,
     arrayBuffer: async () => new ArrayBuffer(0),
   };
 }

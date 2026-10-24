@@ -285,7 +285,9 @@ const GetJobSchema = z.object({
 
 // --- Action: logs ---
 const GetJobLogsSchema = z.object({
-  action: z.literal('logs').describe('Get job console output/logs'),
+  action: z
+    .literal('logs')
+    .describe('Read job logs with bounded memory and explicit byte truncation'),
   project_id: projectIdField,
   job_id: requiredId.describe('The ID of the job'),
   per_page: z
@@ -295,10 +297,11 @@ const GetJobLogsSchema = z.object({
     .max(10000)
     .optional()
     .describe(
-      'Maximum number of lines to return (default: 200, max: 10000). Use with start for pagination',
+      'Maximum source lines to return (default: 200, max: 10000). Up to 16 KiB per line and 1 MiB per page of source bytes; omitted content is reported in truncation.lines. Use with start for pagination',
     ),
   start: z
     .number()
+    .int()
     .optional()
     .describe(
       'Start from specific line number (0-based). Positive from beginning, negative from end (e.g., -100 = last 100 lines). Use nextStart from previous response to paginate',

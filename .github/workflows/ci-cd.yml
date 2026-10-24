@@ -41,7 +41,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: '22'
+          node-version: '24'
 
       - name: Enable Corepack
         run: corepack enable
@@ -71,6 +71,10 @@ jobs:
 
       - name: Build core project
         run: yarn build
+        working-directory: packages/gitlab-mcp
+
+      - name: Verify bounded trace streaming over HTTP
+        run: yarn test:trace
         working-directory: packages/gitlab-mcp
 
       - name: Build optional db package

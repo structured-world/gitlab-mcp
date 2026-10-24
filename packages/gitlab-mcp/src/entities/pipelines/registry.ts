@@ -8,6 +8,7 @@ import { getGitLabBaseUrl } from '../../utils/gitlab-base-url';
 import { logError } from '../../logger';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
 import { assertActionAllowed } from '../utils';
+import { readTracePage } from './trace';
 
 /**
  * Pipelines tools registry - 2 CQRS tools replacing 12 individual tools
@@ -97,45 +98,22 @@ export const pipelinesToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
             const response = await enhancedFetch(apiUrl);
 
             if (!response.ok) {
+              await response.body?.cancel();
               throw new Error(`GitLab API error: ${response.status} ${response.statusText}`);
             }
 
-            let trace = await response.text();
-            const lines = trace.split('\n');
-            const totalLines = lines.length;
-
             const defaultMaxLines = 200;
             const maxLinesToShow = per_page ?? defaultMaxLines;
-
-            let processedLines: string[];
+            const page = await readTracePage(response.body, maxLinesToShow, start);
+            const { lines: processedLines, totalLines, startLine: effectiveStart } = page;
             let outOfBoundsMessage = '';
-            // Track the effective start position for pagination metadata
-            let effectiveStart: number;
-
-            if (start !== undefined && start < 0) {
-              // Negative start: take from end of log
-              effectiveStart = Math.max(0, totalLines + start);
-              processedLines = lines.slice(start);
-              if (processedLines.length > maxLinesToShow) {
-                effectiveStart = totalLines - maxLinesToShow;
-                processedLines = processedLines.slice(-maxLinesToShow);
-              }
-            } else if (start !== undefined && start >= 0) {
-              effectiveStart = start;
+            if (start !== undefined && start >= 0) {
               if (start >= totalLines) {
-                processedLines = [];
                 outOfBoundsMessage = `[OUT OF BOUNDS: Start position ${start} exceeds total lines ${totalLines}. Available range: 0-${totalLines - 1}]`;
-              } else {
-                processedLines = lines.slice(start, start + maxLinesToShow);
-                if (start + maxLinesToShow > totalLines) {
-                  const availableFromStart = totalLines - start;
-                  outOfBoundsMessage = `[PARTIAL REQUEST: Requested ${maxLinesToShow} lines from position ${start}, but only ${availableFromStart} lines available]`;
-                }
+              } else if (start + maxLinesToShow > totalLines) {
+                const availableFromStart = totalLines - start;
+                outOfBoundsMessage = `[PARTIAL REQUEST: Requested ${maxLinesToShow} lines from position ${start}, but only ${availableFromStart} lines available]`;
               }
-            } else {
-              // No start specified: take last N lines (default behavior)
-              effectiveStart = Math.max(0, totalLines - maxLinesToShow);
-              processedLines = lines.slice(-maxLinesToShow);
             }
 
             const actualDataLines = processedLines.length;
@@ -158,18 +136,23 @@ export const pipelinesToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
               processedLines.unshift(truncationMessage);
             }
 
-            trace = processedLines.join('\n');
+            if (page.truncation) {
+              processedLines.unshift(
+                `[LOG CONTENT TRUNCATED: ${page.truncation.lines.length} source lines are incomplete due to byte limits. See truncation.lines; line pagination cannot recover omitted bytes.]`,
+              );
+            }
 
             const hasMore = effectiveStart + actualDataLines < totalLines;
             const nextStart = hasMore ? effectiveStart + actualDataLines : null;
 
             return {
-              trace,
+              trace: processedLines.join('\n'),
               totalLines,
               shownLines: actualDataLines,
               startLine: effectiveStart,
               hasMore,
               nextStart,
+              ...(page.truncation ? { truncation: page.truncation } : {}),
             };
           }
 

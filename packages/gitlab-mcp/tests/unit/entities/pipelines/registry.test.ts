@@ -534,6 +534,7 @@ describe('Pipelines Registry - CQRS Tools', () => {
       it('should get job trace without limit', async () => {
         const mockTrace = 'Running build...\nBuild successful\nTests passed';
         mockEnhancedFetch.mockResolvedValueOnce({
+          body: new Response(mockTrace).body,
           ok: true,
           status: 200,
           statusText: 'OK',
@@ -566,6 +567,7 @@ describe('Pipelines Registry - CQRS Tools', () => {
         const longTrace = lines.join('\n');
 
         mockEnhancedFetch.mockResolvedValueOnce({
+          body: new Response(longTrace).body,
           ok: true,
           status: 200,
           statusText: 'OK',
@@ -609,6 +611,7 @@ describe('Pipelines Registry - CQRS Tools', () => {
       it('should truncate long job trace when per_page is provided', async () => {
         const longTrace = Array(1000).fill('Very long line with lots of content here').join('\n');
         mockEnhancedFetch.mockResolvedValueOnce({
+          body: new Response(longTrace).body,
           ok: true,
           status: 200,
           statusText: 'OK',
@@ -647,6 +650,7 @@ describe('Pipelines Registry - CQRS Tools', () => {
         const fullTrace = lines.join('\n');
 
         mockEnhancedFetch.mockResolvedValueOnce({
+          body: new Response(fullTrace).body,
           ok: true,
           status: 200,
           statusText: 'OK',
@@ -692,6 +696,7 @@ describe('Pipelines Registry - CQRS Tools', () => {
         const fullTrace = lines.join('\n');
 
         mockEnhancedFetch.mockResolvedValueOnce({
+          body: new Response(fullTrace).body,
           ok: true,
           status: 200,
           statusText: 'OK',
@@ -733,6 +738,7 @@ describe('Pipelines Registry - CQRS Tools', () => {
         const fullTrace = lines.join('\n');
 
         mockEnhancedFetch.mockResolvedValueOnce({
+          body: new Response(fullTrace).body,
           ok: true,
           status: 200,
           statusText: 'OK',
@@ -788,6 +794,7 @@ describe('Pipelines Registry - CQRS Tools', () => {
         const fullTrace = lines.join('\n');
 
         mockEnhancedFetch.mockResolvedValueOnce({
+          body: new Response(fullTrace).body,
           ok: true,
           status: 200,
           statusText: 'OK',
@@ -827,6 +834,7 @@ describe('Pipelines Registry - CQRS Tools', () => {
         const fullTrace = lines.join('\n');
 
         mockEnhancedFetch.mockResolvedValueOnce({
+          body: new Response(fullTrace).body,
           ok: true,
           status: 200,
           statusText: 'OK',

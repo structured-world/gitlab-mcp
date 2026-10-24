@@ -1,5 +1,23 @@
 # Changelog
 
+## [12.0.0](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-db-v11.0.0...gitlab-mcp-db-v12.0.0) (2026-10-24)
+
+
+### ⚠ BREAKING CHANGES
+
+* **context:** link several GitLab accounts in one connection ([#693](https://github.com/structured-world/gitlab-mcp/issues/693))
+
+### Features
+
+* **context:** link several GitLab accounts in one connection ([#693](https://github.com/structured-world/gitlab-mcp/issues/693)) ([9517f31](https://github.com/structured-world/gitlab-mcp/commit/9517f31c39ad995f560a65410ac1081911904ea9)), closes [#681](https://github.com/structured-world/gitlab-mcp/issues/681)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @structured-world/gitlab-mcp bumped to 12.0.0
+
 ## [11.0.0](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-db-v10.1.0...gitlab-mcp-db-v11.0.0) (2026-10-16)
 
 

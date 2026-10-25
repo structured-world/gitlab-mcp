@@ -15,7 +15,7 @@ interface AllowedProject {
 }
 
 /** A project identity from GitLab, using one canonical form for IDs, paths and the picker. */
-async function readAllowedProject(
+export async function readAllowedProject(
   input: string,
   read: ReadResource,
 ): Promise<AllowedProject | undefined> {

@@ -69,7 +69,8 @@ import { executeScoped, parseScopedArguments } from './configuration/scoped-exec
 import { withScopePaths, withTargetPaths } from './configuration/scope-ids';
 import { operatorProjectRejection, withOperatorProjects } from './configuration/operator-projects';
 import { assertOperatorOwnership } from './configuration/operator-ownership';
-import { extractProjectsFromArgs, hasExplicitScopeTarget } from './profiles/scope-enforcer';
+import { extractProjectsFromArgs } from './profiles/scope-enforcer';
+import { withDefaultProject } from './configuration/default-project';
 
 interface JsonSchemaProperty {
   type?: string;
@@ -688,30 +689,26 @@ async function prepareScopedCall(
   args: Record<string, unknown>;
   policy: EffectivePolicy;
 }> {
-  const defaultProject = getEffectiveProjectId(undefined);
-  if (defaultProject && args.scope !== 'group' && !isExemptFromSettings(toolName)) {
-    const action = typeof args.action === 'string' ? args.action : undefined;
-    const declared = registryManager.getDeclaredArguments(toolName, action);
-    if (declared && !hasExplicitScopeTarget(args, declared)) {
-      const field = declared.has('project_id')
-        ? 'project_id'
-        : declared.has('projectId')
-          ? 'projectId'
-          : undefined;
-      if (field) args = { ...args, [field]: defaultProject };
-    }
-  }
   const unscoped = settingsRejection(toolName, args, withoutScope(configured), registryManager);
-  if (
-    unscoped ||
-    isExemptFromSettings(toolName) ||
-    (!configured.scopeEnforcer && GITLAB_ALLOWED_PROJECT_IDS.length === 0)
-  )
+  if (unscoped || isExemptFromSettings(toolName))
     return { rejection: unscoped, args, policy: configured };
+  const action = typeof args.action === 'string' ? args.action : undefined;
+  const defaultProject = getEffectiveProjectId(undefined);
+  const defaults = defaultProject
+    ? await withDefaultProject(
+        toolName,
+        args,
+        registryManager.getDeclaredArguments(toolName, action),
+        defaultProject,
+        expired,
+      )
+    : { args, read: undefined };
+  args = defaults.args;
+  if (!configured.scopeEnforcer && GITLAB_ALLOWED_PROJECT_IDS.length === 0)
+    return { rejection: null, args, policy: configured };
   const selected = parseScopedArguments(toolName, args);
   // The tool's parse keeps only the selected action's arguments, so only those are held to
   // the scope.
-  const action = typeof args.action === 'string' ? args.action : undefined;
   const declared =
     selected === args ? registryManager.getDeclaredArguments(toolName, action) : undefined;
   const own = declared
@@ -727,11 +724,11 @@ async function prepareScopedCall(
   }
   const policy =
     GITLAB_ALLOWED_PROJECT_IDS.length > 0
-      ? await withOperatorProjects(configured, undefined, expired, extractProjectsFromArgs(own))
-      : await withScopePaths(configured);
+      ? await withOperatorProjects(configured, defaults.read, expired, extractProjectsFromArgs(own))
+      : await withScopePaths(configured, defaults.read);
   const rejection = settingsRejection(
     toolName,
-    await withTargetPaths(own, undefined, policy.scopeEnforcer),
+    await withTargetPaths(own, defaults.read, policy.scopeEnforcer),
     policy,
     registryManager,
   );

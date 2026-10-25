@@ -2997,6 +2997,42 @@ describe('handlers', () => {
     });
 
     // An operator allowlist must constrain every project tool, independently of account settings.
+    it.each(['1', 'team/allowed', 'team%2Fallowed'])(
+      'keeps the todo project default %s numeric',
+      async (value) => {
+        const { gitlab } = await import('../../src/utils/gitlab-api');
+        const read = jest.spyOn(gitlab, 'get').mockResolvedValue({
+          id: 1,
+          path_with_namespace: 'team/allowed',
+          name_with_namespace: 'Team / Allowed',
+        });
+        const defaultProject = jest.mocked(runtimeConfig.getEffectiveProjectId);
+        defaultProject.mockReturnValue(value);
+        runtimeConfig.GITLAB_ALLOWED_PROJECT_IDS.push('1');
+        mockRegistryManager.getDeclaredArguments.mockReturnValueOnce(
+          new Set(['action', 'project_id']),
+        );
+        try {
+          const result = await callToolHandler(
+            { params: { name: 'browse_todos', arguments: { action: 'list' } } },
+            { sessionId: 'sess-1' },
+          );
+          expect(result.isError).not.toBe(true);
+          expect(mockRegistryManager.executeTool).toHaveBeenCalledWith(
+            'browse_todos',
+            expect.objectContaining({ action: 'list', project_id: 1 }),
+            expect.anything(),
+          );
+          expect(read).toHaveBeenCalledTimes(1);
+        } finally {
+          defaultProject.mockReset();
+          read.mockRestore();
+          runtimeConfig.GITLAB_ALLOWED_PROJECT_IDS.splice(0);
+        }
+      },
+    );
+
+    // A declared project default must be applied before a tool validates its required field.
     it('applies a configured default before validating a required project field', async () => {
       const defaultProject = jest.mocked(runtimeConfig.getEffectiveProjectId);
       defaultProject.mockReturnValue('1');

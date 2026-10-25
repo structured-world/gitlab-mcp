@@ -12,6 +12,7 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { setupHandlers, resetHandlersState } from '../../src/handlers';
 import * as scopeIds from '../../src/configuration/scope-ids';
+import * as runtimeConfig from '../../src/config';
 import { StructuredToolError, parseGitLabApiError } from '../../src/utils/error-handler';
 import { GitLabTimeoutError } from '../../src/utils/fetch';
 import { ConfigurationService } from '../../src/configuration/service';
@@ -96,6 +97,7 @@ jest.mock('../../src/registry-manager', () => ({
 
 // Mock config — use short HANDLER_TIMEOUT_MS for timeout tests
 jest.mock('../../src/config', () => ({
+  GITLAB_ALLOWED_PROJECT_IDS: [],
   LOG_FORMAT: 'condensed',
   HANDLER_TIMEOUT_MS: 100,
   GITLAB_BASE_URL: 'https://gitlab.example.com',
@@ -2998,6 +3000,42 @@ describe('handlers', () => {
       mockRegistryManager.getToolRegistryKey.mockImplementation((name: string) =>
         name.includes('merge_request') ? 'mrs' : 'context',
       );
+    });
+
+    // An operator allowlist must constrain every project tool, independently of account settings.
+    it('refuses another project before executing a pipeline tool', async () => {
+      runtimeConfig.GITLAB_ALLOWED_PROJECT_IDS.push('1');
+      try {
+        const result = await callToolHandler(
+          {
+            params: {
+              name: 'browse_pipelines',
+              arguments: { action: 'job', project_id: '2', job_id: '3' },
+            },
+          },
+          { sessionId: 'sess-1' },
+        );
+        expect(result.isError).toBe(true);
+        expect(mockRegistryManager.executeTool).not.toHaveBeenCalled();
+      } finally {
+        runtimeConfig.GITLAB_ALLOWED_PROJECT_IDS.splice(0);
+      }
+    });
+
+    // Clearing a personal working scope must never remove the operator's project restriction.
+    it('keeps the operator allowlist when the caller selects everywhere', async () => {
+      runtimeConfig.GITLAB_ALLOWED_PROJECT_IDS.push('1');
+      try {
+        await service().updateSession(staticCaller(), { scope: 'everywhere' });
+        const result = await callToolHandler(
+          { params: { name: 'browse_projects', arguments: { action: 'get', project_id: '2' } } },
+          { sessionId: 'sess-1' },
+        );
+        expect(result.isError).toBe(true);
+        expect(mockRegistryManager.executeTool).not.toHaveBeenCalled();
+      } finally {
+        runtimeConfig.GITLAB_ALLOWED_PROJECT_IDS.splice(0);
+      }
     });
 
     it('lists every tool for a caller without settings', async () => {

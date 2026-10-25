@@ -701,4 +701,13 @@ describe('extractGroupsFromArgs', () => {
       enforceArgsScope(new ScopeEnforcer({ group: 'team' }), { parent_id: 'other' }),
     ).toThrow(ScopeViolationError);
   });
+
+  // Invalid encodings cannot become group identities; namespace matching requires a boundary.
+  it('validates group encodings and namespace boundaries', () => {
+    const enforcer = new ScopeEnforcer({ namespace: 'team' });
+    expect(enforcer.isGroupAllowed('team')).toBe(true);
+    expect(enforcer.isGroupAllowed('team/sub')).toBe(true);
+    expect(enforcer.isGroupAllowed('team-other')).toBe(false);
+    expect(enforcer.isGroupAllowed('team/%ZZ')).toBe(false);
+  });
 });

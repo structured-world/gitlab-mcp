@@ -21,6 +21,69 @@ const project = { id: 'gid://gitlab/Project/71' };
 afterEach(() => jest.restoreAllMocks());
 
 describe('operator ownership', () => {
+  // Oversized or malformed metadata must fail closed before a suggestion can be applied.
+  it.each([
+    { items: Array(21).fill({}), nextPage: null, reason: 'verifiable suggestion' },
+    {
+      items: [{ suggestions: Array(101).fill({ id: 19 }) }],
+      nextPage: null,
+      reason: 'Too many suggestions',
+    },
+    { items: [], nextPage: 1, reason: 'invalid suggestion ownership cursor' },
+  ])('rejects invalid suggestion metadata $reason', async ({ items, nextPage, reason }) => {
+    jest.spyOn(gitlab, 'getPage').mockResolvedValue({ items, nextPage });
+    await expect(
+      assertOperatorOwnership(
+        'manage_mr_discussion',
+        { action: 'apply_suggestion', project_id: '71', merge_request_iid: '3', suggestion_id: 19 },
+        policy,
+        active,
+      ),
+    ).rejects.toThrow(reason);
+  });
+
+  // A completed HTTP response cannot authorize execution after the tool deadline.
+  it('rejects suggestion metadata arriving after expiry', async () => {
+    let expired = false;
+    jest.spyOn(gitlab, 'getPage').mockImplementation(async () => {
+      expired = true;
+      return { items: [{ suggestions: [{ id: 19 }] }], nextPage: null };
+    });
+    await expect(
+      assertOperatorOwnership(
+        'manage_mr_discussion',
+        { action: 'apply_suggestion', project_id: '71', merge_request_iid: '3', suggestion_id: 19 },
+        policy,
+        () => expired,
+      ),
+    ).rejects.toThrow('expired');
+  });
+
+  // Ownership metadata cannot turn a non-scalar argument into an authorized resource ID.
+  it.each([
+    { tool: 'browse_registry', args: { repository_id: {} } },
+    { tool: 'manage_vulnerability', args: { vulnerability_id: [] } },
+    { tool: 'manage_todos', args: { id: null } },
+  ])('rejects non-scalar IDs before metadata for $tool', async ({ tool, args }) => {
+    const read = jest.fn().mockResolvedValue({
+      containerRepository: { project },
+      vulnerability: { project },
+      todo: { project },
+    });
+    await expect(assertOperatorOwnership(tool, args, policy, active, read)).rejects.toThrow(
+      TypeError,
+    );
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  // Stop at the first denied owner instead of issuing requests for later relationship targets.
+  it('stops sequential verification at the first denied owner', async () => {
+    const read = jest.fn().mockResolvedValue({ workItem: null });
+    await expect(
+      assertOperatorOwnership('manage_work_item', { id: '1', targetId: '2' }, policy, active, read),
+    ).rejects.toThrow('not owned');
+    expect(read).toHaveBeenCalledTimes(1);
+  });
   // GitLab filters notes after pagination, so even an empty page can have a successor.
   it.each([{ notes: [] }, { notes: [{}] }])(
     'follows pagination headers after a filtered notes page %j',

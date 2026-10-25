@@ -769,7 +769,10 @@ async function executeInScope(
   policy: EffectivePolicy,
   instanceUrl: string | undefined,
   requestScopes: readonly string[] | undefined,
+  expired: () => boolean,
 ): Promise<unknown> {
+  await assertOperatorOwnership(toolName, requested, policy, expired);
+  if (expired()) throw new Error('Tool call expired before execution');
   // executeScoped wraps this runner so every call it makes in place of the requested one is
   // held to the preset's denied actions; the operator's are checked by each tool itself.
   const run = (tool: string, toolArgs: Record<string, unknown>): Promise<unknown> =>
@@ -1307,8 +1310,6 @@ export async function setupHandlers(server: Server): Promise<void> {
           });
         }
 
-        await assertOperatorOwnership(toolName, toolArguments, prepared.policy, timedOut);
-        if (timedOut()) throw new Error('Tool call expired before execution');
         const result = await executeInScope(
           registryManager,
           toolName,
@@ -1316,6 +1317,7 @@ export async function setupHandlers(server: Server): Promise<void> {
           prepared.policy,
           effectiveInstanceUrl,
           requestScopes,
+          timedOut,
         );
 
         // Guard against TOCTOU cache miss: hasToolHandler returned true but a

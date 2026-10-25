@@ -47,6 +47,7 @@ export function canonicalProjectPath(input: string): string {
 }
 
 function hasAsciiControlOrSpace(value: string): boolean {
+  // Only ASCII controls are tested; UTF-16 surrogate code units cannot match these values.
   for (let index = 0; index < value.length; index++) {
     const code = value.charCodeAt(index);
     if (code <= 32 || code === 127) return true;

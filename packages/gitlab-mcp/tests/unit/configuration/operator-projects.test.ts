@@ -5,6 +5,7 @@ import {
   withOperatorProjects,
 } from '../../../src/configuration/operator-projects';
 import { ScopeEnforcer } from '../../../src/profiles/scope-enforcer';
+import { gitlab } from '../../../src/utils/gitlab-api';
 import type { EffectivePolicy } from '../../../src/configuration/policy';
 
 const base = (): EffectivePolicy => ({
@@ -23,6 +24,20 @@ afterEach(() =>
 );
 
 describe('operator projects', () => {
+  // The production reader must resolve the configured identity on the active API client.
+  it('uses the default GitLab reader for operator verification', async () => {
+    GITLAB_ALLOWED_PROJECT_IDS.splice(0, GITLAB_ALLOWED_PROJECT_IDS.length, String(project.id));
+    const read = jest.spyOn(gitlab, 'get').mockResolvedValue(project);
+    try {
+      expect((await withOperatorProjects(base())).operatorProjectIds).toEqual(
+        new Set([String(project.id)]),
+      );
+      expect(read.mock.calls).toEqual([['projects/71']]);
+    } finally {
+      read.mockRestore();
+    }
+  });
+
   // An unconfigured allowlist must add no GitLab calls or policy changes.
   it('keeps an unrestricted policy without a lookup', async () => {
     GITLAB_ALLOWED_PROJECT_IDS.splice(0);

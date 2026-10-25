@@ -34,7 +34,7 @@ export async function readAllowedProject(
     typeof project.path_with_namespace !== 'string' ||
     typeof project.name_with_namespace !== 'string'
   ) {
-    throw new Error('GitLab did not return a verifiable allowed project identity');
+    throw new TypeError('GitLab did not return a verifiable allowed project identity');
   }
   const id = String(project.id);
   if (

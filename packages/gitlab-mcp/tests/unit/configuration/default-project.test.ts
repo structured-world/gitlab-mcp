@@ -59,12 +59,12 @@ describe('default project arguments', () => {
       'browse_todos',
       {},
       declared,
-      'team%2fapp',
+      'team%2fold-name',
       active,
       read,
     );
     expect(prepared.args).toEqual({ project_id: project.id });
-    for (const path of ['projects/team%2Fapp', 'projects/71'])
+    for (const path of ['projects/team%2Fold-name', 'projects/team%2Fapp', 'projects/71'])
       expect(await prepared.read(path)).toEqual(project);
     expect(read).toHaveBeenCalledTimes(1);
     expect(await prepared.read('projects/72')).toEqual({ id: 72 });

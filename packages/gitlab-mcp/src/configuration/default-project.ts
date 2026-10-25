@@ -45,6 +45,8 @@ function omissionSelectsResourceScope(tool: string, args: Args): boolean {
       return args.action === 'get' || args.scope !== 'project';
     case 'manage_snippet':
       return true;
+    case 'browse_deploy_keys':
+      return args.action === 'list' && args.public !== undefined;
     default:
       return false;
   }

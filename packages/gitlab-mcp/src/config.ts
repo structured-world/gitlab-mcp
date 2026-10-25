@@ -540,8 +540,6 @@ export const GITLAB_ALLOWED_PROJECT_IDS =
   process.env.GITLAB_ALLOWED_PROJECT_IDS?.split(',').map((id) => id.trim()) ?? [];
 
 /** Select a default only for an omitted target; authorization belongs to the call gate. */
-export function getEffectiveProjectId(projectId: string): string;
-export function getEffectiveProjectId(projectId: undefined): string | undefined;
 export function getEffectiveProjectId(projectId: string | undefined): string | undefined {
   return (
     projectId ??

@@ -3,6 +3,7 @@
  * Tests MCP request handlers and tool execution
  */
 
+import { setImmediate } from 'node:timers';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import {
   CallToolRequestSchema,
@@ -100,6 +101,7 @@ jest.mock('../../src/registry-manager', () => ({
 // Mock config — use short HANDLER_TIMEOUT_MS for timeout tests
 jest.mock('../../src/config', () => ({
   GITLAB_ALLOWED_PROJECT_IDS: [],
+  getEffectiveProjectId: jest.fn(),
   LOG_FORMAT: 'condensed',
   HANDLER_TIMEOUT_MS: 100,
   GITLAB_BASE_URL: 'https://gitlab.example.com',
@@ -2070,8 +2072,7 @@ describe('handlers', () => {
       // Now resolve the delayed tool — this should NOT trigger late health reports
       resolveDelayed({ result: 'late' });
       // Flush microtasks deterministically (no scheduler-dependent setTimeout)
-      await new Promise((r) => process.nextTick(r));
-      await new Promise((r) => process.nextTick(r));
+      await new Promise((r) => setImmediate(r));
 
       expect(mockHealthMonitor.reportSuccess).not.toHaveBeenCalled();
       expect(mockHealthMonitor.reportError).not.toHaveBeenCalled();
@@ -2793,7 +2794,8 @@ describe('handlers', () => {
 
       // A late bootstrap must not dispatch a command after the caller's deadline.
       resolveInit();
-      await new Promise((r) => setImmediate(r));
+      await new Promise((r) => process.nextTick(r));
+      await new Promise((r) => process.nextTick(r));
       expect(mockRegistryManager.executeTool).not.toHaveBeenCalled();
 
       // Neither reportSuccess nor reportError should have been called after timeout
@@ -2995,6 +2997,28 @@ describe('handlers', () => {
     });
 
     // An operator allowlist must constrain every project tool, independently of account settings.
+    it('applies a configured default before validating a required project field', async () => {
+      const defaultProject = jest.mocked(runtimeConfig.getEffectiveProjectId);
+      defaultProject.mockReturnValue('1');
+      mockRegistryManager.getDeclaredArguments.mockReturnValueOnce(
+        new Set(['action', 'project_id', 'job_id']),
+      );
+      try {
+        await callToolHandler(
+          { params: { name: 'browse_pipelines', arguments: { action: 'job', job_id: '3' } } },
+          { sessionId: 'sess-1' },
+        );
+        expect(mockRegistryManager.executeTool).toHaveBeenCalledWith(
+          'browse_pipelines',
+          { action: 'job', project_id: '1', job_id: '3' },
+          expect.anything(),
+        );
+      } finally {
+        defaultProject.mockReset();
+      }
+    });
+
+    // A configured default must not replace an explicit target outside the allowlist.
     it('refuses another project before executing a pipeline tool', async () => {
       runtimeConfig.GITLAB_ALLOWED_PROJECT_IDS.push('1');
       try {

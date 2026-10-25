@@ -35,7 +35,7 @@ import {
   GITLAB_BASE_URL,
   GITLAB_READ_ONLY_MODE,
   GITLAB_ALLOWED_PROJECT_IDS,
-  GITLAB_PROJECT_ID,
+  getEffectiveProjectId,
 } from './config';
 import { getSchemaMode } from './utils/schema-utils';
 import { formatToolResult, errorToolResult } from './utils/tool-result';
@@ -688,9 +688,7 @@ async function prepareScopedCall(
   args: Record<string, unknown>;
   policy: EffectivePolicy;
 }> {
-  const defaultProject =
-    GITLAB_PROJECT_ID ??
-    (GITLAB_ALLOWED_PROJECT_IDS.length === 1 ? GITLAB_ALLOWED_PROJECT_IDS[0] : undefined);
+  const defaultProject = getEffectiveProjectId(undefined);
   if (defaultProject && args.project_id === undefined && !isExemptFromSettings(toolName)) {
     const action = typeof args.action === 'string' ? args.action : undefined;
     if (registryManager.getDeclaredArguments(toolName, action)?.has('project_id')) {

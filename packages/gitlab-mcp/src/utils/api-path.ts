@@ -22,7 +22,7 @@ export function encodeApiSegment(value: string | number): string {
 
 /** Validate a relative REST path before query serialization or any authenticated I/O. */
 export function assertSafeApiPath(path: string): void {
-  if (/[?#\\\u0000-\u0020\u007f]/.test(path) || path.startsWith('/')) {
+  if (/[?#\\]/.test(path) || path.startsWith('/') || hasAsciiControlOrSpace(path)) {
     throw new Error('Invalid API path: unencoded path delimiter');
   }
   assertNoDotSegments(decodeURIComponent(path));
@@ -40,8 +40,16 @@ export function assertSafeApiUrl(url: string): void {
 export function canonicalProjectPath(input: string): string {
   const path = decodeURIComponent(input.trim());
   assertNoDotSegments(path);
-  if (!path || /[?#\\%\u0000-\u0020\u007f]/.test(path)) {
+  if (!path || /[?#\\%]/.test(path) || hasAsciiControlOrSpace(path)) {
     throw new Error('Invalid project identifier');
   }
   return path;
+}
+
+function hasAsciiControlOrSpace(value: string): boolean {
+  for (let index = 0; index < value.length; index++) {
+    const code = value.charCodeAt(index);
+    if (code <= 32 || code === 127) return true;
+  }
+  return false;
 }

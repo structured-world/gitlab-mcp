@@ -2,7 +2,6 @@ import * as z from 'zod';
 import { BrowseIntegrationsSchema } from './schema-readonly';
 import { ManageIntegrationSchema } from './schema';
 import { gitlab, toQuery } from '../../utils/gitlab-api';
-import { getEffectiveProjectId } from '../../config';
 import { encodeApiSegment } from '../../utils/api-path';
 import { normalizeProjectId } from '../../utils/projectIdentifier';
 import { assertActionAllowed } from '../utils';
@@ -34,7 +33,7 @@ export const integrationsToolRegistry: ToolRegistry = new Map<string, EnhancedTo
 
         assertActionAllowed('browse_integrations', input.action);
 
-        const projectId = getEffectiveProjectId(input.project_id);
+        const projectId = input.project_id;
 
         switch (input.action) {
           case 'list': {
@@ -82,7 +81,7 @@ export const integrationsToolRegistry: ToolRegistry = new Map<string, EnhancedTo
 
         assertActionAllowed('manage_integration', input.action);
 
-        const projectId = getEffectiveProjectId(input.project_id);
+        const projectId = input.project_id;
         const integrationSlug = input.integration;
 
         switch (input.action) {

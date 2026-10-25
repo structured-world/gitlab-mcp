@@ -69,7 +69,7 @@ import { executeScoped, parseScopedArguments } from './configuration/scoped-exec
 import { withScopePaths, withTargetPaths } from './configuration/scope-ids';
 import { operatorProjectRejection, withOperatorProjects } from './configuration/operator-projects';
 import { assertOperatorOwnership } from './configuration/operator-ownership';
-import { extractProjectsFromArgs } from './profiles/scope-enforcer';
+import { extractProjectsFromArgs, hasExplicitScopeTarget } from './profiles/scope-enforcer';
 
 interface JsonSchemaProperty {
   type?: string;
@@ -689,10 +689,16 @@ async function prepareScopedCall(
   policy: EffectivePolicy;
 }> {
   const defaultProject = getEffectiveProjectId(undefined);
-  if (defaultProject && args.project_id === undefined && !isExemptFromSettings(toolName)) {
+  if (defaultProject && args.scope !== 'group' && !isExemptFromSettings(toolName)) {
     const action = typeof args.action === 'string' ? args.action : undefined;
-    if (registryManager.getDeclaredArguments(toolName, action)?.has('project_id')) {
-      args = { ...args, project_id: defaultProject };
+    const declared = registryManager.getDeclaredArguments(toolName, action);
+    if (declared && !hasExplicitScopeTarget(args, declared)) {
+      const field = declared.has('project_id')
+        ? 'project_id'
+        : declared.has('projectId')
+          ? 'projectId'
+          : undefined;
+      if (field) args = { ...args, [field]: defaultProject };
     }
   }
   const unscoped = settingsRejection(toolName, args, withoutScope(configured), registryManager);

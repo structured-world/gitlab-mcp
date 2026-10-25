@@ -418,6 +418,20 @@ const GROUP_FIELDS = [
   'namespace_id',
 ];
 
+/** Whether a declared target was supplied, including an invalid value that must be validated. */
+export function hasExplicitScopeTarget(
+  args: Record<string, unknown>,
+  declared: ReadonlySet<string>,
+): boolean {
+  for (const field of PROJECT_FIELDS) {
+    if (declared.has(field) && args[field] !== undefined) return true;
+  }
+  for (const field of GROUP_FIELDS) {
+    if (declared.has(field) && args[field] !== undefined) return true;
+  }
+  return false;
+}
+
 /**
  * Extract project path from tool arguments
  *

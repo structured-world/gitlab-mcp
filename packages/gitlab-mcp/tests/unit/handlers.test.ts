@@ -3018,6 +3018,51 @@ describe('handlers', () => {
       }
     });
 
+    // A project default must not add a conflicting project to an explicit group request.
+    it('applies a default to a declared camel-case project parameter', async () => {
+      const defaultProject = jest.mocked(runtimeConfig.getEffectiveProjectId);
+      defaultProject.mockReturnValue('1');
+      mockRegistryManager.getDeclaredArguments.mockReturnValueOnce(
+        new Set(['action', 'scope', 'projectId']),
+      );
+      try {
+        await callToolHandler(
+          { params: { name: 'browse_webhooks', arguments: { action: 'list', scope: 'project' } } },
+          { sessionId: 'sess-1' },
+        );
+        expect(mockRegistryManager.executeTool).toHaveBeenCalledWith(
+          'browse_webhooks',
+          { action: 'list', scope: 'project', projectId: '1' },
+          expect.anything(),
+        );
+      } finally {
+        defaultProject.mockReset();
+      }
+    });
+
+    // Explicit group targets must take precedence over the configured project default.
+    it('preserves an explicit group when a project default is configured', async () => {
+      const defaultProject = jest.mocked(runtimeConfig.getEffectiveProjectId);
+      defaultProject.mockReturnValue('1');
+      mockRegistryManager.getDeclaredArguments.mockReturnValueOnce(
+        new Set(['action', 'project_id', 'group_id']),
+      );
+      const args = { action: 'get', group_id: 'team' };
+      try {
+        await callToolHandler(
+          { params: { name: 'browse_audit_events', arguments: args } },
+          { sessionId: 'sess-1' },
+        );
+        expect(mockRegistryManager.executeTool).toHaveBeenCalledWith(
+          'browse_audit_events',
+          args,
+          expect.anything(),
+        );
+      } finally {
+        defaultProject.mockReset();
+      }
+    });
+
     // A configured default must not replace an explicit target outside the allowlist.
     it('refuses another project before executing a pipeline tool', async () => {
       runtimeConfig.GITLAB_ALLOWED_PROJECT_IDS.push('1');

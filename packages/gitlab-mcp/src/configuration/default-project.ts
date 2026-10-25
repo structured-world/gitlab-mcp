@@ -33,9 +33,10 @@ function projectFormat(tool: string, args: Args): 'identifier' | 'number' | 'pat
   return 'identifier';
 }
 
-function omissionSelectsPersonalResource(tool: string, args: Args): boolean {
-  // For these actions an omitted owner selects a personal resource, not a default project.
+function omissionSelectsResourceScope(tool: string, args: Args): boolean {
+  // For these actions an omitted owner selects the resource scope, not a default project.
   switch (tool) {
+    case 'browse_audit_events':
     case 'browse_access_tokens':
       return args.action === 'get';
     case 'manage_access_token':
@@ -62,7 +63,7 @@ export async function withDefaultProject(
     !defaultProject ||
     args.scope === 'group' ||
     !declared ||
-    omissionSelectsPersonalResource(tool, args) ||
+    omissionSelectsResourceScope(tool, args) ||
     hasExplicitScopeTarget(args, declared)
   )
     return { args, read };

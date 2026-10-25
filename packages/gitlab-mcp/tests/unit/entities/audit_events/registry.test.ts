@@ -2,6 +2,7 @@ import {
   auditEventsToolRegistry,
   getAuditEventsReadOnlyToolNames,
 } from '../../../../src/entities/audit_events/registry';
+import { withDefaultProject } from '../../../../src/configuration/default-project';
 import {
   installFetchMock,
   mockOk,
@@ -18,6 +19,26 @@ installFetchMock();
 const browse = () => auditEventsToolRegistry.get('browse_audit_events')!;
 
 describe('Audit Events Registry', () => {
+  // An instance event ID must retain its collection when a project default is configured.
+  it('keeps the instance event REST route with a configured project', async () => {
+    const read = jest.fn();
+    const args = { action: 'get', audit_event_id: 123 };
+    const prepared = await withDefaultProject(
+      'browse_audit_events',
+      args,
+      new Set(['project_id', 'group_id']),
+      '71',
+      () => false,
+      read,
+    );
+    mockOk({ id: args.audit_event_id });
+    await browse().handler(prepared.args);
+    expect(lastCall()[0]).toBe(
+      `https://gitlab.example.com/api/v4/audit_events/${args.audit_event_id}`,
+    );
+    expect(read).not.toHaveBeenCalled();
+  });
+
   describe('Registry Structure', () => {
     it('contains exactly the one read-only CQRS tool', () => {
       expect(Array.from(auditEventsToolRegistry.keys())).toEqual(['browse_audit_events']);

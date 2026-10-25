@@ -5,6 +5,16 @@ const active = (): boolean => false;
 const project = { id: 71, path_with_namespace: 'team/app', name_with_namespace: 'Team / App' };
 
 describe('default project arguments', () => {
+  // The omitted owner is part of an audit event's identity, selecting the instance endpoint.
+  it('preserves instance audit event lookup with a configured project', async () => {
+    const args = { action: 'get', audit_event_id: 123 };
+    const read = jest.fn();
+    expect(
+      (await withDefaultProject('browse_audit_events', args, declared, '71', active, read)).args,
+    ).toBe(args);
+    expect(read).not.toHaveBeenCalled();
+  });
+
   // Omitting a token/snippet owner selects a personal resource, even with a project default.
   it.each([
     { tool: 'browse_access_tokens', args: { action: 'get', token_id: '123' } },
@@ -33,6 +43,7 @@ describe('default project arguments', () => {
   // Explicit project actions retain defaults, including the project snippet listing.
   it.each([
     { tool: 'browse_access_tokens', args: { action: 'list_project' }, field: 'project_id' },
+    { tool: 'browse_audit_events', args: { action: 'list_project' }, field: 'project_id' },
     { tool: 'manage_access_token', args: { action: 'create_project' }, field: 'project_id' },
     { tool: 'browse_snippets', args: { action: 'list', scope: 'project' }, field: 'projectId' },
   ])('retains project defaults for $tool $args.action', async ({ tool, args, field }) => {

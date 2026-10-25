@@ -21,6 +21,23 @@ const project = { id: 'gid://gitlab/Project/71' };
 afterEach(() => jest.restoreAllMocks());
 
 describe('operator ownership', () => {
+  // Project-scoped listings and ordinary discussions have no global object to resolve.
+  it.each([
+    'browse_registry',
+    'manage_registry',
+    'browse_vulnerabilities',
+    'manage_vulnerability',
+    'manage_todos',
+    'manage_mr_discussion',
+    'browse_pipelines',
+  ])('does not resolve absent global IDs for %s', async (tool) => {
+    const read = jest.fn();
+    await expect(
+      assertOperatorOwnership(tool, { action: 'list' }, policy, active, read),
+    ).resolves.toBeUndefined();
+    expect(read).not.toHaveBeenCalled();
+  });
+
   // Oversized or malformed metadata must fail closed before a suggestion can be applied.
   it.each([
     { items: Array(21).fill({}), nextPage: null, reason: 'verifiable suggestion' },

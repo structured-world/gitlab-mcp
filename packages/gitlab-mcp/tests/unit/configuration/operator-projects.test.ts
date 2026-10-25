@@ -48,6 +48,16 @@ describe('operator projects', () => {
     expect(operatorProjectRejection({ project_id: '999' })).toBeNull();
   });
 
+  // Path-based configuration needs identity resolution before comparing a numeric target.
+  it('defers numeric rejection when the configured project is a path', () => {
+    GITLAB_ALLOWED_PROJECT_IDS.splice(
+      0,
+      GITLAB_ALLOWED_PROJECT_IDS.length,
+      project.path_with_namespace,
+    );
+    expect(operatorProjectRejection({ project_id: project.id })).toBeNull();
+  });
+
   // Numeric mismatches are known without resolving either project through GitLab.
   it('rejects an explicitly different numeric project without metadata', () => {
     GITLAB_ALLOWED_PROJECT_IDS.splice(0, GITLAB_ALLOWED_PROJECT_IDS.length, String(project.id));

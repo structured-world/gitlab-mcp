@@ -1,6 +1,49 @@
 import { ManageMemberSchema } from '../../../../src/entities/members/schema';
 
 describe('ManageMemberSchema - Discriminated Union', () => {
+  // GitLab accepts comma-separated IDs in add bodies, while URL targets remain single IDs.
+  it.each(['add_to_project', 'add_to_group'])('preserves bulk user IDs for %s', (action) => {
+    const input = {
+      action,
+      project_id: 'team/app',
+      group_id: 'team',
+      user_id: '12,34',
+      access_level: 30,
+    };
+    expect(ManageMemberSchema.parse(input).user_id).toBe(input.user_id);
+  });
+
+  // Empty entries and path syntax must not become IDs in a bulk membership request.
+  it.each(['12,', ',34', '12,,34', '0,34', '-1,34', '12,../34', '12,3?4', '12,abc'])(
+    'rejects invalid bulk IDs %s',
+    (user_id) => {
+      expect(
+        ManageMemberSchema.safeParse({
+          action: 'add_to_project',
+          project_id: '71',
+          user_id,
+          access_level: 30,
+        }).success,
+      ).toBe(false);
+    },
+  );
+
+  // Updating and removing members still address exactly one user in the URL.
+  it.each(['update_project', 'update_group', 'remove_from_project', 'remove_from_group'])(
+    'rejects bulk URL targets for %s',
+    (action) => {
+      expect(
+        ManageMemberSchema.safeParse({
+          action,
+          project_id: '71',
+          group_id: '72',
+          user_id: '12,34',
+          access_level: 30,
+        }).success,
+      ).toBe(false);
+    },
+  );
+
   describe('add_to_project action', () => {
     describe('Valid inputs', () => {
       it('should accept minimal valid input', () => {

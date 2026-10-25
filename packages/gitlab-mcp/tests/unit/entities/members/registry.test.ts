@@ -42,6 +42,28 @@ const mockGitlab = gitlab as jest.Mocked<typeof gitlab>;
 const mockIsActionDenied = isActionDenied as jest.MockedFunction<typeof isActionDenied>;
 
 describe('Members Tool Registry', () => {
+  // Bulk IDs belong in JSON bodies and must never change the authenticated REST route.
+  it.each([
+    {
+      action: 'add_to_project',
+      target: { project_id: 'team/app' },
+      path: 'projects/team%2Fapp/members',
+    },
+    { action: 'add_to_group', target: { group_id: 'team' }, path: 'groups/team/members' },
+  ])('sends bulk membership IDs in the body for $action', async ({ action, target, path }) => {
+    const user_id = '12,34';
+    const response = [{ id: 12 }, { id: 34 }];
+    mockGitlab.post.mockResolvedValue(response);
+    const result = await membersToolRegistry
+      .get('manage_member')!
+      .handler({ action, ...target, user_id, access_level: 30 });
+    expect(result).toEqual(response);
+    expect(mockGitlab.post).toHaveBeenCalledWith(path, {
+      body: { user_id, access_level: 30 },
+      contentType: 'json',
+    });
+  });
+
   beforeEach(() => {
     jest.clearAllMocks();
   });

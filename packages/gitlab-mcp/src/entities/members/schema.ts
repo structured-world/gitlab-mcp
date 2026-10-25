@@ -2,6 +2,12 @@ import { z } from 'zod';
 import { requiredId, numericId } from '../utils';
 import { AccessLevelSchema } from './schema-readonly';
 
+// GitLab 16.0 lib/api/members.rb accepts multiple IDs only in add-member bodies.
+const addedUserIds = z.union([
+  numericId,
+  z.string().regex(/^[1-9]\d*(?:,[1-9]\d*)+$/, 'Expected comma-separated positive integer IDs'),
+]);
+
 // =============================================================================
 // Manage Member Actions (Command)
 // =============================================================================
@@ -12,7 +18,7 @@ import { AccessLevelSchema } from './schema-readonly';
 const AddProjectMemberSchema = z.object({
   action: z.literal('add_to_project').describe('Add a user as member to a project'),
   project_id: requiredId.describe('Project ID or URL-encoded path'),
-  user_id: numericId.describe('User ID to add'),
+  user_id: addedUserIds.describe('User ID or comma-separated user IDs to add'),
   access_level: AccessLevelSchema,
   expires_at: z
     .string()
@@ -26,7 +32,7 @@ const AddProjectMemberSchema = z.object({
 const AddGroupMemberSchema = z.object({
   action: z.literal('add_to_group').describe('Add a user as member to a group'),
   group_id: requiredId.describe('Group ID or URL-encoded path'),
-  user_id: numericId.describe('User ID to add'),
+  user_id: addedUserIds.describe('User ID or comma-separated user IDs to add'),
   access_level: AccessLevelSchema,
   expires_at: z
     .string()

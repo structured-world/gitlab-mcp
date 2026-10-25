@@ -186,12 +186,14 @@ export async function assertOperatorOwnership(
     if (!Array.isArray(ids) || ids.length > MAX_METADATA_REQUESTS)
       throw new Error('Too many suggestion ownership checks in one call');
     const wanted = new Set(ids.map(String));
-    for (let page = 1; wanted.size > 0; page++) {
+    let page = 1;
+    while (wanted.size > 0) {
       budget();
-      const notes = await gitlab.get<Array<{ suggestions?: Array<{ id: number }> }>>(
+      const result = await gitlab.getPage<{ suggestions?: Array<{ id: number }> }>(
         `projects/${normalizeProjectId(String(args.project_id))}/merge_requests/${encodeApiSegment(String(args.merge_request_iid))}/notes`,
         { query: { per_page: 20, page } },
       );
+      const notes = result.items;
       if (expired()) throw new Error('Tool call expired during suggestion ownership verification');
       if (!Array.isArray(notes) || notes.length > 20)
         throw new Error('GitLab did not return verifiable suggestion ownership');
@@ -200,7 +202,10 @@ export async function assertOperatorOwnership(
           throw new Error('Too many suggestions in ownership metadata');
         for (const suggestion of note.suggestions ?? []) wanted.delete(String(suggestion.id));
       }
-      if (notes.length < 20) break;
+      if (result.nextPage === null) break;
+      if (result.nextPage <= page)
+        throw new Error('GitLab returned an invalid suggestion ownership cursor');
+      page = result.nextPage;
     }
     if (wanted.size > 0)
       throw new Error(

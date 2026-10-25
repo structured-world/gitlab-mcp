@@ -5,6 +5,10 @@ import {
 } from '../../../src/configuration/operator-ownership';
 import type { EffectivePolicy } from '../../../src/configuration/policy';
 import { gitlab } from '../../../src/utils/gitlab-api';
+import { installFetchMock, mockEnhancedFetch } from '../helpers/fetch-mock';
+
+jest.mock('../../../src/utils/fetch', () => ({ enhancedFetch: jest.fn() }));
+installFetchMock();
 
 const policy: EffectivePolicy = {
   readOnly: false,
@@ -17,6 +21,36 @@ const project = { id: 'gid://gitlab/Project/71' };
 afterEach(() => jest.restoreAllMocks());
 
 describe('operator ownership', () => {
+  // GitLab filters notes after pagination, so even an empty page can have a successor.
+  it.each([{ notes: [] }, { notes: [{}] }])(
+    'follows pagination headers after a filtered notes page %j',
+    async ({ notes }) => {
+      mockEnhancedFetch
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify(notes), { headers: { 'x-next-page': '2' } }),
+        )
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify([{ suggestions: [{ id: 19 }] }]), {
+            headers: { 'x-next-page': '' },
+          }),
+        );
+      await expect(
+        assertOperatorOwnership(
+          'manage_mr_discussion',
+          {
+            action: 'apply_suggestion',
+            project_id: 'team/app',
+            merge_request_iid: '3',
+            suggestion_id: 19,
+          },
+          policy,
+          active,
+        ),
+      ).resolves.toBeUndefined();
+      expect(mockEnhancedFetch).toHaveBeenCalledTimes(2);
+      expect(mockEnhancedFetch.mock.calls[1][0]).toContain('page=2');
+    },
+  );
   // Without an operator restriction, existing calls must add no metadata requests.
   it('does no work without a mandatory project set', async () => {
     const read = jest.fn();
@@ -172,7 +206,9 @@ describe('operator ownership', () => {
 
   // Suggestion IDs are global: the MR hint alone must not authorize another MR's suggestion.
   it('requires every suggestion in the permitted merge request metadata', async () => {
-    const read = jest.spyOn(gitlab, 'get').mockResolvedValue([{ suggestions: [{ id: 19 }] }]);
+    const read = jest
+      .spyOn(gitlab, 'getPage')
+      .mockResolvedValue({ items: [{ suggestions: [{ id: 19 }] }], nextPage: null });
     const args = {
       action: 'apply_suggestions',
       project_id: 'team/app',
@@ -193,7 +229,7 @@ describe('operator ownership', () => {
         active,
       ),
     ).rejects.toThrow('every suggestion');
-    read.mockResolvedValue([{}]);
+    read.mockResolvedValue({ items: [{}], nextPage: null });
     await expect(
       assertOperatorOwnership('manage_mr_discussion', args, policy, active),
     ).rejects.toThrow('every suggestion');

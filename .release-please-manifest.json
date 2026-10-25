@@ -1,4 +1,4 @@
 {
-  "packages/gitlab-mcp": "12.0.0",
-  "packages/gitlab-mcp-db": "12.0.0"
+  "packages/gitlab-mcp": "12.0.1",
+  "packages/gitlab-mcp-db": "12.0.1"
 }

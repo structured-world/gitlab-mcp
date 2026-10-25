@@ -1,5 +1,19 @@
 # Changelog
 
+## [12.0.1](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-db-v12.0.0...gitlab-mcp-db-v12.0.1) (2026-10-25)
+
+
+### Bug Fixes
+
+* **security:** enforce project boundaries ([#701](https://github.com/structured-world/gitlab-mcp/issues/701)) ([caf5b8b](https://github.com/structured-world/gitlab-mcp/commit/caf5b8b49f6771cb33f57846bc1a913daff5b0e8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @structured-world/gitlab-mcp bumped to 12.0.1
+
 ## [12.0.0](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-db-v11.0.0...gitlab-mcp-db-v12.0.0) (2026-10-24)
 
 

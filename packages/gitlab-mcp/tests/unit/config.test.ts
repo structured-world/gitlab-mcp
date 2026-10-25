@@ -33,6 +33,22 @@ describe('config.ts', () => {
   });
 
   describe('environment variable parsing', () => {
+    // Empty entries are configuration separators, never project identities or restrictions.
+    it.each([
+      { value: '', expected: [] },
+      { value: '  , , ', expected: [] },
+      { value: ' 123, ', expected: ['123'] },
+      { value: '123, , 456,', expected: ['123', '456'] },
+    ])('ignores empty allowlist entries in $value', ({ value, expected }) => {
+      process.env.GITLAB_ALLOWED_PROJECT_IDS = value;
+      delete process.env.GITLAB_PROJECT_ID;
+      const config = require('../../src/config');
+      expect(config.GITLAB_ALLOWED_PROJECT_IDS).toEqual(expected);
+      expect(config.getEffectiveProjectId(undefined)).toBe(
+        expected.length === 1 ? expected[0] : undefined,
+      );
+    });
+
     it('should parse boolean environment variables correctly', () => {
       process.env.GITLAB_IS_OLD = 'true';
       process.env.GITLAB_READ_ONLY_MODE = 'true';

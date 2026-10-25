@@ -4,6 +4,13 @@
 
 * exempt stdio session from idle timeout cleanup ([#363](https://github.com/structured-world/gitlab-mcp/issues/363)) ([ca563bd](https://github.com/structured-world/gitlab-mcp/commit/ca563bda9aa969d5d7680d3d89c2c72f32344838)), closes [#361](https://github.com/structured-world/gitlab-mcp/issues/361)
 
+## [12.0.1](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-v12.0.0...gitlab-mcp-v12.0.1) (2026-10-25)
+
+
+### Bug Fixes
+
+* **security:** enforce project boundaries ([#701](https://github.com/structured-world/gitlab-mcp/issues/701)) ([caf5b8b](https://github.com/structured-world/gitlab-mcp/commit/caf5b8b49f6771cb33f57846bc1a913daff5b0e8))
+
 ## [12.0.0](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-v11.0.0...gitlab-mcp-v12.0.0) (2026-10-24)
 
 

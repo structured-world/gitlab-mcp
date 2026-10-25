@@ -98,7 +98,7 @@ describe('MCP publisher release verification', () => {
   afterEach(() => rmSync(root, { recursive: true, force: true }));
 
   function run(rejectSignature = false) {
-    return spawnSync('bash', ['-e', '-o', 'pipefail', '-c', install.run!], {
+    const result = spawnSync('bash', ['-e', '-o', 'pipefail', '-c', install.run!], {
       cwd: work,
       env: {
         ...process.env,
@@ -111,6 +111,8 @@ describe('MCP publisher release verification', () => {
       encoding: 'utf8',
       timeout: 5000,
     });
+    expect(result.error).toBeUndefined();
+    return result;
   }
 
   // The verifier itself must be immutable and installed before the untrusted archive is processed.

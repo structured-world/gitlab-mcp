@@ -5,6 +5,44 @@ const active = (): boolean => false;
 const project = { id: 71, path_with_namespace: 'team/app', name_with_namespace: 'Team / App' };
 
 describe('default project arguments', () => {
+  // Omitting a token/snippet owner selects a personal resource, even with a project default.
+  it.each([
+    { tool: 'browse_access_tokens', args: { action: 'get', token_id: '123' } },
+    { tool: 'manage_access_token', args: { action: 'rotate', token_id: '123' } },
+    { tool: 'manage_access_token', args: { action: 'revoke', token_id: '123' } },
+    { tool: 'browse_snippets', args: { action: 'get', id: '123' } },
+    { tool: 'browse_snippets', args: { action: 'list', scope: 'personal' } },
+    { tool: 'browse_snippets', args: { action: 'list', scope: 'public' } },
+    { tool: 'manage_snippet', args: { action: 'create', title: 'Personal' } },
+    { tool: 'manage_snippet', args: { action: 'update', id: '123' } },
+    { tool: 'manage_snippet', args: { action: 'delete', id: '123' } },
+  ])('preserves personal resource arguments for $tool $args.action', async ({ tool, args }) => {
+    const read = jest.fn();
+    const prepared = await withDefaultProject(
+      tool,
+      args,
+      new Set(['project_id', 'projectId', 'group_id']),
+      '71',
+      active,
+      read,
+    );
+    expect(prepared.args).toBe(args);
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  // Explicit project actions retain defaults, including the project snippet listing.
+  it.each([
+    { tool: 'browse_access_tokens', args: { action: 'list_project' }, field: 'project_id' },
+    { tool: 'manage_access_token', args: { action: 'create_project' }, field: 'project_id' },
+    { tool: 'browse_snippets', args: { action: 'list', scope: 'project' }, field: 'projectId' },
+  ])('retains project defaults for $tool $args.action', async ({ tool, args, field }) => {
+    const read = jest.fn();
+    expect(
+      (await withDefaultProject(tool, args, new Set([field]), '71', active, read)).args,
+    ).toEqual({ ...args, [field]: '71' });
+    expect(read).not.toHaveBeenCalled();
+  });
+
   // GraphQL project(fullPath:) cannot consume a numeric configured default.
   it.each([
     { tool: 'browse_vulnerabilities', args: { action: 'list' } },

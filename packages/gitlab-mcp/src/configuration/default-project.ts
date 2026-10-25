@@ -33,6 +33,22 @@ function projectFormat(tool: string, args: Args): 'identifier' | 'number' | 'pat
   return 'identifier';
 }
 
+function omissionSelectsPersonalResource(tool: string, args: Args): boolean {
+  // For these actions an omitted owner selects a personal resource, not a default project.
+  switch (tool) {
+    case 'browse_access_tokens':
+      return args.action === 'get';
+    case 'manage_access_token':
+      return args.action === 'rotate' || args.action === 'revoke';
+    case 'browse_snippets':
+      return args.action === 'get' || args.scope !== 'project';
+    case 'manage_snippet':
+      return true;
+    default:
+      return false;
+  }
+}
+
 /** Fill only an omitted project, preserving the tool's declared numeric or path contract. */
 export async function withDefaultProject(
   tool: string,
@@ -46,6 +62,7 @@ export async function withDefaultProject(
     !defaultProject ||
     args.scope === 'group' ||
     !declared ||
+    omissionSelectsPersonalResource(tool, args) ||
     hasExplicitScopeTarget(args, declared)
   )
     return { args, read };

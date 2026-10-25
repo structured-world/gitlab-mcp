@@ -2,6 +2,7 @@ import * as z from 'zod';
 import { BrowseJobTokenScopeSchema } from './schema-readonly';
 import { ManageJobTokenScopeSchema } from './schema';
 import { gitlab, toQuery } from '../../utils/gitlab-api';
+import { normalizeProjectId } from '../../utils/projectIdentifier';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
 import { assertActionAllowed } from '../utils';
 
@@ -18,7 +19,7 @@ async function resolveProjectNumericId(projectId: string): Promise<number> {
   if (/^\d+$/.test(trimmed)) {
     return Number(trimmed);
   }
-  const project = await gitlab.get<{ id: number }>(`projects/${encodeURIComponent(trimmed)}`);
+  const project = await gitlab.get<{ id: number }>(`projects/${normalizeProjectId(trimmed)}`);
   return project.id;
 }
 

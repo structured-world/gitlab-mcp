@@ -3,6 +3,7 @@ import { BrowseMilestonesSchema } from './schema-readonly';
 import { ManageMilestoneSchema } from './schema';
 import { gitlab, toQuery } from '../../utils/gitlab-api';
 import { resolveNamespaceForAPI } from '../../utils/namespace';
+import { encodeApiSegment } from '../../utils/api-path';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
 // assertDefined no longer needed - discriminated union provides type safety
 import { assertActionAllowed } from '../utils';
@@ -49,7 +50,9 @@ export const milestonesToolRegistry: ToolRegistry = new Map<string, EnhancedTool
 
           case 'get': {
             // TypeScript knows: input has milestone_id (uses global ID, not IID)
-            return gitlab.get(`${entityType}/${encodedPath}/milestones/${input.milestone_id}`);
+            return gitlab.get(
+              `${entityType}/${encodedPath}/milestones/${encodeApiSegment(input.milestone_id)}`,
+            );
           }
 
           case 'issues': {
@@ -57,9 +60,12 @@ export const milestonesToolRegistry: ToolRegistry = new Map<string, EnhancedTool
             const { action: _action, namespace: _namespace, milestone_id, ...rest } = input;
             const query = toQuery(rest, []);
 
-            return gitlab.get(`${entityType}/${encodedPath}/milestones/${milestone_id}/issues`, {
-              query,
-            });
+            return gitlab.get(
+              `${entityType}/${encodedPath}/milestones/${encodeApiSegment(milestone_id)}/issues`,
+              {
+                query,
+              },
+            );
           }
 
           case 'merge_requests': {
@@ -68,7 +74,7 @@ export const milestonesToolRegistry: ToolRegistry = new Map<string, EnhancedTool
             const query = toQuery(rest, []);
 
             return gitlab.get(
-              `${entityType}/${encodedPath}/milestones/${milestone_id}/merge_requests`,
+              `${entityType}/${encodedPath}/milestones/${encodeApiSegment(milestone_id)}/merge_requests`,
               { query },
             );
           }
@@ -79,7 +85,7 @@ export const milestonesToolRegistry: ToolRegistry = new Map<string, EnhancedTool
             const query = toQuery(rest, []);
 
             return gitlab.get(
-              `${entityType}/${encodedPath}/milestones/${milestone_id}/burndown_events`,
+              `${entityType}/${encodedPath}/milestones/${encodeApiSegment(milestone_id)}/burndown_events`,
               { query },
             );
           }
@@ -127,15 +133,20 @@ export const milestonesToolRegistry: ToolRegistry = new Map<string, EnhancedTool
             // TypeScript knows: input has milestone_id (uses global ID), title, description, etc. (optional)
             const { action: _action, namespace: _namespace, milestone_id, ...body } = input;
 
-            return gitlab.put(`${entityType}/${encodedPath}/milestones/${milestone_id}`, {
-              body,
-              contentType: 'json',
-            });
+            return gitlab.put(
+              `${entityType}/${encodedPath}/milestones/${encodeApiSegment(milestone_id)}`,
+              {
+                body,
+                contentType: 'json',
+              },
+            );
           }
 
           case 'delete': {
             // TypeScript knows: input has milestone_id (uses global ID)
-            await gitlab.delete(`${entityType}/${encodedPath}/milestones/${input.milestone_id}`);
+            await gitlab.delete(
+              `${entityType}/${encodedPath}/milestones/${encodeApiSegment(input.milestone_id)}`,
+            );
             return { deleted: true };
           }
 
@@ -145,7 +156,9 @@ export const milestonesToolRegistry: ToolRegistry = new Map<string, EnhancedTool
               throw new Error('Milestone promotion is only available for projects, not groups');
             }
 
-            return gitlab.post(`projects/${encodedPath}/milestones/${input.milestone_id}/promote`);
+            return gitlab.post(
+              `projects/${encodedPath}/milestones/${encodeApiSegment(input.milestone_id)}/promote`,
+            );
           }
 
           /* istanbul ignore next -- unreachable with Zod discriminatedUnion */

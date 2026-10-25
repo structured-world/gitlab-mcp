@@ -21,6 +21,8 @@ export interface SessionOverrides {
 }
 
 export interface EffectivePolicy {
+  /** Verified operator project identities for this call; an empty set permits no project. */
+  operatorProjectIds?: ReadonlySet<string>;
   presetName?: string;
   readOnly: boolean;
   disabledGroups: ReadonlySet<string>;
@@ -132,6 +134,9 @@ export interface ToolFacts {
 /** Why the policy hides a tool from the caller, or null when it may use it. */
 export function toolRestriction(policy: EffectivePolicy, tool: ToolFacts): string | null {
   if (isExemptFromSettings(tool.name)) return null;
+  if (policy.operatorProjectIds?.size === 0) {
+    return 'no project is permitted by both GITLAB_ALLOWED_PROJECT_IDS and the working scope';
+  }
   if (policy.readOnly && !tool.readOnly) return 'read-only mode is on';
   if (tool.group !== undefined && policy.disabledGroups.has(tool.group)) {
     return `the '${tool.group}' tool group is turned off`;

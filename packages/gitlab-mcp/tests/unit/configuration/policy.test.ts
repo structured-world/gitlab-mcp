@@ -300,6 +300,19 @@ describe('callRestriction', () => {
     expect(callRestriction(policy, manage, { action: 'create' })).toBe('read-only mode is on');
   });
 
+  // An empty mandatory intersection denies data access while settings remain recoverable.
+  it('denies ordinary tools for an empty operator intersection', () => {
+    const policy = {
+      ...buildPolicy(undefined, {}, {}),
+      operatorProjectIds: new Set<string>(),
+    };
+    const reason =
+      'no project is permitted by both GITLAB_ALLOWED_PROJECT_IDS and the working scope';
+    expect(toolRestriction(policy, browse)).toBe(reason);
+    expect(callRestriction(policy, browse, {})).toBe(reason);
+    expect(toolRestriction(policy, { name: 'manage_context', readOnly: false })).toBeNull();
+  });
+
   it('lets configuration tools run under a scope', () => {
     const policy = buildPolicy(
       undefined,

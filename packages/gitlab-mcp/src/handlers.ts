@@ -29,7 +29,14 @@ import {
 } from './utils/error-handler';
 import { GitLabTimeoutError } from './utils/fetch';
 import { getRequestTracker, getConnectionTracker, getCurrentRequestId } from './logging/index';
-import { LOG_FORMAT, HANDLER_TIMEOUT_MS, GITLAB_BASE_URL, GITLAB_READ_ONLY_MODE } from './config';
+import {
+  LOG_FORMAT,
+  HANDLER_TIMEOUT_MS,
+  GITLAB_BASE_URL,
+  GITLAB_READ_ONLY_MODE,
+  GITLAB_ALLOWED_PROJECT_IDS,
+  getEffectiveProjectId,
+} from './config';
 import { getSchemaMode } from './utils/schema-utils';
 import { formatToolResult, errorToolResult } from './utils/tool-result';
 import {
@@ -60,6 +67,10 @@ import {
 } from './configuration/policy';
 import { executeScoped, parseScopedArguments } from './configuration/scoped-execution';
 import { withScopePaths, withTargetPaths } from './configuration/scope-ids';
+import { operatorProjectRejection, withOperatorProjects } from './configuration/operator-projects';
+import { assertOperatorOwnership } from './configuration/operator-ownership';
+import { extractProjectsFromArgs } from './profiles/scope-enforcer';
+import { withDefaultProject } from './configuration/default-project';
 
 interface JsonSchemaProperty {
   type?: string;
@@ -672,31 +683,57 @@ async function prepareScopedCall(
   args: Record<string, unknown>,
   configured: EffectivePolicy,
   registryManager: import('./registry-manager').RegistryManager,
+  expired: () => boolean,
 ): Promise<{
   rejection: CallToolResult | null;
   args: Record<string, unknown>;
   policy: EffectivePolicy;
 }> {
   const unscoped = settingsRejection(toolName, args, withoutScope(configured), registryManager);
-  if (unscoped || !configured.scopeEnforcer || isExemptFromSettings(toolName))
+  if (unscoped || isExemptFromSettings(toolName))
     return { rejection: unscoped, args, policy: configured };
-  const policy = await withScopePaths(configured);
+  const action = typeof args.action === 'string' ? args.action : undefined;
+  const defaultProject = getEffectiveProjectId(undefined);
+  const defaults = defaultProject
+    ? await withDefaultProject(
+        toolName,
+        args,
+        registryManager.getDeclaredArguments(toolName, action),
+        defaultProject,
+        expired,
+      )
+    : { args, read: undefined };
+  args = defaults.args;
+  if (!configured.scopeEnforcer && GITLAB_ALLOWED_PROJECT_IDS.length === 0)
+    return { rejection: null, args, policy: configured };
   const selected = parseScopedArguments(toolName, args);
   // The tool's parse keeps only the selected action's arguments, so only those are held to
   // the scope.
-  const action = typeof args.action === 'string' ? args.action : undefined;
   const declared =
     selected === args ? registryManager.getDeclaredArguments(toolName, action) : undefined;
   const own = declared
     ? Object.fromEntries(Object.entries(selected).filter(([name]) => declared.has(name)))
     : selected;
+  const operatorRejection = operatorProjectRejection(own);
+  if (operatorRejection) {
+    return {
+      rejection: errorToolResult({ error: operatorRejection }),
+      args: selected,
+      policy: configured,
+    };
+  }
+  const policy =
+    GITLAB_ALLOWED_PROJECT_IDS.length > 0
+      ? await withOperatorProjects(configured, defaults.read, expired, extractProjectsFromArgs(own))
+      : await withScopePaths(configured, defaults.read);
+  const rejection = settingsRejection(
+    toolName,
+    await withTargetPaths(own, defaults.read, policy.scopeEnforcer),
+    policy,
+    registryManager,
+  );
   return {
-    rejection: settingsRejection(
-      toolName,
-      await withTargetPaths(own, undefined, policy.scopeEnforcer),
-      policy,
-      registryManager,
-    ),
+    rejection,
     args: selected,
     policy,
   };
@@ -732,7 +769,10 @@ async function executeInScope(
   policy: EffectivePolicy,
   instanceUrl: string | undefined,
   requestScopes: readonly string[] | undefined,
+  expired: () => boolean,
 ): Promise<unknown> {
+  await assertOperatorOwnership(toolName, requested, policy, expired);
+  if (expired()) throw new Error('Tool call expired before execution');
   // executeScoped wraps this runner so every call it makes in place of the requested one is
   // held to the preset's denied actions; the operator's are checked by each tool itself.
   const run = (tool: string, toolArgs: Record<string, unknown>): Promise<unknown> =>
@@ -1183,6 +1223,7 @@ export async function setupHandlers(server: Server): Promise<void> {
         toolArguments ?? {},
         configuration.policy,
         CallRegistry.getInstance(),
+        timedOut,
       );
       if (prepared.rejection) return prepared.rejection;
       toolArguments = prepared.args;
@@ -1276,6 +1317,7 @@ export async function setupHandlers(server: Server): Promise<void> {
           prepared.policy,
           effectiveInstanceUrl,
           requestScopes,
+          timedOut,
         );
 
         // Guard against TOCTOU cache miss: hasToolHandler returned true but a

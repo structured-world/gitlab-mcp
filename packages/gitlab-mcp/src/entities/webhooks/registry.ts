@@ -2,6 +2,8 @@ import * as z from 'zod';
 import { BrowseWebhooksSchema } from './schema-readonly';
 import { ManageWebhookSchema } from './schema';
 import { gitlab, toQuery } from '../../utils/gitlab-api';
+import { normalizeProjectId } from '../../utils/projectIdentifier';
+import { encodeApiSegment } from '../../utils/api-path';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
 import { assertActionAllowed } from '../utils';
 import { assertInstanceAtLeast, currentInstance } from '../instance-version';
@@ -45,9 +47,9 @@ export const webhooksToolRegistry: ToolRegistry = new Map<string, EnhancedToolDe
         // Helper to determine base API path from scope
         const getBasePath = (scope: 'project' | 'group', projectId?: string, groupId?: string) => {
           if (scope === 'project' && projectId) {
-            return `projects/${encodeURIComponent(projectId)}/hooks`;
+            return `projects/${normalizeProjectId(projectId)}/hooks`;
           } else if (scope === 'group' && groupId) {
-            return `groups/${encodeURIComponent(groupId)}/hooks`;
+            return `groups/${normalizeProjectId(groupId)}/hooks`;
           }
           throw new Error('Invalid scope or missing project/group ID');
         };
@@ -71,7 +73,7 @@ export const webhooksToolRegistry: ToolRegistry = new Map<string, EnhancedToolDe
           case 'get': {
             // TypeScript knows: input has scope, projectId/groupId, hookId
             const basePath = getBasePath(input.scope, input.projectId, input.groupId);
-            return gitlab.get(`${basePath}/${input.hookId}`);
+            return gitlab.get(`${basePath}/${encodeApiSegment(input.hookId)}`);
           }
 
           /* istanbul ignore next -- unreachable with Zod discriminatedUnion */
@@ -128,9 +130,9 @@ export const webhooksToolRegistry: ToolRegistry = new Map<string, EnhancedToolDe
         // Determine base path from scope and IDs
         const getBasePath = (scope: 'project' | 'group', projectId?: string, groupId?: string) => {
           if (scope === 'project' && projectId) {
-            return `projects/${encodeURIComponent(projectId)}/hooks`;
+            return `projects/${normalizeProjectId(projectId)}/hooks`;
           } else if (scope === 'group' && groupId) {
-            return `groups/${encodeURIComponent(groupId)}/hooks`;
+            return `groups/${normalizeProjectId(groupId)}/hooks`;
           }
           throw new Error('Invalid scope or missing project/group ID');
         };
@@ -164,7 +166,7 @@ export const webhooksToolRegistry: ToolRegistry = new Map<string, EnhancedToolDe
             // TypeScript knows: input has hookId (required), scope, projectId/groupId, optional fields
             const basePath = getBasePath(input.scope, input.projectId, input.groupId);
 
-            return gitlab.put(`${basePath}/${input.hookId}`, {
+            return gitlab.put(`${basePath}/${encodeApiSegment(input.hookId)}`, {
               body: buildRequestBody(input),
               contentType: 'json',
             });
@@ -174,7 +176,7 @@ export const webhooksToolRegistry: ToolRegistry = new Map<string, EnhancedToolDe
             // TypeScript knows: input has hookId (required), scope, projectId/groupId
             const basePath = getBasePath(input.scope, input.projectId, input.groupId);
 
-            await gitlab.delete(`${basePath}/${input.hookId}`);
+            await gitlab.delete(`${basePath}/${encodeApiSegment(input.hookId)}`);
             return { success: true, message: 'Webhook deleted successfully' };
           }
 
@@ -183,9 +185,12 @@ export const webhooksToolRegistry: ToolRegistry = new Map<string, EnhancedToolDe
             const basePath = getBasePath(input.scope, input.projectId, input.groupId);
             if (input.scope === 'group') assertInstanceAtLeast('17.1', 'Testing a group webhook');
 
-            return gitlab.post(`${basePath}/${input.hookId}/test/${input.trigger}`, {
-              contentType: 'json',
-            });
+            return gitlab.post(
+              `${basePath}/${encodeApiSegment(input.hookId)}/test/${encodeApiSegment(input.trigger)}`,
+              {
+                contentType: 'json',
+              },
+            );
           }
 
           /* istanbul ignore next -- unreachable with Zod discriminatedUnion */

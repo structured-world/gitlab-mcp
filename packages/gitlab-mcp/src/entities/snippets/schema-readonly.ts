@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { requiredId, paginationFields } from '../utils';
+import { numericId, paginationFields } from '../utils';
 
 // ============================================================================
 // browse_snippets - CQRS Query Tool (discriminated union schema)
@@ -52,7 +52,7 @@ const ListSnippetsSchema = z.object({
 // --- Action: get ---
 const GetSnippetSchema = z.object({
   action: z.literal('get').describe('Get single snippet details or raw content'),
-  id: requiredId.describe('The ID of the snippet to retrieve'),
+  id: numericId.describe('The ID of the snippet to retrieve'),
   projectId: projectIdField.describe(
     'Project ID or URL-encoded path. Required for project snippets, leave empty for personal snippets',
   ),

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { requiredId } from '../utils';
+import { requiredId, numericId } from '../utils';
 
 // ============================================================================
 // manage_release - CQRS Command Tool (discriminated union schema)
@@ -107,7 +107,7 @@ const DeleteReleaseLinkSchema = z.object({
   action: z.literal('delete_link').describe('Remove an asset link from a release'),
   project_id: projectIdField,
   tag_name: tagNameField,
-  link_id: requiredId.describe('The ID of the asset link to delete'),
+  link_id: numericId.describe('The ID of the asset link to delete'),
 });
 
 // --- Discriminated union combining all actions ---

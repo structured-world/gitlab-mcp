@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { GitLabMilestoneSchema } from '../shared';
-import { flexibleBoolean, requiredId, paginationFields } from '../utils';
+import { flexibleBoolean, numericId, paginationFields } from '../utils';
 
 // Re-export shared schema
 export { GitLabMilestoneSchema };
@@ -36,7 +36,7 @@ const namespaceField = z.string().describe('Namespace path (group or project)');
 // Example: GET /projects/:id/milestones/:milestone_id where :milestone_id is the global ID.
 // The API response contains both 'id' (global unique) and 'iid' (project-scoped).
 // Unlike issues/MRs which use IID in URLs, milestones use the global ID.
-const milestoneIdField = requiredId.describe(
+const milestoneIdField = numericId.describe(
   "The ID of a project or group milestone. Required for 'get', 'issues', 'merge_requests', 'burndown' action(s).",
 );
 

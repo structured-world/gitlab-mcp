@@ -2,6 +2,7 @@ import * as z from 'zod';
 import { BrowseEnvironmentsSchema } from './schema-readonly';
 import { ManageEnvironmentSchema } from './schema';
 import { gitlab, toQuery } from '../../utils/gitlab-api';
+import { normalizeProjectId } from '../../utils/projectIdentifier';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
 import { assertActionAllowed } from '../utils';
 
@@ -33,7 +34,7 @@ export const environmentsToolRegistry: ToolRegistry = new Map<string, EnhancedTo
 
         assertActionAllowed('browse_environments', input.action);
 
-        const encodedProjectId = encodeURIComponent(input.project_id);
+        const encodedProjectId = normalizeProjectId(input.project_id);
 
         switch (input.action) {
           case 'list': {
@@ -79,7 +80,7 @@ export const environmentsToolRegistry: ToolRegistry = new Map<string, EnhancedTo
 
         assertActionAllowed('manage_environment', input.action);
 
-        const encodedProjectId = encodeURIComponent(input.project_id);
+        const encodedProjectId = normalizeProjectId(input.project_id);
 
         switch (input.action) {
           case 'create': {

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { requiredId, paginationFields } from '../utils';
+import { numericId, paginationFields } from '../utils';
 
 // ============================================================================
 // browse_webhooks - CQRS Query Tool (discriminated union schema)
@@ -28,7 +28,7 @@ const GetWebhookSchema = z.object({
   scope: scopeField,
   projectId: z.string().optional().describe('Project ID or path (required if scope=project)'),
   groupId: z.string().optional().describe('Group ID or path (required if scope=group)'),
-  hookId: requiredId.describe('Webhook ID (required)'),
+  hookId: numericId.describe('Webhook ID (required)'),
 });
 
 // --- Discriminated union combining all actions ---

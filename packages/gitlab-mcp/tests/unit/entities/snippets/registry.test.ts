@@ -422,6 +422,25 @@ describe('Snippets Registry', () => {
     });
 
     describe('update action', () => {
+      // Project snippet updates must use the same encoded project boundary as reads and deletes.
+      it('updates a snippet in an encoded project path', async () => {
+        mockEnhancedFetch.mockResolvedValue({
+          ok: true,
+          status: 200,
+          json: async () => ({ id: 5, title: 'Updated' }),
+        } as Response);
+        await manageSnippetTool?.handler({
+          action: 'update',
+          id: 5,
+          projectId: 'team%2Fapp',
+          title: 'Updated',
+        });
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          expect.stringContaining('/api/v4/projects/team%2Fapp/snippets/5'),
+          expect.objectContaining({ method: 'PUT', body: JSON.stringify({ title: 'Updated' }) }),
+        );
+      });
+
       it('should update snippet title', async () => {
         const mockResponse = {
           ok: true,

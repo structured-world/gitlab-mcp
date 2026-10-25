@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { requiredId } from '../utils';
+import { numericId } from '../utils';
 
 // ============================================================================
 // manage_snippet - CQRS Command Tool (discriminated union schema)
@@ -102,7 +102,7 @@ const CreateSnippetSchema = z.object({
 // --- Action: update ---
 const UpdateSnippetSchema = z.object({
   action: z.literal('update').describe('Update an existing snippet metadata or files'),
-  id: requiredId.describe('The ID of the snippet to update'),
+  id: numericId.describe('The ID of the snippet to update'),
   projectId: projectIdField.describe(
     'Project ID or URL-encoded path. Required for project snippets, leave empty for personal',
   ),
@@ -120,7 +120,7 @@ const UpdateSnippetSchema = z.object({
 // --- Action: delete ---
 const DeleteSnippetSchema = z.object({
   action: z.literal('delete').describe('Permanently delete a snippet'),
-  id: requiredId.describe('The ID of the snippet to delete. This operation cannot be undone'),
+  id: numericId.describe('The ID of the snippet to delete. This operation cannot be undone'),
   projectId: projectIdField.describe(
     'Project ID or URL-encoded path. Required for project snippets, leave empty for personal',
   ),

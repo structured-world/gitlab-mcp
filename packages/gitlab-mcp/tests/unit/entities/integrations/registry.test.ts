@@ -10,7 +10,7 @@ import {
   getFilteredIntegrationsTools,
 } from '../../../../src/entities/integrations/registry';
 import { enhancedFetch } from '../../../../src/utils/fetch';
-import { isActionDenied, getEffectiveProjectId } from '../../../../src/config';
+import { isActionDenied } from '../../../../src/config';
 
 // Mock enhancedFetch to avoid actual API calls
 jest.mock('../../../../src/utils/fetch', () => ({
@@ -20,14 +20,10 @@ jest.mock('../../../../src/utils/fetch', () => ({
 // Mock config module
 jest.mock('../../../../src/config', () => ({
   isActionDenied: jest.fn(() => false),
-  getEffectiveProjectId: jest.fn((id: string) => id),
 }));
 
 const mockEnhancedFetch = enhancedFetch as jest.MockedFunction<typeof enhancedFetch>;
 const mockIsActionDenied = isActionDenied as jest.MockedFunction<typeof isActionDenied>;
-const mockGetEffectiveProjectId = getEffectiveProjectId as jest.MockedFunction<
-  typeof getEffectiveProjectId
->;
 
 // Mock environment variables
 const originalEnv = process.env;
@@ -50,7 +46,6 @@ beforeEach(() => {
   mockEnhancedFetch.mockReset();
   // Restore config mocks after resetAllMocks clears implementations
   mockIsActionDenied.mockReturnValue(false);
-  mockGetEffectiveProjectId.mockImplementation((id: string) => id);
 });
 
 describe('Integrations Registry', () => {

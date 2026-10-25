@@ -3,6 +3,7 @@
  * Tests MCP request handlers and tool execution
  */
 
+import { setImmediate } from 'node:timers';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import {
   CallToolRequestSchema,
@@ -12,6 +13,9 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { setupHandlers, resetHandlersState } from '../../src/handlers';
 import * as scopeIds from '../../src/configuration/scope-ids';
+import * as runtimeConfig from '../../src/config';
+import * as operatorProjects from '../../src/configuration/operator-projects';
+import { ScopeEnforcer } from '../../src/profiles/scope-enforcer';
 import { StructuredToolError, parseGitLabApiError } from '../../src/utils/error-handler';
 import { GitLabTimeoutError } from '../../src/utils/fetch';
 import { ConfigurationService } from '../../src/configuration/service';
@@ -96,6 +100,8 @@ jest.mock('../../src/registry-manager', () => ({
 
 // Mock config — use short HANDLER_TIMEOUT_MS for timeout tests
 jest.mock('../../src/config', () => ({
+  GITLAB_ALLOWED_PROJECT_IDS: [],
+  getEffectiveProjectId: jest.fn(),
   LOG_FORMAT: 'condensed',
   HANDLER_TIMEOUT_MS: 100,
   GITLAB_BASE_URL: 'https://gitlab.example.com',
@@ -2066,8 +2072,7 @@ describe('handlers', () => {
       // Now resolve the delayed tool — this should NOT trigger late health reports
       resolveDelayed({ result: 'late' });
       // Flush microtasks deterministically (no scheduler-dependent setTimeout)
-      await new Promise((r) => process.nextTick(r));
-      await new Promise((r) => process.nextTick(r));
+      await new Promise((r) => setImmediate(r));
 
       expect(mockHealthMonitor.reportSuccess).not.toHaveBeenCalled();
       expect(mockHealthMonitor.reportError).not.toHaveBeenCalled();
@@ -2765,21 +2770,12 @@ describe('handlers', () => {
     it('should not report success/error after deferred init resolves post-timeout', async () => {
       // Bootstrap hangs, then resolves AFTER timeout fires
       let resolveInit!: () => void;
-      let resolveExecuteReached!: () => void;
-      const executeReached = new Promise<void>((resolve) => {
-        resolveExecuteReached = resolve;
-      });
       mockConnectionManager.initialize.mockImplementation(
         () =>
           new Promise<void>((r) => {
             resolveInit = r;
           }),
       );
-      // Track when executeTool is reached after late bootstrap settles
-      mockRegistryManager.executeTool.mockImplementationOnce(async () => {
-        resolveExecuteReached();
-        return { result: 'late' };
-      });
 
       const { isOAuthEnabled, isAuthenticationConfigured } = await import('../../src/oauth/index');
       (isOAuthEnabled as jest.Mock).mockReturnValue(false);
@@ -2796,11 +2792,11 @@ describe('handlers', () => {
       const successCallsAfterTimeout = mockHealthMonitor.reportSuccess.mock.calls.length;
       const errorCallsAfterTimeout = mockHealthMonitor.reportError.mock.calls.length;
 
-      // Now resolve the deferred init — wait through the full chain
-      // (initialize → ensureIntrospected → executeTool) before asserting
+      // A late bootstrap must not dispatch a command after the caller's deadline.
       resolveInit();
-      await executeReached;
       await new Promise((r) => process.nextTick(r));
+      await new Promise((r) => process.nextTick(r));
+      expect(mockRegistryManager.executeTool).not.toHaveBeenCalled();
 
       // Neither reportSuccess nor reportError should have been called after timeout
       expect(mockHealthMonitor.reportSuccess.mock.calls.length).toBe(successCallsAfterTimeout);
@@ -2998,6 +2994,178 @@ describe('handlers', () => {
       mockRegistryManager.getToolRegistryKey.mockImplementation((name: string) =>
         name.includes('merge_request') ? 'mrs' : 'context',
       );
+    });
+
+    // An operator allowlist must constrain every project tool, independently of account settings.
+    it.each(['1', 'team/allowed', 'team%2Fallowed'])(
+      'keeps the todo project default %s numeric',
+      async (value) => {
+        const { gitlab } = await import('../../src/utils/gitlab-api');
+        const read = jest.spyOn(gitlab, 'get').mockResolvedValue({
+          id: 1,
+          path_with_namespace: 'team/allowed',
+          name_with_namespace: 'Team / Allowed',
+        });
+        const defaultProject = jest.mocked(runtimeConfig.getEffectiveProjectId);
+        defaultProject.mockReturnValue(value);
+        runtimeConfig.GITLAB_ALLOWED_PROJECT_IDS.push('1');
+        mockRegistryManager.getDeclaredArguments.mockReturnValueOnce(
+          new Set(['action', 'project_id']),
+        );
+        try {
+          const result = await callToolHandler(
+            { params: { name: 'browse_todos', arguments: { action: 'list' } } },
+            { sessionId: 'sess-1' },
+          );
+          expect(result.isError).not.toBe(true);
+          expect(mockRegistryManager.executeTool).toHaveBeenCalledWith(
+            'browse_todos',
+            expect.objectContaining({ action: 'list', project_id: 1 }),
+            expect.anything(),
+          );
+          expect(read).toHaveBeenCalledTimes(1);
+        } finally {
+          defaultProject.mockReset();
+          read.mockRestore();
+          runtimeConfig.GITLAB_ALLOWED_PROJECT_IDS.splice(0);
+        }
+      },
+    );
+
+    // A declared project default must be applied before a tool validates its required field.
+    it('applies a configured default before validating a required project field', async () => {
+      const defaultProject = jest.mocked(runtimeConfig.getEffectiveProjectId);
+      defaultProject.mockReturnValue('1');
+      mockRegistryManager.getDeclaredArguments.mockReturnValueOnce(
+        new Set(['action', 'project_id', 'job_id']),
+      );
+      try {
+        await callToolHandler(
+          { params: { name: 'browse_pipelines', arguments: { action: 'job', job_id: '3' } } },
+          { sessionId: 'sess-1' },
+        );
+        expect(mockRegistryManager.executeTool).toHaveBeenCalledWith(
+          'browse_pipelines',
+          { action: 'job', project_id: '1', job_id: '3' },
+          expect.anything(),
+        );
+      } finally {
+        defaultProject.mockReset();
+      }
+    });
+
+    // A project default must not add a conflicting project to an explicit group request.
+    it('applies a default to a declared camel-case project parameter', async () => {
+      const defaultProject = jest.mocked(runtimeConfig.getEffectiveProjectId);
+      defaultProject.mockReturnValue('1');
+      mockRegistryManager.getDeclaredArguments.mockReturnValueOnce(
+        new Set(['action', 'scope', 'projectId']),
+      );
+      try {
+        await callToolHandler(
+          { params: { name: 'browse_webhooks', arguments: { action: 'list', scope: 'project' } } },
+          { sessionId: 'sess-1' },
+        );
+        expect(mockRegistryManager.executeTool).toHaveBeenCalledWith(
+          'browse_webhooks',
+          { action: 'list', scope: 'project', projectId: '1' },
+          expect.anything(),
+        );
+      } finally {
+        defaultProject.mockReset();
+      }
+    });
+
+    // Explicit group targets must take precedence over the configured project default.
+    it('preserves an explicit group when a project default is configured', async () => {
+      const defaultProject = jest.mocked(runtimeConfig.getEffectiveProjectId);
+      defaultProject.mockReturnValue('1');
+      mockRegistryManager.getDeclaredArguments.mockReturnValueOnce(
+        new Set(['action', 'project_id', 'group_id']),
+      );
+      const args = { action: 'get', group_id: 'team' };
+      try {
+        await callToolHandler(
+          { params: { name: 'browse_audit_events', arguments: args } },
+          { sessionId: 'sess-1' },
+        );
+        expect(mockRegistryManager.executeTool).toHaveBeenCalledWith(
+          'browse_audit_events',
+          args,
+          expect.anything(),
+        );
+      } finally {
+        defaultProject.mockReset();
+      }
+    });
+
+    // A configured default must not replace an explicit target outside the allowlist.
+    it('refuses another project before executing a pipeline tool', async () => {
+      runtimeConfig.GITLAB_ALLOWED_PROJECT_IDS.push('1');
+      try {
+        const result = await callToolHandler(
+          {
+            params: {
+              name: 'browse_pipelines',
+              arguments: { action: 'job', project_id: '2', job_id: '3' },
+            },
+          },
+          { sessionId: 'sess-1' },
+        );
+        expect(result.isError).toBe(true);
+        expect(mockRegistryManager.executeTool).not.toHaveBeenCalled();
+      } finally {
+        runtimeConfig.GITLAB_ALLOWED_PROJECT_IDS.splice(0);
+      }
+    });
+
+    // Clearing a personal working scope must never remove the operator's project restriction.
+    it('keeps the operator allowlist when the caller selects everywhere', async () => {
+      runtimeConfig.GITLAB_ALLOWED_PROJECT_IDS.push('1');
+      try {
+        await service().updateSession(staticCaller(), { scope: 'everywhere' });
+        const result = await callToolHandler(
+          { params: { name: 'browse_projects', arguments: { action: 'get', project_id: '2' } } },
+          { sessionId: 'sess-1' },
+        );
+        expect(result.isError).toBe(true);
+        expect(mockRegistryManager.executeTool).not.toHaveBeenCalled();
+      } finally {
+        runtimeConfig.GITLAB_ALLOWED_PROJECT_IDS.splice(0);
+      }
+    });
+
+    // A caller-supplied project hint cannot authorize a global work item owned by another project.
+    it('checks actual ownership before updating a work item by global ID', async () => {
+      runtimeConfig.GITLAB_ALLOWED_PROJECT_IDS.push('1');
+      const configured = await service().resolve(staticCaller());
+      const operator = jest.spyOn(operatorProjects, 'withOperatorProjects').mockResolvedValue({
+        ...configured.policy,
+        scope: { projects: ['team/allowed'] },
+        scopeEnforcer: new ScopeEnforcer({ projects: ['1', 'team/allowed'] }),
+        operatorProjectIds: new Set(['1']),
+      });
+      mockConnectionManager.getClient.mockReturnValue({
+        request: jest
+          .fn()
+          .mockResolvedValue({ workItem: { project: { id: 'gid://gitlab/Project/2' } } }),
+      });
+      try {
+        const result = await callToolHandler(
+          {
+            params: {
+              name: 'manage_work_item',
+              arguments: { action: 'update', id: '123', project_id: '1', title: 'Changed' },
+            },
+          },
+          { sessionId: 'sess-1' },
+        );
+        expect(result.isError).toBe(true);
+        expect(mockRegistryManager.executeTool).not.toHaveBeenCalled();
+      } finally {
+        operator.mockRestore();
+        runtimeConfig.GITLAB_ALLOWED_PROJECT_IDS.splice(0);
+      }
     });
 
     it('lists every tool for a caller without settings', async () => {

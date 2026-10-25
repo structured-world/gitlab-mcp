@@ -13,6 +13,8 @@
 import { enhancedFetch } from './fetch';
 import { getGitLabBaseUrl } from './gitlab-base-url';
 import { cleanGidsFromObject } from './idConversion';
+import { assertSafeApiPath } from './api-path';
+import { normalizeProjectId } from './projectIdentifier';
 
 type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
 
@@ -117,7 +119,9 @@ async function request<T>(
   method: HttpMethod,
   path: string,
   options: RequestOptions = {},
+  receiveHeaders?: (headers: Headers) => void,
 ): Promise<T> {
+  assertSafeApiPath(path);
   const baseUrl = getGitLabBaseUrl();
   const queryString = buildQueryString(options.query);
   const url = `${baseUrl}/api/v4/${path}${queryString}`;
@@ -187,13 +191,39 @@ async function request<T>(
   }
 
   const data = (await response.json()) as T;
+  receiveHeaders?.(response.headers);
   return options.rawResponse ? data : cleanGidsFromObject(data);
+}
+
+/** GitLab offset pagination metadata, independent of permission-filtered page length. */
+export interface ApiPage<T> {
+  items: T[];
+  nextPage: number | null;
+}
+
+async function getPage<T>(
+  path: string,
+  options?: Omit<RequestOptions, 'body' | 'contentType'>,
+): Promise<ApiPage<T>> {
+  let nextPage: number | null = null;
+  const items = await request<T[]>('GET', path, options, (headers) => {
+    // GitLab 16.0 OffsetHeaderBuilder always emits X-Next-Page, empty on the last page.
+    const value = headers.get('x-next-page');
+    if (value === '') return;
+    if (value === null || !/^[1-9]\d*$/.test(value) || !Number.isSafeInteger(Number(value))) {
+      throw new Error('GitLab did not return valid pagination metadata');
+    }
+    nextPage = Number(value);
+  });
+  return { items, nextPage };
 }
 
 /**
  * GitLab API client with typed methods
  */
 export const gitlab = {
+  /** Read a page with its server-supplied continuation, including filtered empty pages. */
+  getPage,
   /**
    * GET request
    * @example gitlab.get('projects/123/labels', { query: { per_page: 20 } })
@@ -236,15 +266,14 @@ export const paths = {
   encode: (path: string) => encodeURIComponent(path),
 
   /** Projects path */
-  project: (id: string | number) =>
-    `projects/${typeof id === 'number' ? id : encodeURIComponent(id)}`,
+  project: (id: string | number) => `projects/${normalizeProjectId(String(id))}`,
 
   /** Groups path */
-  group: (id: string | number) => `groups/${typeof id === 'number' ? id : encodeURIComponent(id)}`,
+  group: (id: string | number) => `groups/${normalizeProjectId(String(id))}`,
 
   /** Namespace (project or group) path based on detection */
   namespace: (path: string, entityType: 'projects' | 'groups') =>
-    `${entityType}/${encodeURIComponent(path)}`,
+    `${entityType}/${normalizeProjectId(path)}`,
 };
 
 /**

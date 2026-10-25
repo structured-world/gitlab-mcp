@@ -2,6 +2,8 @@ import * as z from 'zod';
 import { BrowseReleasesSchema } from './schema-readonly';
 import { ManageReleaseSchema } from './schema';
 import { gitlab, toQuery } from '../../utils/gitlab-api';
+import { encodeApiSegment } from '../../utils/api-path';
+import { normalizeProjectId } from '../../utils/projectIdentifier';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
 import { assertActionAllowed } from '../utils';
 
@@ -29,7 +31,7 @@ export const releasesToolRegistry: ToolRegistry = new Map<string, EnhancedToolDe
 
         assertActionAllowed('browse_releases', input.action);
 
-        const encodedProjectId = encodeURIComponent(input.project_id);
+        const encodedProjectId = normalizeProjectId(input.project_id);
 
         switch (input.action) {
           case 'list': {
@@ -84,7 +86,7 @@ export const releasesToolRegistry: ToolRegistry = new Map<string, EnhancedToolDe
 
         assertActionAllowed('manage_release', input.action);
 
-        const encodedProjectId = encodeURIComponent(input.project_id);
+        const encodedProjectId = normalizeProjectId(input.project_id);
 
         switch (input.action) {
           case 'create': {
@@ -181,7 +183,7 @@ export const releasesToolRegistry: ToolRegistry = new Map<string, EnhancedToolDe
             const encodedTagName = encodeURIComponent(tag_name);
 
             await gitlab.delete(
-              `projects/${encodedProjectId}/releases/${encodedTagName}/assets/links/${link_id}`,
+              `projects/${encodedProjectId}/releases/${encodedTagName}/assets/links/${encodeApiSegment(link_id)}`,
             );
             return { deleted: true, tag_name, link_id };
           }

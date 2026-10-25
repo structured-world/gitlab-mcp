@@ -12,6 +12,7 @@
 
 import { ProjectPreset, ScopeConfig } from './types';
 import { logDebug, logWarn } from '../logger';
+import { canonicalProjectPath } from '../utils/api-path';
 
 // Re-export ScopeConfig for backward compatibility
 export type { ScopeConfig } from './types';
@@ -73,7 +74,7 @@ function getScopeDescription(scope: ScopeConfig): string {
  * - Handles numeric IDs (returns as-is)
  */
 function normalizeProjectPath(path: string): string {
-  const trimmed = trimSlashes(decodePath(path.trim()));
+  const trimmed = trimSlashes(canonicalProjectPath(path));
   // If it's a numeric ID, return as-is
   if (/^\d+$/.test(trimmed)) {
     return trimmed;
@@ -93,14 +94,9 @@ function trimSlashes(path: string): string {
   return path.slice(start, end);
 }
 
-/** A URL-encoded path decoded; a malformed escape is kept as written. */
+/** A namespace identity canonicalized before a scope or namespace lookup. */
 export function decodePath(path: string): string {
-  if (!path.includes('%')) return path;
-  try {
-    return decodeURIComponent(path);
-  } catch {
-    return path;
-  }
+  return canonicalProjectPath(path);
 }
 
 /**
@@ -135,10 +131,12 @@ export class ScopeEnforcer {
   private readonly allowedProjectsSet: Set<string>;
   private readonly allowedGroupsSet: Set<string>;
   private readonly includeSubgroups: boolean;
+  private readonly namespace?: string;
 
   constructor(scope: ScopeConfig) {
     this.scope = scope;
     this.includeSubgroups = scope.includeSubgroups !== false; // Default true
+    this.namespace = scope.namespace ? normalizeProjectPath(scope.namespace) : undefined;
 
     // Initialize allowed projects set
     this.allowedProjectsSet = new Set((scope.projects ?? []).map((p) => normalizeProjectPath(p)));
@@ -182,12 +180,16 @@ export class ScopeEnforcer {
    * @returns true if allowed, false if outside scope
    */
   isAllowed(projectPath: string): boolean {
+    let normalized: string;
+    try {
+      normalized = normalizeProjectPath(projectPath);
+    } catch {
+      return false;
+    }
     // If no project restrictions are defined, allow all projects
     if (!this.hasProjectRestrictions()) {
       return true;
     }
-
-    const normalized = normalizeProjectPath(projectPath);
 
     // Check explicit project list (includes single project from scope.project if set)
     if (this.allowedProjectsSet.size > 0 && this.allowedProjectsSet.has(normalized)) {
@@ -195,7 +197,10 @@ export class ScopeEnforcer {
     }
 
     // Check namespace
-    if (this.scope.namespace && isInNamespace(projectPath, this.scope.namespace)) {
+    if (
+      this.namespace &&
+      (normalized === this.namespace || normalized.startsWith(this.namespace + '/'))
+    ) {
       return true;
     }
 
@@ -204,7 +209,7 @@ export class ScopeEnforcer {
       for (const allowedGroup of this.allowedGroupsSet) {
         if (this.includeSubgroups) {
           // Project must be in group or its subgroups
-          if (isInNamespace(projectPath, allowedGroup)) {
+          if (normalized === allowedGroup || normalized.startsWith(allowedGroup + '/')) {
             return true;
           }
         } else {
@@ -239,13 +244,17 @@ export class ScopeEnforcer {
    * @returns true if allowed, false if outside scope
    */
   isGroupAllowed(groupPath: string): boolean {
+    let normalized: string;
+    try {
+      normalized = normalizeProjectPath(groupPath);
+    } catch {
+      return false;
+    }
     // Without group restrictions, any group only when nothing is restricted: a scope of
     // projects reaches no group.
     if (!this.hasGroupRestrictions()) {
       return !this.hasProjectRestrictions();
     }
-
-    const normalized = normalizeProjectPath(groupPath);
 
     // Check explicit group list (includes single group from scope.group if set)
     if (this.allowedGroupsSet.size > 0 && this.allowedGroupsSet.has(normalized)) {
@@ -255,14 +264,17 @@ export class ScopeEnforcer {
     // Check if group is a subgroup of an allowed group (when includeSubgroups is true)
     if (this.includeSubgroups && this.allowedGroupsSet.size > 0) {
       for (const allowedGroup of this.allowedGroupsSet) {
-        if (isInNamespace(groupPath, allowedGroup)) {
+        if (normalized === allowedGroup || normalized.startsWith(allowedGroup + '/')) {
           return true;
         }
       }
     }
 
     // Check namespace (groups in namespace are allowed)
-    if (this.scope.namespace && isInNamespace(groupPath, this.scope.namespace)) {
+    if (
+      this.namespace &&
+      (normalized === this.namespace || normalized.startsWith(this.namespace + '/'))
+    ) {
       return true;
     }
 
@@ -405,6 +417,20 @@ const GROUP_FIELDS = [
   'namespace_path',
   'namespace_id',
 ];
+
+/** Whether a declared target was supplied, including an invalid value that must be validated. */
+export function hasExplicitScopeTarget(
+  args: Record<string, unknown>,
+  declared: ReadonlySet<string>,
+): boolean {
+  for (const field of PROJECT_FIELDS) {
+    if (declared.has(field) && args[field] !== undefined) return true;
+  }
+  for (const field of GROUP_FIELDS) {
+    if (declared.has(field) && args[field] !== undefined) return true;
+  }
+  return false;
+}
 
 /**
  * Extract project path from tool arguments

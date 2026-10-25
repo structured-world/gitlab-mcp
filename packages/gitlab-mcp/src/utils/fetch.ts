@@ -12,6 +12,7 @@
  */
 
 import * as fs from 'fs';
+import { assertSafeApiUrl } from './api-path';
 import { logInfo, logWarn, logDebug } from '../logger';
 import {
   SKIP_TLS_VERIFY,
@@ -756,6 +757,7 @@ export async function enhancedFetch(
   url: string,
   options: FetchWithRetryOptions = {},
 ): Promise<Response> {
+  assertSafeApiUrl(url);
   const method = (options.method ?? 'GET').toUpperCase();
   const isIdempotent = method === 'GET' || method === 'HEAD' || method === 'OPTIONS';
   const safeUrl = redactUrlForLogging(url);

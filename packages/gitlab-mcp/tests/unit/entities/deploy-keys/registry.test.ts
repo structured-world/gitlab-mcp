@@ -2,6 +2,7 @@ import {
   deployKeysToolRegistry,
   getDeployKeysReadOnlyToolNames,
 } from '../../../../src/entities/deploy-keys/registry';
+import { withDefaultProject } from '../../../../src/configuration/default-project';
 import {
   installFetchMock,
   mockOk,
@@ -20,6 +21,28 @@ const browse = () => deployKeysToolRegistry.get('browse_deploy_keys')!;
 const manage = () => deployKeysToolRegistry.get('manage_deploy_key')!;
 
 describe('Deploy Keys Registry', () => {
+  // The public selector belongs to the instance collection, including an explicit false.
+  it.each([true, false, 'true', 'false'])(
+    'retains the instance REST route for public=%p with a project default',
+    async (value) => {
+      const read = jest.fn();
+      const prepared = await withDefaultProject(
+        'browse_deploy_keys',
+        { action: 'list', public: value },
+        new Set(['project_id']),
+        '71',
+        () => false,
+        read,
+      );
+      mockOk([]);
+      await browse().handler(prepared.args);
+      const url = new URL(lastCall()[0]);
+      expect(url.pathname).toBe('/api/v4/deploy_keys');
+      expect(url.searchParams.get('public')).toBe(String(value));
+      expect(read).not.toHaveBeenCalled();
+    },
+  );
+
   describe('Registry Structure', () => {
     it('contains exactly the two CQRS tools', () => {
       const names = Array.from(deployKeysToolRegistry.keys());

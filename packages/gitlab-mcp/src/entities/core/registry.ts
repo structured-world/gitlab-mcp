@@ -18,6 +18,7 @@ import {
 import { enhancedFetch } from '../../utils/fetch';
 import { getGitLabBaseUrl } from '../../utils/gitlab-base-url';
 import { normalizeProjectId } from '../../utils/projectIdentifier';
+import { encodeApiSegment } from '../../utils/api-path';
 import { fetchUsers, smartUserSearch, type UserSearchParams } from '../../utils/smart-user-search';
 import { cleanGidsFromObject } from '../../utils/idConversion';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
@@ -405,7 +406,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
             if (per_page) queryParams.set('per_page', String(per_page));
             if (page) queryParams.set('page', String(page));
 
-            const apiUrl = `${getGitLabBaseUrl()}/api/v4/projects/${encodeURIComponent(project_id)}/repository/commits?${queryParams}`;
+            const apiUrl = `${getGitLabBaseUrl()}/api/v4/projects/${normalizeProjectId(project_id)}/repository/commits?${queryParams}`;
             const response = await enhancedFetch(apiUrl);
 
             if (!response.ok) {
@@ -421,7 +422,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
             const queryParams = new URLSearchParams();
             if (stats) queryParams.set('stats', 'true');
 
-            const apiUrl = `${getGitLabBaseUrl()}/api/v4/projects/${encodeURIComponent(project_id)}/repository/commits/${encodeURIComponent(sha)}?${queryParams}`;
+            const apiUrl = `${getGitLabBaseUrl()}/api/v4/projects/${normalizeProjectId(project_id)}/repository/commits/${encodeURIComponent(sha)}?${queryParams}`;
             const response = await enhancedFetch(apiUrl);
 
             if (!response.ok) {
@@ -441,7 +442,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
             if (per_page) queryParams.set('per_page', String(per_page));
             if (page) queryParams.set('page', String(page));
 
-            const apiUrl = `${getGitLabBaseUrl()}/api/v4/projects/${encodeURIComponent(project_id)}/repository/commits/${encodeURIComponent(sha)}/diff?${queryParams}`;
+            const apiUrl = `${getGitLabBaseUrl()}/api/v4/projects/${normalizeProjectId(project_id)}/repository/commits/${encodeURIComponent(sha)}/diff?${queryParams}`;
             const response = await enhancedFetch(apiUrl);
 
             if (!response.ok) {
@@ -516,7 +517,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
           case 'project': {
             const { project_id } = input;
             const queryParams = buildQueryParams(input);
-            const apiUrl = `${getGitLabBaseUrl()}/api/v4/projects/${encodeURIComponent(project_id)}/events?${queryParams}`;
+            const apiUrl = `${getGitLabBaseUrl()}/api/v4/projects/${normalizeProjectId(project_id)}/events?${queryParams}`;
             const response = await enhancedFetch(apiUrl);
 
             if (!response.ok) {
@@ -800,7 +801,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
             if (fork_name) body.set('name', fork_name);
             if (fork_path) body.set('path', fork_path);
 
-            const apiUrl = `${getGitLabBaseUrl()}/api/v4/projects/${encodeURIComponent(project_id)}/fork`;
+            const apiUrl = `${getGitLabBaseUrl()}/api/v4/projects/${normalizeProjectId(project_id)}/fork`;
             const response = await enhancedFetch(apiUrl, {
               method: 'POST',
               headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -1057,7 +1058,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
 
         switch (input.action) {
           case 'mark_done': {
-            const apiUrl = `${getGitLabBaseUrl()}/api/v4/todos/${input.id}/mark_as_done`;
+            const apiUrl = `${getGitLabBaseUrl()}/api/v4/todos/${encodeApiSegment(input.id)}/mark_as_done`;
             const response = await enhancedFetch(apiUrl, { method: 'POST' });
 
             if (!response.ok) {
@@ -1080,7 +1081,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
           }
 
           case 'restore': {
-            const apiUrl = `${getGitLabBaseUrl()}/api/v4/todos/${input.id}/mark_as_pending`;
+            const apiUrl = `${getGitLabBaseUrl()}/api/v4/todos/${encodeApiSegment(input.id)}/mark_as_pending`;
             const response = await enhancedFetch(apiUrl, { method: 'POST' });
 
             if (!response.ok) {

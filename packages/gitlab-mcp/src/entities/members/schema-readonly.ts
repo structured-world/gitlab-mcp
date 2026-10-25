@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { requiredId } from '../utils';
+import { requiredId, numericId } from '../utils';
 import { PaginationOptionsSchema } from '../shared';
 
 /**
@@ -57,7 +57,7 @@ const ListGroupMembersSchema = z
 const GetProjectMemberSchema = z.object({
   action: z.literal('get_project').describe('Get a specific member of a project'),
   project_id: requiredId.describe('Project ID or URL-encoded path'),
-  user_id: requiredId.describe('User ID of the member'),
+  user_id: numericId.describe('User ID of the member'),
   include_inherited: z
     .boolean()
     .optional()
@@ -70,7 +70,7 @@ const GetProjectMemberSchema = z.object({
 const GetGroupMemberSchema = z.object({
   action: z.literal('get_group').describe('Get a specific member of a group'),
   group_id: requiredId.describe('Group ID or URL-encoded path'),
-  user_id: requiredId.describe('User ID of the member'),
+  user_id: numericId.describe('User ID of the member'),
   include_inherited: z
     .boolean()
     .optional()

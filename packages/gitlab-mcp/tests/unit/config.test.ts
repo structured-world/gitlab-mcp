@@ -33,6 +33,22 @@ describe('config.ts', () => {
   });
 
   describe('environment variable parsing', () => {
+    // Empty entries are configuration separators, never project identities or restrictions.
+    it.each([
+      { value: '', expected: [] },
+      { value: '  , , ', expected: [] },
+      { value: ' 123, ', expected: ['123'] },
+      { value: '123, , 456,', expected: ['123', '456'] },
+    ])('ignores empty allowlist entries in $value', ({ value, expected }) => {
+      process.env.GITLAB_ALLOWED_PROJECT_IDS = value;
+      delete process.env.GITLAB_PROJECT_ID;
+      const config = require('../../src/config');
+      expect(config.GITLAB_ALLOWED_PROJECT_IDS).toEqual(expected);
+      expect(config.getEffectiveProjectId(undefined)).toBe(
+        expected.length === 1 ? expected[0] : undefined,
+      );
+    });
+
     it('should parse boolean environment variables correctly', () => {
       process.env.GITLAB_IS_OLD = 'true';
       process.env.GITLAB_READ_ONLY_MODE = 'true';
@@ -236,12 +252,14 @@ describe('config.ts', () => {
   });
 
   describe('getEffectiveProjectId', () => {
-    it('should return GITLAB_PROJECT_ID when set', () => {
+    // A default must never replace a target that has already passed the common gate.
+    it('should preserve an explicit project when a default is set', () => {
       process.env.GITLAB_PROJECT_ID = '999';
 
       const config = require('../../src/config');
 
-      expect(config.getEffectiveProjectId('123')).toBe('999');
+      expect(config.getEffectiveProjectId('123')).toBe('123');
+      expect(config.getEffectiveProjectId(undefined)).toBe('999');
     });
 
     it('should return provided project ID when no restrictions', () => {
@@ -262,24 +280,24 @@ describe('config.ts', () => {
       expect(config.getEffectiveProjectId('456')).toBe('456');
     });
 
-    it('should throw error when project ID not in allowed list', () => {
+    // Selection is not authorization: the common gate resolves ID/path aliases through GitLab.
+    it('should preserve a project path for common authorization', () => {
       delete process.env.GITLAB_PROJECT_ID;
       process.env.GITLAB_ALLOWED_PROJECT_IDS = '123,456,789';
 
       const config = require('../../src/config');
 
-      expect(() => config.getEffectiveProjectId('999')).toThrow(
-        'Project ID 999 is not allowed. Allowed project IDs: 123, 456, 789',
-      );
+      expect(config.getEffectiveProjectId('team/app')).toBe('team/app');
+      expect(config.getEffectiveProjectId(undefined)).toBeUndefined();
     });
 
-    it('should prioritize GITLAB_PROJECT_ID over allowed list', () => {
+    it('should never replace an explicit allowed target with a different default', () => {
       process.env.GITLAB_PROJECT_ID = '999';
       process.env.GITLAB_ALLOWED_PROJECT_IDS = '123,456,789';
 
       const config = require('../../src/config');
 
-      expect(config.getEffectiveProjectId('456')).toBe('999');
+      expect(config.getEffectiveProjectId('456')).toBe('456');
     });
   });
 

@@ -243,37 +243,29 @@ describe('BrowseSnippetsSchema - Discriminated Union', () => {
         expect(result.success).toBe(false);
       });
 
-      it('should coerce zero id to string (requiredId uses z.coerce.string)', () => {
+      // Snippet IDs must identify a positive integer, not arbitrary path syntax.
+      it('should reject a zero ID', () => {
         const result = BrowseSnippetsSchema.safeParse({
           action: 'get',
           id: 0,
         });
-        expect(result.success).toBe(true);
-        if (result.success && result.data.action === 'get') {
-          expect(result.data.id).toBe('0');
-        }
+        expect(result.success).toBe(false);
       });
 
-      it('should coerce negative id to string', () => {
+      it('should reject a negative ID', () => {
         const result = BrowseSnippetsSchema.safeParse({
           action: 'get',
           id: -5,
         });
-        expect(result.success).toBe(true);
-        if (result.success && result.data.action === 'get') {
-          expect(result.data.id).toBe('-5');
-        }
+        expect(result.success).toBe(false);
       });
 
-      it('should coerce float id to string', () => {
+      it('should reject a fractional ID', () => {
         const result = BrowseSnippetsSchema.safeParse({
           action: 'get',
           id: 12.5,
         });
-        expect(result.success).toBe(true);
-        if (result.success && result.data.action === 'get') {
-          expect(result.data.id).toBe('12.5');
-        }
+        expect(result.success).toBe(false);
       });
 
       it('should accept string id', () => {

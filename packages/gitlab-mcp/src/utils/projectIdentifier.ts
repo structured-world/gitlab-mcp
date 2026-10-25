@@ -1,7 +1,4 @@
-/**
- * Smart project identifier handling utilities
- * Handles both numeric IDs and namespace paths (URL-encoded or not)
- */
+import { canonicalProjectPath } from './api-path';
 
 /**
  * Smart project identifier that can be numeric ID or namespace path
@@ -16,14 +13,6 @@ export interface ProjectIdentifier {
 }
 
 /**
- * Detects if a string is URL-encoded by checking for common encoded characters
- */
-function isUrlEncoded(str: string): boolean {
-  // Check for common URL encoded patterns: %20, %2F, %3A, etc.
-  return /%[0-9A-Fa-f]{2}/.test(str);
-}
-
-/**
  * Detects if a string is a numeric ID
  */
 function isNumericId(str: string): boolean {
@@ -33,12 +22,12 @@ function isNumericId(str: string): boolean {
 /**
  * Smart processing of project identifier that handles:
  * - Numeric IDs: "123" -> stays as "123"
- * - URL-encoded paths: "group%2Fproject" -> stays as "group%2Fproject" (for API)
+ * - URL-encoded paths: decoded once, then encoded as one API segment
  * - Regular paths: "group/project" -> converts to "group%2Fproject"
- * - Already properly encoded paths: detected and preserved
+ * - Dot segments and ambiguous encodings are rejected before any request
  */
 export function processProjectIdentifier(input: string): ProjectIdentifier {
-  const trimmedInput = input.trim();
+  const trimmedInput = canonicalProjectPath(input);
 
   // Check if it's a numeric ID
   if (isNumericId(trimmedInput)) {
@@ -50,15 +39,7 @@ export function processProjectIdentifier(input: string): ProjectIdentifier {
   }
 
   // For namespace paths, we need to ensure proper encoding for GitLab API
-  let identifier: string;
-
-  if (isUrlEncoded(trimmedInput)) {
-    // Already URL-encoded, use as-is (avoid double encoding)
-    identifier = trimmedInput;
-  } else {
-    // Regular path, needs URL encoding
-    identifier = encodeURIComponent(trimmedInput);
-  }
+  const identifier = encodeURIComponent(trimmedInput);
 
   return {
     identifier,
@@ -68,9 +49,7 @@ export function processProjectIdentifier(input: string): ProjectIdentifier {
 }
 
 /**
- * Safe URL component encoding that avoids double-encoding
- * If input is already encoded, returns as-is
- * If input needs encoding, applies encodeURIComponent
+ * Canonical API segment for a project identifier supplied raw or URL-encoded.
  */
 export function safeEncodeProjectId(projectId: string): string {
   const processed = processProjectIdentifier(projectId);
@@ -105,7 +84,12 @@ export function validateProjectIdentifier(input: string): string | null {
   }
 
   // Check if it's a valid namespace path (with or without encoding)
-  const decoded = isUrlEncoded(trimmed) ? decodeURIComponent(trimmed) : trimmed;
+  let decoded: string;
+  try {
+    decoded = canonicalProjectPath(trimmed);
+  } catch {
+    return 'Invalid project identifier format. Use numeric ID or namespace/project path.';
+  }
 
   // Basic validation for namespace/project format
   if (!/^[a-zA-Z0-9\-_./]+$/.test(decoded)) {

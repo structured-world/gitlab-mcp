@@ -132,5 +132,12 @@ describe('projectIdentifier', () => {
       expect(validateProjectIdentifier('group-name/project_name')).toBeNull();
       expect(validateProjectIdentifier('group.name/project.name')).toBeNull();
     });
+
+    // Malformed escapes and traversal are rejected through the public validation contract.
+    it.each(['team/%ZZ', 'team/../other'])('rejects unsafe path %s', (input) => {
+      expect(validateProjectIdentifier(input)).toBe(
+        'Invalid project identifier format. Use numeric ID or namespace/project path.',
+      );
+    });
   });
 });

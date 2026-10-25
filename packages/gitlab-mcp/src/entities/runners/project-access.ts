@@ -9,16 +9,19 @@ import {
 } from '../../graphql/runners';
 import { extractSimpleId } from '../../utils/idConversion';
 import { mapBounded } from '../../utils/bounded-map';
+import { canonicalProjectPath } from '../../utils/api-path';
 
 export function runnerProjectsRestricted(): boolean {
   return GITLAB_ALLOWED_PROJECT_IDS.length > 0;
 }
 
 export function runnerProjectAllowed(project: RunnerProject): boolean {
-  return (
-    GITLAB_ALLOWED_PROJECT_IDS.includes(extractSimpleId(project.id)) ||
-    GITLAB_ALLOWED_PROJECT_IDS.includes(project.fullPath)
-  );
+  const id = extractSimpleId(project.id);
+  const path = canonicalProjectPath(project.fullPath).toLowerCase();
+  return GITLAB_ALLOWED_PROJECT_IDS.some((value) => {
+    const configured = canonicalProjectPath(value);
+    return configured === id || configured.toLowerCase() === path;
+  });
 }
 
 export function assertRunnerProjectAllowed(fullPath: string, id: string): void {

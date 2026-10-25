@@ -2,6 +2,7 @@ import * as z from 'zod';
 import { BrowseRefsSchema } from './schema-readonly';
 import { ManageRefSchema } from './schema';
 import { gitlab, toQuery } from '../../utils/gitlab-api';
+import { normalizeProjectId } from '../../utils/projectIdentifier';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
 import { assertActionAllowed } from '../utils';
 
@@ -36,7 +37,7 @@ export const refsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
 
         assertActionAllowed('browse_refs', input.action);
 
-        const encodedProjectId = encodeURIComponent(input.project_id);
+        const encodedProjectId = normalizeProjectId(input.project_id);
 
         switch (input.action) {
           case 'list_branches': {
@@ -120,7 +121,7 @@ export const refsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
 
         assertActionAllowed('manage_ref', input.action);
 
-        const encodedProjectId = encodeURIComponent(input.project_id);
+        const encodedProjectId = normalizeProjectId(input.project_id);
 
         switch (input.action) {
           case 'create_branch': {

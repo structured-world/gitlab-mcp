@@ -537,22 +537,17 @@ export const GITLAB_BASE_URL = normalizeGitLabBaseUrl(process.env.GITLAB_API_URL
 export const GITLAB_API_URL = `${GITLAB_BASE_URL}/api/v4`;
 export const GITLAB_PROJECT_ID = process.env.GITLAB_PROJECT_ID;
 export const GITLAB_ALLOWED_PROJECT_IDS =
-  process.env.GITLAB_ALLOWED_PROJECT_IDS?.split(',').map((id) => id.trim()) ?? [];
+  process.env.GITLAB_ALLOWED_PROJECT_IDS?.split(',')
+    .map((id) => id.trim())
+    .filter((id) => id.length > 0) ?? [];
 
-export function getEffectiveProjectId(projectId: string): string {
-  if (GITLAB_PROJECT_ID) {
-    return GITLAB_PROJECT_ID;
-  }
-
-  if (GITLAB_ALLOWED_PROJECT_IDS.length > 0) {
-    if (!GITLAB_ALLOWED_PROJECT_IDS.includes(projectId)) {
-      throw new Error(
-        `Project ID ${projectId} is not allowed. Allowed project IDs: ${GITLAB_ALLOWED_PROJECT_IDS.join(', ')}`,
-      );
-    }
-  }
-
-  return projectId;
+/** Select a default only for an omitted target; authorization belongs to the call gate. */
+export function getEffectiveProjectId(projectId: string | undefined): string | undefined {
+  return (
+    projectId ??
+    GITLAB_PROJECT_ID ??
+    (GITLAB_ALLOWED_PROJECT_IDS.length === 1 ? GITLAB_ALLOWED_PROJECT_IDS[0] : undefined)
+  );
 }
 
 // Package info

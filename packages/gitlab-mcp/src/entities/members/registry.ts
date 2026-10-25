@@ -2,6 +2,7 @@ import * as z from 'zod';
 import { BrowseMembersSchema } from './schema-readonly';
 import { ManageMemberSchema } from './schema';
 import { gitlab, toQuery } from '../../utils/gitlab-api';
+import { normalizeProjectId } from '../../utils/projectIdentifier';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
 import { assertActionAllowed } from '../utils';
 
@@ -39,7 +40,7 @@ export const membersToolRegistry: ToolRegistry = new Map<string, EnhancedToolDef
         switch (input.action) {
           case 'list_project': {
             const { action: _action, project_id, ...queryOptions } = input;
-            const encodedProjectId = encodeURIComponent(project_id);
+            const encodedProjectId = normalizeProjectId(project_id);
             return gitlab.get(`projects/${encodedProjectId}/members`, {
               query: toQuery(queryOptions, []),
             });
@@ -47,7 +48,7 @@ export const membersToolRegistry: ToolRegistry = new Map<string, EnhancedToolDef
 
           case 'list_group': {
             const { action: _action, group_id, ...queryOptions } = input;
-            const encodedGroupId = encodeURIComponent(group_id);
+            const encodedGroupId = normalizeProjectId(group_id);
             return gitlab.get(`groups/${encodedGroupId}/members`, {
               query: toQuery(queryOptions, []),
             });
@@ -55,7 +56,7 @@ export const membersToolRegistry: ToolRegistry = new Map<string, EnhancedToolDef
 
           case 'get_project': {
             const { project_id, user_id, include_inherited } = input;
-            const encodedProjectId = encodeURIComponent(project_id);
+            const encodedProjectId = normalizeProjectId(project_id);
             const encodedUserId = encodeURIComponent(user_id);
             const endpoint = include_inherited
               ? `projects/${encodedProjectId}/members/all/${encodedUserId}`
@@ -65,7 +66,7 @@ export const membersToolRegistry: ToolRegistry = new Map<string, EnhancedToolDef
 
           case 'get_group': {
             const { group_id, user_id, include_inherited } = input;
-            const encodedGroupId = encodeURIComponent(group_id);
+            const encodedGroupId = normalizeProjectId(group_id);
             const encodedUserId = encodeURIComponent(user_id);
             const endpoint = include_inherited
               ? `groups/${encodedGroupId}/members/all/${encodedUserId}`
@@ -75,7 +76,7 @@ export const membersToolRegistry: ToolRegistry = new Map<string, EnhancedToolDef
 
           case 'list_all_project': {
             const { action: _action, project_id, ...queryOptions } = input;
-            const encodedProjectId = encodeURIComponent(project_id);
+            const encodedProjectId = normalizeProjectId(project_id);
             return gitlab.get(`projects/${encodedProjectId}/members/all`, {
               query: toQuery(queryOptions, []),
             });
@@ -83,7 +84,7 @@ export const membersToolRegistry: ToolRegistry = new Map<string, EnhancedToolDef
 
           case 'list_all_group': {
             const { action: _action, group_id, ...queryOptions } = input;
-            const encodedGroupId = encodeURIComponent(group_id);
+            const encodedGroupId = normalizeProjectId(group_id);
             return gitlab.get(`groups/${encodedGroupId}/members/all`, {
               query: toQuery(queryOptions, []),
             });
@@ -121,7 +122,7 @@ export const membersToolRegistry: ToolRegistry = new Map<string, EnhancedToolDef
         switch (input.action) {
           case 'add_to_project': {
             const { project_id, user_id, access_level, expires_at } = input;
-            const encodedProjectId = encodeURIComponent(project_id);
+            const encodedProjectId = normalizeProjectId(project_id);
 
             const body: Record<string, unknown> = {
               user_id,
@@ -137,7 +138,7 @@ export const membersToolRegistry: ToolRegistry = new Map<string, EnhancedToolDef
 
           case 'add_to_group': {
             const { group_id, user_id, access_level, expires_at } = input;
-            const encodedGroupId = encodeURIComponent(group_id);
+            const encodedGroupId = normalizeProjectId(group_id);
 
             const body: Record<string, unknown> = {
               user_id,
@@ -153,7 +154,7 @@ export const membersToolRegistry: ToolRegistry = new Map<string, EnhancedToolDef
 
           case 'remove_from_project': {
             const { project_id, user_id, skip_subresources, unassign_issuables } = input;
-            const encodedProjectId = encodeURIComponent(project_id);
+            const encodedProjectId = normalizeProjectId(project_id);
             const encodedUserId = encodeURIComponent(user_id);
 
             const query: Record<string, boolean | undefined> = {};
@@ -168,7 +169,7 @@ export const membersToolRegistry: ToolRegistry = new Map<string, EnhancedToolDef
 
           case 'remove_from_group': {
             const { group_id, user_id, skip_subresources, unassign_issuables } = input;
-            const encodedGroupId = encodeURIComponent(group_id);
+            const encodedGroupId = normalizeProjectId(group_id);
             const encodedUserId = encodeURIComponent(user_id);
 
             const query: Record<string, boolean | undefined> = {};
@@ -183,7 +184,7 @@ export const membersToolRegistry: ToolRegistry = new Map<string, EnhancedToolDef
 
           case 'update_project': {
             const { project_id, user_id, access_level, expires_at } = input;
-            const encodedProjectId = encodeURIComponent(project_id);
+            const encodedProjectId = normalizeProjectId(project_id);
             const encodedUserId = encodeURIComponent(user_id);
 
             const body: Record<string, unknown> = { access_level };
@@ -197,7 +198,7 @@ export const membersToolRegistry: ToolRegistry = new Map<string, EnhancedToolDef
 
           case 'update_group': {
             const { group_id, user_id, access_level, expires_at, member_role_id } = input;
-            const encodedGroupId = encodeURIComponent(group_id);
+            const encodedGroupId = normalizeProjectId(group_id);
             const encodedUserId = encodeURIComponent(user_id);
 
             const body: Record<string, unknown> = { access_level };

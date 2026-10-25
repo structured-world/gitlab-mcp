@@ -1,6 +1,7 @@
 import * as z from 'zod';
 import { BrowseAuditEventsSchema } from './schema-readonly';
 import { gitlab, toQuery } from '../../utils/gitlab-api';
+import { normalizeProjectId } from '../../utils/projectIdentifier';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
 import { assertActionAllowed } from '../utils';
 
@@ -14,10 +15,10 @@ const PREMIUM_REQ = { tier: 'premium', notes: 'Audit Events' } as const;
  */
 function auditBasePath(input: { project_id?: string; group_id?: string }): string {
   if (input.project_id) {
-    return `projects/${encodeURIComponent(input.project_id)}/audit_events`;
+    return `projects/${normalizeProjectId(input.project_id)}/audit_events`;
   }
   if (input.group_id) {
-    return `groups/${encodeURIComponent(input.group_id)}/audit_events`;
+    return `groups/${normalizeProjectId(input.group_id)}/audit_events`;
   }
   return 'audit_events';
 }
@@ -54,14 +55,14 @@ export const auditEventsToolRegistry: ToolRegistry = new Map<string, EnhancedToo
 
           case 'list_group': {
             const { action: _action, group_id, ...query } = input;
-            return gitlab.get(`groups/${encodeURIComponent(group_id)}/audit_events`, {
+            return gitlab.get(`groups/${normalizeProjectId(group_id)}/audit_events`, {
               query: toQuery(query, []),
             });
           }
 
           case 'list_project': {
             const { action: _action, project_id, ...query } = input;
-            return gitlab.get(`projects/${encodeURIComponent(project_id)}/audit_events`, {
+            return gitlab.get(`projects/${normalizeProjectId(project_id)}/audit_events`, {
               query: toQuery(query, []),
             });
           }

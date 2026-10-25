@@ -2,6 +2,8 @@ import * as z from 'zod';
 import { BrowseSnippetsSchema } from './schema-readonly';
 import { ManageSnippetSchema } from './schema';
 import { gitlab, toQuery } from '../../utils/gitlab-api';
+import { encodeApiSegment } from '../../utils/api-path';
+import { normalizeProjectId } from '../../utils/projectIdentifier';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
 import { assertActionAllowed } from '../utils';
 
@@ -46,7 +48,7 @@ export const snippetsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDe
               if (!projectId) {
                 throw new Error("projectId is required when scope is 'project'");
               }
-              const encodedProjectId = encodeURIComponent(projectId);
+              const encodedProjectId = normalizeProjectId(projectId);
               path = `projects/${encodedProjectId}/snippets`;
             }
 
@@ -58,11 +60,11 @@ export const snippetsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDe
           case 'get': {
             // TypeScript knows: input has id (required), projectId, raw (optional)
             const { id, projectId, raw } = input;
-            const encodedId = id.toString();
+            const encodedId = encodeApiSegment(id);
             let path: string;
 
             if (projectId) {
-              const encodedProjectId = encodeURIComponent(projectId);
+              const encodedProjectId = normalizeProjectId(projectId);
               path = `projects/${encodedProjectId}/snippets/${encodedId}`;
             } else {
               path = `snippets/${encodedId}`;
@@ -119,7 +121,7 @@ export const snippetsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDe
 
             let path: string;
             if (projectId) {
-              const encodedProjectId = encodeURIComponent(projectId);
+              const encodedProjectId = normalizeProjectId(projectId);
               path = `projects/${encodedProjectId}/snippets`;
             } else {
               path = 'snippets';
@@ -134,7 +136,7 @@ export const snippetsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDe
           case 'update': {
             // TypeScript knows: input has id (required), projectId, title, description, visibility, files (optional)
             const { id, projectId, title, description, visibility, files } = input;
-            const encodedId = id.toString();
+            const encodedId = encodeApiSegment(id);
             const body: Record<string, unknown> = {};
 
             if (title !== undefined) {
@@ -152,7 +154,7 @@ export const snippetsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDe
 
             let path: string;
             if (projectId) {
-              const encodedProjectId = encodeURIComponent(projectId);
+              const encodedProjectId = normalizeProjectId(projectId);
               path = `projects/${encodedProjectId}/snippets/${encodedId}`;
             } else {
               path = `snippets/${encodedId}`;
@@ -167,11 +169,11 @@ export const snippetsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDe
           case 'delete': {
             // TypeScript knows: input has id (required), projectId (optional)
             const { id, projectId } = input;
-            const encodedId = id.toString();
+            const encodedId = encodeApiSegment(id);
             let path: string;
 
             if (projectId) {
-              const encodedProjectId = encodeURIComponent(projectId);
+              const encodedProjectId = normalizeProjectId(projectId);
               path = `projects/${encodedProjectId}/snippets/${encodedId}`;
             } else {
               path = `snippets/${encodedId}`;

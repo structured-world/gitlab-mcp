@@ -44,9 +44,28 @@ When `GITLAB_ALLOWED_PROJECT_IDS` is set:
 - **Single value** (e.g., `123`): Acts as default project, restricts to that project only
 - **Multiple values** (e.g., `123,456,789`): Restricts access to listed projects, requires explicit project ID
 
-Runner tools enforce this operator restriction separately from the chat's working
-scope. A project path is checked against its resolved GitLab ID; configured full
-paths are also accepted. Runner lists retain only project runners whose complete
+The restriction is enforced before tool execution. Project IDs, full paths and
+URL-encoded paths are resolved to the same GitLab project. Account settings and
+the chat's working scope may narrow this list; selecting `everywhere` cannot widen
+it. Targetless listings and searches use only permitted projects. Group operations
+that cannot be confined to those projects are refused. The scope picker offers
+only allowed projects. Explicit targets take precedence over `GITLAB_PROJECT_ID`;
+defaults are authorized by the same check as explicit targets.
+
+Global work item, container repository, vulnerability and todo IDs require ownership
+evidence from the connected GitLab instance, even when a permitted project is also
+supplied. Relationship targets are checked too. Timelog and suggestion operations
+require matching project metadata, with bounded verification; missing evidence,
+excessive pagination or an expired request fails closed. Older GitLab versions that
+do not expose suggestion ownership metadata cannot apply suggestions with an
+allowlist enabled. Without an allowlist, these checks add no ownership requests.
+
+This is a server-side restriction on tool arguments and results, not a replacement
+for GitLab token permissions. Use a project access token when GitLab itself must
+enforce the project boundary. The caller's GitLab token remains authoritative for
+all requests and project identity lookups.
+
+Runner lists retain only project runners whose complete
 set of associated projects is allowed. The upstream cursor is preserved, so a
 filtered page may be empty while a later page contains allowed runners.
 

@@ -11,6 +11,7 @@ import {
 } from '../../helpers/fetch-mock';
 import { ConnectionManager } from '../../../../src/services/ConnectionManager';
 import type { GitLabInstanceInfo } from '../../../../src/services/GitLabVersionDetector';
+import { withDefaultProject } from '../../../../src/configuration/default-project';
 
 jest.mock('../../../../src/utils/fetch', () => ({
   enhancedFetch: jest.fn(),
@@ -22,6 +23,32 @@ const browse = () => accessTokensToolRegistry.get('browse_access_tokens')!;
 const manage = () => accessTokensToolRegistry.get('manage_access_token')!;
 
 describe('Access Tokens Registry', () => {
+  // A configured project must never reroute a personal token operation to project tokens.
+  it.each([
+    { tool: 'browse_access_tokens', action: 'get', method: 'GET', suffix: '' },
+    { tool: 'manage_access_token', action: 'rotate', method: 'POST', suffix: '/rotate' },
+    { tool: 'manage_access_token', action: 'revoke', method: 'DELETE', suffix: '' },
+  ])(
+    'keeps the personal token REST route for $action with a default project',
+    async ({ tool, action, method, suffix }) => {
+      const read = jest.fn();
+      const prepared = await withDefaultProject(
+        tool,
+        { action, token_id: '123' },
+        new Set(['project_id', 'group_id']),
+        '71',
+        () => false,
+        read,
+      );
+      mockOk({ id: 123 });
+      await accessTokensToolRegistry.get(tool)!.handler(prepared.args);
+      const [url, init] = lastCall();
+      expect(url).toBe(`https://gitlab.example.com/api/v4/personal_access_tokens/123${suffix}`);
+      expect(new Request(url, init).method).toBe(method);
+      expect(read).not.toHaveBeenCalled();
+    },
+  );
+
   describe('Registry Structure', () => {
     it('contains exactly the two CQRS tools', () => {
       expect(Array.from(accessTokensToolRegistry.keys())).toEqual([

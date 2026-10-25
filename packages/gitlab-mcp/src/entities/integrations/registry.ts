@@ -2,7 +2,8 @@ import * as z from 'zod';
 import { BrowseIntegrationsSchema } from './schema-readonly';
 import { ManageIntegrationSchema } from './schema';
 import { gitlab, toQuery } from '../../utils/gitlab-api';
-import { getEffectiveProjectId } from '../../config';
+import { encodeApiSegment } from '../../utils/api-path';
+import { normalizeProjectId } from '../../utils/projectIdentifier';
 import { assertActionAllowed } from '../utils';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
 
@@ -32,7 +33,7 @@ export const integrationsToolRegistry: ToolRegistry = new Map<string, EnhancedTo
 
         assertActionAllowed('browse_integrations', input.action);
 
-        const projectId = getEffectiveProjectId(input.project_id);
+        const projectId = input.project_id;
 
         switch (input.action) {
           case 'list': {
@@ -44,13 +45,13 @@ export const integrationsToolRegistry: ToolRegistry = new Map<string, EnhancedTo
               },
               [],
             );
-            return gitlab.get(`projects/${encodeURIComponent(projectId)}/integrations`, { query });
+            return gitlab.get(`projects/${normalizeProjectId(projectId)}/integrations`, { query });
           }
 
           case 'get': {
             // TypeScript knows: input has project_id, integration
             return gitlab.get(
-              `projects/${encodeURIComponent(projectId)}/integrations/${input.integration}`,
+              `projects/${normalizeProjectId(projectId)}/integrations/${encodeApiSegment(input.integration)}`,
             );
           }
 
@@ -80,7 +81,7 @@ export const integrationsToolRegistry: ToolRegistry = new Map<string, EnhancedTo
 
         assertActionAllowed('manage_integration', input.action);
 
-        const projectId = getEffectiveProjectId(input.project_id);
+        const projectId = input.project_id;
         const integrationSlug = input.integration;
 
         switch (input.action) {
@@ -101,7 +102,7 @@ export const integrationsToolRegistry: ToolRegistry = new Map<string, EnhancedTo
             }
 
             return gitlab.put(
-              `projects/${encodeURIComponent(projectId)}/integrations/${integrationSlug}`,
+              `projects/${normalizeProjectId(projectId)}/integrations/${encodeApiSegment(integrationSlug)}`,
               {
                 body: finalBody,
                 contentType: 'json',
@@ -112,7 +113,7 @@ export const integrationsToolRegistry: ToolRegistry = new Map<string, EnhancedTo
           case 'disable': {
             // TypeScript knows: input has project_id, integration (required)
             await gitlab.delete(
-              `projects/${encodeURIComponent(projectId)}/integrations/${integrationSlug}`,
+              `projects/${normalizeProjectId(projectId)}/integrations/${encodeApiSegment(integrationSlug)}`,
             );
             return { deleted: true };
           }

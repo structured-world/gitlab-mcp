@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { flexibleBoolean, paginationFields, requiredId } from '../utils';
+import { flexibleBoolean, paginationFields, requiredId, numericId } from '../utils';
 
 // Pipeline related schemas
 export const GitLabPipelineSchema = z.object({
@@ -250,14 +250,14 @@ const ListPipelinesSchema = z.object({
 const GetPipelineSchema = z.object({
   action: z.literal('get').describe('Get single pipeline details'),
   project_id: projectIdField,
-  pipeline_id: requiredId.describe('The ID of the pipeline'),
+  pipeline_id: numericId.describe('The ID of the pipeline'),
 });
 
 // --- Action: jobs ---
 const ListPipelineJobsSchema = z.object({
   action: z.literal('jobs').describe('List jobs in a pipeline'),
   project_id: projectIdField,
-  pipeline_id: requiredId.describe('The ID of the pipeline'),
+  pipeline_id: numericId.describe('The ID of the pipeline'),
   job_scope: z.array(JobScopeSchema).optional().describe('Scope of jobs to show'),
   include_retried: z.boolean().optional().describe('Include retried jobs in the response'),
   ...paginationFields(),
@@ -267,7 +267,7 @@ const ListPipelineJobsSchema = z.object({
 const ListPipelineTriggersSchema = z.object({
   action: z.literal('triggers').describe('List bridge/trigger jobs in a pipeline'),
   project_id: projectIdField,
-  pipeline_id: requiredId.describe('The ID of the pipeline'),
+  pipeline_id: numericId.describe('The ID of the pipeline'),
   trigger_scope: z
     .array(TriggerJobScopeSchema)
     .optional()
@@ -280,7 +280,7 @@ const ListPipelineTriggersSchema = z.object({
 const GetJobSchema = z.object({
   action: z.literal('job').describe('Get single job details'),
   project_id: projectIdField,
-  job_id: requiredId.describe('The ID of the job'),
+  job_id: numericId.describe('The ID of the job'),
 });
 
 // --- Action: logs ---
@@ -289,7 +289,7 @@ const GetJobLogsSchema = z.object({
     .literal('logs')
     .describe('Read job logs with bounded memory and explicit byte truncation'),
   project_id: projectIdField,
-  job_id: requiredId.describe('The ID of the job'),
+  job_id: numericId.describe('The ID of the job'),
   per_page: z
     .number()
     .int()

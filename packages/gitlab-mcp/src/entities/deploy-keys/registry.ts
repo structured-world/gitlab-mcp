@@ -2,6 +2,7 @@ import * as z from 'zod';
 import { BrowseDeployKeysSchema } from './schema-readonly';
 import { ManageDeployKeySchema } from './schema';
 import { gitlab, toQuery } from '../../utils/gitlab-api';
+import { normalizeProjectId } from '../../utils/projectIdentifier';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
 import { assertActionAllowed } from '../utils';
 
@@ -35,14 +36,14 @@ export const deployKeysToolRegistry: ToolRegistry = new Map<string, EnhancedTool
         assertActionAllowed('browse_deploy_keys', input.action);
 
         if (input.action === 'get') {
-          const encodedProjectId = encodeURIComponent(input.project_id);
+          const encodedProjectId = normalizeProjectId(input.project_id);
           return gitlab.get(`projects/${encodedProjectId}/deploy_keys/${input.key_id}`);
         }
 
         // list: project-scoped when project_id is provided, otherwise instance-wide
         const { action: _action, project_id, ...query } = input;
         const path = project_id
-          ? `projects/${encodeURIComponent(project_id)}/deploy_keys`
+          ? `projects/${normalizeProjectId(project_id)}/deploy_keys`
           : 'deploy_keys';
         return gitlab.get(path, { query: toQuery(query, []) });
       },
@@ -65,7 +66,7 @@ export const deployKeysToolRegistry: ToolRegistry = new Map<string, EnhancedTool
         const input = ManageDeployKeySchema.parse(args);
         assertActionAllowed('manage_deploy_key', input.action);
 
-        const encodedProjectId = encodeURIComponent(input.project_id);
+        const encodedProjectId = normalizeProjectId(input.project_id);
         const base = `projects/${encodedProjectId}/deploy_keys`;
 
         switch (input.action) {

@@ -124,6 +124,22 @@ describe('withTargetPaths', () => {
     expect(read).not.toHaveBeenCalled();
     expect(callRestriction(policy, tool, args)).toBeNull();
   });
+
+  // Project and group ID spaces overlap. Namespace resolution chooses the group first,
+  // so a permitted project ID cannot authorize an unrelated group with the same number.
+  it('resolves an ambiguous namespace even when its number is a listed project ID', async () => {
+    const policy = buildPolicy({ scope: { projects: ['7', 'team/app'] } }, {}, {});
+    const readCollision = jest.fn().mockResolvedValue({ full_path: 'other-group' });
+    const args = await withTargetPaths(
+      { action: 'list', namespace: '7' },
+      readCollision,
+      policy.scopeEnforcer,
+    );
+    expect(readCollision).toHaveBeenCalledWith('groups/7');
+    expect(
+      callRestriction(policy, { name: 'browse_work_items', readOnly: true }, args),
+    ).not.toBeNull();
+  });
 });
 
 describe('withScopePaths', () => {

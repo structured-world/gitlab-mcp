@@ -3,6 +3,7 @@ import { normalizeProjectId } from '../utils/projectIdentifier';
 import { hasExplicitScopeTarget } from '../profiles/scope-enforcer';
 import { readAllowedProject } from './operator-projects';
 import type { ReadResource } from './scope-ids';
+import { canonicalProjectPath } from '../utils/api-path';
 
 type Args = Record<string, unknown>;
 interface DefaultedProject {
@@ -23,6 +24,15 @@ function numericDefault(value: string): number {
   return id;
 }
 
+function projectFormat(tool: string, args: Args): 'identifier' | 'number' | 'path' {
+  if (tool === 'browse_todos') return 'number';
+  // These handlers pass their project target to GraphQL project(fullPath:).
+  if (tool === 'browse_vulnerabilities' || tool === 'browse_registry' || tool === 'browse_runners')
+    return 'path';
+  if (tool === 'manage_runner' && args.runner_type === 'PROJECT_TYPE') return 'path';
+  return 'identifier';
+}
+
 /** Fill only an omitted project, preserving the tool's declared numeric or path contract. */
 export async function withDefaultProject(
   tool: string,
@@ -41,9 +51,13 @@ export async function withDefaultProject(
     return { args, read };
   const field = projectField(declared);
   if (!field) return { args, read };
-  if (tool !== 'browse_todos') return { args: { ...args, [field]: defaultProject }, read };
-  if (/^\d+$/.test(defaultProject))
+  const format = projectFormat(tool, args);
+  if (format === 'identifier') return { args: { ...args, [field]: defaultProject }, read };
+  const numeric = /^\d+$/.test(defaultProject);
+  if (format === 'number' && numeric)
     return { args: { ...args, [field]: numericDefault(defaultProject) }, read };
+  if (format === 'path' && !numeric)
+    return { args: { ...args, [field]: canonicalProjectPath(defaultProject) }, read };
   if (expired()) throw new Error('Tool call expired during default project verification');
   const project = await readAllowedProject(defaultProject, read);
   if (expired()) throw new Error('Tool call expired during default project verification');
@@ -52,11 +66,11 @@ export async function withDefaultProject(
   const identity = { id, path_with_namespace: project.path, name_with_namespace: project.name };
   const requested = `projects/${normalizeProjectId(defaultProject)}`;
   const canonical = `projects/${normalizeProjectId(project.path)}`;
-  const numeric = `projects/${id}`;
+  const numericPath = `projects/${id}`;
   // Reuse this call's verified identity when its allowlist or working scope names an alias.
   const withIdentity: ReadResource = (path) =>
-    path === requested || path === canonical || path === numeric
+    path === requested || path === canonical || path === numericPath
       ? Promise.resolve(identity)
       : read(path);
-  return { args: { ...args, [field]: id }, read: withIdentity };
+  return { args: { ...args, [field]: format === 'path' ? project.path : id }, read: withIdentity };
 }

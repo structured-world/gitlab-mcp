@@ -5,6 +5,24 @@ const active = (): boolean => false;
 const project = { id: 71, path_with_namespace: 'team/app', name_with_namespace: 'Team / App' };
 
 describe('default project arguments', () => {
+  // GraphQL project(fullPath:) cannot consume a numeric configured default.
+  it.each([
+    { tool: 'browse_vulnerabilities', args: { action: 'list' } },
+    { tool: 'browse_registry', args: { action: 'list_repositories' } },
+    { tool: 'browse_runners', args: { action: 'list_project' } },
+    {
+      tool: 'manage_runner',
+      args: { action: 'create_authentication_token', runner_type: 'PROJECT_TYPE' },
+    },
+  ])('resolves numeric defaults to a full path for $tool', async ({ tool, args }) => {
+    const read = jest.fn().mockResolvedValue(project);
+    const prepared = await withDefaultProject(tool, args, declared, '71', active, read);
+    expect(prepared.args).toEqual({ ...args, project_id: project.path_with_namespace });
+    expect(await prepared.read('projects/team%2Fapp')).toEqual(project);
+    expect(await prepared.read('projects/71')).toEqual(project);
+    expect(read.mock.calls).toEqual([['projects/71']]);
+  });
+
   // Defaults fill omitted targets only, never replacing an explicit or malformed argument.
   it.each([
     { args: {}, fields: declared, value: undefined },
@@ -18,6 +36,24 @@ describe('default project arguments', () => {
     expect((await withDefaultProject('browse_todos', args, fields, value, active, read)).args).toBe(
       args,
     );
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  // Full paths already contain the GraphQL identity and need decoding, not a metadata lookup.
+  it('decodes a path default for GraphQL without I/O', async () => {
+    const read = jest.fn();
+    expect(
+      (
+        await withDefaultProject(
+          'browse_registry',
+          { action: 'list_repositories' },
+          declared,
+          'team%2Fapp',
+          active,
+          read,
+        )
+      ).args,
+    ).toEqual({ action: 'list_repositories', project_id: 'team/app' });
     expect(read).not.toHaveBeenCalled();
   });
 

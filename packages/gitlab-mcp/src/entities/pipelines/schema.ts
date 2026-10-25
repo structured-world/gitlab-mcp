@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { requiredId } from '../utils';
+import { requiredId, numericId } from '../utils';
 
 // ============================================================================
 // Shared schemas for pipeline variables and inputs
@@ -30,8 +30,8 @@ const PipelineInputValueSchema = z
 
 // --- Shared fields ---
 const projectIdField = requiredId.describe('Project ID or URL-encoded path');
-const pipelineIdField = requiredId.describe('The ID of the pipeline');
-const jobIdField = requiredId.describe('The ID of the job');
+const pipelineIdField = numericId.describe('The ID of the pipeline');
+const jobIdField = numericId.describe('The ID of the job');
 
 // --- Action: create ---
 const CreatePipelineSchema = z.object({

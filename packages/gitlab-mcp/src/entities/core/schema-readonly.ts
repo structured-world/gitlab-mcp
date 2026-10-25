@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { flexibleBoolean, requiredId, paginationFields } from '../utils';
+import { flexibleBoolean, requiredId, numericId, paginationFields } from '../utils';
 
 // ============================================================================
 // READ-ONLY RESPONSE SCHEMAS
@@ -335,7 +335,7 @@ const SearchUsersSchema = z.object({
 // --- Action: get ---
 const GetUserSchema = z.object({
   action: z.literal('get').describe('Get a specific user by ID'),
-  user_id: requiredId.describe('User ID to retrieve.'),
+  user_id: numericId.describe('User ID to retrieve.'),
 });
 
 // --- Discriminated union combining all actions ---

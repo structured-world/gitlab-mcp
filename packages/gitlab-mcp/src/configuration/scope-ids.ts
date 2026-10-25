@@ -7,6 +7,7 @@
 import { numericTargets, ScopeEnforcer, type NumericTargetKind } from '../profiles/scope-enforcer';
 import type { ScopeConfig } from '../profiles/types';
 import { gitlab } from '../utils/gitlab-api';
+import { encodeApiSegment } from '../utils/api-path';
 import { parseGitLabApiError } from '../utils/error-handler';
 import type { EffectivePolicy } from './policy';
 
@@ -27,7 +28,11 @@ export async function withTargetPaths(
   read: ReadResource = readWithCaller,
   scope?: ScopeEnforcer,
 ): Promise<Args> {
-  const targets = numericTargets(args).filter(({ id, kind }) => !scope?.listsId(id, kind));
+  // Ambiguous namespace IDs must follow the handler's group-first resolution, even
+  // when a project with the same numeric ID is explicitly permitted.
+  const targets = numericTargets(args).filter(
+    ({ id, kind }) => kind === 'either' || !scope?.listsId(id, kind),
+  );
   if (targets.length === 0) return args;
   const paths = await Promise.all(targets.map(({ id, kind }) => pathOf(read, id, kind)));
   const resolved: Args = { ...args };
@@ -89,12 +94,12 @@ async function pathOf(
   id: string,
   kind: NumericTargetKind,
 ): Promise<string | undefined> {
-  if (kind === 'group') return field(read, `namespaces/${id}`, 'full_path');
+  if (kind === 'group') return field(read, `namespaces/${encodeApiSegment(id)}`, 'full_path');
   if (kind === 'either') {
-    const group = await field(read, `groups/${id}`, 'full_path');
+    const group = await field(read, `groups/${encodeApiSegment(id)}`, 'full_path');
     if (group !== undefined) return group;
   }
-  return field(read, `projects/${id}`, 'path_with_namespace');
+  return field(read, `projects/${encodeApiSegment(id)}`, 'path_with_namespace');
 }
 
 /**

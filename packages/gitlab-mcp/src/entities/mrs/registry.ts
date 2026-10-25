@@ -13,6 +13,7 @@ import {
 } from './schema';
 import { gitlab, toQuery } from '../../utils/gitlab-api';
 import { normalizeProjectId } from '../../utils/projectIdentifier';
+import { encodeApiSegment } from '../../utils/api-path';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
 import { assertActionAllowed } from '../utils';
 
@@ -221,7 +222,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
 
             if (merge_request_iid) {
               return gitlab.get(
-                `projects/${normalizeProjectId(project_id)}/merge_requests/${merge_request_iid}`,
+                `projects/${normalizeProjectId(project_id)}/merge_requests/${encodeApiSegment(merge_request_iid)}`,
                 Object.keys(query).length > 0 ? { query } : undefined,
               );
             } else if (branch_name) {
@@ -244,7 +245,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
             // https://gitlab.com/gitlab-org/gitlab/-/blob/v16.0.0-ee/lib/api/merge_requests.rb#L669-689
             const { project_id, merge_request_iid, page, per_page } = input;
             return gitlab.get(
-              `projects/${normalizeProjectId(project_id)}/merge_requests/${merge_request_iid}/closes_issues`,
+              `projects/${normalizeProjectId(project_id)}/merge_requests/${encodeApiSegment(merge_request_iid)}/closes_issues`,
               { query: toQuery({ page, per_page }, []) },
             );
           }
@@ -271,7 +272,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
               changes?: Array<{ new_path: string; old_path: string }>;
               [key: string]: unknown;
             }>(
-              `projects/${normalizeProjectId(project_id)}/merge_requests/${merge_request_iid}/changes`,
+              `projects/${normalizeProjectId(project_id)}/merge_requests/${encodeApiSegment(merge_request_iid)}/changes`,
               { query },
             );
 
@@ -330,7 +331,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
             const query = toQuery(rest, []);
 
             return gitlab.get(
-              `projects/${normalizeProjectId(project_id)}/merge_requests/${merge_request_iid}/versions`,
+              `projects/${normalizeProjectId(project_id)}/merge_requests/${encodeApiSegment(merge_request_iid)}/versions`,
               { query },
             );
           }
@@ -340,7 +341,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
             const { project_id, merge_request_iid, version_id } = input;
 
             return gitlab.get(
-              `projects/${normalizeProjectId(project_id)}/merge_requests/${merge_request_iid}/versions/${version_id}`,
+              `projects/${normalizeProjectId(project_id)}/merge_requests/${encodeApiSegment(merge_request_iid)}/versions/${encodeApiSegment(version_id)}`,
             );
           }
 
@@ -377,7 +378,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
             const query = toQuery(rest, []);
 
             return gitlab.get(
-              `projects/${normalizeProjectId(project_id)}/merge_requests/${merge_request_iid}/discussions`,
+              `projects/${normalizeProjectId(project_id)}/merge_requests/${encodeApiSegment(merge_request_iid)}/discussions`,
               { query },
             );
           }
@@ -386,7 +387,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
             // TypeScript knows: input has project_id (required), merge_request_iid (required)
             const { project_id, merge_request_iid } = input;
             return gitlab.get(
-              `projects/${normalizeProjectId(project_id)}/merge_requests/${merge_request_iid}/draft_notes`,
+              `projects/${normalizeProjectId(project_id)}/merge_requests/${encodeApiSegment(merge_request_iid)}/draft_notes`,
             );
           }
 
@@ -394,7 +395,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
             // TypeScript knows: input has project_id (required), merge_request_iid (required), draft_note_id (required)
             const { project_id, merge_request_iid, draft_note_id } = input;
             return gitlab.get(
-              `projects/${normalizeProjectId(project_id)}/merge_requests/${merge_request_iid}/draft_notes/${draft_note_id}`,
+              `projects/${normalizeProjectId(project_id)}/merge_requests/${encodeApiSegment(merge_request_iid)}/draft_notes/${encodeApiSegment(draft_note_id)}`,
             );
           }
 
@@ -467,7 +468,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
             }
 
             return gitlab.put(
-              `projects/${normalizeProjectId(project_id)}/merge_requests/${merge_request_iid}`,
+              `projects/${normalizeProjectId(project_id)}/merge_requests/${encodeApiSegment(merge_request_iid)}`,
               { body: processedBody, contentType: 'form' },
             );
           }
@@ -482,7 +483,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
               ...body
             } = input;
             const projectPath = normalizeProjectId(project_id);
-            const mergeEndpoint = `projects/${projectPath}/merge_requests/${merge_request_iid}/merge`;
+            const mergeEndpoint = `projects/${projectPath}/merge_requests/${encodeApiSegment(merge_request_iid)}/merge`;
 
             // If auto-merge is explicitly requested, try it directly
             // This allows setting auto-merge even when pipeline is running
@@ -495,7 +496,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
 
             // Pre-check mergeability to provide actionable errors instead of 405
             const mrStatus = await gitlab.get<MergeRequestStatusResponse>(
-              `projects/${projectPath}/merge_requests/${merge_request_iid}`,
+              `projects/${projectPath}/merge_requests/${encodeApiSegment(merge_request_iid)}`,
             );
 
             const detailedStatus = mrStatus.detailed_merge_status;
@@ -538,7 +539,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
             if (sha) body.sha = sha;
 
             return gitlab.post(
-              `projects/${normalizeProjectId(project_id)}/merge_requests/${merge_request_iid}/approve`,
+              `projects/${normalizeProjectId(project_id)}/merge_requests/${encodeApiSegment(merge_request_iid)}/approve`,
               { body: Object.keys(body).length > 0 ? body : undefined, contentType: 'json' },
             );
           }
@@ -548,7 +549,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
             const { project_id, merge_request_iid } = input;
 
             return gitlab.post(
-              `projects/${normalizeProjectId(project_id)}/merge_requests/${merge_request_iid}/unapprove`,
+              `projects/${normalizeProjectId(project_id)}/merge_requests/${encodeApiSegment(merge_request_iid)}/unapprove`,
             );
           }
 
@@ -557,7 +558,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
             const { project_id, merge_request_iid } = input;
 
             return gitlab.get(
-              `projects/${normalizeProjectId(project_id)}/merge_requests/${merge_request_iid}/approval_state`,
+              `projects/${normalizeProjectId(project_id)}/merge_requests/${encodeApiSegment(merge_request_iid)}/approval_state`,
             );
           }
 
@@ -612,7 +613,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
             const resourceType = noteable_type === 'merge_request' ? 'merge_requests' : 'issues';
 
             return gitlab.post(
-              `projects/${normalizeProjectId(project_id)}/${resourceType}/${noteable_id}/notes`,
+              `projects/${normalizeProjectId(project_id)}/${resourceType}/${encodeApiSegment(noteable_id)}/notes`,
               { body, contentType: 'form' },
             );
           }
@@ -626,7 +627,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
             if (commit_id) body.commit_id = commit_id;
 
             return gitlab.post(
-              `projects/${normalizeProjectId(project_id)}/merge_requests/${merge_request_iid}/discussions`,
+              `projects/${normalizeProjectId(project_id)}/merge_requests/${encodeApiSegment(merge_request_iid)}/discussions`,
               { body, contentType: 'form' },
             );
           }
@@ -645,7 +646,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
             if (created_at) body.created_at = created_at;
 
             return gitlab.post(
-              `projects/${normalizeProjectId(project_id)}/merge_requests/${merge_request_iid}/discussions/${discussion_id}/notes`,
+              `projects/${normalizeProjectId(project_id)}/merge_requests/${encodeApiSegment(merge_request_iid)}/discussions/${encodeApiSegment(discussion_id)}/notes`,
               { body, contentType: 'form' },
             );
           }
@@ -655,7 +656,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
             const { project_id, merge_request_iid, note_id, body: noteBody } = input;
 
             return gitlab.put(
-              `projects/${normalizeProjectId(project_id)}/merge_requests/${merge_request_iid}/notes/${note_id}`,
+              `projects/${normalizeProjectId(project_id)}/merge_requests/${encodeApiSegment(merge_request_iid)}/notes/${encodeApiSegment(note_id)}`,
               { body: { body: noteBody }, contentType: 'form' },
             );
           }
@@ -698,7 +699,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
             const { project_id, merge_request_iid, discussion_id, resolved } = input;
 
             return gitlab.put(
-              `projects/${normalizeProjectId(project_id)}/merge_requests/${merge_request_iid}/discussions/${discussion_id}`,
+              `projects/${normalizeProjectId(project_id)}/merge_requests/${encodeApiSegment(merge_request_iid)}/discussions/${encodeApiSegment(discussion_id)}`,
               { body: { resolved }, contentType: 'form' },
             );
           }
@@ -731,7 +732,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
             flattenPositionToFormFields(body, position);
 
             return gitlab.post(
-              `projects/${normalizeProjectId(project_id)}/merge_requests/${merge_request_iid}/discussions`,
+              `projects/${normalizeProjectId(project_id)}/merge_requests/${encodeApiSegment(merge_request_iid)}/discussions`,
               { body, contentType: 'form' },
             );
           }
@@ -781,7 +782,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
             if (commit_id) body.commit_id = commit_id;
 
             return gitlab.post(
-              `projects/${normalizeProjectId(project_id)}/merge_requests/${merge_request_iid}/draft_notes`,
+              `projects/${normalizeProjectId(project_id)}/merge_requests/${encodeApiSegment(merge_request_iid)}/draft_notes`,
               { body, contentType: 'form' },
             );
           }
@@ -794,7 +795,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
             if (position) flattenPositionToFormFields(body, position);
 
             return gitlab.put(
-              `projects/${normalizeProjectId(project_id)}/merge_requests/${merge_request_iid}/draft_notes/${draft_note_id}`,
+              `projects/${normalizeProjectId(project_id)}/merge_requests/${encodeApiSegment(merge_request_iid)}/draft_notes/${encodeApiSegment(draft_note_id)}`,
               { body, contentType: 'form' },
             );
           }
@@ -804,7 +805,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
             const { project_id, merge_request_iid, draft_note_id } = input;
 
             const result = await gitlab.put<void>(
-              `projects/${normalizeProjectId(project_id)}/merge_requests/${merge_request_iid}/draft_notes/${draft_note_id}/publish`,
+              `projects/${normalizeProjectId(project_id)}/merge_requests/${encodeApiSegment(merge_request_iid)}/draft_notes/${encodeApiSegment(draft_note_id)}/publish`,
             );
             // PUT publish returns 204 No Content (undefined) on success
             return result ?? { published: true };
@@ -815,7 +816,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
             const { project_id, merge_request_iid } = input;
 
             const result = await gitlab.post<void>(
-              `projects/${normalizeProjectId(project_id)}/merge_requests/${merge_request_iid}/draft_notes/bulk_publish`,
+              `projects/${normalizeProjectId(project_id)}/merge_requests/${encodeApiSegment(merge_request_iid)}/draft_notes/bulk_publish`,
             );
             // POST bulk_publish returns 204 No Content (undefined) on success
             return result ?? { published: true };
@@ -826,7 +827,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
             const { project_id, merge_request_iid, draft_note_id } = input;
 
             await gitlab.delete<void>(
-              `projects/${normalizeProjectId(project_id)}/merge_requests/${merge_request_iid}/draft_notes/${draft_note_id}`,
+              `projects/${normalizeProjectId(project_id)}/merge_requests/${encodeApiSegment(merge_request_iid)}/draft_notes/${encodeApiSegment(draft_note_id)}`,
             );
             return { success: true, message: 'Draft note deleted successfully' };
           }

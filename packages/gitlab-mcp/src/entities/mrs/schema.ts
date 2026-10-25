@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { flexibleBoolean, requiredId } from '../utils';
+import { flexibleBoolean, requiredId, numericId } from '../utils';
 
 // ============================================================================
 // Shared position schema for diff notes
@@ -46,7 +46,7 @@ export const MergeRequestThreadPositionSchema = z.object({
 
 // --- Shared fields ---
 const projectIdField = requiredId.describe('Project ID or URL-encoded path');
-const mergeRequestIidField = requiredId.describe('Internal MR ID unique to project');
+const mergeRequestIidField = numericId.describe('Internal MR ID unique to project');
 
 // --- Action: create ---
 const CreateMergeRequestSchema = z.object({
@@ -179,7 +179,7 @@ const CommentOnNoteableSchema = z.object({
     .transform((val) => val.toLowerCase())
     .pipe(z.enum(['issue', 'merge_request']))
     .describe('Type of noteable: issue or merge_request'),
-  noteable_id: requiredId.describe('ID of the noteable object'),
+  noteable_id: numericId.describe('ID of the noteable object'),
   body: z.string().describe('Content/text of the comment'),
   confidential: flexibleBoolean.optional().describe('Confidential note flag'),
   created_at: z.string().optional().describe('Date time string (ISO 8601)'),
@@ -210,7 +210,7 @@ const UpdateNoteSchema = z.object({
   action: z.literal('update').describe('Update an existing note/comment'),
   project_id: projectIdField,
   merge_request_iid: mergeRequestIidField,
-  note_id: requiredId.describe('ID of the note to update'),
+  note_id: numericId.describe('ID of the note to update'),
   body: z.string().describe('New content/text for the note'),
 });
 
@@ -219,7 +219,7 @@ const ApplySuggestionSchema = z.object({
   action: z.literal('apply_suggestion').describe('Apply a single code suggestion from a review'),
   project_id: projectIdField,
   merge_request_iid: mergeRequestIidField,
-  suggestion_id: z.number().describe('ID of the suggestion to apply'),
+  suggestion_id: z.number().int().positive().describe('ID of the suggestion to apply'),
   commit_message: z.string().optional().describe('Custom commit message for the apply commit'),
 });
 
@@ -228,7 +228,10 @@ const ApplySuggestionsSchema = z.object({
   action: z.literal('apply_suggestions').describe('Batch apply multiple code suggestions'),
   project_id: projectIdField,
   merge_request_iid: mergeRequestIidField,
-  suggestion_ids: z.array(z.number()).min(1).describe('Array of suggestion IDs to apply'),
+  suggestion_ids: z
+    .array(z.number().int().positive())
+    .min(1)
+    .describe('Array of suggestion IDs to apply'),
   commit_message: z.string().optional().describe('Custom commit message for the apply commit'),
 });
 
@@ -275,7 +278,7 @@ export const ManageMrDiscussionSchema = z.discriminatedUnion('action', [
 // ============================================================================
 
 // --- Shared fields ---
-const draftNoteIdField = requiredId.describe('ID of the draft note');
+const draftNoteIdField = numericId.describe('ID of the draft note');
 
 // --- Action: create ---
 const CreateDraftNoteSchema = z.object({

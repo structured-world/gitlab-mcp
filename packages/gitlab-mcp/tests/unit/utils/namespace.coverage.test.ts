@@ -413,18 +413,19 @@ describe('Namespace Utils Coverage Tests', () => {
       });
     });
 
-    it('should handle paths that need URL encoding', async () => {
+    // Already encoded project paths are decoded once, then encoded once for REST.
+    it('should handle URL-encoded paths', async () => {
       mockEnhancedFetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
         json: jest.fn().mockResolvedValue({ id: 101 }),
       } as any);
 
-      const result = await resolveNamespaceForAPI('group/project with spaces');
+      const result = await resolveNamespaceForAPI('group%2Fproject');
 
       expect(result).toEqual({
         entityType: 'projects',
-        encodedPath: 'group%2Fproject%20with%20spaces',
+        encodedPath: 'group%2Fproject',
       });
     });
 

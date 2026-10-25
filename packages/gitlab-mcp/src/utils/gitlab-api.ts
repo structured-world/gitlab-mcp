@@ -13,6 +13,8 @@
 import { enhancedFetch } from './fetch';
 import { getGitLabBaseUrl } from './gitlab-base-url';
 import { cleanGidsFromObject } from './idConversion';
+import { assertSafeApiPath } from './api-path';
+import { normalizeProjectId } from './projectIdentifier';
 
 type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
 
@@ -118,6 +120,7 @@ async function request<T>(
   path: string,
   options: RequestOptions = {},
 ): Promise<T> {
+  assertSafeApiPath(path);
   const baseUrl = getGitLabBaseUrl();
   const queryString = buildQueryString(options.query);
   const url = `${baseUrl}/api/v4/${path}${queryString}`;
@@ -236,15 +239,14 @@ export const paths = {
   encode: (path: string) => encodeURIComponent(path),
 
   /** Projects path */
-  project: (id: string | number) =>
-    `projects/${typeof id === 'number' ? id : encodeURIComponent(id)}`,
+  project: (id: string | number) => `projects/${normalizeProjectId(String(id))}`,
 
   /** Groups path */
-  group: (id: string | number) => `groups/${typeof id === 'number' ? id : encodeURIComponent(id)}`,
+  group: (id: string | number) => `groups/${normalizeProjectId(String(id))}`,
 
   /** Namespace (project or group) path based on detection */
   namespace: (path: string, entityType: 'projects' | 'groups') =>
-    `${entityType}/${encodeURIComponent(path)}`,
+    `${entityType}/${normalizeProjectId(path)}`,
 };
 
 /**

@@ -6,6 +6,7 @@ import { assertActionAllowed, GITLAB_MAX_PER_PAGE } from '../utils';
 import { ConnectionManager } from '../../services/ConnectionManager';
 import { cleanGidsFromObject } from '../../utils/idConversion';
 import { getGitLabApiUrlFromContext } from '../../oauth/token-context';
+import { encodeApiSegment } from '../../utils/api-path';
 import { gitlab, toQuery } from '../../utils/gitlab-api';
 import { graphqlSupports } from '../instance-version';
 import { GITLAB_ALLOWED_PROJECT_IDS } from '../../config';
@@ -424,9 +425,12 @@ export const runnersToolRegistry: ToolRegistry = new Map<string, EnhancedToolDef
 
           case 'reset_authentication_token': {
             // No GraphQL mutation for per-runner token reset; use the REST endpoint.
-            return gitlab.post(`runners/${input.runner_id}/reset_authentication_token`, {
-              contentType: 'json',
-            });
+            return gitlab.post(
+              `runners/${encodeApiSegment(input.runner_id)}/reset_authentication_token`,
+              {
+                contentType: 'json',
+              },
+            );
           }
 
           /* istanbul ignore next -- unreachable with Zod discriminatedUnion */

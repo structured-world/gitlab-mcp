@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { requiredId, paginationFields } from '../utils';
+import { requiredId, numericId, paginationFields } from '../utils';
 import { flexibleBoolean } from '../utils';
 
 // ============================================================================
@@ -28,7 +28,7 @@ const ListIterationsSchema = z.object({
 const GetIterationSchema = z.object({
   action: z.literal('get').describe('Get a specific iteration by ID'),
   group_id: groupIdField,
-  iteration_id: requiredId.describe('Iteration ID.'),
+  iteration_id: numericId.describe('Iteration ID.'),
 });
 
 // --- Discriminated union combining all actions ---

@@ -81,6 +81,12 @@ export const flexibleBooleanNullable = DEFAULT_NULL
  */
 export const requiredId = z.preprocess((val) => val ?? '', z.coerce.string().min(1));
 
+/** A positive numeric GitLab ID or IID, validated before any API request. */
+export const numericId = z.preprocess(
+  (value) => (typeof value === 'number' && !Number.isSafeInteger(value) ? '' : (value ?? '')),
+  z.coerce.string().regex(/^[1-9]\d*$/, 'Expected a positive integer ID'),
+);
+
 /**
  * Asserts that a value is defined (not undefined).
  * Used for fields validated by Zod .refine() where TypeScript cannot

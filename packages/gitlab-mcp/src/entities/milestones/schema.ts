@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { requiredId } from '../utils';
+import { numericId } from '../utils';
 
 // ============================================================================
 // manage_milestone - CQRS Command Tool (discriminated union schema)
@@ -21,7 +21,7 @@ const namespaceField = z.string().describe('Namespace path (group or project)');
 // Example: PUT /projects/:id/milestones/:milestone_id where :milestone_id is the global ID.
 // The API response contains both 'id' (global unique) and 'iid' (project-scoped).
 // Unlike issues/MRs which use IID in URLs, milestones use the global ID.
-const milestoneIdField = requiredId.describe(
+const milestoneIdField = numericId.describe(
   "The ID of a project or group milestone. Required for 'update', 'delete', 'promote' action(s).",
 );
 

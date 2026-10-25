@@ -14,7 +14,7 @@ async function fixture(megabytes, singleLine, run) {
   const requests = [];
   const server = createServer(async (request, response) => {
     requests.push({ path: request.url, token: request.headers['private-token'] });
-    if (request.url.endsWith('/jobs/0/trace')) return response.end('warmup');
+    if (request.url.endsWith('/jobs/2/trace')) return response.end('warmup');
     response.setHeader('Content-Type', 'text/plain; charset=utf-8');
     // No Content-Length: the reader must work with real chunked HTTP responses.
     const chunk = Buffer.alloc(64 * 1024, 120);

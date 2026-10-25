@@ -50,7 +50,7 @@ beforeEach(() => {
   mockEnhancedFetch.mockReset();
   // Restore config mocks after resetAllMocks clears implementations
   mockIsActionDenied.mockReturnValue(false);
-  mockGetEffectiveProjectId.mockImplementation((id: string) => id);
+  mockGetEffectiveProjectId.mockImplementation((id: string | undefined) => id);
 });
 
 describe('Integrations Registry', () => {

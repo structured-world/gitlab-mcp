@@ -5,6 +5,8 @@
  */
 
 import { gitlab } from '../../utils/gitlab-api';
+import { GITLAB_ALLOWED_PROJECT_IDS } from '../../config';
+import { findOperatorProjectTargets } from '../../configuration/operator-projects';
 
 export const SCOPE_SEARCH_TOOL = 'find_scope_targets';
 
@@ -69,6 +71,9 @@ export async function findScopeTargets(query: string): Promise<{ targets: ScopeT
   const search = query.trim();
   if (search.length < 2 || search.length > 100) {
     throw new Error('Search for 2 to 100 characters');
+  }
+  if (GITLAB_ALLOWED_PROJECT_IDS.length > 0) {
+    return { targets: await findOperatorProjectTargets(search) };
   }
   const [projects, groups] = await Promise.all([
     gitlab.get<GitLabProject[]>('projects', {

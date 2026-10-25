@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { flexibleBoolean, requiredId, paginationFields } from '../utils';
+import { flexibleBoolean, requiredId, paginationFields, numericId } from '../utils';
 
 // ============================================================================
 // browse_merge_requests - CQRS Query Tool (discriminated union schema)
@@ -60,7 +60,7 @@ export const DIFF_EXCLUSION_PRESETS = {
 
 // --- Shared fields ---
 const projectIdField = requiredId.describe('Project ID or URL-encoded path');
-const mergeRequestIidField = requiredId.describe('Internal MR ID unique to project');
+const mergeRequestIidField = numericId.describe('Internal MR ID unique to project');
 
 // --- Shared optional fields for get/diffs actions ---
 const includeDivergedCommitsCountField = flexibleBoolean
@@ -243,7 +243,7 @@ const GetMergeRequestVersionSchema = z
     action: z.literal('version').describe('Get specific MR diff version with file changes'),
     project_id: projectIdField,
     merge_request_iid: mergeRequestIidField,
-    version_id: requiredId.describe('Diff version ID from versions list'),
+    version_id: numericId.describe('Diff version ID from versions list'),
   })
   .passthrough();
 
@@ -452,7 +452,7 @@ const GetDraftNoteSchema = z.object({
   action: z.literal('draft').describe('Get single draft note details'),
   project_id: projectIdField,
   merge_request_iid: mergeRequestIidField,
-  draft_note_id: requiredId.describe('Unique identifier of the draft note'),
+  draft_note_id: numericId.describe('Unique identifier of the draft note'),
 });
 
 // --- Discriminated union combining all actions ---

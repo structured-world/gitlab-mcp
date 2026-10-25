@@ -13,6 +13,8 @@ import {
 import { setupHandlers, resetHandlersState } from '../../src/handlers';
 import * as scopeIds from '../../src/configuration/scope-ids';
 import * as runtimeConfig from '../../src/config';
+import * as operatorProjects from '../../src/configuration/operator-projects';
+import { ScopeEnforcer } from '../../src/profiles/scope-enforcer';
 import { StructuredToolError, parseGitLabApiError } from '../../src/utils/error-handler';
 import { GitLabTimeoutError } from '../../src/utils/fetch';
 import { ConfigurationService } from '../../src/configuration/service';
@@ -2767,21 +2769,12 @@ describe('handlers', () => {
     it('should not report success/error after deferred init resolves post-timeout', async () => {
       // Bootstrap hangs, then resolves AFTER timeout fires
       let resolveInit!: () => void;
-      let resolveExecuteReached!: () => void;
-      const executeReached = new Promise<void>((resolve) => {
-        resolveExecuteReached = resolve;
-      });
       mockConnectionManager.initialize.mockImplementation(
         () =>
           new Promise<void>((r) => {
             resolveInit = r;
           }),
       );
-      // Track when executeTool is reached after late bootstrap settles
-      mockRegistryManager.executeTool.mockImplementationOnce(async () => {
-        resolveExecuteReached();
-        return { result: 'late' };
-      });
 
       const { isOAuthEnabled, isAuthenticationConfigured } = await import('../../src/oauth/index');
       (isOAuthEnabled as jest.Mock).mockReturnValue(false);
@@ -2798,11 +2791,10 @@ describe('handlers', () => {
       const successCallsAfterTimeout = mockHealthMonitor.reportSuccess.mock.calls.length;
       const errorCallsAfterTimeout = mockHealthMonitor.reportError.mock.calls.length;
 
-      // Now resolve the deferred init — wait through the full chain
-      // (initialize → ensureIntrospected → executeTool) before asserting
+      // A late bootstrap must not dispatch a command after the caller's deadline.
       resolveInit();
-      await executeReached;
-      await new Promise((r) => process.nextTick(r));
+      await new Promise((r) => setImmediate(r));
+      expect(mockRegistryManager.executeTool).not.toHaveBeenCalled();
 
       // Neither reportSuccess nor reportError should have been called after timeout
       expect(mockHealthMonitor.reportSuccess.mock.calls.length).toBe(successCallsAfterTimeout);
@@ -3034,6 +3026,39 @@ describe('handlers', () => {
         expect(result.isError).toBe(true);
         expect(mockRegistryManager.executeTool).not.toHaveBeenCalled();
       } finally {
+        runtimeConfig.GITLAB_ALLOWED_PROJECT_IDS.splice(0);
+      }
+    });
+
+    // A caller-supplied project hint cannot authorize a global work item owned by another project.
+    it('checks actual ownership before updating a work item by global ID', async () => {
+      runtimeConfig.GITLAB_ALLOWED_PROJECT_IDS.push('1');
+      const configured = await service().resolve(staticCaller());
+      const operator = jest.spyOn(operatorProjects, 'withOperatorProjects').mockResolvedValue({
+        ...configured.policy,
+        scope: { projects: ['team/allowed'] },
+        scopeEnforcer: new ScopeEnforcer({ projects: ['1', 'team/allowed'] }),
+        operatorProjectIds: new Set(['1']),
+      });
+      mockConnectionManager.getClient.mockReturnValue({
+        request: jest
+          .fn()
+          .mockResolvedValue({ workItem: { project: { id: 'gid://gitlab/Project/2' } } }),
+      });
+      try {
+        const result = await callToolHandler(
+          {
+            params: {
+              name: 'manage_work_item',
+              arguments: { action: 'update', id: '123', project_id: '1', title: 'Changed' },
+            },
+          },
+          { sessionId: 'sess-1' },
+        );
+        expect(result.isError).toBe(true);
+        expect(mockRegistryManager.executeTool).not.toHaveBeenCalled();
+      } finally {
+        operator.mockRestore();
         runtimeConfig.GITLAB_ALLOWED_PROJECT_IDS.splice(0);
       }
     });

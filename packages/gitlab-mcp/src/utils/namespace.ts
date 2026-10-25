@@ -1,6 +1,7 @@
 import { enhancedFetch } from './fetch';
 import { getGitLabBaseUrl } from './gitlab-base-url';
 import { decodePath } from '../profiles/scope-enforcer';
+import { normalizeProjectId } from './projectIdentifier';
 
 /**
  * Extract namespace (group path) from a full project path.
@@ -168,6 +169,6 @@ export async function resolveNamespaceForAPI(namespacePath: string): Promise<{
   const namespaceType = await detectNamespaceType(namespacePath);
   return {
     entityType: namespaceType === 'project' ? 'projects' : 'groups',
-    encodedPath: encodeURIComponent(namespacePath),
+    encodedPath: normalizeProjectId(namespacePath),
   };
 }

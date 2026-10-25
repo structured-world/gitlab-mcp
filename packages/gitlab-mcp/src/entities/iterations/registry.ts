@@ -3,6 +3,7 @@ import * as z from 'zod';
 import { BrowseIterationsSchema } from './schema-readonly';
 import { enhancedFetch } from '../../utils/fetch';
 import { getGitLabBaseUrl } from '../../utils/gitlab-base-url';
+import { normalizeProjectId } from '../../utils/projectIdentifier';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
 import { assertActionAllowed } from '../utils';
 
@@ -39,7 +40,7 @@ export const iterationsToolRegistry: ToolRegistry = new Map<string, EnhancedTool
             if (input.per_page) queryParams.set('per_page', String(input.per_page));
             if (input.page) queryParams.set('page', String(input.page));
 
-            const apiUrl = `${getGitLabBaseUrl()}/api/v4/groups/${encodeURIComponent(group_id)}/iterations?${queryParams}`;
+            const apiUrl = `${getGitLabBaseUrl()}/api/v4/groups/${normalizeProjectId(group_id)}/iterations?${queryParams}`;
             const response = await enhancedFetch(apiUrl);
 
             if (!response.ok) {
@@ -52,7 +53,7 @@ export const iterationsToolRegistry: ToolRegistry = new Map<string, EnhancedTool
           case 'get': {
             const { group_id, iteration_id } = input;
 
-            const apiUrl = `${getGitLabBaseUrl()}/api/v4/groups/${encodeURIComponent(group_id)}/iterations/${encodeURIComponent(iteration_id)}`;
+            const apiUrl = `${getGitLabBaseUrl()}/api/v4/groups/${normalizeProjectId(group_id)}/iterations/${encodeURIComponent(iteration_id)}`;
             const response = await enhancedFetch(apiUrl);
 
             if (!response.ok) {

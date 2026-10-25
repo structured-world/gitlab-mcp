@@ -3,6 +3,7 @@ import { BrowseFilesSchema } from './schema-readonly';
 import { ManageFilesSchema } from './schema';
 import { gitlab, toQuery } from '../../utils/gitlab-api';
 import { normalizeProjectId } from '../../utils/projectIdentifier';
+import { encodeApiSegment } from '../../utils/api-path';
 import { enhancedFetch } from '../../utils/fetch';
 import { getGitLabBaseUrl } from '../../utils/gitlab-base-url';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
@@ -77,7 +78,7 @@ export const filesToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefin
 
           case 'download_attachment': {
             // TypeScript knows: input has project_id, secret, filename (required)
-            const apiUrl = `${getGitLabBaseUrl()}/api/v4/projects/${normalizeProjectId(input.project_id)}/uploads/${input.secret}/${input.filename}`;
+            const apiUrl = `${getGitLabBaseUrl()}/api/v4/projects/${normalizeProjectId(input.project_id)}/uploads/${encodeApiSegment(input.secret)}/${encodeApiSegment(input.filename)}`;
             const response = await enhancedFetch(apiUrl);
 
             if (!response.ok) {

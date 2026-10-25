@@ -54,7 +54,7 @@ async function main() {
     process.stdout.write(JSON.stringify({ failedReads: 4, httpError: 403 }));
     return;
   }
-  await handler({ action: 'logs', project_id: 'test/trace', job_id: '0' });
+  await handler({ action: 'logs', project_id: 'test/trace', job_id: '2' });
   globalThis.gc();
   const baseline = process.memoryUsage();
   const peak = { ...baseline };

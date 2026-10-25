@@ -41,6 +41,20 @@ import {
 import { ManageProjectSchema, ManageTodosSchema } from '../entities/core/schema';
 import { BrowseSearchSchema } from '../entities/search/schema-readonly';
 import { BrowseMergeRequestsSchema } from '../entities/mrs/schema-readonly';
+import {
+  ManageMergeRequestSchema,
+  ManageMrDiscussionSchema,
+  ManageDraftNotesSchema,
+} from '../entities/mrs/schema';
+import { BrowsePipelinesSchema } from '../entities/pipelines/schema-readonly';
+import { ManagePipelineSchema } from '../entities/pipelines/schema';
+import { BrowseFilesSchema } from '../entities/files/schema-readonly';
+import { ManageFilesSchema } from '../entities/files/schema';
+import { BrowseWorkItemsSchema } from '../entities/workitems/schema-readonly';
+import { ManageWorkItemSchema } from '../entities/workitems/schema';
+import { BrowseRegistrySchema } from '../entities/container_registry/schema-readonly';
+import { ManageRegistrySchema } from '../entities/container_registry/schema';
+import { ManageVulnerabilitySchema } from '../entities/vulnerabilities/schema';
 import { BrowseRunnersSchema } from '../entities/runners/schema-readonly';
 import { BrowseVulnerabilitiesSchema } from '../entities/vulnerabilities/schema-readonly';
 import { BrowseAuditEventsSchema } from '../entities/audit_events/schema-readonly';
@@ -88,6 +102,18 @@ const PROJECT_LIST_OPTIONS = new Set([
 ]);
 /** The input schemas of the tools whose calls the scope rewrites, filters or emulates. */
 const SCOPED_TOOL_SCHEMAS: Readonly<Record<string, ZodType>> = {
+  browse_work_items: BrowseWorkItemsSchema,
+  manage_work_item: ManageWorkItemSchema,
+  browse_registry: BrowseRegistrySchema,
+  manage_registry: ManageRegistrySchema,
+  manage_vulnerability: ManageVulnerabilitySchema,
+  browse_pipelines: BrowsePipelinesSchema,
+  manage_pipeline: ManagePipelineSchema,
+  browse_files: BrowseFilesSchema,
+  manage_files: ManageFilesSchema,
+  manage_merge_request: ManageMergeRequestSchema,
+  manage_mr_discussion: ManageMrDiscussionSchema,
+  manage_draft_notes: ManageDraftNotesSchema,
   browse_projects: BrowseProjectsSchema,
   browse_search: BrowseSearchSchema,
   browse_merge_requests: BrowseMergeRequestsSchema,

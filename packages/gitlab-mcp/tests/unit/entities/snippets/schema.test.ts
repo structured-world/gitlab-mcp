@@ -321,17 +321,13 @@ describe('ManageSnippetSchema - Discriminated Union', () => {
         expect(result.success).toBe(false);
       });
 
-      it('should coerce any id to string (requiredId uses z.coerce.string)', () => {
-        // requiredId accepts any truthy value and coerces to string
+      it('should reject zero because snippet IDs are positive integers', () => {
         const result = ManageSnippetSchema.safeParse({
           action: 'update',
           id: 0,
           title: 'Updated',
         });
-        expect(result.success).toBe(true);
-        if (result.success && result.data.action === 'update') {
-          expect(result.data.id).toBe('0');
-        }
+        expect(result.success).toBe(false);
       });
 
       it('should reject invalid visibility value', () => {
@@ -414,27 +410,21 @@ describe('ManageSnippetSchema - Discriminated Union', () => {
         expect(result.success).toBe(false);
       });
 
-      it('should coerce numeric id to string', () => {
-        // requiredId uses z.coerce.string() - accepts any value and converts to string
+      // Invalid IDs must fail before an authenticated delete request.
+      it('should reject a zero ID', () => {
         const result = ManageSnippetSchema.safeParse({
           action: 'delete',
           id: 0,
         });
-        expect(result.success).toBe(true);
-        if (result.success && result.data.action === 'delete') {
-          expect(result.data.id).toBe('0');
-        }
+        expect(result.success).toBe(false);
       });
 
-      it('should coerce negative id to string', () => {
+      it('should reject a negative ID', () => {
         const result = ManageSnippetSchema.safeParse({
           action: 'delete',
           id: -10,
         });
-        expect(result.success).toBe(true);
-        if (result.success && result.data.action === 'delete') {
-          expect(result.data.id).toBe('-10');
-        }
+        expect(result.success).toBe(false);
       });
 
       it('should accept string id', () => {

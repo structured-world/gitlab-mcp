@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { flexibleBoolean, requiredId } from '../utils';
+import { flexibleBoolean, numericId } from '../utils';
 
 // ============================================================================
 // manage_webhook - CQRS Command Tool (discriminated union schema)
@@ -92,7 +92,7 @@ const UpdateWebhookSchema = z.object({
   scope: scopeField,
   projectId: z.string().optional().describe('Project ID or path (required if scope=project)'),
   groupId: z.string().optional().describe('Group ID or path (required if scope=group)'),
-  hookId: requiredId.describe('Webhook ID (required)'),
+  hookId: numericId.describe('Webhook ID (required)'),
   url: z.string().optional().describe('Webhook URL'),
   name: z.string().optional().describe('Human-readable webhook name (GitLab 17.1+)'),
   description: z.string().optional().describe('Webhook description (GitLab 17.1+)'),
@@ -106,7 +106,7 @@ const DeleteWebhookSchema = z.object({
   scope: scopeField,
   projectId: z.string().optional().describe('Project ID or path (required if scope=project)'),
   groupId: z.string().optional().describe('Group ID or path (required if scope=group)'),
-  hookId: requiredId.describe('Webhook ID (required)'),
+  hookId: numericId.describe('Webhook ID (required)'),
 });
 
 // --- Test action: triggers a test delivery ---
@@ -115,7 +115,7 @@ const TestWebhookSchema = z.object({
   scope: scopeField,
   projectId: z.string().optional().describe('Project ID or path (required if scope=project)'),
   groupId: z.string().optional().describe('Group ID or path (required if scope=group)'),
-  hookId: requiredId.describe('Webhook ID (required)'),
+  hookId: numericId.describe('Webhook ID (required)'),
   trigger: TriggerEventSchema.describe('Event type to test (required)'),
 });
 

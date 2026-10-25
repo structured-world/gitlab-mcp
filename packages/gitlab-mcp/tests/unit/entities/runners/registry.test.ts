@@ -2,6 +2,7 @@ import {
   runnersToolRegistry,
   getRunnersReadOnlyToolNames,
 } from '../../../../src/entities/runners/registry';
+import { runnerProjectAllowed } from '../../../../src/entities/runners/project-access';
 import {
   LIST_RUNNERS,
   LIST_OWNED_RUNNERS,
@@ -59,6 +60,15 @@ beforeEach(() => {
 describe('runners registry', () => {
   describe('operator project allowlist', () => {
     beforeEach(() => mockAllowedProjects.push('1'));
+
+    // The runner-specific association check must agree with the common canonical path gate.
+    it('accepts a URL-encoded configured path alias', () => {
+      mockAllowedProjects.splice(0, mockAllowedProjects.length, 'TEAM%2Fa');
+      expect(runnerProjectAllowed({ id: 'gid://gitlab/Project/1', fullPath: 'team/a' })).toBe(true);
+      expect(runnerProjectAllowed({ id: 'gid://gitlab/Project/2', fullPath: 'team/b' })).toBe(
+        false,
+      );
+    });
 
     // Project aliases must resolve to the configured numeric ID before runner access.
     it('rejects project B when only A is allowed, before querying its runners', async () => {

@@ -2,6 +2,7 @@ import * as z from 'zod';
 import { BrowseAccessTokensSchema } from './schema-readonly';
 import { ManageAccessTokenSchema } from './schema';
 import { gitlab, toQuery } from '../../utils/gitlab-api';
+import { normalizeProjectId } from '../../utils/projectIdentifier';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
 import { assertActionAllowed, GITLAB_MAX_PER_PAGE } from '../utils';
 import { instanceAtLeast } from '../instance-version';
@@ -72,10 +73,10 @@ function flagSensitive(response: unknown): unknown {
  */
 function tokenBasePath(input: { project_id?: string; group_id?: string }): string {
   if (input.project_id) {
-    return `projects/${encodeURIComponent(input.project_id)}/access_tokens`;
+    return `projects/${normalizeProjectId(input.project_id)}/access_tokens`;
   }
   if (input.group_id) {
-    return `groups/${encodeURIComponent(input.group_id)}/access_tokens`;
+    return `groups/${normalizeProjectId(input.group_id)}/access_tokens`;
   }
   return 'personal_access_tokens';
 }
@@ -117,14 +118,14 @@ export const accessTokensToolRegistry: ToolRegistry = new Map<string, EnhancedTo
           case 'list_project': {
             const { action: _action, project_id, ...query } = input;
             return listScopedTokens(
-              `projects/${encodeURIComponent(project_id)}/access_tokens`,
+              `projects/${normalizeProjectId(project_id)}/access_tokens`,
               query,
             );
           }
 
           case 'list_group': {
             const { action: _action, group_id, ...query } = input;
-            return listScopedTokens(`groups/${encodeURIComponent(group_id)}/access_tokens`, query);
+            return listScopedTokens(`groups/${normalizeProjectId(group_id)}/access_tokens`, query);
           }
 
           case 'get':
@@ -158,7 +159,7 @@ export const accessTokensToolRegistry: ToolRegistry = new Map<string, EnhancedTo
           case 'create_project': {
             const { action: _action, project_id, ...body } = input;
             const res = await gitlab.post(
-              `projects/${encodeURIComponent(project_id)}/access_tokens`,
+              `projects/${normalizeProjectId(project_id)}/access_tokens`,
               { body, contentType: 'json' },
             );
             return flagSensitive(res);
@@ -166,7 +167,7 @@ export const accessTokensToolRegistry: ToolRegistry = new Map<string, EnhancedTo
 
           case 'create_group': {
             const { action: _action, group_id, ...body } = input;
-            const res = await gitlab.post(`groups/${encodeURIComponent(group_id)}/access_tokens`, {
+            const res = await gitlab.post(`groups/${normalizeProjectId(group_id)}/access_tokens`, {
               body,
               contentType: 'json',
             });

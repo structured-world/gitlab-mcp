@@ -29,7 +29,14 @@ import {
 } from './utils/error-handler';
 import { GitLabTimeoutError } from './utils/fetch';
 import { getRequestTracker, getConnectionTracker, getCurrentRequestId } from './logging/index';
-import { LOG_FORMAT, HANDLER_TIMEOUT_MS, GITLAB_BASE_URL, GITLAB_READ_ONLY_MODE } from './config';
+import {
+  LOG_FORMAT,
+  HANDLER_TIMEOUT_MS,
+  GITLAB_BASE_URL,
+  GITLAB_READ_ONLY_MODE,
+  GITLAB_ALLOWED_PROJECT_IDS,
+  GITLAB_PROJECT_ID,
+} from './config';
 import { getSchemaMode } from './utils/schema-utils';
 import { formatToolResult, errorToolResult } from './utils/tool-result';
 import {
@@ -60,6 +67,9 @@ import {
 } from './configuration/policy';
 import { executeScoped, parseScopedArguments } from './configuration/scoped-execution';
 import { withScopePaths, withTargetPaths } from './configuration/scope-ids';
+import { operatorProjectRejection, withOperatorProjects } from './configuration/operator-projects';
+import { assertOperatorOwnership } from './configuration/operator-ownership';
+import { extractProjectsFromArgs } from './profiles/scope-enforcer';
 
 interface JsonSchemaProperty {
   type?: string;
@@ -672,15 +682,28 @@ async function prepareScopedCall(
   args: Record<string, unknown>,
   configured: EffectivePolicy,
   registryManager: import('./registry-manager').RegistryManager,
+  expired: () => boolean,
 ): Promise<{
   rejection: CallToolResult | null;
   args: Record<string, unknown>;
   policy: EffectivePolicy;
 }> {
+  const defaultProject =
+    GITLAB_PROJECT_ID ??
+    (GITLAB_ALLOWED_PROJECT_IDS.length === 1 ? GITLAB_ALLOWED_PROJECT_IDS[0] : undefined);
+  if (defaultProject && args.project_id === undefined && !isExemptFromSettings(toolName)) {
+    const action = typeof args.action === 'string' ? args.action : undefined;
+    if (registryManager.getDeclaredArguments(toolName, action)?.has('project_id')) {
+      args = { ...args, project_id: defaultProject };
+    }
+  }
   const unscoped = settingsRejection(toolName, args, withoutScope(configured), registryManager);
-  if (unscoped || !configured.scopeEnforcer || isExemptFromSettings(toolName))
+  if (
+    unscoped ||
+    isExemptFromSettings(toolName) ||
+    (!configured.scopeEnforcer && GITLAB_ALLOWED_PROJECT_IDS.length === 0)
+  )
     return { rejection: unscoped, args, policy: configured };
-  const policy = await withScopePaths(configured);
   const selected = parseScopedArguments(toolName, args);
   // The tool's parse keeps only the selected action's arguments, so only those are held to
   // the scope.
@@ -690,13 +713,26 @@ async function prepareScopedCall(
   const own = declared
     ? Object.fromEntries(Object.entries(selected).filter(([name]) => declared.has(name)))
     : selected;
+  const operatorRejection = operatorProjectRejection(own);
+  if (operatorRejection) {
+    return {
+      rejection: errorToolResult({ error: operatorRejection }),
+      args: selected,
+      policy: configured,
+    };
+  }
+  const policy =
+    GITLAB_ALLOWED_PROJECT_IDS.length > 0
+      ? await withOperatorProjects(configured, undefined, expired, extractProjectsFromArgs(own))
+      : await withScopePaths(configured);
+  const rejection = settingsRejection(
+    toolName,
+    await withTargetPaths(own, undefined, policy.scopeEnforcer),
+    policy,
+    registryManager,
+  );
   return {
-    rejection: settingsRejection(
-      toolName,
-      await withTargetPaths(own, undefined, policy.scopeEnforcer),
-      policy,
-      registryManager,
-    ),
+    rejection,
     args: selected,
     policy,
   };
@@ -1183,6 +1219,7 @@ export async function setupHandlers(server: Server): Promise<void> {
         toolArguments ?? {},
         configuration.policy,
         CallRegistry.getInstance(),
+        timedOut,
       );
       if (prepared.rejection) return prepared.rejection;
       toolArguments = prepared.args;
@@ -1269,6 +1306,8 @@ export async function setupHandlers(server: Server): Promise<void> {
           });
         }
 
+        await assertOperatorOwnership(toolName, toolArguments, prepared.policy, timedOut);
+        if (timedOut()) throw new Error('Tool call expired before execution');
         const result = await executeInScope(
           registryManager,
           toolName,

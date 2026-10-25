@@ -10,7 +10,8 @@
   "resolutions": {
     "lodash": "^4.18.1",
     "@hono/node-server": "^1.19.15",
-    "nx/undici": "^7.29.1",
+    "nx/undici": "^7.30.1",
+    "babel-plugin-istanbul/test-exclude": "^8.0.0",
     "prisma/mysql2": "^3.23.1",
     "@prisma/config/deepmerge-ts": "^8.0.2",
     "diff": "4.0.4",
@@ -24,6 +25,6 @@
     "lint": "nx run-many -t lint"
   },
   "devDependencies": {
-    "nx": "^23.3.0"
+    "nx": "^24.0.1"
   }
 }

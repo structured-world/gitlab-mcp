@@ -3,6 +3,7 @@ import { BrowsePipelinesSchema } from './schema-readonly';
 import { ManagePipelineSchema } from './schema';
 import { gitlab, toQuery } from '../../utils/gitlab-api';
 import { normalizeProjectId } from '../../utils/projectIdentifier';
+import { encodeApiSegment } from '../../utils/api-path';
 import { enhancedFetch } from '../../utils/fetch';
 import { getGitLabBaseUrl } from '../../utils/gitlab-base-url';
 import { logError } from '../../logger';
@@ -48,7 +49,7 @@ export const pipelinesToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
             // TypeScript knows: input has pipeline_id (required)
             const { project_id, pipeline_id } = input;
             return gitlab.get(
-              `projects/${normalizeProjectId(project_id)}/pipelines/${pipeline_id}`,
+              `projects/${normalizeProjectId(project_id)}/pipelines/${encodeApiSegment(pipeline_id)}`,
             );
           }
 
@@ -62,7 +63,7 @@ export const pipelinesToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
             if (per_page !== undefined) queryOptions.per_page = per_page;
             if (page !== undefined) queryOptions.page = page;
             return gitlab.get(
-              `projects/${normalizeProjectId(project_id)}/pipelines/${pipeline_id}/jobs`,
+              `projects/${normalizeProjectId(project_id)}/pipelines/${encodeApiSegment(pipeline_id)}/jobs`,
               { query: toQuery(queryOptions, []) },
             );
           }
@@ -78,7 +79,7 @@ export const pipelinesToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
             if (per_page !== undefined) queryOptions.per_page = per_page;
             if (page !== undefined) queryOptions.page = page;
             return gitlab.get(
-              `projects/${normalizeProjectId(project_id)}/pipelines/${pipeline_id}/bridges`,
+              `projects/${normalizeProjectId(project_id)}/pipelines/${encodeApiSegment(pipeline_id)}/bridges`,
               { query: toQuery(queryOptions, []) },
             );
           }
@@ -86,7 +87,9 @@ export const pipelinesToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
           case 'job': {
             // TypeScript knows: input has job_id (required)
             const { project_id, job_id } = input;
-            return gitlab.get(`projects/${normalizeProjectId(project_id)}/jobs/${job_id}`);
+            return gitlab.get(
+              `projects/${normalizeProjectId(project_id)}/jobs/${encodeApiSegment(job_id)}`,
+            );
           }
 
           case 'logs': {
@@ -94,7 +97,7 @@ export const pipelinesToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
             const { project_id, job_id, per_page, start } = input;
 
             // Custom handling - trace endpoint returns text, needs line processing
-            const apiUrl = `${getGitLabBaseUrl()}/api/v4/projects/${normalizeProjectId(project_id)}/jobs/${job_id}/trace`;
+            const apiUrl = `${getGitLabBaseUrl()}/api/v4/projects/${normalizeProjectId(project_id)}/jobs/${encodeApiSegment(job_id)}/trace`;
             const response = await enhancedFetch(apiUrl);
 
             if (!response.ok) {
@@ -277,7 +280,7 @@ export const pipelinesToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
             const { project_id, pipeline_id } = input;
 
             return gitlab.post(
-              `projects/${normalizeProjectId(project_id)}/pipelines/${pipeline_id}/retry`,
+              `projects/${normalizeProjectId(project_id)}/pipelines/${encodeApiSegment(pipeline_id)}/retry`,
             );
           }
 
@@ -286,7 +289,7 @@ export const pipelinesToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
             const { project_id, pipeline_id } = input;
 
             return gitlab.post(
-              `projects/${normalizeProjectId(project_id)}/pipelines/${pipeline_id}/cancel`,
+              `projects/${normalizeProjectId(project_id)}/pipelines/${encodeApiSegment(pipeline_id)}/cancel`,
             );
           }
 
@@ -297,25 +300,33 @@ export const pipelinesToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
             if (job_variables_attributes) {
               body.job_variables_attributes = job_variables_attributes;
             }
-            return gitlab.post(`projects/${normalizeProjectId(project_id)}/jobs/${job_id}/play`, {
-              body,
-              contentType: 'json',
-            });
+            return gitlab.post(
+              `projects/${normalizeProjectId(project_id)}/jobs/${encodeApiSegment(job_id)}/play`,
+              {
+                body,
+                contentType: 'json',
+              },
+            );
           }
 
           case 'retry_job': {
             // TypeScript knows: input has job_id (required)
             const { project_id, job_id } = input;
-            return gitlab.post(`projects/${normalizeProjectId(project_id)}/jobs/${job_id}/retry`);
+            return gitlab.post(
+              `projects/${normalizeProjectId(project_id)}/jobs/${encodeApiSegment(job_id)}/retry`,
+            );
           }
 
           case 'cancel_job': {
             // TypeScript knows: input has job_id (required), force (optional)
             const { project_id, job_id, force } = input;
             const query = force ? { force: 'true' } : undefined;
-            return gitlab.post(`projects/${normalizeProjectId(project_id)}/jobs/${job_id}/cancel`, {
-              query,
-            });
+            return gitlab.post(
+              `projects/${normalizeProjectId(project_id)}/jobs/${encodeApiSegment(job_id)}/cancel`,
+              {
+                query,
+              },
+            );
           }
 
           /* istanbul ignore next -- unreachable with Zod discriminatedUnion */

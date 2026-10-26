@@ -154,6 +154,17 @@ export async function closeTagMatchers(): Promise<void> {
   await Promise.all(owned.map((slot) => slot.matcher.close()));
 }
 
+/** Keep the slot reserved until termination completes, including across concurrent calls. */
+async function replaceMatcherSlot(slot: MatcherSlot): Promise<MatcherSlot> {
+  await slot.matcher.close();
+  const index = matcherSlots.indexOf(slot);
+  if (index === -1) throw new Error('Registry regex pool closed');
+  const replacement = TagMatcher.create();
+  replacement.matcher.lease();
+  matcherSlots[index] = replacement;
+  return replacement;
+}
+
 /** Bound both compilation and matching before permitting any destructive operation. */
 export async function withTagMatcher<T>(
   remove: string,
@@ -167,12 +178,13 @@ export async function withTagMatcher<T>(
     throw new Error('Registry regex exceeds 500 characters.');
   // Do not await warming before leasing: simultaneous requests must reserve distinct workers.
   while (matcherSlots.length < MAX_ACTIVE_MATCHERS) matcherSlots.push(TagMatcher.create());
-  const slot = matcherSlots.find((candidate) => !candidate.matcher.busy);
+  let slot = matcherSlots.find((candidate) => !candidate.matcher.busy);
   if (!slot) throw new Error('Registry regex matching is at capacity. Retry shortly.');
-  const { matcher } = slot;
-  matcher.lease();
+  slot.matcher.lease();
   let resetRequired = false;
   try {
+    if (slot.matcher.failure) slot = await replaceMatcherSlot(slot);
+    const { matcher } = slot;
     await slot.ready;
     await matcher.send({ action: 'compile', remove, keep });
     resetRequired = true;
@@ -184,6 +196,7 @@ export async function withTagMatcher<T>(
       }
     });
   } finally {
+    const { matcher } = slot;
     try {
       if (!matcher.failure && resetRequired) await matcher.send({ action: 'reset' });
     } finally {

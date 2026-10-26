@@ -60,6 +60,20 @@ it('reuses prewarmed workers and resets after a failed tag fetch', async () => {
   expect(mockWorkers.every((worker) => worker.unref.mock.calls.length > 0)).toBe(true);
 });
 
+// An idle crash belongs to pool maintenance, not to the next caller's valid pattern.
+it.each(['error', 'exit'] as const)(
+  'replaces an idle worker after %s before serving the next caller',
+  async (event) => {
+    await warmTagMatchers();
+    const stale = mockWorkers[0];
+    stale.emit(event, event === 'exit' ? 9 : new Error('idle worker failed'));
+    await expect(withTagMatcher('.*', undefined, (match) => match(['tag']))).resolves.toEqual([]);
+    expect(stale.postMessage).not.toHaveBeenCalled();
+    expect(stale.terminate).toHaveBeenCalledTimes(1);
+    expect(mockWorkers).toHaveLength(3);
+  },
+);
+
 // A stuck compilation is terminated at the deadline and replaced without blocking later work.
 it('terminates and replaces a worker after its deadline', async () => {
   jest.useFakeTimers();

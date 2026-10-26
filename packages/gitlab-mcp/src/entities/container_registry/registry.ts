@@ -6,6 +6,7 @@ import { assertActionAllowed } from '../utils';
 import { ConnectionManager } from '../../services/ConnectionManager';
 import { cleanGidsFromObject } from '../../utils/idConversion';
 import { getGitLabApiUrlFromContext } from '../../oauth/token-context';
+import { withTagMatcher } from './regex';
 import {
   LIST_CONTAINER_REPOSITORIES,
   GET_CONTAINER_REPOSITORY,
@@ -53,24 +54,17 @@ function durationToMs(older_than: string): number {
 }
 
 /**
- * Resolve which tag names a bulk cleanup should delete, mirroring GitLab's own
- * cleanup-policy order: match name_regex_delete, drop anything matching
- * name_regex_keep, keep the newest keep_n, then of the remainder keep only those
- * older than older_than.
+ * Apply retention after isolated regex selection: keep the newest keep_n, then
+ * delete only remaining tags older than older_than.
  */
 function resolveBulkDeleteTags(
   tags: ContainerTagNode[],
   opts: {
-    name_regex_delete: string;
-    name_regex_keep?: string;
     keep_n?: number;
     older_than?: string;
   },
 ): string[] {
-  const deleteRe = new RegExp(opts.name_regex_delete);
-  const keepRe = opts.name_regex_keep ? new RegExp(opts.name_regex_keep) : null;
-
-  let candidates = tags.filter((t) => deleteRe.test(t.name) && !keepRe?.test(t.name));
+  let candidates = tags;
 
   // Newest first by creation date (tags without a date sort last).
   candidates.sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''));
@@ -233,39 +227,48 @@ export const containerRegistryToolRegistry: ToolRegistry = new Map<string, Enhan
           }
 
           case 'delete_tags_bulk': {
-            // Page through tags (up to BULK_TAG_SCAN_CAP) so the regex/keep_n/
-            // older_than filtering happens over the full set.
-            const tags: ContainerTagNode[] = [];
-            let capped = false;
-            let after: string | null = null;
-            for (;;) {
-              // Explicit result type: `after` is both an input var and assigned
-              // from the result below, which defeats generic inference (circular).
-              const page: ListTagsResult = await client.request(LIST_CONTAINER_REPOSITORY_TAGS, {
-                id: gid,
-                name: null,
-                first: 100,
-                after,
-              });
-              // A null repository means the ID is invalid / inaccessible; fail
-              // rather than reporting a misleading deleted_count: 0 success.
-              if (!page.containerRepository) {
-                throw new Error(`Container repository ${input.repository_id} not found`);
-              }
-              const conn = page.containerRepository.tags;
-              tags.push(...conn.nodes);
-              if (tags.length >= BULK_TAG_SCAN_CAP) {
-                tags.length = BULK_TAG_SCAN_CAP;
-                capped = true;
-                break;
-              }
-              if (!conn.pageInfo.hasNextPage || !conn.pageInfo.endCursor) break;
-              after = conn.pageInfo.endCursor;
-            }
+            const { selected, capped } = await withTagMatcher(
+              input.name_regex_delete,
+              input.name_regex_keep,
+              async (match) => {
+                // Page through tags (up to BULK_TAG_SCAN_CAP) so the regex/keep_n/
+                // older_than filtering happens over the full set.
+                const tags: ContainerTagNode[] = [];
+                let capped = false;
+                let after: string | null = null;
+                for (;;) {
+                  // Explicit result type: `after` is both an input var and assigned
+                  // from the result below, which defeats generic inference (circular).
+                  const page: ListTagsResult = await client.request(
+                    LIST_CONTAINER_REPOSITORY_TAGS,
+                    {
+                      id: gid,
+                      name: null,
+                      first: 100,
+                      after,
+                    },
+                  );
+                  // A null repository means the ID is invalid / inaccessible; fail
+                  // rather than reporting a misleading deleted_count: 0 success.
+                  if (!page.containerRepository) {
+                    throw new Error(`Container repository ${input.repository_id} not found`);
+                  }
+                  const conn = page.containerRepository.tags;
+                  tags.push(...conn.nodes);
+                  if (tags.length >= BULK_TAG_SCAN_CAP) {
+                    tags.length = BULK_TAG_SCAN_CAP;
+                    capped = true;
+                    break;
+                  }
+                  if (!conn.pageInfo.hasNextPage || !conn.pageInfo.endCursor) break;
+                  after = conn.pageInfo.endCursor;
+                }
 
-            const toDelete = resolveBulkDeleteTags(tags, {
-              name_regex_delete: input.name_regex_delete,
-              name_regex_keep: input.name_regex_keep,
+                const indices = await match(tags.map((tag) => tag.name));
+                return { selected: indices.map((index) => tags[index]), capped };
+              },
+            );
+            const toDelete = resolveBulkDeleteTags(selected, {
               keep_n: input.keep_n,
               older_than: input.older_than,
             });

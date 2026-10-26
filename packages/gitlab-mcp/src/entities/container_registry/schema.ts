@@ -10,16 +10,6 @@ import { z } from 'zod';
 // Gated behind USE_REGISTRY. Writes require the write_registry token scope.
 // ============================================================================
 
-/** True when the string compiles as a regular expression (fail fast at parse). */
-const isValidRegex = (pattern: string): boolean => {
-  try {
-    new RegExp(pattern);
-    return true;
-  } catch {
-    return false;
-  }
-};
-
 // --- Shared fields ---
 // Mutations address the repository directly by its numeric ID (as returned by
 // browse_registry list_repositories); it is expanded to a global ID internally.
@@ -53,19 +43,23 @@ const DeleteTagsBulkSchema = z.object({
       'Bulk-delete tags by regex with optional retention rules. Destructive and irreversible. ' +
         'Tags are resolved client-side (regex match, keep the newest keep_n, drop only those older ' +
         'than older_than) and then deleted. Always pair name_regex_delete with keep_n and/or ' +
-        'older_than to avoid deleting more than intended.',
+        'older_than to avoid deleting more than intended. Regex compilation and matching each have ' +
+        'a 1-second deadline in an isolated worker; failure deletes no tags. At most two bulk ' +
+        'cleanup selections can run per server process; retry if capacity is exhausted.',
     ),
   repository_id: repositoryIdField,
   name_regex_delete: z
     .string()
     .min(1)
-    .refine(isValidRegex, 'Must be a valid regular expression')
-    .describe('Regex for tag names to delete (e.g., ".*" for all, "^v.+" for version tags)'),
+    .describe(
+      'JavaScript regex for tag names to delete (e.g., ".*" for all, "^v.+" for version tags)',
+    ),
   name_regex_keep: z
     .string()
-    .refine(isValidRegex, 'Must be a valid regular expression')
     .optional()
-    .describe('Regex for tag names to always keep (takes precedence over name_regex_delete)'),
+    .describe(
+      'JavaScript regex for tag names to always keep (takes precedence over name_regex_delete)',
+    ),
   keep_n: z.coerce
     .number()
     .int()

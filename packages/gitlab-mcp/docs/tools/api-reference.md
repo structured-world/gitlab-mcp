@@ -3381,9 +3381,9 @@ Delete GitLab Container Registry repositories and tags. Actions: delete_reposito
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `name_regex_delete` | string | Yes | JavaScript regex for tag names to delete (e.g., ".*" for all, "^v.+" for version tags) |
+| `name_regex_delete` | string | Yes | RE2 regex for tag names to delete, max 500 characters and 1000 compiled instructions. No lookaround or backreferences (e.g., ".*" for all, "^v.+" for version tags). |
 | `keep_n` | integer | No | Keep the N most recently created matching tags |
-| `name_regex_keep` | string | No | JavaScript regex for tag names to always keep (takes precedence over name_regex_delete) |
+| `name_regex_keep` | string | No | RE2 regex for tag names to always keep, with the same limits as name_regex_delete (takes precedence over name_regex_delete) |
 | `older_than` | string | No | Only delete tags created longer ago than this duration (e.g., "7d", "12h") |
 
 #### Example

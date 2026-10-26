@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { MAX_REGISTRY_PATTERN_LENGTH } from './regex';
 
 // ============================================================================
 // manage_registry - CQRS Command Tool (discriminated union schema)
@@ -51,14 +52,16 @@ const DeleteTagsBulkSchema = z.object({
   name_regex_delete: z
     .string()
     .min(1)
+    .max(MAX_REGISTRY_PATTERN_LENGTH)
     .describe(
-      'JavaScript regex for tag names to delete (e.g., ".*" for all, "^v.+" for version tags)',
+      'RE2 regex for tag names to delete, max 500 characters and 1000 compiled instructions. No lookaround or backreferences (e.g., ".*" for all, "^v.+" for version tags).',
     ),
   name_regex_keep: z
     .string()
+    .max(MAX_REGISTRY_PATTERN_LENGTH)
     .optional()
     .describe(
-      'JavaScript regex for tag names to always keep (takes precedence over name_regex_delete)',
+      'RE2 regex for tag names to always keep, with the same limits as name_regex_delete (takes precedence over name_regex_delete)',
     ),
   keep_n: z.coerce
     .number()

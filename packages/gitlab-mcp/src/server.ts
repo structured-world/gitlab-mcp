@@ -23,7 +23,10 @@ import {
   LOG_FILTER,
   shouldSkipAccessLogRequest,
   RESPONSE_WRITE_TIMEOUT_MS,
+  USE_REGISTRY,
+  GITLAB_READ_ONLY_MODE,
 } from './config';
+import { warmTagMatchers, closeTagMatchers } from './entities/container_registry/regex';
 import { TransportMode } from './types';
 import { logInfo, logError, logDebug, logWarn } from './logger';
 import { getSessionManager, STDIO_SESSION_ID } from './session-manager';
@@ -381,6 +384,7 @@ function determineTransportMode(): TransportMode {
 }
 
 export async function startServer(): Promise<void> {
+  if (USE_REGISTRY && !GITLAB_READ_ONLY_MODE) await warmTagMatchers();
   // Detect configuration based on auth mode
   const oauthConfig = loadOAuthConfig();
   if (oauthConfig) {
@@ -932,6 +936,11 @@ export async function startServer(): Promise<void> {
 // Graceful shutdown - close all sessions and save to storage backend before exit
 async function gracefulShutdown(signal: string): Promise<void> {
   logInfo('Shutting down GitLab MCP Server...', { signal });
+  try {
+    await closeTagMatchers();
+  } catch (error) {
+    logError('Error closing registry regex workers', { err: error as Error });
+  }
 
   // Close all tracked connections with server_shutdown reason
   try {

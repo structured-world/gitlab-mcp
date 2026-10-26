@@ -36,7 +36,7 @@ it('bounds catastrophic cleanup matching and keeps another request responsive', 
     }, 100);
     registry.get('manage_registry').handler({
       action: 'delete_tags_bulk', repository_id: 1, name_regex_delete: '(a+)+$'
-    }).then(() => parentPort.postMessage({ unexpectedSuccess: true }),
+    }).then(result => parentPort.postMessage({ deleted: result.deleted_count }),
       error => parentPort.postMessage({ error: error.message }));
     `,
     {
@@ -49,7 +49,7 @@ it('bounds catastrophic cleanup matching and keeps another request responsive', 
     },
   );
   try {
-    const messages: { responsive?: boolean; error?: string }[] = [];
+    const messages: { responsive?: boolean; error?: string; deleted?: number }[] = [];
     await new Promise<void>((resolve, reject) => {
       const timer = setTimeout(
         () => reject(new Error('Cleanup blocked the server for 5 seconds')),
@@ -67,8 +67,7 @@ it('bounds catastrophic cleanup matching and keeps another request responsive', 
         }
       });
     });
-    expect(messages[0]).toEqual({ responsive: true });
-    expect(messages[1]).toEqual({ error: expect.stringMatching(/time limit/) });
+    expect(messages).toEqual(expect.arrayContaining([{ responsive: true }, { deleted: 0 }]));
   } finally {
     await worker.terminate();
   }

@@ -2133,6 +2133,7 @@ __metadata:
     pino: "npm:^10.4.0"
     pino-pretty: "npm:^13.2.0"
     prettier: "npm:^3.9.10"
+    re2js: "npm:^2.9.0"
     smol-toml: "npm:1.9.1"
     transliteration: "npm:^2.7.0"
     ts-jest: "npm:^29.4.15"
@@ -7719,6 +7720,13 @@ __metadata:
     defu: "npm:^6.1.7"
     destr: "npm:^2.0.5"
   checksum: 10c0/80822ef4ea7b8d600df054b790944854509efa6875cdaf32a18f1a854819e96b58d67926aeff366f4c32773b09368d71c82348b4e7efb8ad01426998d1e99c7b
+  languageName: node
+  linkType: hard
+
+"re2js@npm:^2.9.0":
+  version: 2.9.0
+  resolution: "re2js@npm:2.9.0"
+  checksum: 10c0/e56e0c65a8faba5a43636e9224994a1207856e37c8af5031ab25fa586c43cb5cae393cc4b6282d6c39a53a0876ae602ffae030e1c6fddd8a7bd6496efb59b4b7
   languageName: node
   linkType: hard
 

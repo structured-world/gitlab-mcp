@@ -106,6 +106,59 @@ describe('Fetch Configuration Edge Cases', () => {
     }));
   }
 
+  describe('Proxy log credentials', () => {
+    beforeEach(() => {
+      resetAndReregisterMocks();
+    });
+
+    // Keep credentials out of every proxy diagnostic while preserving the network configuration.
+    it.each([
+      ['http://user:secret@proxy.example.com:3128', 'http://proxy.example.com:3128/', false],
+      ['https://user:secret@proxy.example.com:3128', 'https://proxy.example.com:3128/', true],
+      ['http://us%65r:se%63ret@proxy.example.com:3128', 'http://proxy.example.com:3128/', true],
+      ['http://user@proxy.example.com:3128', 'http://proxy.example.com:3128/', true],
+      ['http://:secret@proxy.example.com:3128', 'http://proxy.example.com:3128/', true],
+      ['http://user:secret@[::1]:3128', 'http://[::1]:3128/', true],
+      ['socks://user:secret@proxy.example.com:1080', 'socks://proxy.example.com:1080', true],
+      ['socks4://user:secret@proxy.example.com:1080', 'socks4://proxy.example.com:1080', true],
+      ['socks5://user:secret@proxy.example.com:1080', 'socks5://proxy.example.com:1080', true],
+      ['http://user:secret@/', '<invalid proxy URL>', true],
+      ['socks5://user:secret@[invalid', '<invalid proxy URL>', true],
+      ['user:secret@[invalid', '<invalid proxy URL>', true],
+      ['http://proxy.example.com:80', 'http://proxy.example.com:80', true],
+      ['socks5://proxy.example.com:1080', 'socks5://proxy.example.com:1080', true],
+    ])('logs a safe address for %s', (proxyUrl, safeUrl, useHttps) => {
+      mockConfig({
+        HTTP_PROXY: useHttps ? undefined : proxyUrl,
+        HTTPS_PROXY: useHttps ? proxyUrl : undefined,
+      });
+      const { createFetchOptions } = require('../../../src/utils/fetch');
+      mockLogInfo.mockClear();
+      mockLogWarn.mockClear();
+      createFetchOptions();
+      createFetchOptions();
+
+      const socks = proxyUrl.startsWith('socks');
+      expect(mockLogInfo.mock.calls).toEqual([
+        [`Using ${socks ? 'SOCKS proxy' : 'proxy'}: ${safeUrl}`],
+      ]);
+      const diagnostics = JSON.stringify([...mockLogInfo.mock.calls, ...mockLogWarn.mock.calls]);
+      for (const credential of ['secret', 'se%63ret', 'user:', 'us%65r']) {
+        expect(diagnostics).not.toContain(credential);
+      }
+      const { ProxyAgent } = require('undici');
+      if (socks) {
+        expect(ProxyAgent).not.toHaveBeenCalled();
+        expect(mockLogWarn.mock.calls).toEqual([
+          ['SOCKS proxy not supported with native fetch. Consider HTTP/HTTPS proxy.'],
+        ]);
+      } else {
+        expect(ProxyAgent).toHaveBeenCalledTimes(1);
+        expect(ProxyAgent).toHaveBeenCalledWith(expect.objectContaining({ uri: proxyUrl }));
+      }
+    });
+  });
+
   describe('SOCKS Proxy Detection', () => {
     beforeEach(() => {
       resetAndReregisterMocks();

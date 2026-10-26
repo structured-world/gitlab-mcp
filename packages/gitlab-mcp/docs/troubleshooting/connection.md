@@ -203,6 +203,10 @@ Set proxy environment variables:
 }
 ```
 
+Proxy diagnostics omit usernames and passwords while retaining the proxy host and port.
+Malformed proxy URLs appear as `<invalid proxy URL>` instead of the configured value.
+These log changes do not alter the proxy configuration used for connections.
+
 ### VPN or Firewall
 
 Ensure your network allows HTTPS (port 443) connections to your GitLab instance.

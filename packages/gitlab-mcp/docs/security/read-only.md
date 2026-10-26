@@ -26,6 +26,13 @@ When enabled:
 - Write operations return an error if attempted
 - Useful for production environments or when write access is not needed
 
+## Credential Fields
+
+Project and group metadata omit runner registration tokens (`runners_token`) and
+import URLs (`import_url`), which can carry credentials. This filtering also applies
+to nested projects, project search results and metadata returned by write operations,
+independently of read-only mode.
+
 ## Use Cases
 
 - **Production monitoring** — Safely browse projects, MRs, and pipelines

@@ -115,7 +115,9 @@ describe('Project and group response credentials', () => {
     const result = await searchToolRegistry
       .get('browse_search')!
       .handler({ ...args, scope: 'projects', search: 'example' });
-    const scopeFields = Object.fromEntries(Object.entries(args).filter(([key]) => key !== 'action'));
+    const scopeFields = Object.fromEntries(
+      Object.entries(args).filter(([key]) => key !== 'action'),
+    );
     expect(result).toStrictEqual({
       ...scopeFields,
       scope: 'projects',

@@ -25,6 +25,7 @@ import { ToolRegistry, EnhancedToolDefinition } from '../../types';
 import { assertActionAllowed } from '../utils';
 import { assertInstanceAtLeast, currentInstance, instanceAtLeast } from '../instance-version';
 import { GROUP_DUO_SETTINGS, PROJECT_DUO_SETTINGS, withUnappliedSettings } from './duo-settings';
+import { withSafeProjectResponse } from './project-response';
 
 /**
  * Minimal guard for the entity payload returned by the restore endpoints
@@ -109,7 +110,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
           marked_for_deletion_on: { tier: 'premium', minVersion: '17.1' },
         },
       },
-      handler: async (args: unknown): Promise<unknown> => {
+      handler: withSafeProjectResponse(async (args: unknown): Promise<unknown> => {
         const input = BrowseProjectsSchema.parse(args);
 
         assertActionAllowed('browse_projects', input.action);
@@ -273,7 +274,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
           default:
             throw new Error(`Unknown action: ${(input as { action: string }).action}`);
         }
-      },
+      }),
     },
   ],
 
@@ -285,7 +286,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
         'Explore GitLab groups and user namespaces. Actions: list (discover available namespaces), get (retrieve details with storage stats), verify (check if path exists). Related: manage_namespace to create/update/delete groups.',
       inputSchema: z.toJSONSchema(BrowseNamespacesSchema),
       requirements: { default: { tier: 'free' } },
-      handler: async (args: unknown): Promise<unknown> => {
+      handler: withSafeProjectResponse(async (args: unknown): Promise<unknown> => {
         const input = BrowseNamespacesSchema.parse(args);
 
         assertActionAllowed('browse_namespaces', input.action);
@@ -357,7 +358,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
           default:
             throw new Error(`Unknown action: ${(input as { action: string }).action}`);
         }
-      },
+      }),
     },
   ],
 
@@ -676,7 +677,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
           duo_dependency_bump_breaking_changes_enabled: { tier: 'ultimate', minVersion: '19.2' },
         },
       },
-      handler: async (args: unknown): Promise<unknown> => {
+      handler: withSafeProjectResponse(async (args: unknown): Promise<unknown> => {
         const input = ManageProjectSchema.parse(args);
 
         assertActionAllowed('manage_project', input.action);
@@ -915,7 +916,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
           default:
             throw new Error(`Unknown action: ${(input as { action: string }).action}`);
         }
-      },
+      }),
     },
   ],
 
@@ -937,7 +938,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
           auto_duo_code_review_enabled: { tier: 'premium', minVersion: '18.7' },
         },
       },
-      handler: async (args: unknown): Promise<unknown> => {
+      handler: withSafeProjectResponse(async (args: unknown): Promise<unknown> => {
         const input = ManageNamespaceSchema.parse(args);
 
         assertActionAllowed('manage_namespace', input.action);
@@ -1035,7 +1036,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
           default:
             throw new Error(`Unknown action: ${(input as { action: string }).action}`);
         }
-      },
+      }),
     },
   ],
 

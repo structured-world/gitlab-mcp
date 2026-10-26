@@ -3,6 +3,7 @@ import { BrowseSearchSchema } from './schema-readonly';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
 import { assertActionAllowed } from '../utils';
 import { gitlab, paths, toQuery } from '../../utils/gitlab-api';
+import { stripProjectSecrets } from '../core/project-response';
 
 /**
  * Search tools registry - 1 read-only CQRS tool
@@ -51,7 +52,7 @@ export const searchToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefi
             return {
               scope,
               count: results.length,
-              results,
+              results: scope === 'projects' ? stripProjectSecrets(results) : results,
             };
           }
 
@@ -71,7 +72,7 @@ export const searchToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefi
               project_id,
               scope,
               count: results.length,
-              results,
+              results: scope === 'projects' ? stripProjectSecrets(results) : results,
             };
           }
 
@@ -91,7 +92,7 @@ export const searchToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefi
               group_id,
               scope,
               count: results.length,
-              results,
+              results: scope === 'projects' ? stripProjectSecrets(results) : results,
             };
           }
 

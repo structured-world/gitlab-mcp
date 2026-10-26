@@ -78,7 +78,7 @@ jobs:
         working-directory: packages/gitlab-mcp
 
       - name: Verify project response credential filtering over HTTP
-        run: yarn test:project-responses
+        run: yarn test:project-responses:compiled
         working-directory: packages/gitlab-mcp
 
       - name: Build optional db package

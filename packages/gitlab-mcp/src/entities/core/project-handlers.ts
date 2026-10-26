@@ -119,7 +119,9 @@ function formRequest(method: 'POST' | 'PUT', body: URLSearchParams): RequestInit
   };
 }
 
-function updateBody(params: Record<string, unknown>): URLSearchParams {
+function updateBody(
+  params: Record<string, string | number | boolean | undefined>,
+): URLSearchParams {
   const body = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
     if (value !== undefined) body.set(key, String(value));

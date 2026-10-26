@@ -12,6 +12,7 @@ type MockWorker = EventEmitter & {
   unref: jest.Mock;
 };
 const mockWorkers: MockWorker[] = [];
+let mockStartupFailures = 0;
 jest.mock('node:worker_threads', () => ({
   Worker: jest.fn().mockImplementation(() => {
     const { EventEmitter } = jest.requireActual<typeof import('node:events')>('node:events');
@@ -26,7 +27,12 @@ jest.mock('node:worker_threads', () => ({
       return 1;
     });
     mockWorkers.push(worker);
-    Promise.resolve().then(() => worker.emit('message', { indices: [] }));
+    const failStartup = mockStartupFailures > 0;
+    if (failStartup) mockStartupFailures--;
+    Promise.resolve().then(() => {
+      if (failStartup) worker.emit('error', new Error('worker startup failed'));
+      else worker.emit('message', { indices: [] });
+    });
     return worker;
   }),
 }));
@@ -34,7 +40,25 @@ jest.mock('node:worker_threads', () => ({
 afterEach(async () => {
   await closeTagMatchers();
   mockWorkers.length = 0;
+  mockStartupFailures = 0;
   jest.useRealTimers();
+});
+
+// A transient startup failure is repaired during warming, before any caller needs the pool.
+it('repairs a transient startup failure during prewarming', async () => {
+  mockStartupFailures = 1;
+  await expect(warmTagMatchers()).resolves.toBeUndefined();
+  expect(mockWorkers).toHaveLength(3);
+  expect(mockWorkers[0].terminate).toHaveBeenCalledTimes(1);
+  await expect(withTagMatcher('.*', undefined, (match) => match(['tag']))).resolves.toEqual([]);
+});
+
+// Persistent startup failure must stop recovery after one replacement per slot, not spin forever.
+it('bounds startup recovery and permits a later request to recover', async () => {
+  mockStartupFailures = 4;
+  await expect(warmTagMatchers()).rejects.toThrow('worker startup failed');
+  expect(mockWorkers).toHaveLength(4);
+  await expect(withTagMatcher('.*', undefined, (match) => match(['tag']))).resolves.toEqual([]);
 });
 
 // Warm requests must reuse their compute workers, not repeat startup or retain a caller's pattern.

@@ -145,7 +145,24 @@ class TagMatcher {
 /** Preload a bounded process-local compute pool without retaining caller context. */
 export async function warmTagMatchers(): Promise<void> {
   while (matcherSlots.length < MAX_ACTIVE_MATCHERS) matcherSlots.push(TagMatcher.create());
-  await Promise.all(matcherSlots.map((slot) => slot.ready));
+  await Promise.all(matcherSlots.map(warmMatcherSlot));
+}
+
+/** Repair a transient startup failure once, without an unbounded restart loop. */
+async function warmMatcherSlot(slot: MatcherSlot): Promise<void> {
+  try {
+    await slot.ready;
+  } catch (error) {
+    if (slot.matcher.busy) throw error;
+    slot.matcher.lease();
+    let owned = slot;
+    try {
+      owned = await replaceMatcherSlot(slot);
+      await owned.ready;
+    } finally {
+      owned.matcher.release();
+    }
+  }
 }
 
 /** Terminate idle and active compute workers during server shutdown. */

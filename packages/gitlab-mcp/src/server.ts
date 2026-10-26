@@ -384,7 +384,14 @@ function determineTransportMode(): TransportMode {
 }
 
 export async function startServer(): Promise<void> {
-  if (USE_REGISTRY && !GITLAB_READ_ONLY_MODE) await warmTagMatchers();
+  if (USE_REGISTRY && !GITLAB_READ_ONLY_MODE) {
+    try {
+      await warmTagMatchers();
+    } catch (error) {
+      await closeTagMatchers();
+      logWarn('Registry regex prewarm failed; continuing startup', { err: error as Error });
+    }
+  }
   // Detect configuration based on auth mode
   const oauthConfig = loadOAuthConfig();
   if (oauthConfig) {

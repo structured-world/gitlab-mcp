@@ -216,6 +216,29 @@ describe('server', () => {
   });
 
   describe('transport mode detection', () => {
+    // Optional prewarming must not prevent unrelated MCP tools from becoming available.
+    it('starts the transport after a persistent registry prewarm failure', async () => {
+      const settings = jest.requireMock<{ USE_REGISTRY: boolean }>('../../src/config');
+      settings.USE_REGISTRY = true;
+      const error = new Error('worker startup failed');
+      jest.mocked(warmTagMatchers).mockRejectedValueOnce(error);
+      process.argv = ['node', 'server.js', 'stdio'];
+      delete process.env.PORT;
+      try {
+        await expect(startServer()).resolves.toBeUndefined();
+        expect(closeTagMatchers).toHaveBeenCalled();
+        expect(mockLogWarn).toHaveBeenCalledWith(
+          'Registry regex prewarm failed; continuing startup',
+          { err: error },
+        );
+        expect(mockSessionManager.createSession).toHaveBeenCalledWith(
+          STDIO_SESSION_ID,
+          mockTransport,
+        );
+      } finally {
+        settings.USE_REGISTRY = false;
+      }
+    });
     // Only a writable registry needs warm compute capacity; read-only and disabled deployments do not.
     it.each([
       [true, false, true],
@@ -3043,6 +3066,23 @@ describe('server', () => {
   });
 
   describe('signal handlers', () => {
+    // A compute cleanup failure must not bypass session persistence or the rest of shutdown.
+    it('continues shutdown when registry worker cleanup fails', async () => {
+      const error = new Error('worker cleanup failed');
+      jest.mocked(closeTagMatchers).mockRejectedValueOnce(error);
+      const mockExit = jest.spyOn(process, 'exit').mockImplementation((() => undefined) as never);
+      try {
+        process.emit('SIGTERM');
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        expect(mockLogError).toHaveBeenCalledWith('Error closing registry regex workers', {
+          err: error,
+        });
+        expect(mockSessionStore.close).toHaveBeenCalled();
+        expect(mockExit).toHaveBeenCalledWith(0);
+      } finally {
+        mockExit.mockRestore();
+      }
+    });
     it('should handle SIGINT signal', async () => {
       // Use a mock that returns never (like the real process.exit) instead of throwing
       // Throwing causes Jest worker crashes in Node.js 24

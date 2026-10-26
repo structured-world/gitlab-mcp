@@ -104,6 +104,20 @@ function isSocksProxy(url: string): boolean {
   return url.startsWith('socks4://') || url.startsWith('socks5://') || url.startsWith('socks://');
 }
 
+/** Remove proxy userinfo before logging, without changing the dispatcher's configuration. */
+function proxyUrlForLogging(value: string): string {
+  try {
+    const parsed = new URL(value);
+    if (!parsed.hostname) return '<invalid proxy URL>';
+    if (!parsed.username && !parsed.password) return value;
+    parsed.username = '';
+    parsed.password = '';
+    return parsed.toString();
+  } catch {
+    return '<invalid proxy URL>';
+  }
+}
+
 /**
  * Create Undici dispatcher for fetch requests
  *
@@ -151,14 +165,14 @@ function createDispatcher(): unknown {
 
   // SOCKS proxy not supported with native fetch
   if (proxyUrl && isSocksProxy(proxyUrl)) {
-    logInfo(`Using SOCKS proxy: ${proxyUrl}`);
+    logInfo(`Using SOCKS proxy: ${proxyUrlForLogging(proxyUrl)}`);
     logWarn('SOCKS proxy not supported with native fetch. Consider HTTP/HTTPS proxy.');
     return undefined;
   }
 
   // HTTP/HTTPS proxy — apply same Undici timeouts as direct Agent
   if (proxyUrl) {
-    logInfo(`Using proxy: ${proxyUrl}`);
+    logInfo(`Using proxy: ${proxyUrlForLogging(proxyUrl)}`);
     // ProxyAgent in Undici v8 does not support the `connect` option (only Agent/Pool do).
     // Use numeric timeout in proxyTls so each new proxy connection gets its own
     // timeout budget (AbortSignal.timeout would be one-shot on a cached agent).

@@ -4,7 +4,8 @@ const REGEX_TIMEOUT_MS = 1000;
 const MAX_ACTIVE_MATCHERS = 2;
 export const MAX_REGISTRY_PATTERN_LENGTH = 500;
 // Per-process compute admission only, not account or session state shared across replicas.
-const matchers: TagMatcher[] = [];
+type MatcherSlot = { matcher: TagMatcher; ready: Promise<number[]> };
+const matcherSlots: MatcherSlot[] = [];
 
 // Untrusted patterns and names are data, never interpolated into executable source.
 const MATCHER_SOURCE = `
@@ -53,9 +54,7 @@ class TagMatcher {
     reject: (error: Error) => void;
     timer: ReturnType<typeof setTimeout>;
   };
-  readonly ready: Promise<number[]>;
-
-  constructor() {
+  private constructor() {
     this.worker = new Worker(MATCHER_SOURCE, {
       eval: true,
       workerData: { library: require.resolve('re2js') },
@@ -73,14 +72,19 @@ class TagMatcher {
     this.worker.on('exit', (code) =>
       this.fail(new Error(`Registry regex worker exited (${code})`)),
     );
-    this.ready = this.wait();
+  }
+
+  static create(): MatcherSlot {
+    const matcher = new TagMatcher();
+    const ready = matcher.wait();
     // An idle prewarmed worker must not keep CLI commands or test processes alive.
-    this.ready.then(
+    ready.then(
       () => {
-        if (!this.busy) this.worker.unref();
+        if (!matcher.busy) matcher.worker.unref();
       },
-      (error: unknown) => this.fail(error),
+      (error: unknown) => matcher.fail(error),
     );
+    return { matcher, ready };
   }
 
   private fail(error: unknown): void {
@@ -140,14 +144,14 @@ class TagMatcher {
 
 /** Preload a bounded process-local compute pool without retaining caller context. */
 export async function warmTagMatchers(): Promise<void> {
-  while (matchers.length < MAX_ACTIVE_MATCHERS) matchers.push(new TagMatcher());
-  await Promise.all(matchers.map((matcher) => matcher.ready));
+  while (matcherSlots.length < MAX_ACTIVE_MATCHERS) matcherSlots.push(TagMatcher.create());
+  await Promise.all(matcherSlots.map((slot) => slot.ready));
 }
 
 /** Terminate idle and active compute workers during server shutdown. */
 export async function closeTagMatchers(): Promise<void> {
-  const owned = matchers.splice(0);
-  await Promise.all(owned.map((matcher) => matcher.close()));
+  const owned = matcherSlots.splice(0);
+  await Promise.all(owned.map((slot) => slot.matcher.close()));
 }
 
 /** Bound both compilation and matching before permitting any destructive operation. */
@@ -162,13 +166,14 @@ export async function withTagMatcher<T>(
   )
     throw new Error('Registry regex exceeds 500 characters.');
   // Do not await warming before leasing: simultaneous requests must reserve distinct workers.
-  while (matchers.length < MAX_ACTIVE_MATCHERS) matchers.push(new TagMatcher());
-  const matcher = matchers.find((candidate) => !candidate.busy);
-  if (!matcher) throw new Error('Registry regex matching is at capacity. Retry shortly.');
+  while (matcherSlots.length < MAX_ACTIVE_MATCHERS) matcherSlots.push(TagMatcher.create());
+  const slot = matcherSlots.find((candidate) => !candidate.matcher.busy);
+  if (!slot) throw new Error('Registry regex matching is at capacity. Retry shortly.');
+  const { matcher } = slot;
   matcher.lease();
   let resetRequired = false;
   try {
-    await matcher.ready;
+    await slot.ready;
     await matcher.send({ action: 'compile', remove, keep });
     resetRequired = true;
     return await operation(async (names) => {
@@ -185,8 +190,8 @@ export async function withTagMatcher<T>(
       if (!matcher.failure) matcher.release();
       else {
         await matcher.close();
-        const index = matchers.indexOf(matcher);
-        if (index !== -1) matchers.splice(index, 1, new TagMatcher());
+        const index = matcherSlots.indexOf(slot);
+        if (index !== -1) matcherSlots.splice(index, 1, TagMatcher.create());
       }
     }
   }

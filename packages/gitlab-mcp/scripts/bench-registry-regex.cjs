@@ -19,6 +19,7 @@ async function main() {
       const names = Array.from({ length: count }, (_, index) => `v${index}-release`);
       const began = performance.now();
       const iterations = 100;
+      // Measure single-call latency serially; concurrency would instead measure pool throughput.
       for (let iteration = 0; iteration < iterations; iteration++) {
         const selected = await withTagMatcher('^v[0-9]+-release$', undefined, (match) =>
           match(names),

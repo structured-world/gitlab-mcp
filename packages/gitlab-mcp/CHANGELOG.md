@@ -4,6 +4,15 @@
 
 * exempt stdio session from idle timeout cleanup ([#363](https://github.com/structured-world/gitlab-mcp/issues/363)) ([ca563bd](https://github.com/structured-world/gitlab-mcp/commit/ca563bda9aa969d5d7680d3d89c2c72f32344838)), closes [#361](https://github.com/structured-world/gitlab-mcp/issues/361)
 
+## [12.0.2](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-v12.0.1...gitlab-mcp-v12.0.2) (2026-10-27)
+
+
+### Bug Fixes
+
+* **core:** omit credentials from project results ([#706](https://github.com/structured-world/gitlab-mcp/issues/706)) ([52f909e](https://github.com/structured-world/gitlab-mcp/commit/52f909e95060e7e080eff70cd9857ab0677189e7))
+* **fetch:** remove proxy credentials from logs ([#703](https://github.com/structured-world/gitlab-mcp/issues/703)) ([a99f422](https://github.com/structured-world/gitlab-mcp/commit/a99f4226b22036898ac1017a3dd648377bda7cf6)), closes [#657](https://github.com/structured-world/gitlab-mcp/issues/657)
+* **registry:** bound cleanup regex execution ([#708](https://github.com/structured-world/gitlab-mcp/issues/708)) ([fdbc30d](https://github.com/structured-world/gitlab-mcp/commit/fdbc30d6faf90a3522a37ac07c7c9203fea731b6))
+
 ## [12.0.1](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-v12.0.0...gitlab-mcp-v12.0.1) (2026-10-25)
 
 

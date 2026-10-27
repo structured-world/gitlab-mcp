@@ -73,6 +73,12 @@ interface MachineContext {
   lastSuccessAt: number | null;
   lastFailureAt: number | null;
   lastError: string | null;
+  userProbeWarningLogged: boolean;
+}
+
+interface HealthProbeResult {
+  degraded: boolean;
+  userProbeForbidden?: boolean;
 }
 
 type MachineEvent =
@@ -137,7 +143,7 @@ function isDegradedInstance(connectionManager: ConnectionManager, instanceUrl: s
 // SonarCloud flags cognitive complexity=17 (limit 15). Extracting phase helpers would split
 // the shared `deadline` variable across callsites and obscure the single-budget invariant.
 // The three phases are demarcated by inline comments; complexity is intentional here.
-const performConnect = fromPromise<{ degraded: boolean }, { instanceUrl: string }>(
+const performConnect = fromPromise<HealthProbeResult, { instanceUrl: string }>(
   async ({ input }) => {
     const connectionManager = ConnectionManager.getInstance();
 
@@ -155,8 +161,14 @@ const performConnect = fromPromise<{ degraded: boolean }, { instanceUrl: string 
       // Re-validate the token on reconnect, not just during steady-state polls.
       // Without this, forceReconnect() while the token is still revoked would
       // bounce failed → healthy until the next health-check interval.
-      await authenticatedTokenCheck(input.instanceUrl, HEALTH_CHECK_PROBE_MS);
-      return { degraded: isDegradedInstance(connectionManager, input.instanceUrl) };
+      const userProbeForbidden = await authenticatedTokenCheck(
+        input.instanceUrl,
+        HEALTH_CHECK_PROBE_MS,
+      );
+      return {
+        degraded: isDegradedInstance(connectionManager, input.instanceUrl),
+        userProbeForbidden,
+      };
     }
 
     // Full initialization with timeout.
@@ -223,7 +235,7 @@ const performConnect = fromPromise<{ degraded: boolean }, { instanceUrl: string 
   },
 );
 
-const performHealthCheck = fromPromise<{ degraded: boolean }, { instanceUrl: string }>(
+const performHealthCheck = fromPromise<HealthProbeResult, { instanceUrl: string }>(
   async ({ input }) => {
     const healthy = await quickHealthCheck(input.instanceUrl);
     if (!healthy) {
@@ -231,14 +243,20 @@ const performHealthCheck = fromPromise<{ degraded: boolean }, { instanceUrl: str
     }
 
     // Detect mid-session token revocation in static token mode.
-    // Throws GitLab API 401/403 when the token is invalid or lacks required scope.
+    // Only a GitLab API 401 marks the token invalid; a profile 403 is endpoint-specific.
     // healthCheckErrorIsAuth guard detects these by parsing the error message
     // and routes to '#connection.failed' (no auto-reconnect).
     // No-op in OAuth mode (no global token) and for an instance without a static token.
-    await authenticatedTokenCheck(input.instanceUrl, HEALTH_CHECK_PROBE_MS);
+    const userProbeForbidden = await authenticatedTokenCheck(
+      input.instanceUrl,
+      HEALTH_CHECK_PROBE_MS,
+    );
 
     const connectionManager = ConnectionManager.getInstance();
-    return { degraded: isDegradedInstance(connectionManager, input.instanceUrl) };
+    return {
+      degraded: isDegradedInstance(connectionManager, input.instanceUrl),
+      userProbeForbidden,
+    };
   },
 );
 
@@ -290,21 +308,20 @@ async function quickHealthCheck(
  * Only runs in static token mode — OAuth tokens are per-request context and are
  * not available during background health checks.
  *
- * Throws a GitLab API 401 or 403 error when the token is invalid, revoked,
- * expired, or lacks the required scope. The healthCheckErrorIsAuth guard detects
- * these by parsing the status code and transitions to 'failed' (no auto-reconnect).
+ * Throws a GitLab API 401 for an invalid, revoked or expired token. Returns true
+ * when /user is forbidden, so the actor can warn once without disabling other tools.
  *
  * AbortError (our own timeout) and transient connectivity failures are swallowed:
  * reachability was already confirmed by quickHealthCheck. Unexpected errors are
  * logged and re-thrown so programming bugs don't silently leave the instance healthy.
  */
-async function authenticatedTokenCheck(instanceUrl: string, timeoutMs: number): Promise<void> {
+async function authenticatedTokenCheck(instanceUrl: string, timeoutMs: number): Promise<boolean> {
   // OAuth mode: token is per-request context, unavailable during background checks
-  if (isOAuthEnabled()) return;
+  if (isOAuthEnabled()) return false;
   // The token of this instance: the server's own for its instance, else the one configured
   // for it. Probing another instance with the server's own token would read as revoked.
   const token = configuredInstanceToken(instanceUrl);
-  if (!token) return;
+  if (!token) return false;
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
@@ -322,12 +339,14 @@ async function authenticatedTokenCheck(instanceUrl: string, timeoutMs: number): 
       headers: { 'PRIVATE-TOKEN': token },
     });
 
-    if (response.status === 401 || response.status === 403) {
-      // Both 401 (invalid/revoked token) and 403 (insufficient scope) mean the configured
-      // token cannot authenticate — include the actual status for accurate log messages.
-      throw new Error(
-        `GitLab API error: ${response.status} - token invalid or lacks required scope`,
-      );
+    if (response.status === 403) {
+      // RFC 9110 section 15.5.4: forbidden credentials need not be invalid elsewhere.
+      // https://www.rfc-editor.org/rfc/rfc9110.html#section-15.5.4
+      // https://docs.gitlab.com/api/rest/troubleshooting/#status-code-401
+      return true;
+    }
+    if (response.status === 401) {
+      throw new Error('GitLab API error: 401 - token invalid, expired or revoked');
     }
     if (!response.ok) {
       // Non-auth, non-2xx response (e.g. 429 rate-limit, 5xx server error) — throw so
@@ -336,15 +355,15 @@ async function authenticatedTokenCheck(instanceUrl: string, timeoutMs: number): 
       throw new Error(`GitLab API error: ${response.status} - authenticated health probe failed`);
     }
   } catch (error) {
-    // Re-throw auth errors from the token probe (401 = invalid, 403 = insufficient scope).
+    // Re-throw authentication failures, preserving revocation detection.
     if (error instanceof Error) {
       const parsed = parseGitLabApiError(error.message);
-      if (parsed?.status === 401 || parsed?.status === 403) throw error;
+      if (parsed?.status === 401) throw error;
 
       // Swallow our own AbortController timeout and transient connectivity failures.
       // Reachability was already confirmed by quickHealthCheck; failures on this
       // second request are noise, not signal.
-      if (error.name === 'AbortError' || classifyError(error) === 'transient') return;
+      if (error.name === 'AbortError' || classifyError(error) === 'transient') return false;
     }
 
     // Unexpected error (programming bug, invalid URL, etc.) — log and rethrow so it
@@ -356,6 +375,7 @@ async function authenticatedTokenCheck(instanceUrl: string, timeoutMs: number): 
   } finally {
     clearTimeout(timeoutId);
   }
+  return false;
 }
 
 // ============================================================================
@@ -363,7 +383,7 @@ async function authenticatedTokenCheck(instanceUrl: string, timeoutMs: number): 
 // ============================================================================
 
 // Shared onError handler for health-check substates (healthy.checking, degraded.checking).
-// Auth errors (401/403 from the authenticated probe) → failed, no auto-reconnect.
+// Authentication failures (401 from the token probe) enter failed without auto-reconnect.
 // All other errors → idle via recordFailure (transient failures accumulate toward threshold).
 const healthCheckOnError = [
   {
@@ -400,20 +420,28 @@ const connectionMachine = setup({
       const error = (event as { error?: unknown }).error;
       return classifyError(error) === 'transient';
     },
-    // Auth error during periodic health check → failed (no auto-reconnect).
-    // Uses parseGitLabApiError to extract the status code: both 401 (invalid token)
-    // and 403 (insufficient scope) from the authenticated probe are terminal failures.
-    // Direct message parsing is used because classifyError maps 403 → 'permanent',
-    // not 'auth', so we can't rely on classifyError for the 403 path.
+    // A 401 from the token probe is terminal; a profile-specific 403 is not.
     healthCheckErrorIsAuth: ({ event }) => {
       const error = (event as { error?: unknown }).error;
       /* istanbul ignore if */
       if (!(error instanceof Error)) return false;
       const parsed = parseGitLabApiError(error.message);
-      return parsed?.status === 401 || parsed?.status === 403;
+      return parsed?.status === 401;
     },
   },
   actions: {
+    recordProbeRestriction: assign({
+      userProbeWarningLogged: ({ context, event }) => {
+        if (context.userProbeWarningLogged) return true;
+        const { output } = event as unknown as { output: HealthProbeResult };
+        if (!output.userProbeForbidden) return false;
+        logWarn(
+          'Health probe cannot read the user profile; GitLab permissions still apply to each tool',
+          { instanceUrl: context.instanceUrl, status: 403 },
+        );
+        return true;
+      },
+    }),
     recordSuccess: assign({
       consecutiveFailures: 0,
       reconnectAttempt: 0,
@@ -444,6 +472,7 @@ const connectionMachine = setup({
     lastSuccessAt: null,
     lastFailureAt: null,
     lastError: null,
+    userProbeWarningLogged: false,
   }),
 
   states: {
@@ -455,11 +484,11 @@ const connectionMachine = setup({
           {
             guard: ({ event }) => event.output.degraded,
             target: 'degraded',
-            actions: 'recordSuccess',
+            actions: ['recordSuccess', 'recordProbeRestriction'],
           },
           {
             target: 'healthy',
-            actions: 'recordSuccess',
+            actions: ['recordSuccess', 'recordProbeRestriction'],
           },
         ],
         onError: [
@@ -525,11 +554,11 @@ const connectionMachine = setup({
               {
                 guard: ({ event }) => event.output.degraded,
                 target: '#connection.degraded',
-                actions: 'recordSuccess',
+                actions: ['recordSuccess', 'recordProbeRestriction'],
               },
               {
                 target: 'idle',
-                actions: 'recordSuccess',
+                actions: ['recordSuccess', 'recordProbeRestriction'],
               },
             ],
             onError: healthCheckOnError,
@@ -575,11 +604,11 @@ const connectionMachine = setup({
               {
                 guard: ({ event }) => !event.output.degraded,
                 target: '#connection.healthy',
-                actions: 'recordSuccess',
+                actions: ['recordSuccess', 'recordProbeRestriction'],
               },
               {
                 target: 'idle',
-                actions: 'recordSuccess',
+                actions: ['recordSuccess', 'recordProbeRestriction'],
               },
             ],
             onError: healthCheckOnError,

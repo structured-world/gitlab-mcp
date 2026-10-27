@@ -11,6 +11,7 @@
 
 import { HealthMonitor, calculateBackoffDelay } from '../../../src/services/HealthMonitor';
 import { classifyError, createConnectionFailedError } from '../../../src/utils/error-handler';
+import { logWarn } from '../../../src/logger';
 
 /** Flush XState v5 internal microtask queue with a double-tick for CI stability. */
 async function flushXStateMicrotasks(): Promise<void> {
@@ -863,7 +864,7 @@ describe('HealthMonitor', () => {
     // Alias used by several tests below
     const stubUserEndpoint401 = (): void => stubUserEndpointStatus(401);
 
-    it.each([401, 403])(
+    it.each([401])(
       'should transition to failed when authenticated health check returns %i',
       async (authStatus) => {
         // Regression test for #370: token auth failure mid-session must move to failed state.
@@ -886,6 +887,55 @@ describe('HealthMonitor', () => {
         expect(monitor.isInstanceReachable(TEST_URL)).toBe(false);
       },
     );
+
+    // A profile permission denial must not hide tools that use other GitLab endpoints.
+    it.each([
+      ['healthy', '17.0'],
+      ['degraded', 'unknown'],
+    ])('keeps a %s instance reachable after repeated /user 403 probes', async (state, version) => {
+      mockGetInstanceInfo.mockReturnValue({ version, tier: 'free' });
+      const monitor = await initMonitor();
+      stubUserEndpointStatus(403);
+      await new Promise((resolve) => setTimeout(resolve, HEALTH_CYCLE_MS * 2));
+
+      expect(monitor.getState(TEST_URL)).toBe(state);
+      expect(monitor.isInstanceReachable(TEST_URL)).toBe(true);
+      expect(monitor.isAnyInstanceHealthy()).toBe(true);
+      expect(monitor.getSnapshot(TEST_URL)).toMatchObject({
+        consecutiveFailures: 0,
+        reconnectAttempt: 0,
+        lastError: null,
+      });
+      expect(
+        mockFetch.mock.calls.filter(([url]) => url.endsWith('/api/v4/user')).length,
+      ).toBeGreaterThan(1);
+      expect(logWarn).toHaveBeenCalledTimes(1);
+      expect(logWarn).toHaveBeenCalledWith(
+        'Health probe cannot read the user profile; GitLab permissions still apply to each tool',
+        { instanceUrl: TEST_URL, status: 403 },
+      );
+    });
+
+    // Reconnecting an initialized instance uses the same probe contract as periodic checks.
+    it('accepts a /user 403 during connection and still detects subsequent revocation', async () => {
+      mockIsConnected.mockReturnValue(true);
+      stubUserEndpointStatus(403);
+      const monitor = await initMonitor();
+      expect(monitor.getState(TEST_URL)).toBe('healthy');
+      expect(mockInitialize).not.toHaveBeenCalled();
+      expect(logWarn).toHaveBeenCalledTimes(1);
+
+      stubUserEndpoint401();
+      await new Promise((resolve) => setTimeout(resolve, HEALTH_CYCLE_MS));
+      expect(monitor.getState(TEST_URL)).toBe('failed');
+      expect(monitor.isInstanceReachable(TEST_URL)).toBe(false);
+
+      stubUserEndpointStatus(403);
+      monitor.forceReconnect(TEST_URL);
+      await flushXStateMicrotasks();
+      expect(monitor.getState(TEST_URL)).toBe('healthy');
+      expect(logWarn).toHaveBeenCalledTimes(1);
+    });
 
     it('should transition from degraded to failed on token revocation', async () => {
       // Regression test for #370 in degraded path: same auth check runs from degraded state.

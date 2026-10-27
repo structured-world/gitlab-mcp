@@ -4,35 +4,14 @@ import {
   getFilesToolDefinitions,
   getFilteredFilesTools,
 } from '../../../../src/entities/files/registry';
-import { enhancedFetch } from '../../../../src/utils/fetch';
+import { installFetchMock, mockEnhancedFetch } from '../../helpers/fetch-mock';
 
 // Mock the fetch function to avoid actual API calls
 jest.mock('../../../../src/utils/fetch', () => ({
   enhancedFetch: jest.fn(),
 }));
 
-const mockEnhancedFetch = enhancedFetch as jest.MockedFunction<typeof enhancedFetch>;
-
-// Mock environment variables
-const originalEnv = process.env;
-
-beforeAll(() => {
-  process.env = {
-    ...originalEnv,
-    GITLAB_API_URL: 'https://gitlab.example.com',
-    GITLAB_TOKEN: 'test-token-12345',
-  };
-});
-
-afterAll(() => {
-  process.env = originalEnv;
-});
-
-beforeEach(() => {
-  jest.clearAllMocks();
-  jest.resetAllMocks();
-  mockEnhancedFetch.mockReset();
-});
+installFetchMock();
 
 describe('Files Registry', () => {
   describe('Registry Structure', () => {
@@ -190,6 +169,11 @@ describe('Files Registry', () => {
         statusText: statusText ?? (ok ? 'OK' : 'Error'),
         json: jest.fn().mockResolvedValue(data),
         text: jest.fn().mockResolvedValue(typeof data === 'string' ? data : JSON.stringify(data)),
+        arrayBuffer: jest
+          .fn()
+          .mockResolvedValue(
+            new TextEncoder().encode(typeof data === 'string' ? data : JSON.stringify(data)).buffer,
+          ),
         headers: {
           get: jest.fn().mockReturnValue('text/plain; charset=utf-8'),
         },
@@ -275,6 +259,7 @@ describe('Files Registry', () => {
             ref: 'HEAD',
             size: mockFileContent.length,
             content: mockFileContent,
+            encoding: 'utf8',
             content_type: 'text/plain; charset=utf-8',
           });
         });
@@ -299,6 +284,7 @@ describe('Files Registry', () => {
             ref: 'feature-branch',
             size: mockFileContent.length,
             content: mockFileContent,
+            encoding: 'utf8',
             content_type: 'text/plain; charset=utf-8',
           });
         });

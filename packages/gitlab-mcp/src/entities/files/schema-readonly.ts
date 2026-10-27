@@ -64,7 +64,9 @@ const TreeActionSchema = z.object({
 
 // --- Action: content ---
 const ContentActionSchema = z.object({
-  action: z.literal('content').describe('Read file contents'),
+  action: z
+    .literal('content')
+    .describe('Read file contents as UTF-8 text or base64 binary, with encoding and byte size'),
   project_id: projectIdField,
   ref: refField,
   file_path: z.string().describe('Path to the file to read'),

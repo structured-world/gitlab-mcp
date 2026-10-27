@@ -200,6 +200,7 @@ it('returns a sanitized callback failure over HTTP', async () => {
     new Response(`<html>${secret}</html>`, { status: 502, statusText: secret }),
   );
   const app = express();
+  // Loopback-only fixture with mocked OAuth data; production routes use the server's rate limiter.
   app.get('/oauth/callback', callbackHandler);
   const server = await new Promise<Server>((resolve) => {
     const listening = app.listen(0, '127.0.0.1', () => resolve(listening));

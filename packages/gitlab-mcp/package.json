@@ -589,7 +589,7 @@
     "test:project-responses": "yarn build && yarn test:project-responses:compiled",
     "test:project-responses:compiled": "node --test tests/project-response/http.test.cjs",
     "bench:registry-regex": "yarn build && node scripts/bench-registry-regex.cjs",
-    "test:all": "yarn test:jest --runInBand",
+    "test:all": "yarn test:jest --maxWorkers=1 --workerIdleMemoryLimit=1GiB",
     "test:env-gating": "node tests/scripts/test-env-gating.js",
     "evaluate:skills": "node scripts/evaluate-skills.mjs",
     "test:help": "printf '# Test Scripts\\n  yarn test              - Unit tests only (fast, safe default)\\n  yarn test <pattern>    - Unit tests matching pattern\\n  yarn test:cov          - Unit test coverage\\n  yarn test:integration  - Integration tests (needs .env.test)\\n  yarn test:all          - Full suite (unit + integration)\\n  yarn test:env-gating   - Test environment gating\\n'",

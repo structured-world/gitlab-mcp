@@ -93,6 +93,8 @@ jest.mock('@modelcontextprotocol/sdk/server/streamableHttp.js', () => ({
 
 // Mock config
 jest.mock('../../src/config', () => ({
+  USE_REGISTRY: false,
+  GITLAB_READ_ONLY_MODE: false,
   SSE: false,
   STREAMABLE_HTTP: false,
   HOST: 'localhost',
@@ -156,6 +158,16 @@ jest.mock('../../src/session-manager', () => ({
 
 import type { Server as _Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { startServer, sendToolsListChangedNotification } from '../../src/server';
+import {
+  warmTagMatchers,
+  closeTagMatchers,
+  resetTagMatchers,
+} from '../../src/entities/container_registry/regex';
+jest.mock('../../src/entities/container_registry/regex', () => ({
+  warmTagMatchers: jest.fn().mockResolvedValue(undefined),
+  closeTagMatchers: jest.fn().mockResolvedValue(undefined),
+  resetTagMatchers: jest.fn().mockResolvedValue(undefined),
+}));
 import { STDIO_SESSION_ID } from '../../src/session-manager';
 import {
   sessionStore as mockSessionStore,
@@ -209,6 +221,52 @@ describe('server', () => {
   });
 
   describe('transport mode detection', () => {
+    // Optional prewarming must not prevent unrelated MCP tools from becoming available.
+    it('starts the transport after a persistent registry prewarm failure', async () => {
+      const settings = jest.requireMock<{ USE_REGISTRY: boolean }>('../../src/config');
+      settings.USE_REGISTRY = true;
+      const error = new Error('worker startup failed');
+      jest.mocked(warmTagMatchers).mockRejectedValueOnce(error);
+      process.argv = ['node', 'server.js', 'stdio'];
+      delete process.env.PORT;
+      try {
+        await expect(startServer()).resolves.toBeUndefined();
+        expect(resetTagMatchers).toHaveBeenCalled();
+        expect(mockLogWarn).toHaveBeenCalledWith(
+          'Registry regex prewarm failed; continuing startup',
+          { err: error },
+        );
+        expect(mockSessionManager.createSession).toHaveBeenCalledWith(
+          STDIO_SESSION_ID,
+          mockTransport,
+        );
+      } finally {
+        settings.USE_REGISTRY = false;
+      }
+    });
+    // Only a writable registry needs warm compute capacity; read-only and disabled deployments do not.
+    it.each([
+      [true, false, true],
+      [false, false, false],
+      [true, true, false],
+    ])(
+      'warms registry workers only when enabled=%s and readOnly=%s',
+      async (enabled, readOnly, warmed) => {
+        const settings = jest.requireMock<{
+          USE_REGISTRY: boolean;
+          GITLAB_READ_ONLY_MODE: boolean;
+        }>('../../src/config');
+        settings.USE_REGISTRY = enabled;
+        settings.GITLAB_READ_ONLY_MODE = readOnly;
+        try {
+          await startServer();
+          expect(warmTagMatchers).toHaveBeenCalledTimes(warmed ? 1 : 0);
+        } finally {
+          settings.USE_REGISTRY = false;
+          settings.GITLAB_READ_ONLY_MODE = false;
+        }
+      },
+    );
     it('should select stdio mode when stdio argument is provided', async () => {
       process.argv = ['node', 'server.js', 'stdio'];
       delete process.env.PORT;
@@ -3013,6 +3071,23 @@ describe('server', () => {
   });
 
   describe('signal handlers', () => {
+    // A compute cleanup failure must not bypass session persistence or the rest of shutdown.
+    it('continues shutdown when registry worker cleanup fails', async () => {
+      const error = new Error('worker cleanup failed');
+      jest.mocked(closeTagMatchers).mockRejectedValueOnce(error);
+      const mockExit = jest.spyOn(process, 'exit').mockImplementation((() => undefined) as never);
+      try {
+        process.emit('SIGTERM');
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        expect(mockLogError).toHaveBeenCalledWith('Error closing registry regex workers', {
+          err: error,
+        });
+        expect(mockSessionStore.close).toHaveBeenCalled();
+        expect(mockExit).toHaveBeenCalledWith(0);
+      } finally {
+        mockExit.mockRestore();
+      }
+    });
     it('should handle SIGINT signal', async () => {
       // Use a mock that returns never (like the real process.exit) instead of throwing
       // Throwing causes Jest worker crashes in Node.js 24
@@ -3063,6 +3138,7 @@ describe('server', () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
 
       expect(mockSessionManager.shutdown).toHaveBeenCalled();
+      expect(closeTagMatchers).toHaveBeenCalled();
 
       const { sessionStore } = require('../../src/oauth/index');
       expect(sessionStore.close).toHaveBeenCalled();

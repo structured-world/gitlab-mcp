@@ -31,6 +31,7 @@ const mockApp = {
   use: jest.fn(),
   get: jest.fn(),
   post: jest.fn(),
+  route: jest.fn(() => ({ post: jest.fn() })),
   all: jest.fn(),
   listen: jest.fn(),
   set: jest.fn(),
@@ -99,6 +100,7 @@ jest.mock('../../src/config', () => ({
   STREAMABLE_HTTP: false,
   HOST: 'localhost',
   PORT: '3000',
+  MCP_REQUEST_BODY_LIMIT: 10 * 1024 * 1024,
   SSE_HEARTBEAT_MS: 30000,
   HTTP_KEEPALIVE_TIMEOUT_MS: 620000,
   MAX_SAFE_TIMEOUT_MS: 2_147_483_647,
@@ -331,13 +333,17 @@ describe('server', () => {
       process.env.PORT = '3000';
     });
 
-    it('should set up Express app with JSON middleware', async () => {
+    // Body parsing belongs to admitted MCP POST routes, never the whole app.
+    it('sets up route-scoped JSON parsing', async () => {
       const express = require('express');
 
       await startServer();
 
       expect(express).toHaveBeenCalled();
-      expect(mockApp.use).toHaveBeenCalledWith(express.json());
+      expect(express.json).toHaveBeenCalledWith({ limit: 10 * 1024 * 1024 });
+      expect(mockApp.use).not.toHaveBeenCalledWith(express.json());
+      expect(mockApp.route).toHaveBeenCalledWith(['/', '/mcp']);
+      expect(mockApp.route).toHaveBeenCalledWith('/messages');
     });
 
     it('should set up both SSE and StreamableHTTP endpoints', async () => {

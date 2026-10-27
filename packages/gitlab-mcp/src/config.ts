@@ -1,6 +1,7 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import { z } from 'zod';
+import bytes from 'bytes';
 import type { Request } from 'express';
 
 // Get package.json path
@@ -343,6 +344,14 @@ export const USE_AUDIT_EVENTS = process.env.USE_AUDIT_EVENTS !== 'false';
 export const USE_VULNERABILITIES = process.env.USE_VULNERABILITIES !== 'false';
 export const HOST = process.env.HOST ?? '127.0.0.1';
 export const PORT = process.env.PORT ?? 3002;
+// Use the same size units as Express; the default fits a JSON-escaped 1 MiB note.
+const requestBodyLimit = bytes.parse(process.env.MCP_REQUEST_BODY_LIMIT ?? '10mb');
+if (requestBodyLimit === null || !Number.isSafeInteger(requestBodyLimit) || requestBodyLimit <= 0) {
+  throw new Error(
+    'MCP_REQUEST_BODY_LIMIT must be a positive safe integer byte count or size such as 512kb or 10mb',
+  );
+}
+export const MCP_REQUEST_BODY_LIMIT = requestBodyLimit;
 
 // TLS/SSL configuration for direct HTTPS termination
 export const SSL_CERT_PATH = process.env.SSL_CERT_PATH;

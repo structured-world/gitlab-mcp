@@ -141,6 +141,20 @@ Enable or disable tool groups:
 |----------|-------------|---------|
 | `PORT` | HTTP server port (enables HTTP mode) | — |
 | `HOST` | Server bind address | `127.0.0.1` |
+| `MCP_REQUEST_BODY_LIMIT` | Maximum JSON body size for MCP HTTP POST requests, using Express size syntax (`512kb`, `10mb`, or a byte count) | `10mb` (10 MiB) |
+
+The body limit applies to `POST /mcp`, `POST /` and legacy SSE `POST /messages`.
+It counts serialized JSON bytes, including escaping and the JSON-RPC envelope;
+for compressed requests, it counts bytes after decompression. Requests above it
+receive HTTP 413 with a JSON-RPC `-32600` error naming the limit and setting.
+Rate limiting and OAuth authentication run before parsing; legacy SSE messages
+also require an existing session owned by the authenticated account. OAuth
+registration and token endpoints retain their own parsers and limits. The setting
+does not affect stdio or change GitLab's own limits for notes, descriptions or files.
+
+A reverse proxy has an independent request body limit. Raise it too when needed,
+for example nginx's `client_max_body_size`, otherwise the proxy may reject a request
+before it reaches the MCP server.
 
 > **Security note:** The default `127.0.0.1` binds only to localhost, preventing network access to the server and your `GITLAB_TOKEN`. If you run inside Docker, set `HOST=0.0.0.0` explicitly — containers need it for port mapping to work. The Dockerfile and docker-compose examples already include this setting.
 

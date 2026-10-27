@@ -1,6 +1,7 @@
 /** Real HTTP admission and body parsing through the production server and SDK transports. */
 import * as http from 'http';
 import type { AddressInfo } from 'net';
+import { gzipSync } from 'zlib';
 import type { RequestHandler } from 'express';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { CallToolRequestSchema } from '@modelcontextprotocol/sdk/types.js';
@@ -32,15 +33,20 @@ jest.mock('../../src/config', () => ({
 }));
 jest.mock('../../src/logger', () => ({
   logger: { info: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() },
-  logInfo: jest.fn(), logError: jest.fn(), logDebug: jest.fn(), logWarn: jest.fn(),
+  logInfo: jest.fn(),
+  logError: jest.fn(),
+  logDebug: jest.fn(),
+  logWarn: jest.fn(),
   truncateId: (id: string) => id,
 }));
 jest.mock('../../src/dashboard/index.js', () => ({ dashboardHandler: jest.fn() }));
 jest.mock('../../src/entities/container_registry/regex', () => ({
-  warmTagMatchers: jest.fn(), closeTagMatchers: jest.fn(), resetTagMatchers: jest.fn(),
+  warmTagMatchers: jest.fn(),
+  closeTagMatchers: jest.fn(),
+  resetTagMatchers: jest.fn(),
 }));
 jest.mock('../../src/oauth/index', () => ({
-  loadOAuthConfig: () => mockOAuthEnabled ? { gitlabClientId: 'test-app' } : null,
+  loadOAuthConfig: () => (mockOAuthEnabled ? { gitlabClientId: 'test-app' } : null),
   isOAuthEnabled: () => mockOAuthEnabled,
   getAuthModeDescription: () => 'test',
   sessionStore: {
@@ -52,8 +58,8 @@ jest.mock('../../src/oauth/index', () => ({
 jest.mock('../../src/oauth/grant-revocation', () => ({ startSessionStore: jest.fn() }));
 jest.mock('../../src/oauth/routes', () => ({ registerOAuthEndpoints: jest.fn() }));
 jest.mock('../../src/middleware/index', () => ({
-  responseWriteTimeoutMiddleware:
-    jest.requireActual('../../src/middleware/response-write-timeout').responseWriteTimeoutMiddleware,
+  responseWriteTimeoutMiddleware: jest.requireActual('../../src/middleware/response-write-timeout')
+    .responseWriteTimeoutMiddleware,
   rateLimiterMiddleware: (): RequestHandler => (_req, res, next) => {
     if (mockRateLimited) res.status(429).json({ error: 'rate limited' });
     else next();
@@ -70,15 +76,19 @@ jest.mock('../../src/middleware/index', () => ({
 }));
 jest.mock('../../src/session-manager', () => ({
   getSessionManager: () => ({
-    start: jest.fn(), touchSession: jest.fn(),
+    start: jest.fn(),
+    touchSession: jest.fn(),
     removeSession: async (id: string) => {
       const server = mockServers.get(id);
       mockServers.delete(id);
       await server?.close();
     },
     createSession: async (id: string, transport: Transport) => {
-      const server = new Server({ name: 'body-test', version: '1.0.0' }, { capabilities: { tools: {} } });
-      server.setRequestHandler(CallToolRequestSchema, async request => {
+      const server = new Server(
+        { name: 'body-test', version: '1.0.0' },
+        { capabilities: { tools: {} } },
+      );
+      server.setRequestHandler(CallToolRequestSchema, async (request) => {
         mockToolCall(request.params.arguments);
         return { content: [{ type: 'text', text: 'accepted' }] };
       });
@@ -93,8 +103,14 @@ import { startServer } from '../../src/server';
 
 const settings = jest.requireMock<{ MCP_REQUEST_BODY_LIMIT: number }>('../../src/config');
 const initialize = {
-  jsonrpc: '2.0', id: 1, method: 'initialize',
-  params: { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'test', version: '1' } },
+  jsonrpc: '2.0',
+  id: 1,
+  method: 'initialize',
+  params: {
+    protocolVersion: '2025-03-26',
+    capabilities: {},
+    clientInfo: { name: 'test', version: '1' },
+  },
 };
 let baseUrl: string;
 let previousPort: string | undefined;
@@ -113,10 +129,10 @@ afterEach(async () => {
   for (const controller of streams.splice(0)) controller.abort();
   const servers = [...mockServers.values()];
   mockServers.clear();
-  await Promise.all(servers.map(server => server.close()));
+  await Promise.all(servers.map((server) => server.close()));
   if (mockHttpServer) {
     mockHttpServer.closeAllConnections();
-    await new Promise<void>(resolve => mockHttpServer.close(() => resolve()));
+    await new Promise<void>((resolve) => mockHttpServer.close(() => resolve()));
   }
   if (previousPort === undefined) delete process.env.PORT;
   else process.env.PORT = previousPort;
@@ -125,16 +141,25 @@ afterEach(async () => {
 async function start(limit = 10 * 1024 * 1024): Promise<void> {
   settings.MCP_REQUEST_BODY_LIMIT = limit;
   await startServer();
-  if (!mockHttpServer.listening) await new Promise<void>(resolve => mockHttpServer.once('listening', resolve));
+  if (!mockHttpServer.listening)
+    await new Promise<void>((resolve) => mockHttpServer.once('listening', resolve));
   baseUrl = `http://127.0.0.1:${(mockHttpServer.address() as AddressInfo).port}`;
 }
 
-async function post(path: string, body: string, extra: Record<string, string> = {}): Promise<Response> {
+async function post(
+  path: string,
+  body: string,
+  extra: Record<string, string> = {},
+): Promise<Response> {
   return fetch(baseUrl + path, {
-    method: 'POST', headers: {
-      'Content-Type': 'application/json', Accept: 'application/json, text/event-stream',
-      Authorization: 'Bearer owner', ...extra,
-    }, body,
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json, text/event-stream',
+      Authorization: 'Bearer owner',
+      ...extra,
+    },
+    body,
   });
 }
 
@@ -142,7 +167,8 @@ async function sseEndpoint(): Promise<string> {
   const controller = new AbortController();
   streams.push(controller);
   const response = await fetch(baseUrl + '/sse', {
-    headers: { Authorization: 'Bearer owner' }, signal: controller.signal,
+    headers: { Authorization: 'Bearer owner' },
+    signal: controller.signal,
   });
   expect(response.status).toBe(200);
   const reader = response.body!.getReader();
@@ -165,23 +191,29 @@ function paddedInitialize(bytes: number): string {
 /** Send no body: a response proves admission did not wait for the JSON parser. */
 async function headersOnly(path: string, authorization = 'Bearer owner'): Promise<number> {
   return new Promise<number>((resolve, reject) => {
-    const request = http.request(baseUrl + path, {
-      method: 'POST', headers: {
-        'Content-Type': 'application/json', 'Content-Length': 11 * 1024 * 1024,
-        Authorization: authorization,
+    const request = http.request(
+      baseUrl + path,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': 11 * 1024 * 1024,
+          Authorization: authorization,
+        },
       },
-    }, response => {
-      resolve(response.statusCode!);
-      response.resume();
-      request.destroy();
-    });
+      (response) => {
+        resolve(response.statusCode!);
+        response.resume();
+        request.destroy();
+      },
+    );
     request.on('error', reject);
     request.setTimeout(2000, () => request.destroy(new Error('Admission waited for the body')));
     request.flushHeaders();
   });
 }
 
-describe.each(['streamable', 'sse'] as const)('%s request bodies', mode => {
+describe.each(['streamable', 'sse'] as const)('%s request bodies', (mode) => {
   async function endpoint(): Promise<string> {
     return mode === 'sse' ? sseEndpoint() : '/mcp';
   }
@@ -200,7 +232,76 @@ describe.each(['streamable', 'sse'] as const)('%s request bodies', mode => {
     const response = await post(await endpoint(), paddedInitialize(513));
     expect(response.status).toBe(413);
     expect(await response.json()).toEqual({
-      jsonrpc: '2.0', id: null,
+      jsonrpc: '2.0',
+      id: null,
+      error: { code: -32600, message: expect.stringMatching(/512.*MCP_REQUEST_BODY_LIMIT/) },
+    });
+  });
+
+  // Compression must not let a small wire payload bypass the decoded JSON limit.
+  it('limits decompressed JSON bytes', async () => {
+    await start(512);
+    const response = await fetch(baseUrl + (await endpoint()), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Encoding': 'gzip',
+        Accept: 'application/json, text/event-stream',
+        Authorization: 'Bearer owner',
+      },
+      body: new Uint8Array(gzipSync(paddedInitialize(513))),
+    });
+    expect(response.status).toBe(413);
+    expect(await response.json()).toEqual({
+      jsonrpc: '2.0',
+      id: null,
+      error: { code: -32600, message: expect.stringMatching(/512.*MCP_REQUEST_BODY_LIMIT/) },
+    });
+  });
+
+  // Parser errors other than size must keep their status rather than reaching the SDK.
+  it('rejects malformed JSON with HTTP 400', async () => {
+    await start();
+    const response = await post(await endpoint(), '{invalid');
+    expect(response.status).toBe(400);
+    await response.text();
+    expect(mockToolCall).not.toHaveBeenCalled();
+  });
+
+  // The limit must apply without Content-Length, as it does for buffered requests.
+  it('rejects an oversized chunked request', async () => {
+    await start(512);
+    const path = await endpoint();
+    const body = paddedInitialize(513);
+    const result = await new Promise<{ status: number; body: string }>((resolve, reject) => {
+      const request = http.request(
+        baseUrl + path,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: 'Bearer owner',
+            Accept: 'application/json, text/event-stream',
+          },
+        },
+        (response) => {
+          let text = '';
+          response.setEncoding('utf8');
+          response.on('data', (chunk) => {
+            text += chunk;
+          });
+          response.on('end', () => resolve({ status: response.statusCode!, body: text }));
+          response.on('error', reject);
+        },
+      );
+      request.on('error', reject);
+      request.write(body.slice(0, 256));
+      request.end(body.slice(256));
+    });
+    expect(result.status).toBe(413);
+    expect(JSON.parse(result.body)).toEqual({
+      jsonrpc: '2.0',
+      id: null,
       error: { code: -32600, message: expect.stringMatching(/512.*MCP_REQUEST_BODY_LIMIT/) },
     });
   });
@@ -222,7 +323,12 @@ describe.each(['streamable', 'sse'] as const)('%s request bodies', mode => {
     await initialized.text();
     const body = '\u0001'.repeat(1024 * 1024 - 3) + '\n"\\';
     expect(Buffer.byteLength(body)).toBe(1024 * 1024);
-    const payload = JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'note', arguments: { body } } });
+    const payload = JSON.stringify({
+      jsonrpc: '2.0',
+      id: 2,
+      method: 'tools/call',
+      params: { name: 'note', arguments: { body } },
+    });
     const response = await post(path, payload, sessionId ? { 'mcp-session-id': sessionId } : {});
     expect(response.status).toBe(mode === 'sse' ? 202 : 200);
     await response.text();
@@ -232,17 +338,23 @@ describe.each(['streamable', 'sse'] as const)('%s request bodies', mode => {
 });
 
 // Both Streamable paths and legacy messages must reject before reading any bytes.
-it.each(['/mcp', '/', '/messages?sessionId=unknown'])('authenticates %s before reading the body', async path => {
-  await start();
-  expect(await headersOnly(path, '')).toBe(401);
-});
+it.each(['/mcp', '/', '/messages?sessionId=unknown'])(
+  'authenticates %s before reading the body',
+  async (path) => {
+    await start();
+    expect(await headersOnly(path, '')).toBe(401);
+  },
+);
 
 // Rate admission applies ahead of body parsing and OAuth work on all MCP POST routes.
-it.each(['/mcp', '/', '/messages?sessionId=unknown'])('rate limits %s before reading the body', async path => {
-  await start();
-  mockRateLimited = true;
-  expect(await headersOnly(path)).toBe(429);
-});
+it.each(['/mcp', '/', '/messages?sessionId=unknown'])(
+  'rate limits %s before reading the body',
+  async (path) => {
+    await start();
+    mockRateLimited = true;
+    expect(await headersOnly(path)).toBe(429);
+  },
+);
 
 // A leaked or nonexistent SSE session must never become a body parsing endpoint.
 it('rejects unknown and foreign SSE sessions before reading the body', async () => {

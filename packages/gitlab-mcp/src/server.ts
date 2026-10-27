@@ -9,6 +9,7 @@ import * as fs from 'fs';
 import {
   HOST,
   PORT,
+  MCP_REQUEST_BODY_LIMIT,
   SSL_CERT_PATH,
   SSL_KEY_PATH,
   SSL_CA_PATH,
@@ -53,6 +54,7 @@ import {
   responseWriteTimeoutMiddleware,
 } from './middleware/index';
 import { authenticateMcpTransports } from './middleware/mcp-auth-routes';
+import { mcpJsonBodyParser } from './middleware/mcp-json-body';
 
 // Dashboard imports
 import { dashboardHandler } from './dashboard/index.js';
@@ -452,12 +454,8 @@ export async function startServer(): Promise<void> {
       logInfo('Setting up dual transport mode (SSE + StreamableHTTP)...');
       const app = express();
 
-      // Response write timeout — detects zombie connections where TCP peer stopped reading.
-      // Registered BEFORE express.json() so that parse/size error responses (4xx from
-      // body parser) are also covered by the write timeout protection.
+      // Cover parser error responses as well as transport writes with the write timeout.
       app.use(responseWriteTimeoutMiddleware());
-
-      app.use(express.json());
 
       // Configure trust proxy for reverse proxy deployments
       configureTrustProxy(app);
@@ -585,6 +583,19 @@ export async function startServer(): Promise<void> {
       // mode); a request of another account never reaches it, even with a leaked id.
       const sseTransports = new Map<string, OwnedTransport<SSEServerTransport>>();
       const streamableTransports = new Map<string, OwnedTransport<StreamableHTTPServerTransport>>();
+
+      const parseMcpBody = mcpJsonBodyParser(MCP_REQUEST_BODY_LIMIT);
+      app.route(['/', '/mcp']).post(parseMcpBody);
+      app.route('/messages').post((req, res, next) => {
+        const sessionId = typeof req.query.sessionId === 'string' ? req.query.sessionId : '';
+        const owned = sseTransports.get(sessionId);
+        // Refuse unknown or foreign sessions before accepting their message bodies.
+        if (!owned || !ownedBy(owned, res.locals)) {
+          res.status(404).json({ error: 'Session not found' });
+          return;
+        }
+        next();
+      }, parseMcpBody);
 
       // SSE Transport Endpoints (backwards compatibility)
       app.get('/sse', async (req, res) => {

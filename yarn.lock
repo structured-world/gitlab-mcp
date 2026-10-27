@@ -2108,6 +2108,7 @@ __metadata:
     "@graphql-typed-document-node/core": "npm:^3.2.0"
     "@modelcontextprotocol/sdk": "npm:^1.32.2"
     "@structured-world/vue-privacy": "npm:^2.1.0"
+    "@types/bytes": "npm:^3.1.6"
     "@types/cross-spawn": "npm:^6.0.6"
     "@types/express": "npm:^5.0.6"
     "@types/jest": "npm:^30.0.0"
@@ -2118,6 +2119,7 @@ __metadata:
     "@typescript-eslint/parser": "npm:^8.72.0"
     ajv: "npm:^8.20.0"
     auto-changelog: "npm:^2.7.0"
+    bytes: "npm:^3.1.2"
     cross-env: "npm:^10.1.0"
     cross-spawn: "npm:^7.0.6"
     dotenv: "npm:^18.0.9"
@@ -2258,6 +2260,13 @@ __metadata:
     "@types/connect": "npm:*"
     "@types/node": "npm:*"
   checksum: 10c0/aebeb200f25e8818d8cf39cd0209026750d77c9b85381cdd8deeb50913e4d18a1ebe4b74ca9b0b4d21952511eeaba5e9fbbf739b52731a2061e206ec60d568df
+  languageName: node
+  linkType: hard
+
+"@types/bytes@npm:^3.1.6":
+  version: 3.1.6
+  resolution: "@types/bytes@npm:3.1.6"
+  checksum: 10c0/2d9fff3d0aa5487f71a94a719b04336f03832211353927b9e1b3dc02a566f38c96b7a5ccb260af3893b4900f5bc5ee1b5adc3074a061b7a0522787ed57a8a5be
   languageName: node
   linkType: hard
 

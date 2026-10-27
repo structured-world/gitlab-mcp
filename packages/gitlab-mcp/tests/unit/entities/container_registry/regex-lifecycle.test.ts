@@ -228,3 +228,80 @@ it('closes active work without spawning replacement workers', async () => {
   await rejected;
   expect(mockWorkers).toHaveLength(2);
 });
+
+// An unsolicited idle message must not consume a response belonging to the next request.
+it('ignores messages when no response is pending', async () => {
+  await warmTagMatchers();
+  mockWorkers[0].emit('message', { indices: [99] });
+  await expect(withTagMatcher('.*', undefined, (match) => match(['tag']))).resolves.toEqual([]);
+  expect(mockWorkers).toHaveLength(2);
+});
+
+// Non-Error worker failures retain their cause and release the failed request's capacity.
+it('normalizes a non-Error worker failure', async () => {
+  await warmTagMatchers();
+  await expect(
+    withTagMatcher('.*', undefined, (match) => {
+      mockWorkers[0].emit('error', 'worker failure payload');
+      return match(['tag']);
+    }),
+  ).rejects.toMatchObject({
+    message: 'Registry regex worker failed',
+    cause: 'worker failure payload',
+  });
+  await expect(withTagMatcher('.*', undefined, (match) => match(['tag']))).resolves.toEqual([]);
+});
+
+// A caller leasing a starting worker owns its failure cleanup; warming must not replace it too.
+it('leaves startup recovery to an already active lease', async () => {
+  await resetTagMatchers();
+  mockStartupFailures = 1;
+  const warming = expect(warmTagMatchers()).rejects.toThrow('worker startup failed');
+  const operation = jest.fn();
+  const requesting = expect(withTagMatcher('.*', undefined, operation)).rejects.toThrow(
+    'worker startup failed',
+  );
+  await Promise.all([warming, requesting]);
+  expect(operation).not.toHaveBeenCalled();
+  expect(mockWorkers[0].terminate).toHaveBeenCalledTimes(1);
+  expect(mockWorkers).toHaveLength(3);
+  await expect(withTagMatcher('.*', undefined, (match) => match(['tag']))).resolves.toEqual([]);
+});
+
+// Concurrent explicit recoveries share termination and may both succeed without a newer shutdown.
+it('coalesces concurrent recoveries without recreating workers', async () => {
+  await warmTagMatchers();
+  const owned = [...mockWorkers];
+  await expect(Promise.all([resetTagMatchers(), resetTagMatchers()])).resolves.toEqual([
+    undefined,
+    undefined,
+  ]);
+  expect(owned.every((worker) => worker.terminate.mock.calls.length === 1)).toBe(true);
+  expect(mockWorkers).toHaveLength(2);
+  await expect(withTagMatcher('.*', undefined, (match) => match(['tag']))).resolves.toEqual([]);
+});
+
+// Shutdown removes the slot before an idle-crash repair finishes, so repair must not spawn anew.
+it('cancels idle-worker replacement when shutdown drains its slot', async () => {
+  await warmTagMatchers();
+  const stale = mockWorkers[0];
+  stale.emit('error', new Error('idle worker failed'));
+  let finish!: () => void;
+  stale.terminate.mockImplementationOnce(
+    () =>
+      new Promise<number>((resolve) => {
+        finish = () => resolve(1);
+      }),
+  );
+  const operation = jest.fn();
+  const rejected = expect(withTagMatcher('.*', undefined, operation)).rejects.toThrow('closed');
+  try {
+    await closeTagMatchers();
+  } finally {
+    finish();
+  }
+  await rejected;
+  expect(operation).not.toHaveBeenCalled();
+  expect(mockWorkers).toHaveLength(2);
+  await expect(withTagMatcher('.*', undefined, operation)).rejects.toThrow('closed');
+});

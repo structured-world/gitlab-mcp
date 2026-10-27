@@ -33,6 +33,28 @@ describe('config.ts', () => {
   });
 
   describe('environment variable parsing', () => {
+    // The default must fit GitLab's 1 MiB notes even after JSON escaping.
+    it('defaults the MCP JSON body limit to 10 MiB', () => {
+      delete process.env.MCP_REQUEST_BODY_LIMIT;
+      expect(require('../../src/config').MCP_REQUEST_BODY_LIMIT).toBe(10 * 1024 * 1024);
+    });
+
+    // Share Express's size syntax rather than inventing a separate unit convention.
+    it.each([['512kb', 512 * 1024], ['1.5mb', 1572864], ['512', 512]])(
+      'parses MCP_REQUEST_BODY_LIMIT=%s as %i bytes', (input, expected) => {
+        process.env.MCP_REQUEST_BODY_LIMIT = String(input);
+        expect(require('../../src/config').MCP_REQUEST_BODY_LIMIT).toBe(expected);
+      },
+    );
+
+    // Invalid limits must fail startup instead of accidentally accepting unbounded bodies.
+    it.each(['', 'invalid', '0', '-1kb', '99999999999999999999mb'])(
+      'rejects invalid MCP_REQUEST_BODY_LIMIT=%s', input => {
+        process.env.MCP_REQUEST_BODY_LIMIT = input;
+        expect(() => require('../../src/config')).toThrow(/MCP_REQUEST_BODY_LIMIT/);
+      },
+    );
+
     // Empty entries are configuration separators, never project identities or restrictions.
     it.each([
       { value: '', expected: [] },

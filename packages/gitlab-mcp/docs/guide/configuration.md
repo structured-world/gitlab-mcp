@@ -144,6 +144,8 @@ Enable or disable tool groups:
 | `MCP_REQUEST_BODY_LIMIT` | Maximum JSON body size for MCP HTTP POST requests, using Express size syntax (`512kb`, `10mb`, or a byte count) | `10mb` (10 MiB) |
 
 The body limit applies to `POST /mcp`, `POST /` and legacy SSE `POST /messages`.
+Use an integer byte count or an explicit unit (`b`, `kb`, `mb`, `gb`, `tb`, `pb`);
+larger units also accept decimal values. Invalid values stop startup.
 It counts serialized JSON bytes, including escaping and the JSON-RPC envelope;
 for compressed requests, it counts bytes after decompression. Requests above it
 receive HTTP 413 with a JSON-RPC `-32600` error naming the limit and setting.

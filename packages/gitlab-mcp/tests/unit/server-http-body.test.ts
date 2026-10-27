@@ -364,6 +364,15 @@ it('rejects unknown and foreign SSE sessions before reading the body', async () 
   expect(await headersOnly(path, 'Bearer other')).toBe(404);
 });
 
+// Missing and repeated session IDs must take the same pre-parser rejection path.
+it.each(['/messages', '/messages?sessionId=first&sessionId=second'])(
+  'rejects a missing or ambiguous SSE session in %s before reading the body',
+  async (path) => {
+    await start();
+    expect(await headersOnly(path)).toBe(404);
+  },
+);
+
 // The root alias must retain the same successful large-request path in static mode.
 it('accepts a large request on the root alias without OAuth', async () => {
   mockOAuthEnabled = false;

@@ -345,7 +345,13 @@ export const USE_VULNERABILITIES = process.env.USE_VULNERABILITIES !== 'false';
 export const HOST = process.env.HOST ?? '127.0.0.1';
 export const PORT = process.env.PORT ?? 3002;
 // Use the same size units as Express; the default fits a JSON-escaped 1 MiB note.
-const requestBodyLimit = bytes.parse(process.env.MCP_REQUEST_BODY_LIMIT ?? '10mb');
+const rawRequestBodyLimit = (process.env.MCP_REQUEST_BODY_LIMIT ?? '10mb').trim();
+// bytes.parse otherwise accepts malformed suffixes and fractions as truncated byte counts.
+const requestBodyLimit = /^\+?\d+(?: *b|(?:\.\d+)? *(?:kb|mb|gb|tb|pb))?$/i.test(
+  rawRequestBodyLimit,
+)
+  ? bytes.parse(rawRequestBodyLimit)
+  : null;
 if (requestBodyLimit === null || !Number.isSafeInteger(requestBodyLimit) || requestBodyLimit <= 0) {
   throw new Error(
     'MCP_REQUEST_BODY_LIMIT must be a positive safe integer byte count or size such as 512kb or 10mb',

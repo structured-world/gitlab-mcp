@@ -44,19 +44,35 @@ describe('config.ts', () => {
       ['512kb', 512 * 1024],
       ['1.5mb', 1572864],
       ['512', 512],
+      ['512b', 512],
+      ['+512 b', 512],
+      [' 1.5 MB ', 1572864],
+      ['1gb', 1024 ** 3],
+      ['1tb', 1024 ** 4],
+      ['1pb', 1024 ** 5],
     ])('parses MCP_REQUEST_BODY_LIMIT=%s as %i bytes', (input, expected) => {
       process.env.MCP_REQUEST_BODY_LIMIT = String(input);
       expect(require('../../src/config').MCP_REQUEST_BODY_LIMIT).toBe(expected);
     });
 
     // Invalid limits must fail startup instead of accidentally accepting unbounded bodies.
-    it.each(['', 'invalid', '0', '-1kb', '99999999999999999999mb'])(
-      'rejects invalid MCP_REQUEST_BODY_LIMIT=%s',
-      (input) => {
-        process.env.MCP_REQUEST_BODY_LIMIT = input;
-        expect(() => require('../../src/config')).toThrow(/MCP_REQUEST_BODY_LIMIT/);
-      },
-    );
+    it.each([
+      '',
+      'invalid',
+      '0',
+      '-1kb',
+      '99999999999999999999mb',
+      '10m',
+      '10MiB',
+      '1.5',
+      '10mbjunk',
+      '1e3',
+      '1\tmb',
+      '1.5b',
+    ])('rejects invalid MCP_REQUEST_BODY_LIMIT=%s', (input) => {
+      process.env.MCP_REQUEST_BODY_LIMIT = input;
+      expect(() => require('../../src/config')).toThrow(/MCP_REQUEST_BODY_LIMIT/);
+    });
 
     // Empty entries are configuration separators, never project identities or restrictions.
     it.each([

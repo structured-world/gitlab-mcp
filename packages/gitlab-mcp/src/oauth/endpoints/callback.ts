@@ -69,10 +69,11 @@ export async function callbackHandler(req: Request, res: Response): Promise<void
     return;
   }
 
-  const { code, state, error } = req.query as Record<string, string | undefined>;
+  const query = req.query;
+  const { code, state, error } = query as Record<string, string | undefined>;
 
   // Handle GitLab error responses
-  if (error) {
+  if (Object.hasOwn(query, 'error')) {
     const safeError = authorizationErrorCode(error);
     const description = 'GitLab authorization failed';
     logWarn('GitLab authorization error', { error: safeError });

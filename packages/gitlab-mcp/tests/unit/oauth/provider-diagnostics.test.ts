@@ -236,6 +236,7 @@ describe.each(['redirect', 'json', 'link'] as const)('%s callback refusal', (des
     'server_error',
     'temporarily_unavailable',
     secret,
+    '',
   ])('never repeats provider text for %s', async (code) => {
     const flow = (await sessionStore.getAuthCodeFlow('state'))!;
     jest.mocked(sessionStore.consumeAuthCodeFlow).mockResolvedValue(
@@ -262,12 +263,14 @@ describe.each(['redirect', 'json', 'link'] as const)('%s callback refusal', (des
     if (destination === 'redirect') {
       expect(redirect).toHaveBeenCalledTimes(1);
       const target = new URL(redirect.mock.calls[0][0]);
-      expect(target.searchParams.get('error')).toBe(code === secret ? 'server_error' : code);
+      expect(target.searchParams.get('error')).toBe(
+        code === secret || code === '' ? 'server_error' : code,
+      );
       expect(target.searchParams.get('error_description')).toBe('GitLab authorization failed');
       expect(decodeURIComponent(target.href)).not.toContain(secret);
     } else if (destination === 'json') {
       expect(json).toHaveBeenCalledWith({
-        error: code === secret ? 'server_error' : code,
+        error: code === secret || code === '' ? 'server_error' : code,
         error_description: 'GitLab authorization failed',
       });
     } else {
@@ -278,6 +281,7 @@ describe.each(['redirect', 'json', 'link'] as const)('%s callback refusal', (des
     }
     expect(output).toContain('GitLab authorization error');
     expect(output).not.toContain(secret);
+    expect(sessionStore.consumeAuthCodeFlow).toHaveBeenCalledWith('state');
     expect(mockEnhancedFetch).not.toHaveBeenCalled();
   });
 });

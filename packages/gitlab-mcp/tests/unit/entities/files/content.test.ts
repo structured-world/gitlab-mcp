@@ -79,4 +79,43 @@ describe('browse_files content encoding', () => {
       }),
     ).rejects.toBe(failure);
   });
+
+  // Unexpected decoder failures must not be mislabeled as malformed file bytes.
+  it.each([new Error('Decoder unavailable'), new TypeError('Unexpected decoder error'), null])(
+    'propagates unexpected decoder failure %s',
+    async (failure) => {
+      mockEnhancedFetch.mockResolvedValueOnce(new Response('hello'));
+      const decode = jest.spyOn(TextDecoder.prototype, 'decode').mockImplementationOnce(() => {
+        throw failure;
+      });
+      try {
+        await expect(
+          filesToolRegistry.get('browse_files')!.handler({
+            action: 'content',
+            project_id: 'test/project',
+            file_path: 'example.txt',
+          }),
+        ).rejects.toBe(failure);
+      } finally {
+        decode.mockRestore();
+      }
+    },
+  );
+
+  // Preserve the existing MIME default when GitLab omits Content-Type.
+  it('uses the existing text content type when the header is missing', async () => {
+    mockEnhancedFetch.mockResolvedValueOnce(new Response(new Uint8Array([0x61])));
+    await expect(
+      filesToolRegistry.get('browse_files')!.handler({
+        action: 'content',
+        project_id: 'test/project',
+        file_path: 'example.txt',
+      }),
+    ).resolves.toMatchObject({
+      content: 'a',
+      encoding: 'utf8',
+      size: 1,
+      content_type: 'text/plain',
+    });
+  });
 });

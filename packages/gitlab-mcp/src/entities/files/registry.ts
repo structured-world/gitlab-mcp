@@ -1,4 +1,5 @@
 import * as z from 'zod';
+import { types } from 'node:util';
 import { BrowseFilesSchema } from './schema-readonly';
 import { ManageFilesSchema } from './schema';
 import { gitlab, toQuery } from '../../utils/gitlab-api';
@@ -26,7 +27,7 @@ export const filesToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefin
     {
       name: 'browse_files',
       description:
-        'Explore project file structure and read source code. Actions: tree (list directory contents with recursive depth control), content (read file at specific ref/branch), download_attachment (get uploaded file by secret+filename). Related: manage_files to create/update files.',
+        'Explore project file structure and read source code. Actions: tree (list directory contents with recursive depth control), content (read file at specific ref/branch; UTF-8 text or base64 for binary data, with encoding and byte size), download_attachment (get uploaded file by secret+filename). Related: manage_files to create/update files.',
       inputSchema: z.toJSONSchema(BrowseFilesSchema),
       // Downloading an upload by secret + filename landed in GitLab 17.4.
       requirements: {
@@ -66,12 +67,31 @@ export const filesToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefin
               throw new Error(`GitLab API error: ${response.status} ${response.statusText}`);
             }
 
-            const content = await response.text();
+            const bytes = Buffer.from(await response.arrayBuffer());
+            let content: string;
+            let encoding: 'utf8' | 'base64';
+            try {
+              // Encoding Standard, TextDecoder.decode: fatal mode rejects malformed UTF-8.
+              // https://encoding.spec.whatwg.org/#dom-textdecoder-decode
+              content = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+              encoding = 'utf8';
+            } catch (error) {
+              if (
+                !types.isNativeError(error) ||
+                !('code' in error) ||
+                error.code !== 'ERR_ENCODING_INVALID_ENCODED_DATA'
+              ) {
+                throw error;
+              }
+              content = bytes.toString('base64');
+              encoding = 'base64';
+            }
             return {
               file_path: input.file_path,
               ref: input.ref ?? 'HEAD',
-              size: content.length,
-              content: content,
+              size: bytes.byteLength,
+              content,
+              encoding,
               content_type: response.headers.get('content-type') ?? 'text/plain',
             };
           }

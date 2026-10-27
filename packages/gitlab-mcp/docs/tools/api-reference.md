@@ -443,14 +443,14 @@ Create, update, or delete GitLab groups/namespaces. Actions: create (new group w
 
 ### browse_files [tier: Free]
 
-Explore project file structure and read source code. Actions: tree (list directory contents with recursive depth control), content (read file at specific ref/branch), download_attachment (get uploaded file by secret+filename). Related: manage_files to create/update files.
+Explore project file structure and read source code. Actions: tree (list directory contents with recursive depth control), content (read file at specific ref/branch; UTF-8 text or base64 for binary data, with encoding and byte size), download_attachment (get uploaded file by secret+filename). Related: manage_files to create/update files.
 
 #### Actions
 
 | Action | Tier | Description |
 |--------|------|-------------|
 | `tree` | Free | List files and folders in a directory |
-| `content` | Free | Read file contents |
+| `content` | Free | Read file contents as UTF-8 text or base64 binary, with encoding and byte size |
 | `download_attachment` | Free | Download a file attachment from issues/MRs |
 
 #### Parameters

@@ -31,7 +31,7 @@ File browsing, commits, branches, tags, and repository management.
 | Action | Description |
 |--------|-------------|
 | `tree` | List files and folders in a directory |
-| `content` | Read file contents |
+| `content` | Read file contents as UTF-8 text or base64 binary, with encoding and byte size |
 | `download_attachment` | Download a file attachment from issues/MRs |
 <!-- @autogen:end -->
 
@@ -67,6 +67,14 @@ File browsing, commits, branches, tags, and repository management.
 ```
 
 :::
+
+The `content` action returns `file_path`, `ref`, `content`, `encoding`, `size`, and
+`content_type`. Valid UTF-8 is returned as text with `encoding: "utf8"`; other bytes
+are returned losslessly as base64 with `encoding: "base64"`. Decode `content` using
+the declared encoding, regardless of the MIME type. `size` is the original byte
+count, including any UTF-8 BOM. Text keeps the existing behavior of removing a
+leading UTF-8 BOM. Uploaded attachments still use `download_attachment`, which
+always returns base64.
 
 ### manage_files
 

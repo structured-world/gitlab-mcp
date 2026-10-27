@@ -30,6 +30,22 @@ import { authorizationRedirect } from '../authorization-response';
 import { oauthAppFor } from '../instance-app';
 import { discardCompletion } from './authorize';
 
+// Provider callback parameters are untrusted diagnostic content, including the error code.
+// https://www.rfc-editor.org/rfc/rfc6749#section-4.1.2.1
+const AUTHORIZATION_ERRORS = new Set([
+  'invalid_request',
+  'unauthorized_client',
+  'access_denied',
+  'unsupported_response_type',
+  'invalid_scope',
+  'server_error',
+  'temporarily_unavailable',
+]);
+
+function authorizationErrorCode(value: unknown): string {
+  return typeof value === 'string' && AUTHORIZATION_ERRORS.has(value) ? value : 'server_error';
+}
+
 /**
  * OAuth callback handler
  *
@@ -53,11 +69,14 @@ export async function callbackHandler(req: Request, res: Response): Promise<void
     return;
   }
 
-  const { code, state, error, error_description } = req.query as Record<string, string | undefined>;
+  const query = req.query;
+  const { code, state, error } = query as Record<string, string | undefined>;
 
   // Handle GitLab error responses
-  if (error) {
-    logWarn('GitLab authorization error', { error, error_description });
+  if (Object.hasOwn(query, 'error')) {
+    const safeError = authorizationErrorCode(error);
+    const description = 'GitLab authorization failed';
+    logWarn('GitLab authorization error', { error: safeError });
     // Redirect to client with error if we can find the flow state
     if (state) {
       const flow = await sessionStore.consumeAuthCodeFlow(state).catch((err: unknown) => {
@@ -78,8 +97,8 @@ export async function callbackHandler(req: Request, res: Response): Promise<void
       if (flow) {
         res.redirect(
           authorizationRedirect(flow.clientRedirectUri, config.issuer, {
-            error,
-            error_description,
+            error: safeError,
+            error_description: description,
             state: flow.clientState,
           }),
         );
@@ -87,8 +106,8 @@ export async function callbackHandler(req: Request, res: Response): Promise<void
       }
     }
     res.status(400).json({
-      error: error,
-      error_description: error_description ?? 'GitLab authorization failed',
+      error: safeError,
+      error_description: description,
     });
     return;
   }

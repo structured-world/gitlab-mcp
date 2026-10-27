@@ -116,7 +116,7 @@ describe('GitLab Device Flow Client', () => {
       });
 
       await expect(initiateDeviceFlow(mockConfig)).rejects.toThrow(
-        'Failed to initiate device flow: 400 Invalid client_id',
+        'Failed to initiate device flow: 400',
       );
     });
   });
@@ -306,6 +306,7 @@ describe('GitLab Device Flow Client', () => {
     it('should throw generic error for unknown error types', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: false,
+        status: 400,
         json: jest.fn().mockResolvedValue({
           error: 'unknown_error',
           error_description: 'Something went wrong',
@@ -313,20 +314,21 @@ describe('GitLab Device Flow Client', () => {
       });
 
       await expect(pollDeviceFlowOnce('device-code-123', mockConfig)).rejects.toThrow(
-        'Device flow error: Something went wrong',
+        'Device flow error: 400',
       );
     });
 
     it('should use error code when no description provided', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: false,
+        status: 500,
         json: jest.fn().mockResolvedValue({
           error: 'server_error',
         }),
       });
 
       await expect(pollDeviceFlowOnce('device-code-123', mockConfig)).rejects.toThrow(
-        'Device flow error: server_error',
+        'Device flow error: 500 server_error',
       );
     });
   });
@@ -502,7 +504,7 @@ describe('GitLab Device Flow Client', () => {
       });
 
       await expect(refreshGitLabToken('invalid-token', mockConfig)).rejects.toThrow(
-        'Failed to refresh token: 401 Invalid refresh token',
+        'Failed to refresh token: 401',
       );
     });
   });
@@ -646,7 +648,7 @@ describe('GitLab Device Flow Client', () => {
 
       await expect(
         exchangeGitLabAuthCode('invalid-code', 'https://app.example.com/callback', mockConfig),
-      ).rejects.toThrow('Failed to exchange authorization code: 400 Invalid authorization code');
+      ).rejects.toThrow('Failed to exchange authorization code: 400');
     });
   });
 

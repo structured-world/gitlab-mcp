@@ -283,6 +283,8 @@ describe('withFreshGitLabToken', () => {
     ['invalid_client', 401],
     ['invalid_request', 400],
     [undefined, 400],
+    [undefined, 429],
+    ['server_error', 503],
   ])('keeps the account linked when GitLab answers %s with %d', async (oauthError, status) => {
     const failure = new GitLabOAuthHttpError(
       `Failed to refresh token: ${status}`,

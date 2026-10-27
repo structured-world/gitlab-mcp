@@ -240,6 +240,20 @@ describe('OAuth Callback Handler', () => {
   });
 
   describe('GitLab error responses', () => {
+    // A present error, even empty, refuses the flow before a supplied code can be exchanged.
+    it('consumes an empty callback error without exchanging an authorization code', async () => {
+      mockRequest.query = { error: '', code: 'gitlab-code', state: 'flow-state-123' };
+      withFlow(mockAuthCodeFlow);
+
+      await callbackHandler(mockRequest as Request, mockResponse as Response);
+
+      expect(mockSessionStore.consumeAuthCodeFlow).toHaveBeenCalledWith('flow-state-123');
+      expect(mockExchangeGitLabAuthCode).not.toHaveBeenCalled();
+      const location = new URL(redirectMock.mock.calls[0][0]);
+      expect(location.searchParams.get('error')).toBe('server_error');
+      expect(location.searchParams.get('error_description')).toBe('GitLab authorization failed');
+    });
+
     it('ends the cached grant of a sign-in GitLab then refuses', async () => {
       mockRequest.query = { error: 'access_denied', state: 'flow-state-123' };
       mockSessionStore.consumeAuthCodeFlow.mockResolvedValue({
@@ -270,7 +284,7 @@ describe('OAuth Callback Handler', () => {
       );
       expect(redirectMock).toHaveBeenCalledWith(expect.stringContaining('error=access_denied'));
       expect(redirectMock).toHaveBeenCalledWith(
-        expect.stringContaining('error_description=User+denied+access'),
+        expect.stringContaining('error_description=GitLab+authorization+failed'),
       );
       expect(redirectMock).toHaveBeenCalledWith(expect.stringContaining('state=client-state-123'));
       // RFC 9207 section 2: error responses identify the issuer too.
@@ -289,7 +303,7 @@ describe('OAuth Callback Handler', () => {
       expect(statusMock).toHaveBeenCalledWith(400);
       expect(jsonMock).toHaveBeenCalledWith({
         error: 'server_error',
-        error_description: 'GitLab error',
+        error_description: 'GitLab authorization failed',
       });
     });
 

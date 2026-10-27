@@ -239,6 +239,8 @@ are omitted because a provider or proxy may echo credentials in them. An
 and service outages keep the account linked so the operation can be retried.
 Authorization callback errors likewise use only recognized codes and a local
 description, including when linking another account.
+Malformed JSON in an otherwise successful response reports only the operation and
+HTTP status, without parser messages that could quote the provider's response.
 
 ### Account profile
 

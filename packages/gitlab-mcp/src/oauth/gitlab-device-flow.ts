@@ -99,6 +99,14 @@ async function throwOnHttpError(response: Response, operation: string): Promise<
   }
 }
 
+/** JSON parsers can quote provider content; do not propagate their errors or causes. */
+function readGitLabResponse<T>(response: Response, operation: string): Promise<T> {
+  return response.json().catch(() => {
+    logError(`Failed to read ${operation} response`, { status: response.status });
+    throw new Error(`Failed to read ${operation} response: ${response.status}`);
+  }) as Promise<T>;
+}
+
 /**
  * Shared options for OAuth endpoint calls — no retry, no rate limiting,
  * no ambient auth injection.
@@ -172,7 +180,7 @@ export async function initiateDeviceFlow(
 
   await throwOnHttpError(response, 'initiate device flow');
 
-  const data = (await response.json()) as GitLabDeviceResponse;
+  const data = await readGitLabResponse<GitLabDeviceResponse>(response, 'initiate device flow');
 
   logInfo('Device flow initiated', {
     userCode: data.user_code,
@@ -217,7 +225,7 @@ export async function pollDeviceFlowStep(
   });
 
   if (response.ok) {
-    const tokens = (await response.json()) as GitLabTokenResponse;
+    const tokens = await readGitLabResponse<GitLabTokenResponse>(response, 'poll device flow');
     logInfo('Device flow authorization completed successfully');
     return { status: 'complete', tokens };
   }
@@ -376,7 +384,7 @@ export async function refreshGitLabToken(
 
   await throwOnHttpError(response, 'refresh token');
 
-  const data = (await response.json()) as GitLabTokenResponse;
+  const data = await readGitLabResponse<GitLabTokenResponse>(response, 'refresh token');
   logInfo('GitLab token refreshed successfully');
   return data;
 }
@@ -407,7 +415,7 @@ export async function getGitLabUser(
 
   await throwOnHttpError(response, 'get GitLab user info');
 
-  const user = (await response.json()) as GitLabUserInfo;
+  const user = await readGitLabResponse<GitLabUserInfo>(response, 'get GitLab user info');
 
   logDebug('Retrieved GitLab user info', { userId: user.id, username: user.username });
 
@@ -490,7 +498,10 @@ export async function exchangeGitLabAuthCode(
 
   await throwOnHttpError(response, 'exchange authorization code');
 
-  const data = (await response.json()) as GitLabTokenResponse;
+  const data = await readGitLabResponse<GitLabTokenResponse>(
+    response,
+    'exchange authorization code',
+  );
   logInfo('GitLab authorization code exchanged successfully');
   return data;
 }

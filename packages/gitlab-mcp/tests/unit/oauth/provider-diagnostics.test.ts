@@ -53,6 +53,9 @@ const config: OAuthConfig = {
   deviceTimeout: 300,
 };
 const secret = 'synthetic-provider-secret-must-not-escape';
+// Use the same response implementation as enhancedFetch, including its JSON parser errors.
+const { Response: ProviderResponse } = jest.requireActual<{ Response: typeof Response }>('undici');
+const malformedSecret = 's3cr3t710';
 let output: string;
 
 beforeEach(() => {
@@ -126,6 +129,24 @@ describe.each(Object.entries(operations))('%s diagnostics', (_name, operation) =
   });
 });
 
+// A 200 status does not make provider text safe: native JSON errors include body excerpts.
+it.each([
+  ['refresh', operations.refresh],
+  ['exchange', operations.exchange],
+  ['device', operations.device],
+  ['user', operations.user],
+  ['poll', () => pollDeviceFlowStep('device', config)],
+] as const)('sanitizes malformed successful %s responses', async (_name, operation) => {
+  mockEnhancedFetch.mockResolvedValueOnce(new ProviderResponse(malformedSecret, { status: 200 }));
+  const failure = await operation().catch((error: unknown) => error);
+  logger.error({ err: new Error('outer failure', { cause: failure }) }, 'Caller diagnostic');
+  expect(inspect(failure, { depth: null })).not.toContain(malformedSecret);
+  expect(failure).toBeInstanceOf(Error);
+  expect(output).not.toContain(malformedSecret);
+  expect(output).toContain('200');
+  expect(mockEnhancedFetch).toHaveBeenCalledTimes(1);
+});
+
 // Malformed device responses must not leak JSON parser excerpts or free-form descriptions.
 it.each(bodies)('sanitizes device polling errors from %s', async (body) => {
   mockEnhancedFetch.mockResolvedValueOnce(new Response(body, { status: 400, statusText: secret }));
@@ -192,6 +213,24 @@ it('keeps provider secrets out of callback redirects and serialized logs', async
   expect(decodeURIComponent(target.href)).not.toContain(secret);
   expect(output).toContain('Failed to complete authorization code flow');
   expect(output).not.toContain(secret);
+});
+
+// Code exchange must sanitize a parser failure before the callback can log or redirect it.
+it('keeps malformed successful token responses out of callback diagnostics', async () => {
+  mockEnhancedFetch.mockResolvedValueOnce(new ProviderResponse(malformedSecret, { status: 200 }));
+  const redirect = jest.fn();
+  await callbackHandler(
+    { query: { code: 'code', state: 'state' } } as unknown as Request,
+    { redirect } as unknown as ExpressResponse,
+  );
+  expect(redirect).toHaveBeenCalledTimes(1);
+  const target = new URL(redirect.mock.calls[0][0]);
+  expect(target.searchParams.get('error')).toBe('server_error');
+  expect(decodeURIComponent(target.href)).not.toContain(malformedSecret);
+  expect(target.searchParams.get('error_description')).toContain('200');
+  expect(output).toContain('Failed to complete authorization code flow');
+  expect(output).not.toContain(malformedSecret);
+  expect(sessionStore.consumeAuthCodeFlow).not.toHaveBeenCalled();
 });
 
 // Exercise Express's actual HTTP redirect serialization as well as the client error boundary.

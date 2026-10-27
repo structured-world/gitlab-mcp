@@ -30,17 +30,31 @@ export class GitLabOAuthHttpError extends Error {
   }
 }
 
-/** The `error` code of an OAuth error body; undefined for any other body. */
-function oauthErrorCode(body: string): string | undefined {
-  try {
-    const parsed: unknown = JSON.parse(body);
-    if (typeof parsed === 'object' && parsed !== null && 'error' in parsed) {
-      return typeof parsed.error === 'string' ? parsed.error : undefined;
-    }
-  } catch {
-    // Not JSON: an error page of GitLab or of a proxy in front of it.
-  }
-  return undefined;
+// Only protocol codes cross the provider-to-diagnostics boundary, never free-form text.
+// https://www.rfc-editor.org/rfc/rfc6749#section-5.2
+// https://www.rfc-editor.org/rfc/rfc6749#section-4.1.2.1
+// https://www.rfc-editor.org/rfc/rfc8628#section-3.5
+const OAUTH_ERROR_CODES = new Set([
+  'invalid_request',
+  'invalid_client',
+  'invalid_grant',
+  'unauthorized_client',
+  'unsupported_grant_type',
+  'invalid_scope',
+  'authorization_pending',
+  'slow_down',
+  'access_denied',
+  'expired_token',
+  'server_error',
+  'temporarily_unavailable',
+]);
+
+/** Return an exact known protocol code without retaining any other provider content. */
+function oauthErrorCode(body: unknown): string | undefined {
+  if (typeof body !== 'object' || body === null || !('error' in body)) return undefined;
+  return typeof body.error === 'string' && OAUTH_ERROR_CODES.has(body.error)
+    ? body.error
+    : undefined;
 }
 
 /**
@@ -70,14 +84,17 @@ const TERMINAL_DEVICE_ERRORS = new Set([
 /** Throw a descriptive error if the GitLab OAuth response indicates failure */
 async function throwOnHttpError(response: Response, operation: string): Promise<void> {
   if (!response.ok) {
-    const rawText = await response.text();
-    // Truncate to prevent unbounded HTML/proxy error pages from bloating logs
-    const details = rawText.trim().slice(0, 500) || response.statusText;
-    logError(`Failed to ${operation}`, { status: response.status, error: details });
+    let code: string | undefined;
+    try {
+      code = oauthErrorCode(JSON.parse(await response.text()));
+    } catch {
+      // Parsing and body-read errors can contain response excerpts; keep only the HTTP status.
+    }
+    logError(`Failed to ${operation}`, { status: response.status, oauthError: code });
     throw new GitLabOAuthHttpError(
-      `Failed to ${operation}: ${response.status} ${details}`,
+      `Failed to ${operation}: ${response.status}${code ? ` ${code}` : ''}`,
       response.status,
-      oauthErrorCode(rawText),
+      code,
     );
   }
 }
@@ -115,15 +132,6 @@ function clientParams(app: GitLabOAuthApp): Record<string, string> {
   return app.clientSecret
     ? { client_id: app.clientId, client_secret: app.clientSecret }
     : { client_id: app.clientId };
-}
-
-/**
- * Error body of a device token request: an RFC 8628 section 3.5 or RFC 6749 section 5.2
- * code, or none when an intermediary answered.
- */
-interface DeviceFlowErrorResponse {
-  error?: string;
-  error_description?: string;
 }
 
 /**
@@ -214,9 +222,14 @@ export async function pollDeviceFlowStep(
     return { status: 'complete', tokens };
   }
 
-  const error = (await response.json()) as DeviceFlowErrorResponse;
+  let code: string | undefined;
+  try {
+    code = oauthErrorCode(await response.json());
+  } catch {
+    // A malformed proxy response must not expose parser excerpts through a polling error.
+  }
 
-  switch (error.error) {
+  switch (code) {
     case 'authorization_pending':
       return { status: 'pending' };
 
@@ -234,8 +247,8 @@ export async function pollDeviceFlowStep(
       throw new DeviceGrantRefusedError('Invalid device code or grant.');
 
     default: {
-      const message = `Device flow error: ${error.error_description ?? error.error ?? 'unexpected response'}`;
-      throw error.error !== undefined && TERMINAL_DEVICE_ERRORS.has(error.error)
+      const message = `Device flow error: ${response.status}${code ? ` ${code}` : ''}`;
+      throw code !== undefined && TERMINAL_DEVICE_ERRORS.has(code)
         ? new DeviceGrantRefusedError(message)
         : new Error(message);
     }

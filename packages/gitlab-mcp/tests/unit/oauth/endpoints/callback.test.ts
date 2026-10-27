@@ -270,7 +270,7 @@ describe('OAuth Callback Handler', () => {
       );
       expect(redirectMock).toHaveBeenCalledWith(expect.stringContaining('error=access_denied'));
       expect(redirectMock).toHaveBeenCalledWith(
-        expect.stringContaining('error_description=User+denied+access'),
+        expect.stringContaining('error_description=GitLab+authorization+failed'),
       );
       expect(redirectMock).toHaveBeenCalledWith(expect.stringContaining('state=client-state-123'));
       // RFC 9207 section 2: error responses identify the issuer too.
@@ -289,7 +289,7 @@ describe('OAuth Callback Handler', () => {
       expect(statusMock).toHaveBeenCalledWith(400);
       expect(jsonMock).toHaveBeenCalledWith({
         error: 'server_error',
-        error_description: 'GitLab error',
+        error_description: 'GitLab authorization failed',
       });
     });
 

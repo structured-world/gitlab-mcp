@@ -232,6 +232,14 @@ The chosen instance and its application are used for the whole account: authoriz
 
 Access and refresh tokens, GitLab tokens and application secrets never appear in logs, tool results or diagnostics.
 
+Rejected GitLab OAuth HTTP responses report only the operation, HTTP status and a
+recognized OAuth error code. Provider response bodies, descriptions and status text
+are omitted because a provider or proxy may echo credentials in them. An
+`invalid_grant` during refresh requires reconnecting; application errors, rate limits
+and service outages keep the account linked so the operation can be retried.
+Authorization callback errors likewise use only recognized codes and a local
+description, including when linking another account.
+
 ### Account profile
 
 The read-only `get_profile` tool takes no input and returns the account behind the connection: an opaque `id`, the GitLab display `name` and `email` when GitLab provides them, and a `nickname` of the form `<username> @ <instance>`. The `id` is derived from the instance and the GitLab user id, so it stays the same across token refresh and reconnects and differs for the same user id on different instances. The tool is marked with `_meta["openai/profile"]` so hosts can label each connection.

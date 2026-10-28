@@ -255,6 +255,12 @@ chmod 600 ~/.config/gitlab-mcp/instances.yaml
 
 Only use `insecureSkipVerify: true` for development. In production, always use valid TLS certificates.
 
+For private GitLab CAs, configure `GITLAB_CA_CERT_PATH` rather than disabling
+verification. `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY` and the CA bundle apply to
+every instance's REST and GraphQL connections. See the
+[outbound network settings](/guide/configuration#outbound-proxy-and-gitlab-ca)
+for routing, trust scope and restart requirements.
+
 ## Related Documentation
 
 - [Multi-Instance Setup](/guide/multi-instance) - Getting started guide

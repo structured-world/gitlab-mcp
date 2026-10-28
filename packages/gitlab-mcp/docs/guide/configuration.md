@@ -105,6 +105,32 @@ Without an allowlist, runner tools make no additional ownership requests.
 `SKIP_TLS_VERIFY=true` bypasses SSL validation. Use only for testing with self-signed certificates.
 :::
 
+### Outbound proxy and GitLab CA
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `HTTP_PROXY` | HTTP proxy URL for HTTP GitLab instances; also used for HTTPS when `HTTPS_PROXY` is unset | Unset |
+| `HTTPS_PROXY` | HTTP or HTTPS proxy URL for HTTPS GitLab instances | Unset |
+| `NO_PROXY` | Comma- or space-separated hosts to reach directly, including domain suffixes, optional ports and `*` | Unset |
+| `GITLAB_CA_CERT_PATH` | Path to a PEM CA bundle for verifying GitLab server certificates | Unset |
+
+These process-level settings apply to REST and GraphQL requests for every configured
+instance, including the default single instance, and to startup requests before the
+instance registry is ready. `HTTPS_PROXY` alone does not proxy HTTP requests.
+`NO_PROXY=localhost,127.0.0.1,.example.com:443` bypasses those hosts and the matching
+domain on port 443; `NO_PROXY=*` bypasses every proxy. Proxy credentials in URLs are
+not included in diagnostics.
+
+The CA bundle is loaded once per process. Restart after changing it or the proxy
+configuration. GitLab CA and per-instance `insecureSkipVerify` settings apply to the
+GitLab TLS handshake, including inside a CONNECT tunnel. They do not disable the
+separate certificate check of an HTTPS proxy. Configure proxy trust through Node's
+`NODE_EXTRA_CA_CERTS` when its CA is not already trusted.
+
+Direct instances retain their connection Pool counters. Environment proxy agents
+do not expose these counters, so those instances are omitted from Pool statistics.
+See [connection troubleshooting](/troubleshooting/connection#network-issues).
+
 ## Feature Flags
 
 Enable or disable tool groups:

@@ -12,14 +12,12 @@
  */
 
 import * as fs from 'fs';
+import { createNetworkDispatcher } from './network-dispatcher';
 import { assertSafeApiUrl } from './api-path';
-import { logInfo, logWarn, logDebug } from '../logger';
+import { logWarn, logDebug } from '../logger';
 import {
   SKIP_TLS_VERIFY,
   GITLAB_AUTH_COOKIE_PATH,
-  GITLAB_CA_CERT_PATH,
-  HTTP_PROXY,
-  HTTPS_PROXY,
   NODE_TLS_REJECT_UNAUTHORIZED,
   GITLAB_TOKEN,
   CONNECT_TIMEOUT_MS,
@@ -44,8 +42,6 @@ import { InstanceRegistry } from '../services/InstanceRegistry.js';
 // than our npm package — causing "invalid onRequestStart method" dispatcher API mismatches.
 const undici = require('undici') as {
   fetch: typeof globalThis.fetch;
-  Agent: new (opts?: Record<string, unknown>) => unknown;
-  ProxyAgent: new (opts: string | Record<string, unknown>) => unknown;
 };
 
 /**
@@ -80,45 +76,6 @@ function loadCookieHeader(): string | null {
 }
 
 /**
- * Load custom CA certificate
- */
-function loadCACertificate(): Buffer | undefined {
-  if (!GITLAB_CA_CERT_PATH) {
-    return undefined;
-  }
-
-  try {
-    const ca = fs.readFileSync(GITLAB_CA_CERT_PATH);
-    logInfo(`Custom CA certificate loaded from ${GITLAB_CA_CERT_PATH}`);
-    return ca;
-  } catch (error: unknown) {
-    logWarn(`Failed to load CA certificate from ${GITLAB_CA_CERT_PATH}`, { err: error });
-    return undefined;
-  }
-}
-
-/**
- * Check if URL is a SOCKS proxy
- */
-function isSocksProxy(url: string): boolean {
-  return url.startsWith('socks4://') || url.startsWith('socks5://') || url.startsWith('socks://');
-}
-
-/** Remove proxy userinfo before logging, without changing the dispatcher's configuration. */
-function proxyUrlForLogging(value: string): string {
-  try {
-    const parsed = new URL(value);
-    if (!parsed.hostname) return '<invalid proxy URL>';
-    if (!parsed.username && !parsed.password) return value;
-    parsed.username = '';
-    parsed.password = '';
-    return parsed.toString();
-  } catch {
-    return '<invalid proxy URL>';
-  }
-}
-
-/**
  * Create Undici dispatcher for fetch requests
  *
  * LIMITATION: This global dispatcher uses environment variables for TLS config.
@@ -136,18 +93,12 @@ function proxyUrlForLogging(value: string): string {
  * Production should configure instances in config file for per-instance TLS.
  */
 function createDispatcher(): unknown {
-  const proxyUrl = HTTPS_PROXY ?? HTTP_PROXY;
-
-  // Build TLS options
-  const tlsOptions: Record<string, unknown> = {};
-
   // SECURITY NOTE: Disabling certificate validation is an opt-in configuration
   // for self-hosted GitLab instances using self-signed certificates.
   // This is controlled by explicit environment variables (SKIP_TLS_VERIFY or
   // NODE_TLS_REJECT_UNAUTHORIZED=0) and is NOT enabled by default.
   // Users must consciously configure this for their private infrastructure.
   if (SKIP_TLS_VERIFY || NODE_TLS_REJECT_UNAUTHORIZED === '0') {
-    tlsOptions.rejectUnauthorized = false;
     if (SKIP_TLS_VERIFY) {
       logWarn('TLS certificate verification disabled via SKIP_TLS_VERIFY');
     }
@@ -156,50 +107,9 @@ function createDispatcher(): unknown {
     }
   }
 
-  const ca = loadCACertificate();
-  if (ca) {
-    tlsOptions.ca = ca;
-  }
-
-  const hasTlsConfig = Object.keys(tlsOptions).length > 0;
-
-  // SOCKS proxy not supported with native fetch
-  if (proxyUrl && isSocksProxy(proxyUrl)) {
-    logInfo(`Using SOCKS proxy: ${proxyUrlForLogging(proxyUrl)}`);
-    logWarn('SOCKS proxy not supported with native fetch. Consider HTTP/HTTPS proxy.');
-    return undefined;
-  }
-
-  // HTTP/HTTPS proxy — apply same Undici timeouts as direct Agent
-  if (proxyUrl) {
-    logInfo(`Using proxy: ${proxyUrlForLogging(proxyUrl)}`);
-    // ProxyAgent in Undici v8 does not support the `connect` option (only Agent/Pool do).
-    // Use numeric timeout in proxyTls so each new proxy connection gets its own
-    // timeout budget (AbortSignal.timeout would be one-shot on a cached agent).
-    return new undici.ProxyAgent({
-      uri: proxyUrl,
-      // requestTls: upstream TLS handshake after CONNECT tunnel established
-      // proxyTls: TLS handshake to the proxy itself (if HTTPS proxy)
-      // Both need connect timeout to fully bound HTTPS-over-proxy connections.
-      requestTls: { ...(hasTlsConfig ? tlsOptions : {}), timeout: CONNECT_TIMEOUT_MS },
-      proxyTls: { timeout: CONNECT_TIMEOUT_MS },
-      headersTimeout: HEADERS_TIMEOUT_MS,
-      bodyTimeout: BODY_TIMEOUT_MS,
-    });
-  }
-
-  // Always create an Agent with native Undici timeouts.
-  // Even without TLS/proxy, the Agent is needed for connect/headers/body timeouts.
-  // TCP keepalive detects dead upstream connections (server restart, network drop).
-  const connectOptions: Record<string, unknown> = {
-    ...tlsOptions,
-    timeout: CONNECT_TIMEOUT_MS,
-    keepAlive: true,
-    keepAliveInitialDelay: 30000, // First TCP probe 30s after last data; OS controls subsequent interval
-  };
-
-  return new undici.Agent({
-    connect: connectOptions,
+  return createNetworkDispatcher({
+    insecureSkipVerify: SKIP_TLS_VERIFY || NODE_TLS_REJECT_UNAUTHORIZED === '0',
+    connectTimeout: CONNECT_TIMEOUT_MS,
     headersTimeout: HEADERS_TIMEOUT_MS,
     bodyTimeout: BODY_TIMEOUT_MS,
   });

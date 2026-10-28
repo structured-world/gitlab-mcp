@@ -15,6 +15,7 @@
 import { GraphQLClient } from '../graphql/client.js';
 import { logInfo, logDebug, logWarn } from '../logger.js';
 import { GitLabInstanceConfig } from '../config/instances-schema.js';
+import { createNetworkDispatcher } from '../utils/network-dispatcher';
 import {
   CONNECT_TIMEOUT_MS,
   HEADERS_TIMEOUT_MS,
@@ -22,48 +23,9 @@ import {
   POOL_MAX_CONNECTIONS,
 } from '../config.js';
 
-// Dynamic require to avoid TypeScript analyzing complex undici types at compile time
-const undici = require('undici') as {
-  Agent: new (opts?: UndiciAgentOptions) => UndiciAgent;
-  Pool: new (origin: string, opts?: UndiciPoolOptions) => UndiciPool;
-};
-
-/**
- * Undici Agent options for connection pooling
- */
-interface UndiciAgentOptions {
-  /** Maximum number of connections per origin */
-  connections?: number;
-  /** Keep-alive timeout in milliseconds */
-  keepAliveTimeout?: number;
-  /** Maximum keep-alive requests per connection */
-  keepAliveMaxTimeout?: number;
-  /** Pipeline connections (HTTP/1.1 only) */
-  pipelining?: number;
-  /** Max time waiting for response headers (ms) */
-  headersTimeout?: number;
-  /** Max time waiting for response body (ms) */
-  bodyTimeout?: number;
-  /** TLS and connect options */
-  connect?: {
-    rejectUnauthorized?: boolean;
-    ca?: Buffer | string;
-    /** TCP connect timeout in milliseconds */
-    timeout?: number;
-  };
-}
-
-interface UndiciPoolOptions extends UndiciAgentOptions {
-  /** Factory for creating connections */
-  factory?: unknown;
-}
-
-interface UndiciAgent {
+interface InstanceDispatcher {
   destroy(): Promise<void>;
-}
-
-interface UndiciPool extends UndiciAgent {
-  stats: {
+  stats?: {
     connected: number;
     free: number;
     pending: number;
@@ -107,8 +69,8 @@ const DEFAULT_POOL_CONFIG: ConnectionPoolConfig = {
  * Per-instance connection entry
  */
 interface ConnectionEntry {
-  /** HTTP connection pool (Undici Pool) */
-  pool: UndiciPool;
+  /** Per-instance direct Pool or environment proxy dispatcher. */
+  pool: InstanceDispatcher;
   /** GraphQL client using this pool */
   graphqlClient: GraphQLClient;
   /** GraphQL endpoint URL */
@@ -226,12 +188,12 @@ export class InstanceConnectionPool {
   }
 
   /**
-   * Get the Undici pool for an instance (for use with enhancedFetch)
+   * Get an instance's Undici dispatcher for enhancedFetch.
    *
    * Returns undefined if instance is not yet initialized - caller should
    * use default global dispatcher in that case.
    */
-  public getDispatcher(baseUrl: string): UndiciPool | undefined {
+  public getDispatcher(baseUrl: string): InstanceDispatcher | undefined {
     const normalizedUrl = this.normalizeUrl(baseUrl);
     const entry = this.pools.get(normalizedUrl);
 
@@ -243,16 +205,22 @@ export class InstanceConnectionPool {
   }
 
   /**
-   * Get pool statistics for all instances
+   * Get statistics for dispatchers exposing Pool counters; proxy agents expose none.
    */
   public getStats(): PoolStats[] {
-    return Array.from(this.pools.values()).map((entry) => ({
-      baseUrl: entry.baseUrl,
-      graphqlEndpoint: entry.graphqlEndpoint,
-      ...entry.pool.stats,
-      createdAt: entry.createdAt,
-      lastUsedAt: entry.lastUsedAt,
-    }));
+    const results: PoolStats[] = [];
+    for (const entry of this.pools.values()) {
+      const stats = entry.pool.stats;
+      if (!stats) continue;
+      results.push({
+        baseUrl: entry.baseUrl,
+        graphqlEndpoint: entry.graphqlEndpoint,
+        ...stats,
+        createdAt: entry.createdAt,
+        lastUsedAt: entry.lastUsedAt,
+      });
+    }
+    return results;
   }
 
   /**
@@ -262,7 +230,7 @@ export class InstanceConnectionPool {
     const normalizedUrl = this.normalizeUrl(baseUrl);
     const entry = this.pools.get(normalizedUrl);
 
-    if (!entry) return undefined;
+    if (!entry?.pool.stats) return undefined;
 
     return {
       baseUrl: entry.baseUrl,
@@ -338,38 +306,23 @@ export class InstanceConnectionPool {
     instanceConfig: GitLabInstanceConfig,
     normalizedUrl: string,
   ): ConnectionEntry {
-    // Build connect options — always includes timeout, optionally TLS overrides.
-    // TCP keepalive detects dead upstream connections (GitLab restart, network drop).
-    const connectOptions: {
-      rejectUnauthorized?: boolean;
-      ca?: Buffer | string;
-      timeout?: number;
-      keepAlive?: boolean;
-      keepAliveInitialDelay?: number;
-    } = {
-      timeout: this.config.connectTimeout,
-      keepAlive: true,
-      keepAliveInitialDelay: 30000, // First TCP probe 30s after last data; OS controls subsequent interval
-    };
-
     if (instanceConfig.insecureSkipVerify) {
-      connectOptions.rejectUnauthorized = false;
       logWarn('TLS verification disabled for instance', { url: normalizedUrl });
     }
 
-    // Create Undici Pool for this instance.
-    // Undici Pool expects an origin (scheme + host + port), not a full URL with path.
-    // For subpath-deployed GitLab (e.g., https://example.com/gitlab), we extract just the origin.
+    // Pools take an origin; retain the GitLab subpath separately for API endpoints.
     const poolOrigin = new URL(normalizedUrl).origin;
-    const pool = new undici.Pool(poolOrigin, {
+    const pool = createNetworkDispatcher({
+      origin: poolOrigin,
+      insecureSkipVerify: instanceConfig.insecureSkipVerify,
       connections: this.config.maxConnections,
       keepAliveTimeout: this.config.keepAliveTimeout,
       keepAliveMaxTimeout: this.config.keepAliveMaxTimeout,
       pipelining: this.config.pipelining,
       headersTimeout: this.config.headersTimeout,
       bodyTimeout: this.config.bodyTimeout,
-      connect: connectOptions,
-    });
+      connectTimeout: this.config.connectTimeout,
+    }) as InstanceDispatcher;
 
     // Derive GraphQL endpoint
     const graphqlEndpoint = `${normalizedUrl}/api/graphql`;

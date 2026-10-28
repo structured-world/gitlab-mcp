@@ -1,9 +1,48 @@
 import * as z from 'zod';
-import { BrowseSearchSchema } from './schema-readonly';
+import { BrowseSearchSchema, type BrowseSearchInput } from './schema-readonly';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
 import { assertActionAllowed } from '../utils';
-import { gitlab, paths, toQuery } from '../../utils/gitlab-api';
+import { gitlab, GitLabApiError, paths, toQuery } from '../../utils/gitlab-api';
 import { stripProjectSecrets } from '../core/project-response';
+import { StructuredToolError } from '../../utils/error-handler';
+
+// GitLab 16.0 lib/api/helpers.rb:521-522 wraps object errors in message;
+// the REST client serializes that object with JSON.stringify.
+// Match complete messages so quoted query text is not mistaken for a backend refusal.
+const UNAVAILABLE_SCOPE_ERRORS = new Set(
+  [
+    'scope does not have a valid value',
+    'Scope not supported without Elasticsearch!',
+    'Scope supported only with advanced search',
+    'Scope supported only with advanced search or exact code search',
+  ].flatMap((message) => [message, JSON.stringify({ error: message })]),
+);
+
+/** Cross-project search availability depends on the configured search backend, not only tier. */
+function throwSearchError(error: unknown, input: BrowseSearchInput): never {
+  const { scope } = input;
+  // GitLab 16.0 ee/lib/ee/api/search.rb:19-27; newer releases also allow exact code search.
+  if (
+    error instanceof GitLabApiError &&
+    error.status === 400 &&
+    input.action !== 'project' &&
+    (scope === 'blobs' || scope === 'commits' || scope === 'notes' || scope === 'wiki_blobs') &&
+    UNAVAILABLE_SCOPE_ERRORS.has(error.details)
+  ) {
+    const backend = scope === 'blobs' ? 'Advanced Search or exact code search' : 'Advanced Search';
+    const suggestedFix = `Use browse_search with action 'project', project_id and scope '${scope}' to search within one project.`;
+    throw new StructuredToolError({
+      error_code: 'API_ERROR',
+      tool: 'browse_search',
+      action: input.action,
+      http_status: error.status,
+      message: `GitLab rejected ${input.action} scope '${scope}': ${backend} is unavailable for this search.`,
+      suggested_fix: suggestedFix,
+      gitlab_error: error.details,
+    });
+  }
+  throw error;
+}
 
 /**
  * Search tools registry - 1 read-only CQRS tool
@@ -36,69 +75,73 @@ export const searchToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefi
 
         assertActionAllowed('browse_search', input.action);
 
-        switch (input.action) {
-          case 'global': {
-            // TypeScript knows: input has scope, search, and optional filters
-            const { scope, ...params } = input;
+        try {
+          switch (input.action) {
+            case 'global': {
+              // TypeScript knows: input has scope, search, and optional filters
+              const { scope, ...params } = input;
 
-            // Build query params excluding action (not an API parameter)
-            const query = toQuery(params, ['action']);
+              // Build query params excluding action (not an API parameter)
+              const query = toQuery(params, ['action']);
 
-            // Global search endpoint
-            const results = await gitlab.get<unknown[]>('search', {
-              query: { ...query, scope },
-            });
+              // Global search endpoint
+              const results = await gitlab.get<unknown[]>('search', {
+                query: { ...query, scope },
+              });
 
-            return {
-              scope,
-              count: results.length,
-              results: scope === 'projects' ? stripProjectSecrets(results) : results,
-            };
+              return {
+                scope,
+                count: results.length,
+                results: scope === 'projects' ? stripProjectSecrets(results) : results,
+              };
+            }
+
+            case 'project': {
+              // TypeScript knows: input has project_id, scope, search, and optional filters
+              const { project_id, scope, ref, ...params } = input;
+
+              // Build query params excluding action (project_id, scope, ref are already destructured)
+              const query = toQuery(params, ['action']);
+
+              // Project-scoped search endpoint
+              const results = await gitlab.get<unknown[]>(`${paths.project(project_id)}/search`, {
+                query: { ...query, scope, ...(ref && { ref }) },
+              });
+
+              return {
+                project_id,
+                scope,
+                count: results.length,
+                results: scope === 'projects' ? stripProjectSecrets(results) : results,
+              };
+            }
+
+            case 'group': {
+              // TypeScript knows: input has group_id, scope, search, and optional filters
+              const { group_id, scope, ...params } = input;
+
+              // Build query params excluding action (group_id, scope are already destructured)
+              const query = toQuery(params, ['action']);
+
+              // Group-scoped search endpoint
+              const results = await gitlab.get<unknown[]>(`${paths.group(group_id)}/search`, {
+                query: { ...query, scope },
+              });
+
+              return {
+                group_id,
+                scope,
+                count: results.length,
+                results: scope === 'projects' ? stripProjectSecrets(results) : results,
+              };
+            }
+
+            /* istanbul ignore next -- unreachable with Zod discriminatedUnion */
+            default:
+              throw new Error(`Unknown action: ${(input as { action: string }).action}`);
           }
-
-          case 'project': {
-            // TypeScript knows: input has project_id, scope, search, and optional filters
-            const { project_id, scope, ref, ...params } = input;
-
-            // Build query params excluding action (project_id, scope, ref are already destructured)
-            const query = toQuery(params, ['action']);
-
-            // Project-scoped search endpoint
-            const results = await gitlab.get<unknown[]>(`${paths.project(project_id)}/search`, {
-              query: { ...query, scope, ...(ref && { ref }) },
-            });
-
-            return {
-              project_id,
-              scope,
-              count: results.length,
-              results: scope === 'projects' ? stripProjectSecrets(results) : results,
-            };
-          }
-
-          case 'group': {
-            // TypeScript knows: input has group_id, scope, search, and optional filters
-            const { group_id, scope, ...params } = input;
-
-            // Build query params excluding action (group_id, scope are already destructured)
-            const query = toQuery(params, ['action']);
-
-            // Group-scoped search endpoint
-            const results = await gitlab.get<unknown[]>(`${paths.group(group_id)}/search`, {
-              query: { ...query, scope },
-            });
-
-            return {
-              group_id,
-              scope,
-              count: results.length,
-              results: scope === 'projects' ? stripProjectSecrets(results) : results,
-            };
-          }
-
-          /* istanbul ignore next -- unreachable with Zod discriminatedUnion */
-          default:
-            throw new Error(`Unknown action: ${(input as { action: string }).action}`);
+        } catch (error) {
+          throwSearchError(error, input);
         }
       },
     },

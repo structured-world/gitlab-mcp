@@ -69,6 +69,14 @@ Each tool accepts an `action` parameter selecting the specific operation.
 |------|------|-------------|
 | `browse_search` | Query | Search across GitLab |
 
+For global or group searches, `blobs` needs Advanced Search or exact code search;
+`commits`, `notes` and `wiki_blobs` need Advanced Search. Availability depends on
+the instance configuration and the search target, not just its licensed tier.
+When GitLab rejects one of these scopes as unavailable, the tool explains how to
+use `action: "project"` with `project_id` and the same scope instead. Project
+search remains available without a cross-project search backend. The tool does
+not retry the request or automatically search additional projects.
+
 ### Labels (`USE_LABELS=true`, default: enabled)
 
 | Tool | Type | Description |

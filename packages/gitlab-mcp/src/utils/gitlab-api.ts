@@ -33,6 +33,18 @@ interface RequestOptions {
   rawResponse?: boolean;
 }
 
+/** HTTP failure with the same diagnostic text and machine-readable response metadata. */
+export class GitLabApiError extends Error {
+  constructor(
+    readonly status: number,
+    readonly details: string,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'GitLabApiError';
+  }
+}
+
 /**
  * Build query string, omitting null, undefined, empty strings and empty arrays.
  * Arrays are serialized using key[] format (Rails convention) for GitLab API compatibility.
@@ -178,7 +190,9 @@ async function request<T>(
     } catch {
       // If error response can't be parsed, leave errorDetails empty
     }
-    throw new Error(
+    throw new GitLabApiError(
+      response.status,
+      errorDetails,
       `GitLab API error: ${response.status} ${response.statusText}${errorDetails ? ` - ${errorDetails}` : ''}`,
     );
   }

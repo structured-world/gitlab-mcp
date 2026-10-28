@@ -49,7 +49,11 @@ const BaseSearchParams = z.object({
 // --- Action: global ---
 const GlobalSearchSchema = z
   .object({
-    action: z.literal('global').describe('Search across entire GitLab instance'),
+    action: z
+      .literal('global')
+      .describe(
+        'Search across the GitLab instance. blobs requires Advanced Search or exact code search; commits, notes and wiki_blobs require Advanced Search. Use project search when unavailable.',
+      ),
     scope: SearchScopeSchema,
   })
   .merge(BaseSearchParams)
@@ -71,7 +75,11 @@ const ProjectSearchSchema = z
 // --- Action: group ---
 const GroupSearchSchema = z
   .object({
-    action: z.literal('group').describe('Search within a specific group and its subgroups'),
+    action: z
+      .literal('group')
+      .describe(
+        'Search within a group and its subgroups. blobs requires Advanced Search or exact code search; commits, notes and wiki_blobs require Advanced Search. Use project search when unavailable.',
+      ),
     group_id: requiredId.describe("Group ID or URL-encoded path (e.g., 'my-group' or '123')"),
     scope: SearchScopeSchema,
   })

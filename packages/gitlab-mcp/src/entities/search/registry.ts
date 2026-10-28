@@ -6,12 +6,17 @@ import { gitlab, GitLabApiError, paths, toQuery } from '../../utils/gitlab-api';
 import { stripProjectSecrets } from '../core/project-response';
 import { StructuredToolError } from '../../utils/error-handler';
 
-const UNAVAILABLE_SCOPE_ERRORS = new Set([
-  'scope does not have a valid value',
-  'Scope not supported without Elasticsearch!',
-  'Scope supported only with advanced search',
-  'Scope supported only with advanced search or exact code search',
-]);
+// GitLab 16.0 lib/api/helpers.rb:521-522 wraps object errors in message;
+// the REST client serializes that object with JSON.stringify.
+// Match complete messages so quoted query text is not mistaken for a backend refusal.
+const UNAVAILABLE_SCOPE_ERRORS = new Set(
+  [
+    'scope does not have a valid value',
+    'Scope not supported without Elasticsearch!',
+    'Scope supported only with advanced search',
+    'Scope supported only with advanced search or exact code search',
+  ].flatMap((message) => [message, JSON.stringify({ error: message })]),
+);
 
 /** Cross-project search availability depends on the configured search backend, not only tier. */
 function throwSearchError(error: unknown, input: BrowseSearchInput): never {

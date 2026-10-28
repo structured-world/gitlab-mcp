@@ -49,7 +49,9 @@ describe('Search scope diagnostics through the REST client', () => {
     const server = createServer((request, response) => {
       requests.push(request.url!);
       response.writeHead(400, { 'content-type': 'application/json', connection: 'close' });
-      response.end(JSON.stringify({ error: 'Scope not supported without Elasticsearch!' }));
+      response.end(
+        JSON.stringify({ message: { error: 'Scope not supported without Elasticsearch!' } }),
+      );
     });
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
     try {
@@ -91,6 +93,7 @@ describe('Search scope diagnostics through the REST client', () => {
           { error: 'Scope not supported without Elasticsearch!' },
           { message: 'Scope supported only with advanced search' },
           { error: 'Scope supported only with advanced search or exact code search' },
+          { message: { error: 'Scope not supported without Elasticsearch!' } },
         ]) {
           mockEnhancedFetch.mockClear();
           reject(400, payload);
@@ -137,6 +140,7 @@ describe('Search scope diagnostics through the REST client', () => {
     ['global', 'blobs', 500, 'Scope not supported without Elasticsearch!'],
     ['global', 'blobs', 400, 'search is missing'],
     ['group', 'blobs', 400, 'invalid regex'],
+    ['global', 'blobs', 400, 'Invalid query containing Scope not supported without Elasticsearch!'],
     ['global', 'projects', 400, 'scope does not have a valid value'],
     ['project', 'blobs', 400, 'scope does not have a valid value'],
   ] as const)('preserves %s %s HTTP %s (%s)', async (action, scope, status, message) => {

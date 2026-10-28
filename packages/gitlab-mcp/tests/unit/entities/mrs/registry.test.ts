@@ -1507,7 +1507,13 @@ describe('MRS Registry', () => {
           expect(result).toEqual(mockResult);
         });
 
-        it('should skip pre-check and use auto-merge when merge_when_pipeline_succeeds is true', async () => {
+        // Auto-merge needs the current head SHA without refusing a running pipeline.
+        it('reads the head SHA before requesting auto-merge', async () => {
+          const headSha = 'a'.repeat(40);
+          mockGitlab.get.mockResolvedValueOnce({
+            sha: headSha,
+            detailed_merge_status: 'ci_still_running',
+          });
           const mockResult = { state: 'merged', merge_when_pipeline_succeeds: true };
           mockGitlab.put.mockResolvedValueOnce(mockResult);
 
@@ -1519,8 +1525,8 @@ describe('MRS Registry', () => {
             merge_when_pipeline_succeeds: true,
           });
 
-          // Should NOT call GET for pre-check when auto-merge requested
-          expect(mockGitlab.get).not.toHaveBeenCalled();
+          expect(mockGitlab.get).toHaveBeenCalledTimes(1);
+          expect(mockGitlab.get).toHaveBeenCalledWith('projects/test%2Fproject/merge_requests/1');
 
           // Should call PUT with auto-merge flag
           expect(mockGitlab.put).toHaveBeenCalledWith(
@@ -1528,6 +1534,7 @@ describe('MRS Registry', () => {
             expect.objectContaining({
               body: expect.objectContaining({
                 merge_when_pipeline_succeeds: true,
+                sha: headSha,
               }),
               contentType: 'form',
             }),

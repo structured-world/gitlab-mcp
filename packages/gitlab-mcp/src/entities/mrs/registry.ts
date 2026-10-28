@@ -22,12 +22,22 @@ import { assertActionAllowed } from '../utils';
  * Contains fields needed to determine mergeability.
  */
 interface MergeRequestStatusResponse {
+  sha?: unknown;
   detailed_merge_status: string;
   merge_status: string;
   has_conflicts: boolean;
   blocking_discussions_resolved: boolean;
   state: string;
   draft: boolean;
+}
+
+/** Preserve a caller's expected head, or pin the write to the head read from GitLab. */
+function pinMergeHead(body: { sha?: string }, head: unknown): void {
+  if (body.sha !== undefined) return;
+  if (typeof head !== 'string' || head.length === 0) {
+    throw new Error('Cannot merge: GitLab did not return a head SHA');
+  }
+  body.sha = head;
 }
 
 /**
@@ -491,10 +501,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
                 const mr = await gitlab.get<{ sha?: unknown }>(
                   `projects/${projectPath}/merge_requests/${encodeApiSegment(merge_request_iid)}`,
                 );
-                if (typeof mr.sha !== 'string' || mr.sha.length === 0) {
-                  throw new Error('Cannot schedule auto-merge: GitLab did not return a head SHA');
-                }
-                body.sha = mr.sha;
+                pinMergeHead(body, mr.sha);
               }
               return gitlab.put(mergeEndpoint, {
                 body: { ...body, merge_when_pipeline_succeeds: true },
@@ -511,6 +518,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
 
             // If mergeable, proceed with merge
             if (detailedStatus === 'mergeable') {
+              pinMergeHead(body, mrStatus.sha);
               return gitlab.put(mergeEndpoint, { body, contentType: 'form' });
             }
 

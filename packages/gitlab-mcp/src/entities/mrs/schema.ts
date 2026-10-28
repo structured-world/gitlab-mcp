@@ -132,7 +132,7 @@ const MergeMergeRequestSchema = z.object({
     .string()
     .optional()
     .describe(
-      'Expected head commit SHA; GitLab rejects a different head. Auto-merge reads the current head when omitted.',
+      'Expected head commit SHA; GitLab rejects a different head. When omitted, use the head read from the merge request.',
     ),
 });
 

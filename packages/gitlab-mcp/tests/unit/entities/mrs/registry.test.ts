@@ -1510,6 +1510,44 @@ describe('MRS Registry', () => {
           expect(result).toEqual(mockResult);
         });
 
+        // An explicit ordinary-merge SHA must survive the existing mergeability read unchanged.
+        it('preserves the explicit SHA when the mergeability read observes a newer head', async () => {
+          const sha = 'a'.repeat(40);
+          mockGitlab.get.mockResolvedValueOnce({
+            detailed_merge_status: 'mergeable',
+            sha: 'b'.repeat(40),
+          });
+          mockGitlab.put.mockResolvedValueOnce({ state: 'merged' });
+          await mrsToolRegistry.get('manage_merge_request')!.handler({
+            action: 'merge',
+            project_id: 'test/project',
+            merge_request_iid: 1,
+            sha,
+          });
+          expect(mockGitlab.get).toHaveBeenCalledTimes(1);
+          expect(mockGitlab.put).toHaveBeenCalledWith(
+            'projects/test%2Fproject/merge_requests/1/merge',
+            { body: { sha }, contentType: 'form' },
+          );
+        });
+
+        // A ready MR without a usable head must not produce an ordinary unpinned merge.
+        it.each([undefined, null, '', 123])(
+          'refuses an ordinary merge with invalid head %s',
+          async (sha) => {
+            mockGitlab.get.mockResolvedValueOnce({ detailed_merge_status: 'mergeable', sha });
+            await expect(
+              mrsToolRegistry.get('manage_merge_request')!.handler({
+                action: 'merge',
+                project_id: 'test/project',
+                merge_request_iid: 1,
+              }),
+            ).rejects.toThrow('GitLab did not return a head SHA');
+            expect(mockGitlab.get).toHaveBeenCalledTimes(1);
+            expect(mockGitlab.put).not.toHaveBeenCalled();
+          },
+        );
+
         // Auto-merge needs the current head SHA without refusing a running pipeline.
         it('reads the head SHA before requesting auto-merge', async () => {
           const headSha = 'a'.repeat(40);

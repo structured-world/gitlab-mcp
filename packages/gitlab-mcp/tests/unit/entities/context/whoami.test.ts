@@ -8,6 +8,8 @@ import { handleManageContext } from '../../../../src/entities/context/handlers';
 import { ContextManager } from '../../../../src/entities/context/context-manager';
 import { WhoamiResult } from '../../../../src/entities/context/types';
 import { runWithTokenContext } from '../../../../src/oauth/token-context';
+import { ContextOutputSchema } from '../../../../src/entities/context/output-schema';
+import { GitLabTimeoutError } from '../../../../src/utils/fetch';
 
 // Create mock objects that will be populated in tests
 const mockConnectionManager = {
@@ -54,6 +56,7 @@ jest.mock('../../../../src/registry-manager', () => ({
 }));
 
 jest.mock('../../../../src/utils/fetch', () => ({
+  ...jest.requireActual('../../../../src/utils/fetch'),
   enhancedFetch: (...args: unknown[]) => mockEnhancedFetch(...args),
 }));
 
@@ -198,6 +201,89 @@ describe('whoami handler', () => {
       expect(result.token?.scopes).toContain('api');
       expect(result.token?.hasWriteAccess).toBe(true);
       expect(result.token?.hasGraphQLAccess).toBe(true);
+    });
+
+    // Connection diagnostics must survive Undici's wrapper without copying secrets from errors.
+    it.each([
+      ['UNABLE_TO_VERIFY_LEAF_SIGNATURE', 'tls'],
+      ['SELF_SIGNED_CERT_IN_CHAIN', 'tls'],
+      ['CERT_HAS_EXPIRED', 'tls'],
+      ['ERR_TLS_CERT_ALTNAME_INVALID', 'tls'],
+      ['ENOTFOUND', 'dns'],
+      ['EAI_AGAIN', 'dns'],
+      ['ETIMEDOUT', 'timeout'],
+      ['UND_ERR_CONNECT_TIMEOUT', 'timeout'],
+      ['UND_ERR_HEADERS_TIMEOUT', 'timeout'],
+      ['UND_ERR_BODY_TIMEOUT', 'timeout'],
+      ['ECONNREFUSED', 'network'],
+      ['UND_ERR_SOCKET', 'network'],
+    ])('reports %s as %s', async (code, kind) => {
+      const cause = Object.assign(new Error('Authorization: Bearer synthetic-secret'), { code });
+      mockEnhancedFetch.mockRejectedValue(new TypeError('fetch failed', { cause }));
+
+      const result = (await handleManageContext({ action: 'whoami' })) as WhoamiResult;
+      const diagnostic = (result as unknown as Record<string, unknown>).userLookupError;
+
+      expect(result.user).toBeNull();
+      expect(result.userLookup).toBe('failed');
+      expect(diagnostic).toMatchObject({ kind, code, message: expect.any(String) });
+      const parsed = ContextOutputSchema.parse({ action: 'whoami', data: result });
+      expect(parsed).toMatchObject({ data: { userLookupError: diagnostic } });
+      expect(JSON.stringify(result)).not.toContain('synthetic-secret');
+      if (kind === 'tls') {
+        expect(diagnostic).toHaveProperty('hint', expect.stringContaining('GITLAB_CA_CERT_PATH'));
+        expect(diagnostic).toHaveProperty('hint', expect.stringContaining('NODE_EXTRA_CA_CERTS'));
+      }
+    });
+
+    // The shared transport wraps native timeouts in a typed error without its own code.
+    it.each(['connect', 'headers', 'body'] as const)('reports a wrapped %s timeout', async (phase) => {
+      mockEnhancedFetch.mockRejectedValue(new GitLabTimeoutError(phase, 100));
+      const result = (await handleManageContext({ action: 'whoami' })) as WhoamiResult;
+      expect(result).toMatchObject({ userLookupError: { kind: 'timeout' } });
+    });
+
+    // HTTP diagnostics must not read an arbitrary provider/proxy response body or status text.
+    it.each([401, 403, 429, 500, 503])('reports HTTP %s without response content', async (status) => {
+      const json = jest.fn();
+      mockEnhancedFetch.mockResolvedValue({ ok: false, status, statusText: 'synthetic-secret', json });
+      const result = (await handleManageContext({ action: 'whoami' })) as WhoamiResult;
+      expect(result).toMatchObject({
+        userLookupError: { kind: 'http', status, message: expect.stringContaining(String(status)) },
+      });
+      expect(json).not.toHaveBeenCalled();
+      expect(JSON.stringify(result)).not.toContain('synthetic-secret');
+    });
+
+    // Parser errors may quote response data; they must retain status, not provider content.
+    it('reports an unreadable HTTP response safely', async () => {
+      mockEnhancedFetch.mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => { throw new SyntaxError('synthetic-secret'); },
+      });
+      const result = (await handleManageContext({ action: 'whoami' })) as WhoamiResult;
+      expect(result).toMatchObject({ userLookupError: { kind: 'http', status: 200 } });
+      expect(JSON.stringify(result)).not.toContain('synthetic-secret');
+    });
+
+    // Neither unknown codes nor arbitrary thrown values belong in public diagnostics.
+    it.each([
+      Object.assign(new Error('synthetic-secret'), { code: 'synthetic-secret' }),
+      'synthetic-secret',
+      null,
+    ])('keeps unknown failures private (%s)', async (error) => {
+      mockEnhancedFetch.mockRejectedValue(error);
+      const result = (await handleManageContext({ action: 'whoami' })) as WhoamiResult;
+      expect(result).toMatchObject({ userLookupError: { kind: 'network', message: expect.any(String) } });
+      expect(JSON.stringify(result)).not.toContain('synthetic-secret');
+    });
+
+    // Success keeps the released response shape and does not suggest connection repairs.
+    it('omits lookup diagnostics after success', async () => {
+      const result = (await handleManageContext({ action: 'whoami' })) as WhoamiResult;
+      expect(result).not.toHaveProperty('userLookupError');
+      expect(result.userLookup).toBe('ok');
     });
 
     it('should return server info', async () => {

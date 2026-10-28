@@ -51,6 +51,13 @@ For detailed scope requirements, token creation steps, and what breaks without `
 
 **Cause**: Token missing required scopes.
 
+A `403` from the background `/user` health probe means the token cannot read the
+user profile. It does not take the instance offline or disable unrelated tools.
+The server logs this once per monitored instance; each operation still requires
+its own GitLab permissions. A `401` from that probe still marks the connection as
+failed because the token is invalid, expired, or revoked. Replace the token and
+reconnect after a `401`.
+
 **Required scopes**:
 | Scope | Purpose |
 |-------|---------|

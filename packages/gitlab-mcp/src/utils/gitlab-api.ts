@@ -23,7 +23,7 @@ type QueryParamArray = string[] | number[];
 type QueryParams = Record<string, QueryParamValue | QueryParamArray>;
 
 interface RequestOptions {
-  /** Query parameters - undefined values are filtered out, arrays use key[] format */
+  /** Query parameters omit null, undefined and empty strings; arrays use key[] format. */
   query?: QueryParams;
   /** Request body for POST/PUT/PATCH */
   body?: Record<string, unknown> | URLSearchParams | FormData;
@@ -34,7 +34,7 @@ interface RequestOptions {
 }
 
 /**
- * Build query string from params object, filtering out undefined/null values.
+ * Build query string, omitting null, undefined, empty strings and empty arrays.
  * Arrays are serialized using key[] format (Rails convention) for GitLab API compatibility.
  * Example: { scope: ["failed", "success"] } -> "scope[]=failed&scope[]=success"
  */
@@ -43,7 +43,7 @@ function buildQueryString(params?: QueryParams): string {
 
   const searchParams = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
-    if (value === undefined || value === null) continue;
+    if (value === undefined || value === null || value === '') continue;
 
     if (Array.isArray(value)) {
       // GitLab Rails API expects array params as key[]=val1&key[]=val2

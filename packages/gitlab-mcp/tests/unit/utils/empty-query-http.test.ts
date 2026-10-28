@@ -74,9 +74,13 @@ it.each([
       approved_by_usernames: [],
       author_id: 0,
       with_labels_details: false,
+      per_page: 5,
     }),
   ).resolves.toEqual([]);
   expect(received).toEqual([
-    { url: `${path}?with_labels_details=false&author_id=0`, token: 'fixture-query-token' },
+    {
+      url: `${path}?with_labels_details=false&author_id=0&per_page=5`,
+      token: 'fixture-query-token',
+    },
   ]);
 });

@@ -31,7 +31,12 @@ const UpdateWikiSchema = z.object({
   action: z.literal('update').describe('Update an existing wiki page'),
   namespace: namespaceField,
   slug: slugField,
-  title: z.string().optional().describe('New title of the wiki page'),
+  title: z
+    .string()
+    .optional()
+    .describe(
+      'Rename the page, changing its slug/URL. A leaf-only title keeps the current directory; a title containing / specifies the full destination path. Omit title to preserve the existing path when updating content or format.',
+    ),
   content: z.string().optional().describe('New content of the wiki page'),
   format: formatField,
 });

@@ -6,6 +6,8 @@
 import { BrowseWikiSchema } from '../../../src/entities/wiki/schema-readonly';
 import { ManageWikiSchema } from '../../../src/entities/wiki/schema';
 import { IntegrationTestHelper } from '../helpers/registry-helper';
+import { getTestData } from '../../setup/testConfig';
+import { randomUUID } from 'node:crypto';
 
 describe('Wiki Schema - GitLab Integration', () => {
   let helper: IntegrationTestHelper;
@@ -19,6 +21,88 @@ describe('Wiki Schema - GitLab Integration', () => {
     helper = new IntegrationTestHelper();
     await helper.initialize();
     console.log('Integration test helper initialized for wiki testing');
+  });
+
+  // Content and format updates must keep the stored path, including non-ASCII and percent characters.
+  it.each([
+    ['project', 'Original page'],
+    ['group', 'Original page'],
+    ['project', 'Caf\u00e9 % guide'],
+    ['group', 'Caf\u00e9 % guide'],
+  ] as const)('keeps title-less %s wiki updates in place for %s', async (kind, leaf) => {
+    const data = getTestData();
+    const namespace =
+      kind === 'project' ? data.project?.path_with_namespace : data.group?.full_path;
+    if (typeof namespace !== 'string' || !namespace.startsWith('test/')) {
+      throw new Error('Wiki update tests require a suite-owned namespace under test/');
+    }
+    type Page = { slug: string; title: string; content: string; format: string };
+    const directory = `wiki-update-${randomUUID()}`;
+    const content = 'Original content.\n';
+    const updated = 'Edited content with Caf\u00e9 and a literal %.\n\n';
+    let page: Page | undefined;
+    try {
+      page = (await helper.executeTool('manage_wiki', {
+        action: 'create',
+        namespace,
+        title: `${directory}/${leaf}`,
+        content,
+      })) as Page;
+      const originalSlug = page.slug;
+      const originalTitle = page.title;
+      expect(originalSlug.slice(0, originalSlug.lastIndexOf('/'))).toBe(directory);
+
+      page = (await helper.executeTool('manage_wiki', {
+        action: 'update',
+        namespace,
+        slug: originalSlug,
+        content: updated,
+      })) as Page;
+      expect(page.slug).toBe(originalSlug);
+      expect(page.title).toBe(originalTitle);
+      expect(page.content).toBe(updated);
+
+      page = (await helper.executeTool('manage_wiki', {
+        action: 'update',
+        namespace,
+        slug: originalSlug,
+        format: 'asciidoc',
+      })) as Page;
+      expect(page.slug).toBe(originalSlug);
+      expect(page.title).toBe(originalTitle);
+      expect(page.format).toBe('asciidoc');
+      expect(page.content).toBe(updated);
+      const stored = (await helper.executeTool('browse_wiki', {
+        action: 'get',
+        namespace,
+        slug: originalSlug,
+      })) as Page;
+      expect(stored).toMatchObject({ slug: originalSlug, content: updated, format: 'asciidoc' });
+
+      page = (await helper.executeTool('manage_wiki', {
+        action: 'update',
+        namespace,
+        slug: page.slug,
+        title: 'Renamed page',
+      })) as Page;
+      expect(page.slug).toBe(`${directory}/Renamed-page`);
+      page = (await helper.executeTool('manage_wiki', {
+        action: 'update',
+        namespace,
+        slug: page.slug,
+        title: `${directory}-moved/Moved page`,
+      })) as Page;
+      expect(page.slug).toBe(`${directory}-moved/Moved-page`);
+      const moved = (await helper.executeTool('browse_wiki', {
+        action: 'get',
+        namespace,
+        slug: page.slug,
+      })) as Page;
+      expect(moved).toMatchObject({ slug: page.slug, content: updated });
+    } finally {
+      if (page)
+        await helper.executeTool('manage_wiki', { action: 'delete', namespace, slug: page.slug });
+    }
   });
 
   describe('BrowseWikiSchema - list action', () => {

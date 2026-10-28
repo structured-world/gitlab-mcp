@@ -481,6 +481,45 @@ describe('Wiki Registry - CQRS Tools', () => {
     });
 
     describe('manage_wiki handler - update action', () => {
+      // GitLab needs the full title on a title-less update or it can flatten a nested page.
+      it('pins a nested content-only update to its existing slug', async () => {
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse({ id: 1 }) as never);
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse({ slug: 'docs/setup' }) as never);
+        await wikiToolRegistry.get('manage_wiki')!.handler({
+          action: 'update',
+          namespace: 'test/project',
+          slug: 'docs/setup',
+          content: 'Updated',
+        });
+        expect(mockEnhancedFetch).toHaveBeenCalledTimes(2);
+        expect(JSON.parse(mockEnhancedFetch.mock.calls[1][1]?.body as string)).toEqual({
+          title: 'docs/setup',
+          content: 'Updated',
+        });
+      });
+
+      // GitLab handles explicit leaf renames; the tool must not rewrite caller-supplied titles.
+      it('passes an explicit nested leaf title unchanged', async () => {
+        mockEnhancedFetch.mockResolvedValueOnce(
+          mockResponse({ id: 1, path: 'test-project', kind: 'project' }) as never,
+        );
+        mockEnhancedFetch.mockResolvedValueOnce(
+          mockResponse({ slug: 'docs/setup-guide' }) as never,
+        );
+        await wikiToolRegistry.get('manage_wiki')!.handler({
+          action: 'update',
+          namespace: 'test/project',
+          slug: 'docs/setup',
+          title: 'Setup guide',
+          content: 'Updated content',
+        });
+        expect(mockEnhancedFetch).toHaveBeenCalledTimes(2);
+        expect(JSON.parse(mockEnhancedFetch.mock.calls[1][1]?.body as string)).toEqual({
+          title: 'Setup guide',
+          content: 'Updated content',
+        });
+      });
+
       it('should update wiki page', async () => {
         mockEnhancedFetch.mockResolvedValueOnce(
           mockResponse({ id: 1, path: 'test-project', kind: 'project' }) as never,
@@ -503,6 +542,58 @@ describe('Wiki Registry - CQRS Tools', () => {
 
         expect(mockEnhancedFetch).toHaveBeenCalledTimes(2);
         expect(result).toEqual(mockWikiPage);
+      });
+
+      // Preserve explicit moves, root pages, omitted titles and GitLab's blank-title validation.
+      it.each([
+        ['docs/setup', 'other/Setup guide', 'other/Setup guide'],
+        ['docs/setup', '/Setup guide', '/Setup guide'],
+        ['home', 'New home', 'New home'],
+        ['docs/deep/setup', 'Setup guide', 'Setup guide'],
+        ['docs/setup', '', ''],
+        ['docs/setup', '   ', '   '],
+        ['docs/setup', undefined, 'docs/setup'],
+        ['home', undefined, undefined],
+      ])(
+        'updates %s with title %s without changing the intended path',
+        async (slug, title, expected) => {
+          mockEnhancedFetch.mockResolvedValueOnce(mockResponse({ id: 1 }) as never);
+          mockEnhancedFetch.mockResolvedValueOnce(mockResponse({ slug }) as never);
+          await wikiToolRegistry.get('manage_wiki')!.handler({
+            action: 'update',
+            namespace: 'test/project',
+            slug,
+            title,
+            content: 'New content',
+          });
+          expect(mockEnhancedFetch).toHaveBeenCalledTimes(2);
+          const body = JSON.parse(mockEnhancedFetch.mock.calls[1][1]?.body as string);
+          expect(body).toEqual(
+            expected === undefined
+              ? { content: 'New content' }
+              : { title: expected, content: 'New content' },
+          );
+        },
+      );
+
+      // The same title-less path protection applies to a group wiki without a page lookup.
+      it('pins a nested group wiki format-only update to its slug', async () => {
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse({ id: 1 }) as never);
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse({ slug: 'docs/guide' }) as never);
+        await wikiToolRegistry.get('manage_wiki')!.handler({
+          action: 'update',
+          namespace: 'test-group',
+          slug: 'docs/setup',
+          format: 'asciidoc',
+        });
+        expect(mockEnhancedFetch).toHaveBeenCalledTimes(2);
+        expect(mockEnhancedFetch.mock.calls[1][0]).toBe(
+          'https://gitlab.example.com/api/v4/groups/test-group/wikis/docs%2Fsetup',
+        );
+        expect(JSON.parse(mockEnhancedFetch.mock.calls[1][1]?.body as string)).toEqual({
+          title: 'docs/setup',
+          format: 'asciidoc',
+        });
       });
 
       it('should update wiki page content only', async () => {

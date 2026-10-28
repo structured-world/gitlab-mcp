@@ -32,7 +32,7 @@ function createUndiciMock(fetchFn: jest.Mock = jest.fn()) {
   return {
     fetch: fetchFn,
     Agent: jest.fn(() => ({ type: 'agent' })),
-    ProxyAgent: jest.fn(() => ({ type: 'proxy-agent' })),
+    EnvHttpProxyAgent: jest.fn(() => ({ type: 'proxy-agent' })),
     Pool: jest.fn(() => ({
       stats: { connected: 0, free: 0, pending: 0, queued: 0, running: 0, size: 0 },
       destroy: jest.fn().mockResolvedValue(undefined),

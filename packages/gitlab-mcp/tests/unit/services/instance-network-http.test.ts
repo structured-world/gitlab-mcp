@@ -10,7 +10,7 @@ import { parse } from 'graphql';
 
 const originalEnv = process.env;
 const proxyRequests: string[] = [];
-const tokens: (string | string[] | undefined)[] = [];
+const tokens: { host: string | undefined; token: string | string[] | undefined }[] = [];
 const sockets = new Set<Socket>();
 let certificateDirectory: string;
 let plain: Server;
@@ -56,7 +56,7 @@ beforeAll(async () => {
     { stdio: 'ignore', timeout: 10_000 },
   );
   const respond: RequestListener = (request, response) => {
-    tokens.push(request.headers['private-token']);
+    tokens.push({ host: request.headers.host, token: request.headers['private-token'] });
     response.setHeader('Content-Type', 'application/json');
     response.end(
       JSON.stringify(
@@ -133,6 +133,7 @@ async function exercise(
   environment: NodeJS.ProcessEnv,
   registered: boolean,
   graphql = false,
+  secondUrl?: string,
 ): Promise<void> {
   proxyRequests.length = 0;
   tokens.length = 0;
@@ -163,7 +164,14 @@ async function exercise(
       const registry = InstanceRegistry.getInstance();
       try {
         if (registered) await registry.initialize();
-        if (graphql) {
+        if (secondUrl) {
+          const responses = await Promise.all(
+            [url, secondUrl].map((base) =>
+              enhancedFetch(`${base}/api/v4/version`, { retry: false }),
+            ),
+          );
+          for (const response of responses) expect(await response.json()).toEqual({ ok: true });
+        } else if (graphql) {
           const client = registry.getGraphQLClient(url)!;
           await expect(client.request(parse('{ currentUser { username } }'))).resolves.toEqual({
             currentUser: { username: 'fixture' },
@@ -172,7 +180,16 @@ async function exercise(
           const response = await enhancedFetch(`${url}/api/v4/version`, { retry: false });
           expect(await response.json()).toEqual({ ok: true });
         }
-        expect(tokens).toEqual(['network-fixture-token']);
+        const expected = [{ host: new URL(url).host, token: 'network-fixture-token' }];
+        if (secondUrl)
+          expected.push({ host: new URL(secondUrl).host, token: 'second-fixture-token' });
+        expect(tokens).toHaveLength(expected.length);
+        expect(tokens).toEqual(expect.arrayContaining(expected));
+        if (registered && (environment.HTTP_PROXY || environment.HTTPS_PROXY)) {
+          // Environment proxy dispatchers do not expose native Pool counters.
+          expect(registry.getConnectionPoolStats()).toEqual([]);
+          expect(registry.getInstancePoolStats(url)).toBeUndefined();
+        }
       } finally {
         if (!registered) {
           const dispatcher = createFetchOptions().dispatcher as { destroy(): Promise<void> };
@@ -193,6 +210,25 @@ it.each([false, true])('proxies registered instance requests with GraphQL=%s', a
   expect(proxyRequests).toHaveLength(1);
 });
 
+// Independent configured instances must retain their own credentials on concurrent proxy requests.
+it('routes two configured instances without mixing their tokens', async () => {
+  const secondUrl = plainUrl.replace('127.0.0.1', 'localhost');
+  await exercise(
+    plainUrl,
+    {
+      HTTP_PROXY: proxyUrl,
+      GITLAB_INSTANCES: JSON.stringify({
+        instances: [{ url: plainUrl }, { url: secondUrl, tokenEnv: 'NETWORK_SECOND_TOKEN' }],
+      }),
+      NETWORK_SECOND_TOKEN: 'second-fixture-token',
+    },
+    true,
+    false,
+    secondUrl,
+  );
+  expect(proxyRequests).toHaveLength(2);
+});
+
 // Both startup and registered dispatchers must honor bypass rules at the real socket boundary.
 it.each([false, true])('honors NO_PROXY for registered=%s', async (registered) => {
   await exercise(
@@ -201,6 +237,36 @@ it.each([false, true])('honors NO_PROXY for registered=%s', async (registered) =
     registered,
   );
   expect(proxyRequests).toEqual([]);
+});
+
+// Native bypass matching must handle whole-host, suffix, wildcard and port boundaries.
+it.each(['*', '.localhost', 'matching-port', 'wrong-port'])(
+  'honors NO_PROXY pattern %s',
+  async (pattern) => {
+    const url = plainUrl.replace('127.0.0.1', 'localhost');
+    const noProxy =
+      pattern === 'matching-port'
+        ? new URL(url).host
+        : pattern === 'wrong-port'
+          ? 'localhost:1'
+          : pattern;
+    await exercise(url, { HTTP_PROXY: proxyUrl, NO_PROXY: noProxy }, true);
+    expect(proxyRequests).toHaveLength(pattern === 'wrong-port' ? 1 : 0);
+  },
+);
+
+// HTTPS_PROXY alone must not divert an HTTP instance through an unrelated proxy.
+it('selects the proxy by the instance protocol', async () => {
+  await exercise(plainUrl, { HTTPS_PROXY: proxyUrl }, true);
+  expect(proxyRequests).toEqual([]);
+});
+
+// Supplying no CA must not accidentally disable verification while configuring a proxy.
+it.each([false, true])('rejects an untrusted certificate with proxy=%s', async (proxied) => {
+  await expect(exercise(secureUrl, { HTTPS_PROXY: proxied ? proxyUrl : '' }, true)).rejects.toThrow(
+    'fetch failed',
+  );
+  expect(tokens).toEqual([]);
 });
 
 // A private CA must authenticate registered GitLab TLS directly and through a CONNECT tunnel.

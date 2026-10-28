@@ -527,6 +527,7 @@ export const DASHBOARD_ENABLED = process.env.DASHBOARD_ENABLED !== 'false';
 // Proxy configuration
 export const HTTP_PROXY = process.env.HTTP_PROXY;
 export const HTTPS_PROXY = process.env.HTTPS_PROXY;
+export const NO_PROXY = process.env.NO_PROXY;
 export const NODE_TLS_REJECT_UNAUTHORIZED = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
 export const GITLAB_CA_CERT_PATH = process.env.GITLAB_CA_CERT_PATH;
 

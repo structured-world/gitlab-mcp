@@ -6,11 +6,11 @@
  * since the fetch module caches config imports at load time.
  */
 
-// Mock undici - provides fetch, Agent, ProxyAgent
+// Mock the native fetch and the direct/environment-aware dispatcher constructors.
 jest.mock('undici', () => ({
   fetch: jest.fn(),
   Agent: jest.fn().mockImplementation(() => ({})),
-  ProxyAgent: jest.fn().mockImplementation(() => ({})),
+  EnvHttpProxyAgent: jest.fn().mockImplementation(() => ({})),
 }));
 
 const mockFetch = require('undici').fetch as jest.Mock;
@@ -20,7 +20,7 @@ function reregisterUndiciMock(): void {
   jest.doMock('undici', () => ({
     fetch: mockFetch,
     Agent: jest.fn().mockImplementation(() => ({})),
-    ProxyAgent: jest.fn().mockImplementation(() => ({})),
+    EnvHttpProxyAgent: jest.fn().mockImplementation(() => ({})),
   }));
 }
 
@@ -146,15 +146,17 @@ describe('Fetch Configuration Edge Cases', () => {
       for (const credential of ['secret', 'se%63ret', 'user:', 'us%65r']) {
         expect(diagnostics).not.toContain(credential);
       }
-      const { ProxyAgent } = require('undici');
+      const { EnvHttpProxyAgent } = require('undici');
       if (socks) {
-        expect(ProxyAgent).not.toHaveBeenCalled();
+        expect(EnvHttpProxyAgent).not.toHaveBeenCalled();
         expect(mockLogWarn.mock.calls).toEqual([
           ['SOCKS proxy not supported with native fetch. Consider HTTP/HTTPS proxy.'],
         ]);
       } else {
-        expect(ProxyAgent).toHaveBeenCalledTimes(1);
-        expect(ProxyAgent).toHaveBeenCalledWith(expect.objectContaining({ uri: proxyUrl }));
+        expect(EnvHttpProxyAgent).toHaveBeenCalledTimes(1);
+        expect(EnvHttpProxyAgent).toHaveBeenCalledWith(
+          expect.objectContaining(useHttps ? { httpsProxy: proxyUrl } : { httpProxy: proxyUrl }),
+        );
       }
     });
   });
@@ -162,6 +164,29 @@ describe('Fetch Configuration Edge Cases', () => {
   describe('SOCKS Proxy Detection', () => {
     beforeEach(() => {
       resetAndReregisterMocks();
+    });
+
+    // Unsupported SOCKS must preserve the registered direct path, including its timeout.
+    it('retains a direct pool for a registered origin with unsupported SOCKS', () => {
+      const pool = {};
+      const Pool = jest.fn(() => pool);
+      jest.doMock('undici', () => ({ Pool }));
+      mockConfig({ HTTPS_PROXY: 'socks5://proxy.example.com:1080' });
+      const { createNetworkDispatcher } = require('../../../src/utils/network-dispatcher');
+      expect(
+        createNetworkDispatcher({
+          origin: 'https://gitlab.example.com',
+          connectTimeout: 2000,
+          headersTimeout: 10000,
+          bodyTimeout: 30000,
+        }),
+      ).toBe(pool);
+      expect(Pool).toHaveBeenCalledWith(
+        'https://gitlab.example.com',
+        expect.objectContaining({
+          connect: expect.objectContaining({ timeout: 2000 }),
+        }),
+      );
     });
 
     it('should warn about SOCKS5 proxy not being supported', async () => {
@@ -226,7 +251,7 @@ describe('Fetch Configuration Edge Cases', () => {
       );
     });
 
-    it('should create ProxyAgent for HTTPS proxy', async () => {
+    it('should configure the environment agent for HTTPS proxy', async () => {
       const undici = require('undici');
 
       mockConfig({ HTTPS_PROXY: 'https://secure-proxy.example.com:8443' });
@@ -241,8 +266,8 @@ describe('Fetch Configuration Edge Cases', () => {
 
       await enhancedFetch('https://example.com');
 
-      expect(undici.ProxyAgent).toHaveBeenCalledWith(
-        expect.objectContaining({ uri: 'https://secure-proxy.example.com:8443' }),
+      expect(undici.EnvHttpProxyAgent).toHaveBeenCalledWith(
+        expect.objectContaining({ httpsProxy: 'https://secure-proxy.example.com:8443' }),
       );
     });
   });
@@ -677,20 +702,19 @@ describe('Fetch Configuration Edge Cases', () => {
     });
   });
 
-  describe('ProxyAgent Timeout Configuration', () => {
-    // Verifies that ProxyAgent receives the same timeout options as direct Agent
+  describe('Environment proxy timeout configuration', () => {
+    // Direct connections, proxy connections and CONNECT target handshakes all retain deadlines.
 
     beforeEach(() => {
       resetAndReregisterMocks();
     });
 
-    it('should pass timeout options to ProxyAgent', async () => {
-      // Track ProxyAgent constructor calls via a custom spy mock
+    it('passes timeouts to every underlying connection path', async () => {
       const proxyAgentSpy = jest.fn().mockImplementation(() => ({}));
 
       jest.doMock('undici', () => ({
         Agent: jest.fn().mockImplementation(() => ({})),
-        ProxyAgent: proxyAgentSpy,
+        EnvHttpProxyAgent: proxyAgentSpy,
       }));
 
       mockConfig({ HTTPS_PROXY: 'https://proxy.example.com:8443' });
@@ -701,25 +725,22 @@ describe('Fetch Configuration Edge Cases', () => {
       }));
 
       // Calling createFetchOptions triggers createDispatcher via getDispatcher
-      // which creates the ProxyAgent with our config
+      // which creates the environment agent with the configured timeouts.
       const { createFetchOptions, resetDispatcherCache } = require('../../../src/utils/fetch');
       resetDispatcherCache();
 
       createFetchOptions();
 
-      // ProxyAgent in Undici v8 does not support `connect` option —
-      // per-connection timeouts are set via requestTls/proxyTls instead
       expect(proxyAgentSpy).toHaveBeenCalledWith(
         expect.objectContaining({
-          uri: 'https://proxy.example.com:8443',
+          httpsProxy: 'https://proxy.example.com:8443',
           headersTimeout: 10000,
           bodyTimeout: 30000,
           requestTls: expect.objectContaining({ timeout: 2000 }),
           proxyTls: expect.objectContaining({ timeout: 2000 }),
+          connect: expect.objectContaining({ timeout: 2000 }),
         }),
       );
-      // Verify connect is NOT passed (Undici v8 ProxyAgent rejects it)
-      expect(proxyAgentSpy.mock.calls[0][0]).not.toHaveProperty('connect');
     });
   });
 });

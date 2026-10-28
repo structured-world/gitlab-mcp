@@ -25,11 +25,11 @@ jest.mock('../../../src/config', () => ({
   API_RETRY_MAX_DELAY_MS: 400,
 }));
 
-// Mock undici - provides fetch, Agent, ProxyAgent used by doFetch()
+// Mock the fetch, direct pool and environment-aware dispatcher used by doFetch().
 jest.mock('undici', () => ({
   fetch: jest.fn(),
   Agent: jest.fn(() => ({ type: 'agent' })),
-  ProxyAgent: jest.fn(() => ({ type: 'proxy-agent' })),
+  EnvHttpProxyAgent: jest.fn(() => ({ type: 'proxy-agent' })),
   Pool: jest.fn(() => ({ type: 'pool', close: jest.fn(), destroy: jest.fn() })),
 }));
 

@@ -77,11 +77,11 @@ beforeAll(async () => {
     USE_FILES: 'true',
   };
   await jest.isolateModulesAsync(async () => {
-    const { HealthMonitor } = await import('../../src/services/HealthMonitor');
-    const { ConnectionManager } = await import('../../src/services/ConnectionManager');
-    const { InstanceRegistry } = await import('../../src/services/InstanceRegistry');
-    const { RegistryManager } = await import('../../src/registry-manager');
-    const { filesToolRegistry } = await import('../../src/entities/files/registry');
+    const { HealthMonitor } = await import('../../../src/services/HealthMonitor');
+    const { ConnectionManager } = await import('../../../src/services/ConnectionManager');
+    const { InstanceRegistry } = await import('../../../src/services/InstanceRegistry');
+    const { RegistryManager } = await import('../../../src/registry-manager');
+    const { filesToolRegistry } = await import('../../../src/entities/files/registry');
     const monitor = HealthMonitor.getInstance();
     cleanupServices = async () => {
       HealthMonitor.resetInstance();

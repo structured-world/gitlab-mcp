@@ -11,7 +11,7 @@
 
 import { HealthMonitor, calculateBackoffDelay } from '../../../src/services/HealthMonitor';
 import { classifyError, createConnectionFailedError } from '../../../src/utils/error-handler';
-import { logWarn } from '../../../src/logger';
+import { logWarn, logError } from '../../../src/logger';
 
 /** Flush XState v5 internal microtask queue with a double-tick for CI stability. */
 async function flushXStateMicrotasks(): Promise<void> {
@@ -1014,6 +1014,35 @@ describe('HealthMonitor', () => {
       });
       await new Promise((r) => setTimeout(r, HEALTH_CYCLE_MS));
       expect(monitor.getState(TEST_URL)).toBe('healthy');
+    });
+
+    // Unexpected probe errors must be logged and counted, rather than swallowed or
+    // mistaken for a revoked token that permanently disables the instance.
+    it.each([
+      new TypeError('Invalid dispatcher state'),
+      new Error('GitLab API error: 400 - invalid probe request'),
+    ])('records unexpected authenticated probe failures: %s', async (error) => {
+      const monitor = await initHealthy();
+      const logged = new Promise<void>((resolve) => {
+        jest.mocked(logError).mockImplementationOnce(() => resolve());
+      });
+      mockFetch.mockImplementation((url: string) => {
+        if (url.endsWith('/api/v4/user')) return Promise.reject(error);
+        return Promise.resolve({ status: 200, ok: true });
+      });
+
+      await logged;
+      await flushXStateMicrotasks();
+      expect(logError).toHaveBeenCalledWith(
+        'Unexpected error during authenticated token health check',
+        { err: error },
+      );
+      expect(monitor.getSnapshot(TEST_URL)).toMatchObject({
+        state: 'healthy',
+        consecutiveFailures: 1,
+        lastError: error.message,
+      });
+      expect(monitor.isInstanceReachable(TEST_URL)).toBe(true);
     });
 
     it.each([429, 500, 503])(

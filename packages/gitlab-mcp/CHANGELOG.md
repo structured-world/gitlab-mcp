@@ -4,6 +4,19 @@
 
 * exempt stdio session from idle timeout cleanup ([#363](https://github.com/structured-world/gitlab-mcp/issues/363)) ([ca563bd](https://github.com/structured-world/gitlab-mcp/commit/ca563bda9aa969d5d7680d3d89c2c72f32344838)), closes [#361](https://github.com/structured-world/gitlab-mcp/issues/361)
 
+## [12.0.3](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-v12.0.2...gitlab-mcp-v12.0.3) (2026-10-28)
+
+
+### Bug Fixes
+
+* **api:** omit empty optional REST filters ([#717](https://github.com/structured-world/gitlab-mcp/issues/717)) ([83c98fa](https://github.com/structured-world/gitlab-mcp/commit/83c98fad09e0083b5d23cb4312f414b459aa2e68)), closes [#652](https://github.com/structured-world/gitlab-mcp/issues/652)
+* **fetch:** honor proxy and CA for every instance ([#718](https://github.com/structured-world/gitlab-mcp/issues/718)) ([5742b1b](https://github.com/structured-world/gitlab-mcp/commit/5742b1bd102cc28e2c9ddb43c46e6556f540f350))
+* **files:** preserve binary repository content ([#714](https://github.com/structured-world/gitlab-mcp/issues/714)) ([b51045a](https://github.com/structured-world/gitlab-mcp/commit/b51045a16e140fe240de84c8efc3ded173a05ec6)), closes [#647](https://github.com/structured-world/gitlab-mcp/issues/647)
+* **health:** keep forbidden profile probes nonfatal ([#715](https://github.com/structured-world/gitlab-mcp/issues/715)) ([1fcd816](https://github.com/structured-world/gitlab-mcp/commit/1fcd816fe41b2a408f0047538002b942953a87e8))
+* **http:** admit large MCP bodies after auth ([#713](https://github.com/structured-world/gitlab-mcp/issues/713)) ([c176655](https://github.com/structured-world/gitlab-mcp/commit/c17665596337c59fd3128221f72c9b6051cb0102))
+* **mrs:** pin merges to the expected head SHA ([#719](https://github.com/structured-world/gitlab-mcp/issues/719)) ([b855766](https://github.com/structured-world/gitlab-mcp/commit/b855766833018e881b11cb128d4992e892e936fb))
+* **oauth:** sanitize provider error diagnostics ([#711](https://github.com/structured-world/gitlab-mcp/issues/711)) ([74a8234](https://github.com/structured-world/gitlab-mcp/commit/74a8234952374176b4b8fff133a2deab80788e28))
+
 ## [12.0.2](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-v12.0.1...gitlab-mcp-v12.0.2) (2026-10-27)
 
 

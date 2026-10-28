@@ -1465,6 +1465,7 @@ describe('MRS Registry', () => {
       });
 
       describe('action: merge', () => {
+        // The existing mergeability read must also pin immediate merges to that observed head.
         it('should merge MR with options when status is mergeable', async () => {
           // Mock pre-check GET request
           const mockMrStatus = {
@@ -1474,6 +1475,7 @@ describe('MRS Registry', () => {
             blocking_discussions_resolved: true,
             state: 'opened',
             draft: false,
+            sha: 'c'.repeat(40),
           };
           mockGitlab.get.mockResolvedValueOnce(mockMrStatus);
 
@@ -1500,6 +1502,7 @@ describe('MRS Registry', () => {
               body: expect.objectContaining({
                 merge_commit_message: 'Custom merge message',
                 should_remove_source_branch: true,
+                sha: mockMrStatus.sha,
               }),
               contentType: 'form',
             }),

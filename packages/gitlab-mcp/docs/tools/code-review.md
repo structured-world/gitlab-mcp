@@ -118,6 +118,16 @@ Find and inspect merge requests.
 
 Create and manage merge requests.
 
+For the `merge` action, set `merge_when_pipeline_succeeds: true` to request
+auto-merge without waiting for the pipeline locally. Both ordinary merge and
+auto-merge send an expected source-branch head SHA to GitLab. An explicit `sha`
+is sent unchanged. When omitted, ordinary merge reuses the head from its
+mergeability check; auto-merge reads the current head first. Auto-merge with an
+explicit SHA does not need that read. If the head changes before GitLab accepts
+the request, its conflict error is returned; the tool does not retry with a newer
+head. A missing head stops the write. This also works when the namespace requires
+a commit SHA for merges.
+
 ### Actions
 
 <!-- @autogen:tool manage_merge_request -->

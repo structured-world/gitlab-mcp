@@ -1542,6 +1542,56 @@ describe('MRS Registry', () => {
           expect(result).toEqual(mockResult);
         });
 
+        // An explicit expected head must not be replaced by a newer commit or need another read.
+        it('preserves an explicit SHA for auto-merge without reading the MR', async () => {
+          const sha = 'b'.repeat(40);
+          mockGitlab.put.mockResolvedValueOnce({ state: 'opened' });
+          await mrsToolRegistry.get('manage_merge_request')!.handler({
+            action: 'merge',
+            project_id: 'test/project',
+            merge_request_iid: 1,
+            merge_when_pipeline_succeeds: true,
+            sha,
+          });
+          expect(mockGitlab.get).not.toHaveBeenCalled();
+          expect(mockGitlab.put).toHaveBeenCalledWith(
+            'projects/test%2Fproject/merge_requests/1/merge',
+            { body: { sha, merge_when_pipeline_succeeds: true }, contentType: 'form' },
+          );
+        });
+
+        // A missing or malformed GitLab head must never result in an unpinned write.
+        it.each([undefined, null, '', 123])(
+          'refuses auto-merge with invalid head %s',
+          async (sha) => {
+            mockGitlab.get.mockResolvedValueOnce({ sha });
+            await expect(
+              mrsToolRegistry.get('manage_merge_request')!.handler({
+                action: 'merge',
+                project_id: 'test/project',
+                merge_request_iid: 1,
+                merge_when_pipeline_succeeds: true,
+              }),
+            ).rejects.toThrow('GitLab did not return a head SHA');
+            expect(mockGitlab.put).not.toHaveBeenCalled();
+          },
+        );
+
+        // Read failures must propagate without scheduling an automatic merge.
+        it('does not schedule auto-merge when reading the MR fails', async () => {
+          const error = new Error('GitLab API error: 404 Not Found');
+          mockGitlab.get.mockRejectedValueOnce(error);
+          await expect(
+            mrsToolRegistry.get('manage_merge_request')!.handler({
+              action: 'merge',
+              project_id: 'test/project',
+              merge_request_iid: 1,
+              merge_when_pipeline_succeeds: true,
+            }),
+          ).rejects.toBe(error);
+          expect(mockGitlab.put).not.toHaveBeenCalled();
+        });
+
         it('should return structured error when pipeline is running', async () => {
           // Mock pre-check showing pipeline running
           const mockMrStatus = {

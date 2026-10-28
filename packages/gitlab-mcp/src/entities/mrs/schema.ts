@@ -128,7 +128,12 @@ const MergeMergeRequestSchema = z.object({
     .optional()
     .describe('Remove source branch after merge'),
   merge_when_pipeline_succeeds: flexibleBoolean.optional().describe('Merge when pipeline succeeds'),
-  sha: z.string().optional().describe('SHA of the head commit'),
+  sha: z
+    .string()
+    .optional()
+    .describe(
+      'Expected head commit SHA; GitLab rejects a different head. Auto-merge reads the current head when omitted.',
+    ),
 });
 
 // --- Action: approve ---

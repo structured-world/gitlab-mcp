@@ -485,9 +485,17 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
             const projectPath = normalizeProjectId(project_id);
             const mergeEndpoint = `projects/${projectPath}/merge_requests/${encodeApiSegment(merge_request_iid)}/merge`;
 
-            // If auto-merge is explicitly requested, try it directly
-            // This allows setting auto-merge even when pipeline is running
+            // Auto-merge may be scheduled while CI runs, but still needs a pinned head.
             if (merge_when_pipeline_succeeds) {
+              if (body.sha === undefined) {
+                const mr = await gitlab.get<{ sha?: unknown }>(
+                  `projects/${projectPath}/merge_requests/${encodeApiSegment(merge_request_iid)}`,
+                );
+                if (typeof mr.sha !== 'string' || mr.sha.length === 0) {
+                  throw new Error('Cannot schedule auto-merge: GitLab did not return a head SHA');
+                }
+                body.sha = mr.sha;
+              }
               return gitlab.put(mergeEndpoint, {
                 body: { ...body, merge_when_pipeline_succeeds: true },
                 contentType: 'form',

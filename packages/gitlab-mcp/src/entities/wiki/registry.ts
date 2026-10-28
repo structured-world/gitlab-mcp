@@ -92,6 +92,11 @@ export const wikiToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
             // TypeScript knows: input has slug (required), title, content, format (optional)
             const { action: _action, namespace: _namespace, slug, ...body } = input;
 
+            // Without title, GitLab can reuse only the leaf name and flatten the path.
+            if (body.title === undefined && slug.includes('/')) {
+              body.title = slug;
+            }
+
             return gitlab.put(`${entityType}/${encodedPath}/wikis/${encodeURIComponent(slug)}`, {
               body,
               contentType: 'json',

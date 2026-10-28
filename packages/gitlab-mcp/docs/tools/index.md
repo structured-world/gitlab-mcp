@@ -135,6 +135,11 @@ Each tool accepts an `action` parameter selecting the specific operation.
 | `browse_wiki` | Query | List and get wiki pages |
 | `manage_wiki` | Command | Create, update, delete wiki pages |
 
+For `manage_wiki` updates, omit `title` to preserve the page's current slug and URL
+when changing `content` or `format`, including nested pages. An explicit `title`
+renames the page and can change its URL: a leaf-only title stays in the current
+directory, while a title containing `/` supplies the full destination path.
+
 ### Milestones (`USE_MILESTONE=true`, default: enabled)
 
 | Tool | Type | Description |

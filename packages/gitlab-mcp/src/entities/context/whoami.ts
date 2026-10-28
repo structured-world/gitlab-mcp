@@ -24,7 +24,7 @@ import { ConnectionManager } from '../../services/ConnectionManager';
 import { getTokenCreationUrl, getScopeCapabilities } from '../../services/TokenScopeDetector';
 import { RegistryManager } from '../../registry-manager';
 import { sendToolsListChangedNotification } from '../../server';
-import { enhancedFetch } from '../../utils/fetch';
+import { enhancedFetch, GitLabTimeoutError } from '../../utils/fetch';
 import { getGitLabBaseUrl } from '../../utils/gitlab-base-url';
 import { getContextManager } from './context-manager';
 import {
@@ -35,6 +35,7 @@ import {
   WhoamiCapabilities,
   WhoamiContextInfo,
   WhoamiRecommendation,
+  WhoamiLookupError,
 } from './types';
 
 /**
@@ -50,23 +51,114 @@ function getHost(): string {
   }
 }
 
-type UserLookup = { user: WhoamiUserInfo | null; lookup: WhoamiResult['userLookup'] };
+type UserLookup = {
+  user: WhoamiUserInfo | null;
+  lookup: WhoamiResult['userLookup'];
+  error?: WhoamiLookupError;
+};
+
+// Node's transport codes are stable; free-form messages can contain credentials or
+// provider response excerpts. Only exact known codes cross the diagnostic boundary.
+// https://nodejs.org/api/errors.html#errorcode
+type LookupTransportKind = Exclude<WhoamiLookupError['kind'], 'http'>;
+const LOOKUP_ERROR_KINDS = new Map<string, LookupTransportKind>([
+  ...[
+    'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
+    'UNABLE_TO_GET_ISSUER_CERT',
+    'UNABLE_TO_GET_ISSUER_CERT_LOCALLY',
+    'SELF_SIGNED_CERT_IN_CHAIN',
+    'DEPTH_ZERO_SELF_SIGNED_CERT',
+    'CERT_HAS_EXPIRED',
+    'CERT_NOT_YET_VALID',
+    'ERR_TLS_CERT_ALTNAME_INVALID',
+  ].map((code): [string, LookupTransportKind] => [code, 'tls']),
+  ...['ENOTFOUND', 'EAI_AGAIN'].map((code): [string, LookupTransportKind] => [code, 'dns']),
+  ...[
+    'ETIMEDOUT',
+    'UND_ERR_CONNECT_TIMEOUT',
+    'UND_ERR_HEADERS_TIMEOUT',
+    'UND_ERR_BODY_TIMEOUT',
+  ].map((code): [string, LookupTransportKind] => [code, 'timeout']),
+  ...[
+    'ECONNREFUSED',
+    'ECONNRESET',
+    'ECONNABORTED',
+    'ENETUNREACH',
+    'EHOSTUNREACH',
+    'EPIPE',
+    'UND_ERR_SOCKET',
+  ].map((code): [string, LookupTransportKind] => [code, 'network']),
+]);
+
+const LOOKUP_ERROR_MESSAGES = {
+  tls: 'TLS certificate verification failed during the GitLab user lookup.',
+  dns: 'DNS resolution failed during the GitLab user lookup.',
+  timeout: 'The GitLab user lookup timed out.',
+  network: 'The GitLab user lookup failed before a usable response was received.',
+};
+
+function transportLookupError(
+  kind: keyof typeof LOOKUP_ERROR_MESSAGES,
+  code?: string,
+): WhoamiLookupError {
+  return {
+    kind,
+    ...(code !== undefined && { code }),
+    message: LOOKUP_ERROR_MESSAGES[kind],
+    ...(kind === 'tls' && {
+      hint: 'Check the certificate hostname and validity, and that GITLAB_CA_CERT_PATH or NODE_EXTRA_CA_CERTS trusts the CA chain, including intermediate certificates.',
+    }),
+  };
+}
+
+/** Classify both direct Node errors and Undici's cause without exposing their text. */
+function describeLookupError(error: unknown, status?: number): WhoamiLookupError {
+  const cause =
+    typeof error === 'object' && error !== null && 'cause' in error ? error.cause : undefined;
+  for (const candidate of [error, cause]) {
+    if (
+      candidate instanceof GitLabTimeoutError ||
+      (candidate instanceof Error && candidate.name === 'TimeoutError')
+    ) {
+      return transportLookupError('timeout');
+    }
+    if (typeof candidate !== 'object' || candidate === null || !('code' in candidate)) continue;
+    const code = candidate.code;
+    if (typeof code !== 'string') continue;
+    const kind = LOOKUP_ERROR_KINDS.get(code);
+    if (kind) return transportLookupError(kind, code);
+  }
+  if (status !== undefined) {
+    return {
+      kind: 'http',
+      status,
+      message: `Could not read the GitLab user lookup response (HTTP ${status}).`,
+    };
+  }
+  return transportLookupError('network');
+}
 
 /**
  * Fetch current user information from GitLab API
  * Works with any valid token including read_user scope
  */
 async function fetchCurrentUser(): Promise<UserLookup> {
+  let status: number | undefined;
   try {
     const response = await enhancedFetch(`${getGitLabBaseUrl()}/api/v4/user`, {
       retry: false,
     });
+    status = response.status;
 
     if (!response.ok) {
       logDebug('Failed to fetch current user', { status: response.status });
       // Only these mean the credentials were refused; any other status says nothing about them.
       const refused = response.status === 401 || response.status === 403;
-      return { user: null, lookup: refused ? 'rejected' : 'failed' };
+      return {
+        user: null,
+        lookup: refused ? 'rejected' : 'failed',
+        error: { kind: 'http', status, message: `GitLab user lookup returned HTTP ${status}.` },
+      };
     }
 
     const data = (await response.json()) as {
@@ -92,10 +184,9 @@ async function fetchCurrentUser(): Promise<UserLookup> {
       lookup: 'ok',
     };
   } catch (error) {
-    logDebug('Error fetching current user', {
-      error: error instanceof Error ? error.message : String(error),
-    });
-    return { user: null, lookup: 'failed' };
+    const diagnostic = describeLookupError(error, status);
+    logDebug('Error fetching current user', { ...diagnostic });
+    return { user: null, lookup: 'failed', error: diagnostic };
   }
 }
 
@@ -412,10 +503,8 @@ export async function executeWhoami(): Promise<WhoamiResult> {
   }
 
   // Step 2: Fetch all information (AFTER refresh so we get updated data)
-  const [{ user: userInfo, lookup: userLookup }, tokenInfo] = await Promise.all([
-    fetchCurrentUser(),
-    Promise.resolve(buildTokenInfo()),
-  ]);
+  const [{ user: userInfo, lookup: userLookup, error: userLookupError }, tokenInfo] =
+    await Promise.all([fetchCurrentUser(), Promise.resolve(buildTokenInfo())]);
 
   // Enrich identity with admin-mode elevation from the session probe. The role
   // flag (isAdmin) alone is misleading: an admin without active elevation still
@@ -443,6 +532,10 @@ export async function executeWhoami(): Promise<WhoamiResult> {
   const capabilities = buildCapabilities(tokenInfo);
   const contextInfo = await buildContextInfo();
   const warnings = generateWarnings(tokenInfo, capabilities, effectiveIsAdmin);
+  if (userLookupError) {
+    warnings.push(userLookupError.message);
+    if (userLookupError.hint) warnings.push(userLookupError.hint);
+  }
 
   // Honest admin signal: role present but elevation inactive means admin tools
   // will 403 at call time, so surface it instead of implying admin access works.
@@ -471,6 +564,7 @@ export async function executeWhoami(): Promise<WhoamiResult> {
   return {
     user: userInfo,
     userLookup,
+    ...(userLookupError && { userLookupError }),
     token: tokenInfo,
     server: serverInfo,
     capabilities,

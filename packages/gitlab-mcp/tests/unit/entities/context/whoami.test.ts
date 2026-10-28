@@ -10,6 +10,10 @@ import { WhoamiResult } from '../../../../src/entities/context/types';
 import { runWithTokenContext } from '../../../../src/oauth/token-context';
 import { ContextOutputSchema } from '../../../../src/entities/context/output-schema';
 import { GitLabTimeoutError } from '../../../../src/utils/fetch';
+import { contextToolRegistry } from '../../../../src/entities/context/registry';
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
+import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
 // Create mock objects that will be populated in tests
 const mockConnectionManager = {
@@ -93,6 +97,7 @@ describe('whoami handler', () => {
       filteredByTier: 0,
       filteredByDeniedRegex: 0,
       filteredByActionDenial: 0,
+      filteredByAdmin: 0,
     });
 
     mockConnectionManager.getTokenScopeInfo.mockReturnValue({
@@ -206,8 +211,12 @@ describe('whoami handler', () => {
     // Connection diagnostics must survive Undici's wrapper without copying secrets from errors.
     it.each([
       ['UNABLE_TO_VERIFY_LEAF_SIGNATURE', 'tls'],
+      ['UNABLE_TO_GET_ISSUER_CERT', 'tls'],
+      ['UNABLE_TO_GET_ISSUER_CERT_LOCALLY', 'tls'],
       ['SELF_SIGNED_CERT_IN_CHAIN', 'tls'],
+      ['DEPTH_ZERO_SELF_SIGNED_CERT', 'tls'],
       ['CERT_HAS_EXPIRED', 'tls'],
+      ['CERT_NOT_YET_VALID', 'tls'],
       ['ERR_TLS_CERT_ALTNAME_INVALID', 'tls'],
       ['ENOTFOUND', 'dns'],
       ['EAI_AGAIN', 'dns'],
@@ -216,6 +225,11 @@ describe('whoami handler', () => {
       ['UND_ERR_HEADERS_TIMEOUT', 'timeout'],
       ['UND_ERR_BODY_TIMEOUT', 'timeout'],
       ['ECONNREFUSED', 'network'],
+      ['ECONNRESET', 'network'],
+      ['ECONNABORTED', 'network'],
+      ['ENETUNREACH', 'network'],
+      ['EHOSTUNREACH', 'network'],
+      ['EPIPE', 'network'],
       ['UND_ERR_SOCKET', 'network'],
     ])('reports %s as %s', async (code, kind) => {
       const cause = Object.assign(new Error('Authorization: Bearer synthetic-secret'), { code });
@@ -237,30 +251,69 @@ describe('whoami handler', () => {
     });
 
     // The shared transport wraps native timeouts in a typed error without its own code.
-    it.each(['connect', 'headers', 'body'] as const)('reports a wrapped %s timeout', async (phase) => {
-      mockEnhancedFetch.mockRejectedValue(new GitLabTimeoutError(phase, 100));
+    it.each(['connect', 'headers', 'body'] as const)(
+      'reports a wrapped %s timeout',
+      async (phase) => {
+        mockEnhancedFetch.mockRejectedValue(new GitLabTimeoutError(phase, 100));
+        const result = (await handleManageContext({ action: 'whoami' })) as WhoamiResult;
+        expect(result).toMatchObject({ userLookupError: { kind: 'timeout' } });
+      },
+    );
+
+    // Transport codes can be direct too; a wrapper's unknown code must not hide its cause.
+    it.each([{ code: 'ENOTFOUND' }, { code: 'UNKNOWN', cause: { code: 'ENOTFOUND' } }])(
+      'recognizes a direct or wrapped DNS code (%j)',
+      async (error) => {
+        mockEnhancedFetch.mockRejectedValue(error);
+        const result = (await handleManageContext({ action: 'whoami' })) as WhoamiResult;
+        expect(result.userLookupError).toMatchObject({ kind: 'dns', code: 'ENOTFOUND' });
+      },
+    );
+
+    // A TimeoutError signal has no transport code, while caller cancellation is not a timeout.
+    it.each([
+      [Object.assign(new Error('synthetic-secret'), { name: 'TimeoutError' }), 'timeout'],
+      [new TypeError('fetch failed', { cause: new GitLabTimeoutError('connect', 100) }), 'timeout'],
+      [Object.assign(new Error('synthetic-secret'), { name: 'AbortError' }), 'network'],
+    ] as const)('classifies signals without leaking their text (%s)', async (error, kind) => {
+      mockEnhancedFetch.mockRejectedValue(error);
       const result = (await handleManageContext({ action: 'whoami' })) as WhoamiResult;
-      expect(result).toMatchObject({ userLookupError: { kind: 'timeout' } });
+      expect(result.userLookupError).toMatchObject({ kind });
+      expect(JSON.stringify(result)).not.toContain('synthetic-secret');
     });
 
     // HTTP diagnostics must not read an arbitrary provider/proxy response body or status text.
-    it.each([401, 403, 429, 500, 503])('reports HTTP %s without response content', async (status) => {
-      const json = jest.fn();
-      mockEnhancedFetch.mockResolvedValue({ ok: false, status, statusText: 'synthetic-secret', json });
-      const result = (await handleManageContext({ action: 'whoami' })) as WhoamiResult;
-      expect(result).toMatchObject({
-        userLookupError: { kind: 'http', status, message: expect.stringContaining(String(status)) },
-      });
-      expect(json).not.toHaveBeenCalled();
-      expect(JSON.stringify(result)).not.toContain('synthetic-secret');
-    });
+    it.each([401, 403, 429, 500, 503])(
+      'reports HTTP %s without response content',
+      async (status) => {
+        const json = jest.fn();
+        mockEnhancedFetch.mockResolvedValue({
+          ok: false,
+          status,
+          statusText: 'synthetic-secret',
+          json,
+        });
+        const result = (await handleManageContext({ action: 'whoami' })) as WhoamiResult;
+        expect(result).toMatchObject({
+          userLookupError: {
+            kind: 'http',
+            status,
+            message: expect.stringContaining(String(status)),
+          },
+        });
+        expect(json).not.toHaveBeenCalled();
+        expect(JSON.stringify(result)).not.toContain('synthetic-secret');
+      },
+    );
 
     // Parser errors may quote response data; they must retain status, not provider content.
     it('reports an unreadable HTTP response safely', async () => {
       mockEnhancedFetch.mockResolvedValue({
         ok: true,
         status: 200,
-        json: async () => { throw new SyntaxError('synthetic-secret'); },
+        json: async () => {
+          throw new SyntaxError('synthetic-secret');
+        },
       });
       const result = (await handleManageContext({ action: 'whoami' })) as WhoamiResult;
       expect(result).toMatchObject({ userLookupError: { kind: 'http', status: 200 } });
@@ -270,12 +323,16 @@ describe('whoami handler', () => {
     // Neither unknown codes nor arbitrary thrown values belong in public diagnostics.
     it.each([
       Object.assign(new Error('synthetic-secret'), { code: 'synthetic-secret' }),
+      { code: 123, message: 'synthetic-secret' },
+      { code: 'CERT_HAS_EXPIRED synthetic-secret' },
       'synthetic-secret',
       null,
     ])('keeps unknown failures private (%s)', async (error) => {
       mockEnhancedFetch.mockRejectedValue(error);
       const result = (await handleManageContext({ action: 'whoami' })) as WhoamiResult;
-      expect(result).toMatchObject({ userLookupError: { kind: 'network', message: expect.any(String) } });
+      expect(result).toMatchObject({
+        userLookupError: { kind: 'network', message: expect.any(String) },
+      });
       expect(JSON.stringify(result)).not.toContain('synthetic-secret');
     });
 
@@ -284,6 +341,43 @@ describe('whoami handler', () => {
       const result = (await handleManageContext({ action: 'whoami' })) as WhoamiResult;
       expect(result).not.toHaveProperty('userLookupError');
       expect(result.userLookup).toBe('ok');
+    });
+
+    // A real HTTP response must reach both MCP representations with matching, schema-valid diagnostics.
+    it.each([401, 503])('exposes HTTP %s through the registered MCP tool', async (status) => {
+      const requests: string[] = [];
+      const server = createServer((request, response) => {
+        requests.push(request.url!);
+        response.writeHead(status, { 'content-type': 'text/plain', connection: 'close' });
+        response.end('synthetic-secret');
+      });
+      await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+      try {
+        const { port } = server.address() as AddressInfo;
+        mockEnhancedFetch.mockImplementationOnce((url: string) => {
+          const target = new URL(url);
+          return fetch(`http://127.0.0.1:${port}${target.pathname}`);
+        });
+        const result = (await contextToolRegistry.get('manage_context')!.handler({
+          action: 'whoami',
+        })) as CallToolResult;
+        const content = result.content[0];
+        expect(content.type).toBe('text');
+        if (content.type !== 'text') throw new Error('Expected the documented text payload');
+        const data = JSON.parse(content.text) as WhoamiResult;
+        expect(data).toMatchObject({ userLookupError: { kind: 'http', status } });
+        expect(result.structuredContent).toEqual({ action: 'whoami', data });
+        expect(ContextOutputSchema.parse(result.structuredContent)).toEqual(
+          result.structuredContent,
+        );
+        expect(data.warnings).toContain(data.userLookupError!.message);
+        expect(JSON.stringify(result)).not.toContain('synthetic-secret');
+        expect(requests).toEqual(['/api/v4/user']);
+      } finally {
+        await new Promise<void>((resolve, reject) =>
+          server.close((error) => (error ? reject(error) : resolve())),
+        );
+      }
     });
 
     it('should return server info', async () => {

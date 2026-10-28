@@ -166,6 +166,21 @@ describe('Fetch Configuration Edge Cases', () => {
       resetAndReregisterMocks();
     });
 
+    // Startup's existing direct path must keep explicit TLS and timeout configuration.
+    it('configures the direct startup agent when SOCKS is unsupported', () => {
+      mockConfig({ HTTPS_PROXY: 'socks5://proxy.example.com:1080', SKIP_TLS_VERIFY: true });
+      const { createFetchOptions } = require('../../../src/utils/fetch');
+      const { Agent } = require('undici');
+      expect(createFetchOptions().dispatcher).toBeDefined();
+      expect(Agent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          headersTimeout: 10000,
+          bodyTimeout: 30000,
+          connect: expect.objectContaining({ rejectUnauthorized: false, timeout: 2000 }),
+        }),
+      );
+    });
+
     // Unsupported SOCKS must preserve the registered direct path, including its timeout.
     it('retains a direct pool for a registered origin with unsupported SOCKS', () => {
       const pool = {};

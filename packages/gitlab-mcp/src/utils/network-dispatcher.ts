@@ -1,11 +1,12 @@
-import * as fs from 'fs';
+import * as fs from 'node:fs';
+import type { Dispatcher } from 'undici';
 import { GITLAB_CA_CERT_PATH, HTTP_PROXY, HTTPS_PROXY, NO_PROXY } from '../config';
 import { logInfo, logWarn } from '../logger';
 
 const undici = require('undici') as {
   Agent: new (options: Record<string, unknown>) => unknown;
   Pool: new (origin: string, options: Record<string, unknown>) => unknown;
-  EnvHttpProxyAgent: new (options: Record<string, unknown>) => unknown;
+  EnvHttpProxyAgent: new (options: Record<string, unknown>) => Dispatcher;
 };
 
 interface NetworkOptions {
@@ -70,15 +71,14 @@ export function createNetworkDispatcher({
   if (proxyUrl && /^(socks4?|socks5):\/\//.test(proxyUrl)) {
     logInfo(`Using SOCKS proxy: ${proxyUrlForLogging(proxyUrl)}`);
     logWarn('SOCKS proxy not supported with native fetch. Consider HTTP/HTTPS proxy.');
-    // SOCKS is unavailable; registered origins retain their direct connection pools.
-    if (!origin) return undefined;
+    // SOCKS is unavailable; direct connections still retain GitLab trust and timeouts.
   } else if (proxyUrl) {
     logInfo(`Using proxy: ${proxyUrlForLogging(proxyUrl)}`);
     // Undici's HTTP forwarding and CONNECT-client factories receive only connect options.
     // Carry pool limits and response timeouts into those pools as well as target pools.
     const factory = (poolOrigin: string | URL, poolOptions: Record<string, unknown>) =>
       new undici.Pool(String(poolOrigin), { ...options, ...poolOptions });
-    return new undici.EnvHttpProxyAgent({
+    const agent = new undici.EnvHttpProxyAgent({
       ...options,
       httpProxy: HTTP_PROXY,
       httpsProxy: HTTPS_PROXY,
@@ -89,6 +89,15 @@ export function createNetworkDispatcher({
       requestTls: connect,
       // Instance TLS overrides apply to GitLab, not the separate proxy trust boundary.
       proxyTls: { timeout: connectTimeout },
+    });
+    if (!origin) return agent;
+    // Unlike a Pool, an Agent accepts arbitrary origins. Keep instance credentials
+    // confined to GitLab even when fetch follows redirects or NO_PROXY bypasses the proxy.
+    return agent.compose((dispatch) => (request, handler) => {
+      if (new URL(String(request.origin)).origin !== origin) {
+        throw new Error('Request origin does not match the configured GitLab instance');
+      }
+      return dispatch(request, handler);
     });
   }
   const directOptions = { ...options, connect };

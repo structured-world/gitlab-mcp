@@ -56,6 +56,15 @@ beforeAll(async () => {
     { stdio: 'ignore', timeout: 10_000 },
   );
   const respond: RequestListener = (request, response) => {
+    if (request.url?.startsWith('/redirect-')) {
+      response.writeHead(302, {
+        Location: request.url.startsWith('/redirect-cross/')
+          ? `${plainUrl.replace('127.0.0.1', 'localhost')}/api/v4/version`
+          : '/api/v4/version',
+      });
+      response.end();
+      return;
+    }
     tokens.push({ host: request.headers.host, token: request.headers['private-token'] });
     response.setHeader('Content-Type', 'application/json');
     response.end(
@@ -193,7 +202,7 @@ async function exercise(
       } finally {
         if (!registered) {
           const dispatcher = createFetchOptions().dispatcher as { destroy(): Promise<void> };
-          await dispatcher.destroy();
+          if (dispatcher) await dispatcher.destroy();
           resetDispatcherCache();
         }
         await registry.resetWithPools();
@@ -261,6 +270,19 @@ it('selects the proxy by the instance protocol', async () => {
   expect(proxyRequests).toEqual([]);
 });
 
+// A redirect must not send an instance PAT to a different origin, even on the bypass path.
+it.each(['', '*'])('rejects cross-origin redirects with NO_PROXY=%s', async (noProxy) => {
+  await expect(
+    exercise(`${plainUrl}/redirect-cross`, { HTTP_PROXY: proxyUrl, NO_PROXY: noProxy }, true),
+  ).rejects.toThrow('fetch failed');
+  expect(tokens).toEqual([]);
+});
+
+// Origin confinement must still allow GitLab redirects within the configured origin.
+it.each(['', '*'])('follows same-origin redirects with NO_PROXY=%s', async (noProxy) => {
+  await exercise(`${plainUrl}/redirect-same`, { HTTP_PROXY: proxyUrl, NO_PROXY: noProxy }, true);
+});
+
 // Supplying no CA must not accidentally disable verification while configuring a proxy.
 it.each([false, true])('rejects an untrusted certificate with proxy=%s', async (proxied) => {
   await expect(exercise(secureUrl, { HTTPS_PROXY: proxied ? proxyUrl : '' }, true)).rejects.toThrow(
@@ -284,3 +306,16 @@ it.each([false, true])(
     expect(proxyRequests).toHaveLength(proxied ? 1 : 0);
   },
 );
+
+// Unsupported SOCKS already connects directly; startup must still authenticate the private CA.
+it('retains startup CA settings with an unsupported SOCKS proxy', async () => {
+  await exercise(
+    secureUrl,
+    {
+      GITLAB_CA_CERT_PATH: join(certificateDirectory, 'ca.pem'),
+      HTTPS_PROXY: 'socks5://127.0.0.1:1',
+    },
+    false,
+  );
+  expect(proxyRequests).toEqual([]);
+});

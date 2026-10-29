@@ -115,18 +115,23 @@ function transportLookupError(
 function describeLookupError(error: unknown, status?: number): WhoamiLookupError {
   const cause =
     typeof error === 'object' && error !== null && 'cause' in error ? error.cause : undefined;
-  for (const candidate of [error, cause]) {
-    if (
-      candidate instanceof GitLabTimeoutError ||
-      (candidate instanceof Error && candidate.name === 'TimeoutError')
-    ) {
-      return transportLookupError('timeout');
-    }
+  const candidates = [error, cause];
+  // Inspect codes before timeout types: GitLabTimeoutError retains the native code in its cause.
+  for (const candidate of candidates) {
     if (typeof candidate !== 'object' || candidate === null || !('code' in candidate)) continue;
     const code = candidate.code;
     if (typeof code !== 'string') continue;
     const kind = LOOKUP_ERROR_KINDS.get(code);
     if (kind) return transportLookupError(kind, code);
+  }
+  if (
+    candidates.some(
+      (candidate) =>
+        candidate instanceof GitLabTimeoutError ||
+        (candidate instanceof Error && candidate.name === 'TimeoutError'),
+    )
+  ) {
+    return transportLookupError('timeout');
   }
   if (status !== undefined) {
     return {

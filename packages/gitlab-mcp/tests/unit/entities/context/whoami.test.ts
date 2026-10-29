@@ -260,6 +260,19 @@ describe('whoami handler', () => {
       },
     );
 
+    // Native timeouts retain their code in the typed transport error's cause.
+    it.each([
+      ['connect', 'UND_ERR_CONNECT_TIMEOUT'],
+      ['headers', 'UND_ERR_HEADERS_TIMEOUT'],
+      ['body', 'UND_ERR_BODY_TIMEOUT'],
+    ] as const)('preserves the coded cause of a %s timeout', async (phase, code) => {
+      const cause = Object.assign(new Error('synthetic-secret'), { code });
+      mockEnhancedFetch.mockRejectedValue(new GitLabTimeoutError(phase, 100, cause));
+      const result = (await handleManageContext({ action: 'whoami' })) as WhoamiResult;
+      expect(result.userLookupError).toMatchObject({ kind: 'timeout', code });
+      expect(JSON.stringify(result)).not.toContain('synthetic-secret');
+    });
+
     // Transport codes can be direct too; a wrapper's unknown code must not hide its cause.
     it.each([{ code: 'ENOTFOUND' }, { code: 'UNKNOWN', cause: { code: 'ENOTFOUND' } }])(
       'recognizes a direct or wrapped DNS code (%j)',

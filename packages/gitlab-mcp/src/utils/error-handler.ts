@@ -132,6 +132,8 @@ export interface ApiError extends StructuredError {
   http_status: number;
   /** Raw error from GitLab */
   gitlab_error?: string;
+  /** Minimum wait in whole seconds, when supplied by a valid Retry-After on HTTP 429. */
+  retry_after_seconds?: number;
 }
 
 /**
@@ -599,6 +601,7 @@ export function normalizeTier(tier: string | InternalTier): GitLabTier {
  */
 export interface GitLabApiErrorResponse {
   status: number;
+  retryAfterSeconds?: number;
   message?: string;
   error?: string;
   error_description?: string;
@@ -640,14 +643,19 @@ export function handleGitLabError(
 
   // 429 Rate Limited
   if (status === 429) {
+    const wait = error.retryAfterSeconds;
     return {
       error_code: 'RATE_LIMITED',
       tool,
       action,
       http_status: status,
       message: 'Rate limit exceeded. Please wait before retrying.',
-      suggested_fix: 'Wait a few minutes and try again, or reduce request frequency',
+      suggested_fix:
+        wait === undefined
+          ? 'Wait a few minutes and try again, or reduce request frequency'
+          : `Wait at least ${wait} seconds before retrying, or reduce request frequency`,
       gitlab_error: rawMessage,
+      ...(wait !== undefined && { retry_after_seconds: wait }),
     };
   }
 

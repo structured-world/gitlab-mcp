@@ -18,6 +18,7 @@ import * as operatorProjects from '../../src/configuration/operator-projects';
 import { ScopeEnforcer } from '../../src/profiles/scope-enforcer';
 import { StructuredToolError, parseGitLabApiError } from '../../src/utils/error-handler';
 import { GitLabTimeoutError } from '../../src/utils/fetch';
+import { GitLabApiError } from '../../src/utils/gitlab-api';
 import { ConfigurationService } from '../../src/configuration/service';
 import { resolveCaller } from '../../src/configuration/caller';
 import { runWithTokenAccount } from '../../src/accounts/token-account';
@@ -1571,6 +1572,35 @@ describe('handlers', () => {
       const parsed = JSON.parse(result.content![0].text);
       expect(parsed.error_code).toBe('RATE_LIMITED');
       expect(parsed.http_status).toBe(429);
+    });
+
+    // Direct registry failures and wrapped REST failures must preserve the same typed metadata.
+    it('preserves rate-limit metadata on a direct REST error', async () => {
+      mockRegistryManager.executeTool.mockRejectedValue(
+        new GitLabApiError(
+          429,
+          'Rejected',
+          'GitLab API error: 429 Too Many Requests - Rejected',
+          0,
+        ),
+      );
+      const result = await callToolHandler({
+        params: { name: 'browse_projects', arguments: { action: 'list' } },
+      });
+      expect(result.isError).toBe(true);
+      expect(result.structuredContent).toEqual({
+        error: {
+          error_code: 'RATE_LIMITED',
+          tool: 'browse_projects',
+          action: 'list',
+          http_status: 429,
+          message: 'Rate limit exceeded. Please wait before retrying.',
+          suggested_fix: 'Wait at least 0 seconds before retrying, or reduce request frequency',
+          gitlab_error: '429 Too Many Requests - Rejected',
+          retry_after_seconds: 0,
+        },
+      });
+      expect(JSON.parse(result.content![0].text)).toEqual(result.structuredContent!.error);
     });
 
     it('should handle 5xx server errors', async () => {

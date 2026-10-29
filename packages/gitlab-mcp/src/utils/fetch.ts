@@ -14,6 +14,7 @@
 import * as fs from 'fs';
 import { createNetworkDispatcher } from './network-dispatcher';
 import { assertSafeApiUrl } from './api-path';
+import { parseRetryAfterSeconds } from './retry-after';
 import { logWarn, logDebug } from '../logger';
 import {
   SKIP_TLS_VERIFY,
@@ -392,35 +393,6 @@ function calculateBackoffDelay(attempt: number): number {
 }
 
 /**
- * Parse Retry-After header value
- * Supports both delta-seconds (integer) and HTTP-date (RFC 7231) formats
- * @returns delay in milliseconds, or null if parsing fails
- */
-function parseRetryAfter(retryAfter: string): number | null {
-  // Try delta-seconds first (most common)
-  // Accept 0 or positive integers per RFC 7231 (0 means "retry immediately")
-  // Allow leading zeros per RFC 7231 delta-seconds = 1*DIGIT (e.g., "01", "001")
-  const trimmed = retryAfter.trim();
-  if (/^\d+$/.test(trimmed)) {
-    const seconds = parseInt(trimmed, 10);
-    if (seconds >= 0) {
-      return seconds * 1000;
-    }
-  }
-
-  // Try HTTP-date format (RFC 7231)
-  // Example: "Wed, 21 Oct 2015 07:28:00 GMT"
-  const dateMs = Date.parse(retryAfter);
-  if (!isNaN(dateMs)) {
-    const delayMs = dateMs - Date.now();
-    // Only return positive delays
-    return delayMs > 0 ? delayMs : null;
-  }
-
-  return null;
-}
-
-/**
  * Perform a single fetch request with timeout
  * Internal function used by enhancedFetch
  * @param url - The URL to fetch
@@ -773,10 +745,10 @@ export async function enhancedFetch(
           let retryDelay = calculateBackoffDelay(attempt);
           const retryAfter = response.headers.get('Retry-After');
           if (retryAfter && response.status === 429) {
-            const parsedDelay = parseRetryAfter(retryAfter);
-            if (parsedDelay !== null) {
+            const parsedSeconds = parseRetryAfterSeconds(retryAfter, Date.now());
+            if (parsedSeconds !== null) {
               // Cap Retry-After to max delay to prevent excessive waits
-              retryDelay = Math.min(parsedDelay, API_RETRY_MAX_DELAY_MS);
+              retryDelay = Math.min(parsedSeconds * 1000, API_RETRY_MAX_DELAY_MS);
             }
           }
 

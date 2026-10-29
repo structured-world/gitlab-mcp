@@ -15,6 +15,7 @@ import { getGitLabBaseUrl } from './gitlab-base-url';
 import { cleanGidsFromObject } from './idConversion';
 import { assertSafeApiPath } from './api-path';
 import { normalizeProjectId } from './projectIdentifier';
+import { parseRetryAfterSeconds } from './retry-after';
 
 type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
 
@@ -39,6 +40,7 @@ export class GitLabApiError extends Error {
     readonly status: number,
     readonly details: string,
     message: string,
+    readonly retryAfterSeconds?: number,
   ) {
     super(message);
     this.name = 'GitLabApiError';
@@ -157,6 +159,11 @@ async function request<T>(
   }
 
   if (!response.ok) {
+    const receivedAt = Date.now();
+    const retryAfter =
+      response.status === 429
+        ? parseRetryAfterSeconds(response.headers?.get('Retry-After') ?? null, receivedAt)
+        : null;
     let errorDetails = '';
     try {
       if (typeof response.text === 'function') {
@@ -194,6 +201,7 @@ async function request<T>(
       response.status,
       errorDetails,
       `GitLab API error: ${response.status} ${response.statusText}${errorDetails ? ` - ${errorDetails}` : ''}`,
+      retryAfter === null ? undefined : Math.ceil(retryAfter),
     );
   }
 

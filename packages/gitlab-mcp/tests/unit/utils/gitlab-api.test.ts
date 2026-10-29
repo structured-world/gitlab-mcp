@@ -5,6 +5,26 @@ jest.mock('../../../src/utils/fetch', () => ({ enhancedFetch: jest.fn() }));
 installFetchMock();
 
 describe('REST query values', () => {
+  // Preserve the provider's wait independently of its diagnostic body before the response is discarded.
+  it('retains Retry-After on a typed write error', async () => {
+    mockEnhancedFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify({ message: 'Comment rate limit exceeded' }), {
+        status: 429,
+        statusText: 'Too Many Requests',
+        headers: { 'Retry-After': '30', 'Set-Cookie': 'private-cookie' },
+      }),
+    );
+    await expect(
+      gitlab.post('projects/71/merge_requests/3/notes', { body: { body: 'Hi' } }),
+    ).rejects.toMatchObject({
+      status: 429,
+      details: 'Comment rate limit exceeded',
+      retryAfterSeconds: 30,
+      message: 'GitLab API error: 429 Too Many Requests - Comment rate limit exceeded',
+    });
+    expect(mockEnhancedFetch).toHaveBeenCalledTimes(1);
+  });
+
   // Unfilled client fields must not narrow a listing or trigger GitLab validation errors.
   it.each([false, true])('omits empty filters with toQuery=%s', async (useHelper) => {
     const filters = {
@@ -69,6 +89,54 @@ describe('REST query values', () => {
       expect(options?.body).toBe(contentType === 'json' ? '{"description":""}' : 'description=');
     },
   );
+});
+
+describe('REST rate-limit metadata', () => {
+  // Only a representable, valid delay on a rate-limit response may become a caller hint.
+  it.each([
+    [429, '0', 0],
+    [429, '001', 1],
+    [429, null, undefined],
+    [429, 'not-a-delay', undefined],
+    [429, '9007199254740992', undefined],
+    [429, '9'.repeat(400), undefined],
+    [500, '30', undefined],
+    [403, '30', undefined],
+  ])('handles status %i and Retry-After %j', async (status, header, expected) => {
+    const headers = new Headers();
+    if (header !== null) headers.set('Retry-After', header);
+    mockEnhancedFetch.mockResolvedValueOnce(
+      new Response('{"message":"Rejected"}', { status, headers }),
+    );
+    await expect(gitlab.post('projects/71/merge_requests/3/notes')).rejects.toMatchObject({
+      status,
+      details: 'Rejected',
+      retryAfterSeconds: expected,
+    });
+  });
+
+  // An absolute date is normalized at receipt, before a slow error body changes the clock.
+  it('rounds a date up from response receipt time before reading the body', async () => {
+    const now = jest.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-10-29T12:00:00.500Z'));
+    try {
+      mockEnhancedFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 429,
+        statusText: 'Too Many Requests',
+        headers: new Headers({ 'Retry-After': 'Thu, 29 Oct 2026 12:00:31 GMT' }),
+        text: async () => {
+          now.mockReturnValue(Date.parse('2026-10-29T12:00:20Z'));
+          return '{"message":"Rejected"}';
+        },
+      } as Response);
+      await expect(gitlab.post('projects/71/merge_requests/3/notes')).rejects.toMatchObject({
+        status: 429,
+        retryAfterSeconds: 31,
+      });
+    } finally {
+      now.mockRestore();
+    }
+  });
 });
 
 describe('REST pagination metadata', () => {

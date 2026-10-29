@@ -258,7 +258,7 @@
       },
       {
         "name": "browse_pipelines",
-        "description": "Monitor CI/CD pipelines and read job logs.",
+        "description": "Monitor CI/CD pipelines and read job logs or individual artifact files.",
         "category": "CI/CD",
         "tier": "free",
         "readOnly": true

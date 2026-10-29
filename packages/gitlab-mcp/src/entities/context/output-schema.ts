@@ -54,6 +54,15 @@ const whoami = z.object({
     })
     .nullable(),
   userLookup: z.enum(['ok', 'rejected', 'failed']),
+  userLookupError: z
+    .object({
+      kind: z.enum(['tls', 'dns', 'timeout', 'network', 'http']),
+      code: z.string().optional(),
+      status: z.number().int().optional(),
+      message: z.string(),
+      hint: z.string().optional(),
+    })
+    .optional(),
   token: z
     .object({
       type: z.enum([

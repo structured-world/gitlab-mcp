@@ -255,6 +255,20 @@ export interface WhoamiContextInfo {
 }
 
 /**
+ * Safe diagnostic for the current account lookup, without provider text or credentials.
+ */
+export interface WhoamiLookupError {
+  kind: 'tls' | 'dns' | 'timeout' | 'network' | 'http';
+  /** Known transport error code, when available. */
+  code?: string;
+  /** HTTP status when GitLab answered but the lookup failed. */
+  status?: number;
+  message: string;
+  /** Guidance for repairing the connection. */
+  hint?: string;
+}
+
+/**
  * Complete whoami result containing all introspection data
  */
 export interface WhoamiResult {
@@ -265,6 +279,8 @@ export interface WhoamiResult {
    * `failed` when it did not answer usefully (unreachable, timeout, server error).
    */
   userLookup: 'ok' | 'rejected' | 'failed';
+  /** Present only when the current user lookup failed or was rejected. */
+  userLookupError?: WhoamiLookupError;
   /** Token information (null if detection failed) */
   token: WhoamiTokenInfo | null;
   /** Server configuration */

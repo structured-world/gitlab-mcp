@@ -22,6 +22,25 @@ faq:
 
 Problems connecting GitLab MCP to your GitLab instance.
 
+## Diagnose the Current Connection
+
+Call `manage_context` with `{ "action": "whoami" }` to check the account used by
+the current chat. If the user lookup fails, `user` is `null` and `userLookupError`
+explains the failure:
+
+| Kind | Meaning | Next step |
+|------|---------|-----------|
+| `tls` | Certificate verification failed | Check the certificate hostname, validity and CA chain. The returned `hint` explains `GITLAB_CA_CERT_PATH` and `NODE_EXTRA_CA_CERTS`. |
+| `dns` | Hostname resolution failed | Check the instance URL, DNS and proxy configuration. |
+| `timeout` | The lookup timed out | Check GitLab availability and the connect, headers and body timeouts. |
+| `network` | Another transport or local request failure | Check connectivity, proxy settings and server configuration. |
+| `http` | GitLab returned an error status or an unreadable response | Inspect `status`. A `401` or `403` sets `userLookup` to `rejected`; other failed lookups set it to `failed`. |
+
+The diagnostic contains a safe message and, when known, a transport `code` or HTTP
+`status`. It omits response bodies, raw exception text and headers. The same
+message appears in connection-check warnings. Successful lookups keep their
+existing response shape and omit `userLookupError`.
+
 ## Token Issues {#token-issues}
 
 ### "401 Unauthorized"

@@ -1,5 +1,11 @@
 import { z } from 'zod';
 import { flexibleBoolean, paginationFields, requiredId, numericId } from '../utils';
+import {
+  ARTIFACT_DEFAULT_BYTES,
+  ARTIFACT_MAX_BYTES,
+  ARTIFACT_MAX_OFFSET,
+  encodeArtifactPath,
+} from './artifact-path';
 
 // Pipeline related schemas
 export const GitLabPipelineSchema = z.object({
@@ -216,7 +222,7 @@ const TriggerJobScopeSchema = z
 
 // ============================================================================
 // browse_pipelines - CQRS Query Tool (discriminated union schema)
-// Actions: list, get, jobs, triggers, job, logs
+// Actions: list, get, jobs, triggers, job, logs, artifact_file
 // Uses z.discriminatedUnion() for type-safe action handling.
 // Schema pipeline flattens to flat JSON Schema for AI clients that don't support oneOf.
 // ============================================================================
@@ -308,6 +314,49 @@ const GetJobLogsSchema = z.object({
     ),
 });
 
+const GetArtifactFileSchema = z.object({
+  action: z
+    .literal('artifact_file')
+    .describe(
+      'Read one artifact file as bounded UTF-8 text; inspect job metadata to choose its path',
+    ),
+  project_id: projectIdField,
+  job_id: numericId.describe('The ID of the job that uploaded artifacts:paths'),
+  artifact_path: z
+    .string()
+    .min(1)
+    .max(4096)
+    .refine((path) => {
+      try {
+        encodeArtifactPath(path);
+        return true;
+      } catch {
+        return false;
+      }
+    }, 'Expected a relative artifact file path without traversal')
+    .describe(
+      'Relative path within artifacts:paths, such as reports/test-results.txt; reports-only uploads are not archive entries',
+    ),
+  byte_offset: z
+    .number()
+    .int()
+    .min(0)
+    .max(ARTIFACT_MAX_OFFSET)
+    .default(0)
+    .describe(
+      'Source byte offset (default: 0, max: 20 MiB); use next_byte_offset to preserve UTF-8 boundaries',
+    ),
+  byte_limit: z
+    .number()
+    .int()
+    .min(1)
+    .max(ARTIFACT_MAX_BYTES)
+    .default(ARTIFACT_DEFAULT_BYTES)
+    .describe(
+      'Maximum source bytes returned (default: 64 KiB, max: 1 MiB). An undersized window cannot split a UTF-8 character',
+    ),
+});
+
 // --- Discriminated union combining all actions ---
 export const BrowsePipelinesSchema = z.discriminatedUnion('action', [
   ListPipelinesSchema,
@@ -316,6 +365,7 @@ export const BrowsePipelinesSchema = z.discriminatedUnion('action', [
   ListPipelineTriggersSchema,
   GetJobSchema,
   GetJobLogsSchema,
+  GetArtifactFileSchema,
 ]);
 
 // ============================================================================

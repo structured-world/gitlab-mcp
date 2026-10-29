@@ -139,7 +139,16 @@ export const buildCiConfigBase64 = (marker = ''): string => {
       default: 1
 ---
 test-job:
-  script: echo "Environment is $[[ inputs.environment ]]"
+  script:
+    - echo "Environment is $[[ inputs.environment ]]"
+    - mkdir -p reports/nested
+    - printf 'Artifact report A\\342\\202\\254\\360\\237\\230\\200\\n' > reports/nested/result.txt
+    - 'cp reports/nested/result.txt "reports/nested/a #?.txt"'
+    - printf '\\000\\377' > reports/binary.bin
+    - touch reports/empty.txt
+  artifacts:
+    paths:
+      - reports/
   rules:
     - if: '$CI_PIPELINE_SOURCE == "api"'
     - when: manual

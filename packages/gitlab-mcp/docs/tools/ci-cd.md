@@ -1,21 +1,21 @@
 ---
 title: CI/CD Tools
-description: "GitLab MCP CI/CD tools for pipeline automation. Trigger pipelines, retry failed jobs, view logs, manage variables with environment scoping, and control deployments with typed inputs."
+description: "GitLab MCP CI/CD tools for pipeline automation. Trigger pipelines, read bounded job logs and individual artifact files, manage variables with environment scoping, and control deployments with typed inputs."
 head:
   - - meta
     - name: keywords
-      content: GitLab CI/CD, pipelines, jobs, variables, MCP, deployment, pipeline management, job logs
+      content: GitLab CI/CD, pipelines, jobs, variables, MCP, deployment, pipeline management, job logs, artifact files
 ---
 
 # GitLab CI/CD Pipeline Tools
 
-Pipeline management, job control, logs, and CI/CD variable configuration.
+Pipeline management, job control, logs, individual artifact files, and CI/CD variable configuration.
 
 ## Tools Overview
 
 | Tool | Type | Purpose |
 |------|------|---------|
-| `browse_pipelines` | Query | List pipelines, jobs, view logs |
+| `browse_pipelines` | Query | List pipelines and jobs, read logs and artifact files |
 | `manage_pipeline` | Command | Trigger/retry/cancel pipelines; play/retry/cancel individual jobs |
 | `browse_variables` | Query | List and get CI/CD variables |
 | `manage_variable` | Command | Create, update, delete variables |
@@ -24,7 +24,7 @@ Pipeline management, job control, logs, and CI/CD variable configuration.
 
 ## browse_pipelines
 
-View pipeline status, job details, and console output.
+View pipeline status, job details, console output, and individual artifact files.
 
 ### Actions
 
@@ -37,6 +37,7 @@ View pipeline status, job details, and console output.
 | `triggers` | List bridge/trigger jobs in a pipeline |
 | `job` | Get single job details |
 | `logs` | Read job logs with bounded memory and explicit byte truncation |
+| `artifact_file` | Read one artifact file as bounded UTF-8 text; inspect job metadata to choose its path |
 <!-- @autogen:end -->
 
 ### Examples
@@ -116,6 +117,62 @@ including clipped lines. Request fewer lines to reduce page clipping; **line
 pagination cannot recover bytes omitted from an oversized individual line**.
 Inspect the full trace in GitLab when those bytes are needed. A failed or cancelled
 read returns an error rather than a successful partial page.
+
+### Individual Artifact Files
+
+Use `artifact_file` to read a known path uploaded through `artifacts:paths` on
+GitLab 16.0 or later, including Free instances. The action uses the selected
+connection, its credentials, read permissions and project restrictions. It does
+not download the artifacts archive or list its entries. A reports-only upload
+does not necessarily provide a downloadable archive entry.
+
+```json
+{
+  "action": "artifact_file",
+  "project_id": "my-org/api",
+  "job_id": "5678",
+  "artifact_path": "reports/nested/test-results.json",
+  "byte_offset": 0,
+  "byte_limit": 65536
+}
+```
+
+Paths are relative, with literal filenames rather than URL-encoded paths.
+Nested directories, spaces, `?` and `#` in filenames are encoded safely.
+Absolute paths, traversal, encoded separators and control characters are refused
+before downloading. Discover the job through `jobs` and inspect `job` metadata
+or the repository CI configuration to choose the artifact path.
+
+`byte_limit` defaults to **64 KiB**, with a maximum of **1 MiB**. The maximum
+`byte_offset` is **20 MiB**. The reader validates HTTP byte ranges; when a server
+ignores Range, it incrementally discards the bounded prefix. It retains one
+window and four bytes of lookahead, then cancels the transfer. Transport queues,
+UTF-8 decoding and response serialization use additional bounded memory.
+Unexpected HTTP compression is refused before decompression.
+
+The result contains `project_id`, `job_id`, `artifact_path`, `text`, `byte_start`
+(inclusive), `byte_end` (exclusive), `next_byte_offset`, `total_bytes`, `complete`
+and `truncated`. Continue while the returned `next_byte_offset` is not null.
+An incomplete UTF-8 character remains for the next request, preserving the
+source exactly; a small window may return fewer bytes than requested.
+`total_bytes` is null unless established by a validated range or actual EOF.
+If continuation would exceed the offset ceiling, `next_byte_offset` is null,
+`complete` remains false and `continuation_limit` reports `byte_offset_limit`
+with `max_byte_offset`. This is an explicit limit, not the end of the file.
+An empty file returns empty text with `complete: true`. A failed, timed-out or
+cancelled transfer returns an error, never apparent successful partial content.
+
+Binary or invalid UTF-8 content returns `ARTIFACT_READ_REFUSED` with a reason,
+bounded metadata and a GitLab `artifact_view_url`. Other refusals describe an
+invalid offset, an undersized window, invalid ranges or unsupported encoding.
+The action does not render HTML. Treat artifact content as untrusted data.
+Missing paths, expired or deleted artifacts and access-hidden artifacts can all
+produce GitLab 404 responses; the action does not claim to distinguish them.
+GitLab authentication and permission failures retain their normal handling.
+An object-storage HTTP error is reported as `storage_http_error` with `http_status`,
+without asking to reauthenticate a valid GitLab account.
+Redirects are bounded, signed query strings are omitted from diagnostics, and
+credentials are never forwarded or reinjected after leaving the GitLab origin.
 
 ## manage_pipeline
 

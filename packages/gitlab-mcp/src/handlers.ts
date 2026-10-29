@@ -579,21 +579,29 @@ const HANDLER_TIMEOUT = Symbol('handler_timeout');
 
 /** The time a call has from its arrival; resolving its account and running it share it. */
 interface CallDeadline {
+  signal: AbortSignal;
   expired: Promise<typeof HANDLER_TIMEOUT>;
   isExpired: () => boolean;
   clear: () => void;
 }
 
 function startCallDeadline(): CallDeadline {
+  const cancellation = new AbortController();
   let expired = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
   const promise = new Promise<typeof HANDLER_TIMEOUT>((resolve) => {
     timer = setTimeout(() => {
       expired = true;
       resolve(HANDLER_TIMEOUT);
+      cancellation.abort(new GitLabTimeoutError('body', HANDLER_TIMEOUT_MS));
     }, HANDLER_TIMEOUT_MS);
   });
-  return { expired: promise, isExpired: () => expired, clear: () => clearTimeout(timer) };
+  return {
+    signal: cancellation.signal,
+    expired: promise,
+    isExpired: () => expired,
+    clear: () => clearTimeout(timer),
+  };
 }
 
 /**
@@ -1393,38 +1401,45 @@ export async function setupHandlers(server: Server): Promise<void> {
   // cannot be used: that is how the chat switches away from it.
   // The timeout starts when the call arrives: resolving the account (a token refresh, a
   // wait for another replica's refresh lease) counts against it like the handler does.
-  server.setRequestHandler(CallToolRequestSchema, (request, extra) =>
-    runWithMcpServer(server, async () => {
-      const deadline = startCallDeadline();
-      try {
-        if (managesAccounts(request)) return await callTool(request, extra, deadline);
-        let running = false;
-        const call = withChatAccount(extra?.sessionId, async () => {
-          // The client was already answered with a timeout: the tool must not run behind it.
-          if (deadline.isExpired()) return undefined;
-          running = true;
-          return callTool(request, extra, deadline);
-        });
-        const first = await Promise.race([call, deadline.expired]);
-        if (first !== HANDLER_TIMEOUT && first !== undefined) return first;
-        // A running handler answers its own timeout, with what its bootstrap reached.
-        const answered = running ? await call : undefined;
-        if (answered) return answered;
-        call.catch((error: unknown) =>
-          logDebug('Account resolution failed after the call timed out', { err: error }),
-        );
-        return handlerTimeoutResult(
-          request,
-          undefined,
-          { started: false, complete: false },
-          GITLAB_BASE_URL,
-        );
-      } catch (error) {
-        if (!(error instanceof AccountUnavailableError)) throw error;
-        return errorToolResult({ error: error.message });
-      } finally {
-        deadline.clear();
-      }
-    }),
-  );
+  server.setRequestHandler(CallToolRequestSchema, (request, extra) => {
+    const deadline = startCallDeadline();
+    const signal = extra?.signal
+      ? AbortSignal.any([extra.signal, deadline.signal])
+      : deadline.signal;
+    return runWithMcpServer(
+      server,
+      async () => {
+        try {
+          if (managesAccounts(request)) return await callTool(request, extra, deadline);
+          let running = false;
+          const call = withChatAccount(extra?.sessionId, async () => {
+            // The client was already answered with a timeout: the tool must not run behind it.
+            if (deadline.isExpired()) return undefined;
+            running = true;
+            return callTool(request, extra, deadline);
+          });
+          const first = await Promise.race([call, deadline.expired]);
+          if (first !== HANDLER_TIMEOUT && first !== undefined) return first;
+          // A running handler answers its own timeout, with what its bootstrap reached.
+          const answered = running ? await call : undefined;
+          if (answered) return answered;
+          call.catch((error: unknown) =>
+            logDebug('Account resolution failed after the call timed out', { err: error }),
+          );
+          return handlerTimeoutResult(
+            request,
+            undefined,
+            { started: false, complete: false },
+            GITLAB_BASE_URL,
+          );
+        } catch (error) {
+          if (!(error instanceof AccountUnavailableError)) throw error;
+          return errorToolResult({ error: error.message });
+        } finally {
+          deadline.clear();
+        }
+      },
+      signal,
+    );
+  });
 }

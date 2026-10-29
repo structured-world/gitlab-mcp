@@ -10,6 +10,7 @@ import { logError } from '../../logger';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
 import { assertActionAllowed } from '../utils';
 import { readTracePage } from './trace';
+import { readArtifactFile } from './artifact';
 
 /**
  * Pipelines tools registry - 2 CQRS tools replacing 12 individual tools
@@ -27,7 +28,7 @@ export const pipelinesToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
     {
       name: 'browse_pipelines',
       description:
-        'Monitor CI/CD pipelines and read job logs. Actions: list (filter by status/ref/source/username), get (pipeline details), jobs (list pipeline jobs), triggers (bridge/trigger jobs), job (single job details), logs (job console output). Related: manage_pipeline to trigger/retry/cancel pipelines and play/retry/cancel individual jobs.',
+        'Monitor CI/CD pipelines and read job logs or individual artifact files. Actions: list (filter by status/ref/source/username), get (pipeline details), jobs (list pipeline jobs), triggers (bridge/trigger jobs), job (single job details), logs (job console output), artifact_file (bounded UTF-8 text with byte continuation). Related: manage_pipeline to trigger/retry/cancel pipelines and play/retry/cancel individual jobs.',
       inputSchema: z.toJSONSchema(BrowsePipelinesSchema),
       requirements: { default: { tier: 'free' } },
       gate: { envVar: 'USE_PIPELINE', defaultValue: true },
@@ -91,6 +92,9 @@ export const pipelinesToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
               `projects/${normalizeProjectId(project_id)}/jobs/${encodeApiSegment(job_id)}`,
             );
           }
+
+          case 'artifact_file':
+            return readArtifactFile(input);
 
           case 'logs': {
             // TypeScript knows: input has job_id (required), per_page, start (optional)

@@ -136,6 +136,19 @@ export interface ApiError extends StructuredError {
   retry_after_seconds?: number;
 }
 
+/** A bounded artifact read could not return the requested source window as text. */
+export interface ArtifactReadRefusal extends StructuredError {
+  error_code: 'ARTIFACT_READ_REFUSED';
+  reason: string;
+  project_id: string;
+  job_id: string;
+  artifact_path: string;
+  artifact_view_url?: string;
+  http_status?: number;
+  max_window_bytes: number;
+  max_prefix_bytes: number;
+}
+
 /**
  * Error for version-restricted widget parameters
  */
@@ -178,6 +191,7 @@ export type GitLabStructuredError =
   | PermissionDeniedError
   | NotFoundError
   | ApiError
+  | ArtifactReadRefusal
   | TimeoutError
   | ConnectionFailedError;
 

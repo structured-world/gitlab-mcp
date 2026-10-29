@@ -28,6 +28,7 @@ jest.mock('../../../src/config', () => ({
 // Mock the fetch, direct pool and environment-aware dispatcher used by doFetch().
 jest.mock('undici', () => ({
   fetch: jest.fn(),
+  request: jest.fn(),
   Agent: jest.fn(() => ({ type: 'agent' })),
   EnvHttpProxyAgent: jest.fn(() => ({ type: 'proxy-agent' })),
   Pool: jest.fn(() => ({ type: 'pool', close: jest.fn(), destroy: jest.fn() })),
@@ -96,6 +97,36 @@ describe('Enhanced Fetch Utilities', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockFetch.mockClear();
+  });
+
+  // Download diagnostics must never expose a signed query, even inside a transport error.
+  it('redacts transport errors for signed downloads', async () => {
+    const secret = 'fixture-signed-query';
+    require('undici').request.mockRejectedValueOnce(new Error(`network failure ?sig=${secret}`));
+    await expect(
+      enhancedFetch(`https://storage.example.com/file?sig=${secret}`, {
+        rawBody: true,
+        redactQuery: true,
+        retry: false,
+        skipAuth: true,
+      }),
+    ).rejects.toThrow('download');
+    const diagnostics = JSON.stringify(require('../../../src/logger').logWarn.mock.calls);
+    expect(diagnostics).not.toContain(secret);
+    expect(diagnostics).not.toContain('sig=');
+  });
+
+  // The undecoded download mode cannot silently discard a caller's write body.
+  it('rejects a request body in raw download mode before I/O', async () => {
+    await expect(
+      enhancedFetch('https://storage.example.com/file', {
+        rawBody: true,
+        method: 'POST',
+        body: 'content',
+        retry: false,
+      }),
+    ).rejects.toThrow('GET');
+    expect(require('undici').request).not.toHaveBeenCalled();
   });
 
   // Helper function to create proper Response mocks

@@ -10,6 +10,7 @@ import {
   ListResourcesRequestSchema,
   ListToolsRequestSchema,
   ReadResourceRequestSchema,
+  type CallToolResult,
 } from '@modelcontextprotocol/sdk/types.js';
 import { setupHandlers, resetHandlersState } from '../../src/handlers';
 import * as scopeIds from '../../src/configuration/scope-ids';
@@ -180,6 +181,7 @@ jest.mock('../../src/session-manager', () => ({
 /** Handler result type matching MCP SDK response shape */
 interface HandlerResult {
   content?: Array<{ type: string; text: string }>;
+  structuredContent?: CallToolResult['structuredContent'];
   tools?: Array<{ name: string; description: string; inputSchema: Record<string, unknown> }>;
   isError?: boolean;
 }

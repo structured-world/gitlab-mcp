@@ -5,6 +5,7 @@ import { gitlab, toQuery } from '../../utils/gitlab-api';
 import { normalizeProjectId } from '../../utils/projectIdentifier';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
 import { assertActionAllowed } from '../utils';
+import { withUnappliedProtection } from './protection';
 
 /**
  * Refs tools registry - 2 CQRS tools
@@ -26,11 +27,10 @@ export const refsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
       description:
         'Inspect branches, tags, and their protection rules. Actions: list_branches, get_branch, list_tags, get_tag, list_protected_branches, get_protected_branch, list_protected_tags (protection details and access levels). Related: manage_ref to create/delete/protect, browse_commits for commit history.',
       inputSchema: z.toJSONSchema(BrowseRefsSchema),
+      // Protected-tag operations are Free: GitLab v16.0.0-ee lib/api/protected_tags.rb.
+      // https://gitlab.com/gitlab-org/gitlab/-/blob/v16.0.0-ee/lib/api/protected_tags.rb
       requirements: {
         default: { tier: 'free' },
-        actions: {
-          list_protected_tags: { tier: 'premium', notes: 'Protected tags' },
-        },
       },
       handler: async (args: unknown): Promise<unknown> => {
         const input = BrowseRefsSchema.parse(args);
@@ -112,8 +112,12 @@ export const refsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
             tier: 'free',
             notes: 'PATCH endpoint; code owners require Premium',
           },
-          protect_tag: { tier: 'premium', notes: 'Protected tags' },
-          unprotect_tag: { tier: 'premium', notes: 'Protected tags' },
+        },
+        // GitLab 16.0 EE::ProtectedBranches::ApiService licenses this scalar setting.
+        // Access-list roles work on Free EE, so mixed lists are verified in the handler.
+        // https://gitlab.com/gitlab-org/gitlab/-/blob/v16.0.0-ee/ee/app/services/ee/protected_branches/api_service.rb
+        parameters: {
+          code_owner_approval_required: { tier: 'premium', notes: 'Code owner approval' },
         },
       },
       handler: async (args: unknown): Promise<unknown> => {
@@ -170,10 +174,11 @@ export const refsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
             if (code_owner_approval_required !== undefined)
               body.code_owner_approval_required = code_owner_approval_required;
 
-            return gitlab.post(`projects/${encodedProjectId}/protected_branches`, {
+            const result = await gitlab.post(`projects/${encodedProjectId}/protected_branches`, {
               body,
               contentType: 'json',
             });
+            return withUnappliedProtection(input, result);
           }
 
           case 'unprotect_branch': {
@@ -206,10 +211,14 @@ export const refsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
             if (code_owner_approval_required !== undefined)
               body.code_owner_approval_required = code_owner_approval_required;
 
-            return gitlab.patch(`projects/${encodedProjectId}/protected_branches/${encodedName}`, {
-              body,
-              contentType: 'json',
-            });
+            const result = await gitlab.patch(
+              `projects/${encodedProjectId}/protected_branches/${encodedName}`,
+              {
+                body,
+                contentType: 'json',
+              },
+            );
+            return withUnappliedProtection(input, result);
           }
 
           case 'create_tag': {
@@ -245,10 +254,11 @@ export const refsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
             if (create_access_level !== undefined) body.create_access_level = create_access_level;
             if (allowed_to_create !== undefined) body.allowed_to_create = allowed_to_create;
 
-            return gitlab.post(`projects/${encodedProjectId}/protected_tags`, {
+            const result = await gitlab.post(`projects/${encodedProjectId}/protected_tags`, {
               body,
               contentType: 'json',
             });
+            return withUnappliedProtection(input, result);
           }
 
           case 'unprotect_tag': {

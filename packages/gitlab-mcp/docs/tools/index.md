@@ -56,6 +56,28 @@ Each tool accepts an `action` parameter selecting the specific operation.
 | `browse_refs` | Query | Browse branches and tags |
 | `manage_ref` | Command | Create/protect branches and tags |
 
+Protected-tag listing, protection and unprotection are available on every GitLab
+tier. For branch and tag protection, `allowed_to_*` access lists are available in
+EE: role entries (`access_level`) work on Free EE, while individual user/group
+grants require Premium or Ultimate and the appropriate project membership.
+Code-owner approval requires Premium or Ultimate.
+
+Protection changes are checked against the returned GitLab entity. If GitLab
+ignores a requested access entry, `unprotect_access_level` or code-owner setting, the result includes
+`not_applied` with the setting name (including the input array index), requested
+value and required capability. Other changes may already have taken effect;
+inspect the returned protection before retrying. Fully applied responses retain
+their usual shape. CE callers can use `create_access_level`, `push_access_level`
+and `merge_access_level` for role-based protection.
+The standalone `unprotect_access_level` parameter requires EE too; it is checked
+against the returned `unprotect_access_levels`, including when CE ignores it.
+
+These capabilities are verified against GitLab 16.0 sources:
+[protected tags](https://gitlab.com/gitlab-org/gitlab/-/blob/v16.0.0-ee/lib/api/protected_tags.rb),
+[EE access-list parameters](https://gitlab.com/gitlab-org/gitlab/-/blob/v16.0.0-ee/ee/lib/ee/api/helpers/protected_branches_helpers.rb),
+[role and licensed user/group grants](https://gitlab.com/gitlab-org/gitlab/-/blob/v16.0.0-ee/ee/app/models/concerns/ee/protected_ref_access.rb),
+and [code-owner approval](https://gitlab.com/gitlab-org/gitlab/-/blob/v16.0.0-ee/ee/app/services/ee/protected_branches/api_service.rb).
+
 ### Members (`USE_MEMBERS=true`, default: enabled)
 
 | Tool | Type | Description |

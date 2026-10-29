@@ -20,6 +20,32 @@ const accessLevelField = z
   .int()
   .describe('Access level: 0=No access, 30=Developers, 40=Maintainers, 60=Admins');
 
+const accessListField = z
+  .array(
+    z.object({
+      user_id: z.number().optional().describe('User ID'),
+      group_id: z.number().optional().describe('Group ID'),
+      access_level: accessLevelField.optional().describe('Access level'),
+    }),
+  )
+  .optional();
+
+const branchProtectionAccessFields = {
+  allowed_to_push: accessListField.describe(
+    'Push access list (EE): role access_level entries work on Free; user_id/group_id entries require Premium or Ultimate. Unapplied entries are reported in not_applied.',
+  ),
+  allowed_to_merge: accessListField.describe(
+    'Merge access list (EE): role access_level entries work on Free; user_id/group_id entries require Premium or Ultimate. Unapplied entries are reported in not_applied.',
+  ),
+  allowed_to_unprotect: accessListField.describe(
+    'Unprotect access list (EE): role access_level entries work on Free; user_id/group_id entries require Premium or Ultimate. Unapplied entries are reported in not_applied.',
+  ),
+  code_owner_approval_required: z
+    .boolean()
+    .optional()
+    .describe('Require code owner approval (Premium feature)'),
+};
+
 // --- Action: create_branch ---
 const CreateBranchSchema = z.object({
   action: z.literal('create_branch').describe('Create a new branch from an existing ref'),
@@ -46,45 +72,14 @@ const ProtectBranchSchema = z.object({
     .describe('Who can merge (default: 40=Maintainers)'),
   unprotect_access_level: accessLevelField
     .optional()
-    .describe('Who can unprotect (default: 40=Maintainers)'),
+    .describe(
+      'Who can unprotect (EE; default: 40=Maintainers). If GitLab does not apply this setting, the result names it in not_applied.',
+    ),
   allow_force_push: z
     .boolean()
     .optional()
     .describe('Allow force push to protected branch (default: false)'),
-  allowed_to_push: z
-    .array(
-      z.object({
-        user_id: z.number().optional().describe('User ID'),
-        group_id: z.number().optional().describe('Group ID'),
-        access_level: accessLevelField.optional().describe('Access level'),
-      }),
-    )
-    .optional()
-    .describe('Granular push access (Premium feature)'),
-  allowed_to_merge: z
-    .array(
-      z.object({
-        user_id: z.number().optional().describe('User ID'),
-        group_id: z.number().optional().describe('Group ID'),
-        access_level: accessLevelField.optional().describe('Access level'),
-      }),
-    )
-    .optional()
-    .describe('Granular merge access (Premium feature)'),
-  allowed_to_unprotect: z
-    .array(
-      z.object({
-        user_id: z.number().optional().describe('User ID'),
-        group_id: z.number().optional().describe('Group ID'),
-        access_level: accessLevelField.optional().describe('Access level'),
-      }),
-    )
-    .optional()
-    .describe('Granular unprotect access (Premium feature)'),
-  code_owner_approval_required: z
-    .boolean()
-    .optional()
-    .describe('Require code owner approval (Premium feature)'),
+  ...branchProtectionAccessFields,
 });
 
 // --- Action: unprotect_branch ---
@@ -100,40 +95,7 @@ const UpdateBranchProtectionSchema = z.object({
   project_id: projectIdField,
   name: z.string().describe('Branch name or wildcard pattern'),
   allow_force_push: z.boolean().optional().describe('Allow force push to protected branch'),
-  allowed_to_push: z
-    .array(
-      z.object({
-        user_id: z.number().optional().describe('User ID'),
-        group_id: z.number().optional().describe('Group ID'),
-        access_level: accessLevelField.optional().describe('Access level'),
-      }),
-    )
-    .optional()
-    .describe('Granular push access (Premium feature)'),
-  allowed_to_merge: z
-    .array(
-      z.object({
-        user_id: z.number().optional().describe('User ID'),
-        group_id: z.number().optional().describe('Group ID'),
-        access_level: accessLevelField.optional().describe('Access level'),
-      }),
-    )
-    .optional()
-    .describe('Granular merge access (Premium feature)'),
-  allowed_to_unprotect: z
-    .array(
-      z.object({
-        user_id: z.number().optional().describe('User ID'),
-        group_id: z.number().optional().describe('Group ID'),
-        access_level: accessLevelField.optional().describe('Access level'),
-      }),
-    )
-    .optional()
-    .describe('Granular unprotect access (Premium feature)'),
-  code_owner_approval_required: z
-    .boolean()
-    .optional()
-    .describe('Require code owner approval (Premium feature)'),
+  ...branchProtectionAccessFields,
 });
 
 // --- Action: create_tag ---
@@ -154,27 +116,20 @@ const DeleteTagSchema = z.object({
 
 // --- Action: protect_tag ---
 const ProtectTagSchema = z.object({
-  action: z.literal('protect_tag').describe('Add protection rules to a tag pattern (Premium)'),
+  action: z.literal('protect_tag').describe('Add protection rules to a tag pattern (all tiers)'),
   project_id: projectIdField,
   name: z.string().describe("Tag name or wildcard pattern (e.g., 'v*', 'release-*')"),
   create_access_level: accessLevelField
     .optional()
     .describe('Who can create matching tags (default: 40=Maintainers)'),
-  allowed_to_create: z
-    .array(
-      z.object({
-        user_id: z.number().optional().describe('User ID'),
-        group_id: z.number().optional().describe('Group ID'),
-        access_level: accessLevelField.optional().describe('Access level'),
-      }),
-    )
-    .optional()
-    .describe('Granular create access (Premium feature)'),
+  allowed_to_create: accessListField.describe(
+    'Create access list (EE): role access_level entries work on Free; user_id/group_id entries require Premium or Ultimate. Unapplied entries are reported in not_applied.',
+  ),
 });
 
 // --- Action: unprotect_tag ---
 const UnprotectTagSchema = z.object({
-  action: z.literal('unprotect_tag').describe('Remove protection from a tag pattern (Premium)'),
+  action: z.literal('unprotect_tag').describe('Remove protection from a tag pattern (all tiers)'),
   project_id: projectIdField,
   name: z.string().describe('Tag name or wildcard pattern to unprotect'),
 });

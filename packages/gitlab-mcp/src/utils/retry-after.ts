@@ -17,12 +17,12 @@ export function parseRetryAfterSeconds(value: string | null, receivedAt: number)
 
 const DAY = '(Mon|Tue|Wed|Thu|Fri|Sat|Sun)';
 const MONTH = '(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)';
-const TIME = '(\\d{2}:\\d{2}:\\d{2})';
-const IMF_DATE = new RegExp(`^${DAY}, (\\d{2}) ${MONTH} (\\d{4}) ${TIME} GMT$`);
+const TIME = String.raw`(\d{2}:\d{2}:\d{2})`;
+const IMF_DATE = new RegExp(String.raw`^${DAY}, (\d{2}) ${MONTH} (\d{4}) ${TIME} GMT$`);
 const RFC850_DATE = new RegExp(
-  `^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday), (\\d{2})-${MONTH}-(\\d{2}) ${TIME} GMT$`,
+  String.raw`^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday), (\d{2})-${MONTH}-(\d{2}) ${TIME} GMT$`,
 );
-const ASCTIME_DATE = new RegExp(`^${DAY} ${MONTH} ( \\d|\\d{2}) ${TIME} (\\d{4})$`);
+const ASCTIME_DATE = new RegExp(String.raw`^${DAY} ${MONTH} ( \d|\d{2}) ${TIME} (\d{4})$`);
 
 function parseHttpDate(text: string, receivedAt: number): number | null {
   let canonical: string;

@@ -123,7 +123,7 @@ describe('simultaneous MCP client contracts', () => {
           response.writeHead(429, {
             'Content-Type': 'application/json',
             ...(header !== null && { 'Retry-After': header }),
-            'Set-Cookie': 'fixture-secret',
+            'Set-Cookie': 'session=fixture-secret; Secure; HttpOnly; SameSite=Strict',
           });
           response.end(JSON.stringify({ message: 'Comment rate limit exceeded' }));
         });

@@ -1576,34 +1576,42 @@ describe('handlers', () => {
       expect(parsed.http_status).toBe(429);
     });
 
-    // Direct registry failures and wrapped REST failures must preserve the same typed metadata.
-    it('preserves rate-limit metadata on a direct REST error', async () => {
-      mockRegistryManager.executeTool.mockRejectedValue(
-        new GitLabApiError(
+    // Scope resolution throws before dispatch; execution errors pass through its cause wrapper.
+    it.each(['scope lookup', 'tool execution'])(
+      'preserves rate-limit metadata from %s',
+      async (source) => {
+        const error = new GitLabApiError(
           429,
           'Rejected',
           'GitLab API error: 429 Too Many Requests - Rejected',
           0,
-        ),
-      );
-      const result = await callToolHandler({
-        params: { name: 'browse_projects', arguments: { action: 'list' } },
-      });
-      expect(result.isError).toBe(true);
-      expect(result.structuredContent).toEqual({
-        error: {
-          error_code: 'RATE_LIMITED',
-          tool: 'browse_projects',
-          action: 'list',
-          http_status: 429,
-          message: 'Rate limit exceeded. Please wait before retrying.',
-          suggested_fix: 'Wait at least 0 seconds before retrying, or reduce request frequency',
-          gitlab_error: '429 Too Many Requests - Rejected',
-          retry_after_seconds: 0,
-        },
-      });
-      expect(JSON.parse(result.content![0].text)).toEqual(result.structuredContent!.error);
-    });
+        );
+        const lookup = jest.spyOn(scopeIds, 'withTargetPaths');
+        if (source === 'scope lookup') lookup.mockRejectedValueOnce(error);
+        else mockRegistryManager.executeTool.mockRejectedValue(error);
+        try {
+          const result = await callToolHandler({
+            params: { name: 'browse_projects', arguments: { action: 'list' } },
+          });
+          expect(result.isError).toBe(true);
+          expect(result.structuredContent).toEqual({
+            error: {
+              error_code: 'RATE_LIMITED',
+              tool: 'browse_projects',
+              action: 'list',
+              http_status: 429,
+              message: 'Rate limit exceeded. Please wait before retrying.',
+              suggested_fix: 'Wait at least 0 seconds before retrying, or reduce request frequency',
+              gitlab_error: '429 Too Many Requests - Rejected',
+              retry_after_seconds: 0,
+            },
+          });
+          expect(JSON.parse(result.content![0].text)).toEqual(result.structuredContent!.error);
+        } finally {
+          lookup.mockRestore();
+        }
+      },
+    );
 
     it('should handle 5xx server errors', async () => {
       mockRegistryManager.executeTool.mockRejectedValue(

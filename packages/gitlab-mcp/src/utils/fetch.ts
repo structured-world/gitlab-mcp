@@ -12,6 +12,8 @@
  */
 
 import * as fs from 'fs';
+import { ReadableStream as NodeReadableStream } from 'node:stream/web';
+import { STATUS_CODES } from 'node:http';
 import { createNetworkDispatcher } from './network-dispatcher';
 import { assertSafeApiUrl } from './api-path';
 import { parseRetryAfterSeconds } from './retry-after';
@@ -43,6 +45,7 @@ import { InstanceRegistry } from '../services/InstanceRegistry.js';
 // than our npm package — causing "invalid onRequestStart method" dispatcher API mismatches.
 const undici = require('undici') as {
   fetch: typeof globalThis.fetch;
+  request: typeof import('undici').request;
 };
 
 /**
@@ -213,6 +216,10 @@ export class GitLabTimeoutError extends Error {
  * Extended fetch options with retry configuration
  */
 export interface FetchWithRetryOptions extends RequestInit {
+  /** Read undecoded HTTP bytes without automatic redirects; normal calls use fetch decoding. */
+  rawBody?: boolean;
+  /** Omit the entire query string from diagnostics, for signed download URLs. */
+  redactQuery?: boolean;
   /** Enable retry for this request (default: true for GET/HEAD/OPTIONS, false otherwise) */
   retry?: boolean;
   /** Maximum number of retry attempts (default: from config) */
@@ -284,9 +291,10 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
  * Redact sensitive information from URLs for safe logging
  * Masks upload secrets, tokens in paths, and sensitive query parameters
  */
-function redactUrlForLogging(url: string): string {
+function redactUrlForLogging(url: string, redactQuery?: boolean): string {
   try {
     const parsed = new URL(url);
+    if (redactQuery) parsed.search = '';
 
     // Redact URL userinfo (user:pass@host)
     if (parsed.username) parsed.username = '[REDACTED]';
@@ -392,6 +400,61 @@ function calculateBackoffDelay(attempt: number): number {
   return Math.min(delay, API_RETRY_MAX_DELAY_MS);
 }
 
+/** Adapt undecoded download bytes without redirects or content inflation. */
+export async function requestUndecoded(
+  url: string,
+  headers: Record<string, string>,
+  signal: RequestInit['signal'],
+  dispatcher?: unknown,
+): Promise<Response> {
+  const raw = await undici.request(url, {
+    method: 'GET',
+    headers,
+    signal,
+    dispatcher: dispatcher as import('undici').Dispatcher | undefined,
+    headersTimeout: HEADERS_TIMEOUT_MS,
+    bodyTimeout: BODY_TIMEOUT_MS,
+    highWaterMark: 16 * 1024,
+  });
+  // Async iteration exposes the stored error when pulled, including errors before the first read.
+  // An unread or cancelled body still needs an error listener until destruction completes.
+  raw.body.on('error', () => {});
+  try {
+    const responseHeaders = new Headers();
+    for (const [name, value] of Object.entries(raw.headers)) {
+      if (Array.isArray(value)) value.forEach((item) => responseHeaders.append(name, item));
+      else if (value !== undefined) responseHeaders.set(name, value);
+    }
+    const noBody = [204, 205, 304].includes(raw.statusCode);
+    let body: ReadableStream<Uint8Array> | null = null;
+    if (noBody) raw.body.destroy();
+    else {
+      // Node 24's toWeb() can enqueue after cancellation; from() is pull-driven with no queue.
+      // https://github.com/nodejs/node/blob/v24.0.0/lib/internal/webstreams/adapters.js#L434-L469
+      const iterator = raw.body[Symbol.asyncIterator]();
+      body = NodeReadableStream.from<Uint8Array>({
+        [Symbol.asyncIterator]: () => ({
+          next: () => iterator.next(),
+          async return() {
+            // return() alone does not destroy a Node stream whose iterator has never been pulled.
+            raw.body.destroy();
+            await iterator.return?.();
+            return { done: true, value: undefined };
+          },
+        }),
+      }) as ReadableStream<Uint8Array>;
+    }
+    return new Response(body, {
+      status: raw.statusCode,
+      statusText: STATUS_CODES[raw.statusCode],
+      headers: responseHeaders,
+    });
+  } catch (error) {
+    raw.body.destroy();
+    throw error;
+  }
+}
+
 /**
  * Perform a single fetch request with timeout
  * Internal function used by enhancedFetch
@@ -404,6 +467,8 @@ async function doFetch(
   options: RequestInit = {},
   instanceDispatcher?: unknown,
   skipAuth = false,
+  rawBody?: boolean,
+  redactQuery?: boolean,
 ): Promise<Response> {
   // skipAuth controls auto-injected credentials only:
   //   - Suppresses getAuthHeaders() (OAuth Bearer / static PRIVATE-TOKEN from env)
@@ -458,7 +523,7 @@ async function doFetch(
   const method = (options.method ?? 'GET').toUpperCase();
 
   // Debug log at request start (redact sensitive URL parts)
-  const safeUrl = redactUrlForLogging(url);
+  const safeUrl = redactUrlForLogging(url, redactQuery);
   logDebug('Starting GitLab API request', { url: safeUrl, method });
 
   // No manual AbortController timeout — Undici handles connect/headers/body timeouts natively.
@@ -475,9 +540,17 @@ async function doFetch(
 
   const startTime = Date.now();
   const requestTracker = getRequestTracker();
+  if (rawBody && (method !== 'GET' || options.body != null)) {
+    throw new Error('Undecoded downloads require GET without a request body');
+  }
 
   try {
-    const response = await undici.fetch(url, fetchOptions);
+    let response: Response;
+    if (rawBody) {
+      response = await requestUndecoded(url, headers, options.signal, dispatcher);
+    } else {
+      response = await undici.fetch(url, fetchOptions);
+    }
 
     const duration = Date.now() - startTime;
     logDebug('GitLab API request completed', {
@@ -509,6 +582,7 @@ async function doFetch(
     // real timeout error as .cause — unwrap before checking constructor name.
     if (error instanceof Error) {
       const underlying = error.cause instanceof Error ? error.cause : error;
+      const diagnosticCause = redactQuery ? undefined : underlying;
       const errName = underlying.constructor?.name ?? '';
       const msg = underlying.message.toLowerCase();
 
@@ -520,7 +594,7 @@ async function doFetch(
           duration,
         });
         requestTracker.setGitLabResponseForCurrentRequest('timeout', duration);
-        throw new GitLabTimeoutError('headers', HEADERS_TIMEOUT_MS, underlying);
+        throw new GitLabTimeoutError('headers', HEADERS_TIMEOUT_MS, diagnosticCause);
       }
       if (errName === 'BodyTimeoutError' || msg.includes('body timeout')) {
         logWarn('GitLab API body timeout', {
@@ -530,7 +604,7 @@ async function doFetch(
           duration,
         });
         requestTracker.setGitLabResponseForCurrentRequest('timeout', duration);
-        throw new GitLabTimeoutError('body', BODY_TIMEOUT_MS, underlying);
+        throw new GitLabTimeoutError('body', BODY_TIMEOUT_MS, diagnosticCause);
       }
       if (errName === 'ConnectTimeoutError' || msg.includes('connect timeout')) {
         logWarn('GitLab API connect timeout', {
@@ -540,22 +614,33 @@ async function doFetch(
           duration,
         });
         requestTracker.setGitLabResponseForCurrentRequest('timeout', duration);
-        throw new GitLabTimeoutError('connect', CONNECT_TIMEOUT_MS, underlying);
+        throw new GitLabTimeoutError('connect', CONNECT_TIMEOUT_MS, diagnosticCause);
       }
     }
 
-    // Log other errors with full error object for stack trace
+    let reportedError = error;
+    if (redactQuery) {
+      // Transport errors can retain signed URLs in their message and arbitrary properties.
+      const underlying =
+        error instanceof Error && error.cause instanceof Error ? error.cause : error;
+      const code = (underlying as NodeJS.ErrnoException | null)?.code;
+      const detail = typeof code === 'string' && /^[A-Z_0-9]+$/.test(code) ? ` (${code})` : '';
+      reportedError = new Error(
+        `Artifact download ${isRetryableError(error) ? 'network ' : ''}request failed${detail}`,
+      );
+    }
+    // Preserve full diagnostics only for requests without signed query redaction.
     logWarn('GitLab API request failed', {
       url: safeUrl,
       method,
-      err: error instanceof Error ? error : new Error(String(error)),
+      err: reportedError instanceof Error ? reportedError : new Error(String(reportedError)),
       duration,
     });
 
     // Capture error for access logging
     requestTracker.setGitLabResponseForCurrentRequest('error', duration);
 
-    throw error;
+    throw reportedError;
   }
 }
 
@@ -656,7 +741,7 @@ export async function enhancedFetch(
   assertSafeApiUrl(url);
   const method = (options.method ?? 'GET').toUpperCase();
   const isIdempotent = method === 'GET' || method === 'HEAD' || method === 'OPTIONS';
-  const safeUrl = redactUrlForLogging(url);
+  const safeUrl = redactUrlForLogging(url, options.redactQuery);
 
   // Determine if retry is enabled for this request
   const shouldRetry = options.retry ?? (API_RETRY_ENABLED && isIdempotent);
@@ -672,6 +757,8 @@ export async function enhancedFetch(
     rateLimit: _rateLimit,
     rateLimitBaseUrl: _rateLimitBaseUrl,
     skipAuth: _skipAuth,
+    rawBody: _rawBody,
+    redactQuery: _redactQuery,
     ...fetchOptions
   } = options;
 
@@ -730,14 +817,28 @@ export async function enhancedFetch(
     // If retry is disabled, just do a single fetch
     const unauthenticated = _skipAuth === true;
     if (!shouldRetry || maxRetries <= 0) {
-      return await doFetch(url, fetchOptions, instanceDispatcher, unauthenticated);
+      return await doFetch(
+        url,
+        fetchOptions,
+        instanceDispatcher,
+        unauthenticated,
+        _rawBody,
+        _redactQuery,
+      );
     }
 
     let lastError: Error | null = null;
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
-        const response = await doFetch(url, fetchOptions, instanceDispatcher, unauthenticated);
+        const response = await doFetch(
+          url,
+          fetchOptions,
+          instanceDispatcher,
+          unauthenticated,
+          _rawBody,
+          _redactQuery,
+        );
 
         // Check if response status is retryable (5xx, 429)
         if (isRetryableStatus(response.status) && attempt < maxRetries) {

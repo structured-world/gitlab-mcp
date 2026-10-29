@@ -282,18 +282,18 @@ async function main() {
     status: 'failed',
     nodeVersion: process.version,
     platform: process.platform,
-    sourceCommit: launchSync(resolveExecutable('git'), ['rev-parse', 'HEAD'], {
-      cwd: root,
-      encoding: 'utf8',
-    }).trim(),
-    sourceDirty:
-      launchSync(resolveExecutable('git'), ['status', '--porcelain'], {
-        cwd: root,
-        encoding: 'utf8',
-      }).length > 0,
     scenarios: [],
   };
   try {
+    report.sourceCommit = launchSync(resolveExecutable('git'), ['rev-parse', 'HEAD'], {
+      cwd: root,
+      encoding: 'utf8',
+    }).trim();
+    report.sourceDirty =
+      launchSync(resolveExecutable('git'), ['status', '--porcelain'], {
+        cwd: root,
+        encoding: 'utf8',
+      }).length > 0;
     const prepared = await prepare(runtime, archive);
     report.client = {
       version: prepared.manifest.version,

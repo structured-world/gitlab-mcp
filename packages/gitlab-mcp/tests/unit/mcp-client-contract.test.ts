@@ -1,4 +1,7 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { once } from 'node:events';
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { CallToolResultSchema } from '@modelcontextprotocol/sdk/types.js';
 import { SessionManager } from '../../src/session-manager';
@@ -97,6 +100,84 @@ describe('simultaneous MCP client contracts', () => {
       ),
     );
   }
+
+  // A real HTTP write must reach the MCP client once, with the same wait in JSON text and metadata.
+  it.each([
+    { action: 'comment', header: '30', wait: 30 },
+    { action: 'thread', header: '30', wait: 30 },
+    { action: 'comment', header: null, wait: undefined },
+    { action: 'comment', header: 'fixture-secret', wait: undefined },
+    { action: 'comment', header: '0', wait: 0 },
+  ])(
+    'preserves Retry-After $header for an MR $action without replay',
+    async ({ action, header, wait }) => {
+      const requests: { method?: string; path?: string; body: string }[] = [];
+      const api = createServer((request, response) => {
+        let body = '';
+        request.setEncoding('utf8');
+        request.on('data', (chunk: string) => {
+          body += chunk;
+        });
+        request.on('end', () => {
+          requests.push({ method: request.method, path: request.url, body });
+          response.writeHead(429, {
+            'Content-Type': 'application/json',
+            ...(header !== null && { 'Retry-After': header }),
+            'Set-Cookie': 'session=fixture-secret; Secure; HttpOnly; SameSite=Strict',
+          });
+          response.end(JSON.stringify({ message: 'Comment rate limit exceeded' }));
+        });
+      });
+      api.listen(0, '127.0.0.1');
+      await once(api, 'listening');
+      try {
+        const url = `http://127.0.0.1:${(api.address() as AddressInfo).port}`;
+        const client = await connect('codex', '2025-11-25');
+        const result = await asAccount(['api'], url, () =>
+          client.callTool({
+            name: 'manage_mr_discussion',
+            arguments: {
+              action,
+              project_id: 'test/project',
+              body: 'Hello',
+              ...(action === 'comment'
+                ? { noteable_type: 'merge_request', noteable_id: '1' }
+                : { merge_request_iid: '1' }),
+            },
+          }),
+        );
+        expect(result.isError).toBe(true);
+        const error = {
+          error_code: 'RATE_LIMITED',
+          tool: 'manage_mr_discussion',
+          action,
+          http_status: 429,
+          message: 'Rate limit exceeded. Please wait before retrying.',
+          suggested_fix:
+            wait === undefined
+              ? 'Wait a few minutes and try again, or reduce request frequency'
+              : `Wait at least ${wait} seconds before retrying, or reduce request frequency`,
+          gitlab_error: '429 Too Many Requests - Comment rate limit exceeded',
+          ...(wait !== undefined && { retry_after_seconds: wait }),
+        };
+        expect(result.structuredContent).toEqual({ error });
+        expect(result.content).toEqual([{ type: 'text', text: JSON.stringify(error, null, 2) }]);
+        expect(JSON.stringify(result)).not.toContain('fixture-secret');
+        expect(requests).toEqual([
+          {
+            method: 'POST',
+            path: `/api/v4/projects/test%2Fproject/merge_requests/1/${action === 'comment' ? 'notes' : 'discussions'}`,
+            body: 'body=Hello',
+          },
+        ]);
+      } finally {
+        api.closeAllConnections();
+        await new Promise<void>((resolve, reject) =>
+          api.close((error) => (error ? reject(error) : resolve())),
+        );
+      }
+    },
+  );
 
   it.each([
     ['read_api', 'api'],

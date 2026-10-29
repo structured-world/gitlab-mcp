@@ -10,6 +10,7 @@ import {
   ListResourcesRequestSchema,
   ListToolsRequestSchema,
   ReadResourceRequestSchema,
+  type CallToolResult,
 } from '@modelcontextprotocol/sdk/types.js';
 import { setupHandlers, resetHandlersState } from '../../src/handlers';
 import * as scopeIds from '../../src/configuration/scope-ids';
@@ -18,6 +19,7 @@ import * as operatorProjects from '../../src/configuration/operator-projects';
 import { ScopeEnforcer } from '../../src/profiles/scope-enforcer';
 import { StructuredToolError, parseGitLabApiError } from '../../src/utils/error-handler';
 import { GitLabTimeoutError } from '../../src/utils/fetch';
+import { gitlab, GitLabApiError } from '../../src/utils/gitlab-api';
 import { ConfigurationService } from '../../src/configuration/service';
 import { resolveCaller } from '../../src/configuration/caller';
 import { runWithTokenAccount } from '../../src/accounts/token-account';
@@ -179,6 +181,7 @@ jest.mock('../../src/session-manager', () => ({
 /** Handler result type matching MCP SDK response shape */
 interface HandlerResult {
   content?: Array<{ type: string; text: string }>;
+  structuredContent?: CallToolResult['structuredContent'];
   tools?: Array<{ name: string; description: string; inputSchema: Record<string, unknown> }>;
   isError?: boolean;
 }
@@ -1572,6 +1575,55 @@ describe('handlers', () => {
       expect(parsed.error_code).toBe('RATE_LIMITED');
       expect(parsed.http_status).toBe(429);
     });
+
+    // Scope resolution throws before dispatch; execution errors pass through its cause wrapper.
+    it.each(['scope lookup', 'tool execution'])(
+      'preserves rate-limit metadata from %s',
+      async (source) => {
+        const error = new GitLabApiError(
+          429,
+          'Rejected',
+          'GitLab API error: 429 Too Many Requests - Rejected',
+          0,
+        );
+        const lookup = jest.spyOn(gitlab, 'get');
+        if (source === 'scope lookup') {
+          await (mockConfigurationService as ConfigurationService).updateAccount(
+            resolveCaller(undefined, 'https://gitlab.example.com'),
+            { scope: { type: 'group', path: 'team', includeSubgroups: true } },
+          );
+          lookup.mockRejectedValueOnce(error);
+        } else mockRegistryManager.executeTool.mockRejectedValue(error);
+        try {
+          const result = await callToolHandler({
+            params: { name: 'browse_projects', arguments: { action: 'get', project_id: '71' } },
+          });
+          expect(result.isError).toBe(true);
+          expect(result.structuredContent).toEqual({
+            error: {
+              error_code: 'RATE_LIMITED',
+              tool: 'browse_projects',
+              action: 'get',
+              http_status: 429,
+              message: 'Rate limit exceeded. Please wait before retrying.',
+              suggested_fix: 'Wait at least 0 seconds before retrying, or reduce request frequency',
+              gitlab_error: '429 Too Many Requests - Rejected',
+              retry_after_seconds: 0,
+            },
+          });
+          expect(JSON.parse(result.content![0].text)).toEqual(result.structuredContent!.error);
+          if (source === 'scope lookup') {
+            expect(lookup).toHaveBeenCalledWith('projects/71');
+            expect(mockRegistryManager.executeTool).not.toHaveBeenCalled();
+          } else {
+            expect(lookup).not.toHaveBeenCalled();
+            expect(mockRegistryManager.executeTool).toHaveBeenCalled();
+          }
+        } finally {
+          lookup.mockRestore();
+        }
+      },
+    );
 
     it('should handle 5xx server errors', async () => {
       mockRegistryManager.executeTool.mockRejectedValue(

@@ -28,6 +28,7 @@ import {
   parseTimeoutError,
 } from './utils/error-handler';
 import { GitLabTimeoutError } from './utils/fetch';
+import { GitLabApiError } from './utils/gitlab-api';
 import { getRequestTracker, getConnectionTracker, getCurrentRequestId } from './logging/index';
 import {
   LOG_FORMAT,
@@ -206,12 +207,19 @@ function toStructuredError(
     }
   }
 
-  // Try to parse GitLab API error from message
+  // Preserve the existing diagnostic format; typed REST metadata never comes from text.
   const parsed = parseGitLabApiError(error.message);
   if (!parsed) return null;
+  let apiError: GitLabApiError | undefined;
+  if (error instanceof GitLabApiError) apiError = error;
+  else if (cause instanceof GitLabApiError) apiError = cause;
 
   return handleGitLabError(
-    { status: parsed.status, message: parsed.message },
+    {
+      status: parsed.status,
+      message: parsed.message,
+      ...(apiError && { retryAfterSeconds: apiError.retryAfterSeconds }),
+    },
     toolName,
     action,
     toolArgs,

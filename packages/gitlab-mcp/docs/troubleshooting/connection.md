@@ -215,6 +215,24 @@ Enable automatic retries for transient failures:
 
 ## Network Issues
 
+### Rate-Limited Writes
+
+When GitLab returns HTTP 429, the MCP result has `isError: true` and a
+`RATE_LIMITED` error. If GitLab supplies a valid `Retry-After` header, the error
+also contains `retry_after_seconds`: the minimum wait in whole seconds, rounded
+up at response receipt. The same error appears in the JSON text content and in
+`structuredContent.error`.
+
+The header can contain delay-seconds or an HTTP date, including the obsolete
+HTTP-date formats required by [RFC 9110 sections 10.2.3 and 5.6.7](https://www.rfc-editor.org/rfc/rfc9110.html#section-10.2.3).
+A past date or zero delay produces `0`. Missing, malformed or numerically
+unrepresentable values omit the field. Other response headers are not forwarded.
+
+The server does not automatically repeat writes, including MR comments and
+discussions. The client decides whether and when to retry. Existing read retry
+settings and maximum backoff remain in effect; the reported wait is not capped
+by the server's read retry configuration.
+
 ### Behind a Corporate Proxy
 
 Set proxy environment variables:

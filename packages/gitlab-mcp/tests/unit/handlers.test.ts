@@ -19,7 +19,7 @@ import * as operatorProjects from '../../src/configuration/operator-projects';
 import { ScopeEnforcer } from '../../src/profiles/scope-enforcer';
 import { StructuredToolError, parseGitLabApiError } from '../../src/utils/error-handler';
 import { GitLabTimeoutError } from '../../src/utils/fetch';
-import { GitLabApiError } from '../../src/utils/gitlab-api';
+import { gitlab, GitLabApiError } from '../../src/utils/gitlab-api';
 import { ConfigurationService } from '../../src/configuration/service';
 import { resolveCaller } from '../../src/configuration/caller';
 import { runWithTokenAccount } from '../../src/accounts/token-account';
@@ -1586,19 +1586,24 @@ describe('handlers', () => {
           'GitLab API error: 429 Too Many Requests - Rejected',
           0,
         );
-        const lookup = jest.spyOn(scopeIds, 'withTargetPaths');
-        if (source === 'scope lookup') lookup.mockRejectedValueOnce(error);
-        else mockRegistryManager.executeTool.mockRejectedValue(error);
+        const lookup = jest.spyOn(gitlab, 'get');
+        if (source === 'scope lookup') {
+          await (mockConfigurationService as ConfigurationService).updateAccount(
+            resolveCaller(undefined, 'https://gitlab.example.com'),
+            { scope: { type: 'group', path: 'team', includeSubgroups: true } },
+          );
+          lookup.mockRejectedValueOnce(error);
+        } else mockRegistryManager.executeTool.mockRejectedValue(error);
         try {
           const result = await callToolHandler({
-            params: { name: 'browse_projects', arguments: { action: 'list' } },
+            params: { name: 'browse_projects', arguments: { action: 'get', project_id: '71' } },
           });
           expect(result.isError).toBe(true);
           expect(result.structuredContent).toEqual({
             error: {
               error_code: 'RATE_LIMITED',
               tool: 'browse_projects',
-              action: 'list',
+              action: 'get',
               http_status: 429,
               message: 'Rate limit exceeded. Please wait before retrying.',
               suggested_fix: 'Wait at least 0 seconds before retrying, or reduce request frequency',
@@ -1607,6 +1612,13 @@ describe('handlers', () => {
             },
           });
           expect(JSON.parse(result.content![0].text)).toEqual(result.structuredContent!.error);
+          if (source === 'scope lookup') {
+            expect(lookup).toHaveBeenCalledWith('projects/71');
+            expect(mockRegistryManager.executeTool).not.toHaveBeenCalled();
+          } else {
+            expect(lookup).not.toHaveBeenCalled();
+            expect(mockRegistryManager.executeTool).toHaveBeenCalled();
+          }
         } finally {
           lookup.mockRestore();
         }

@@ -306,6 +306,7 @@ export default defineConfig({
             { text: "Overview", link: "/clients/" },
             { text: "Claude Desktop", link: "/clients/claude-desktop" },
             { text: "Claude Code", link: "/clients/claude-code" },
+            { text: "Antigravity CLI", link: "/clients/antigravity" },
             { text: "Cursor", link: "/clients/cursor" },
             { text: "VS Code", link: "/clients/vscode" },
             { text: "Windsurf", link: "/clients/windsurf" },

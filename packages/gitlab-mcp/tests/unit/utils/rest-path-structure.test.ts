@@ -15,6 +15,7 @@ it('encodes every dynamic REST path argument', () => {
   const safeCalls = new Set([
     'normalizeProjectId',
     'encodeApiSegment',
+    'encodeArtifactPath',
     'encodeURIComponent',
     'paths.project',
     'paths.group',

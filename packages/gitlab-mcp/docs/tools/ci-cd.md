@@ -1,6 +1,6 @@
 ---
 title: CI/CD Tools
-description: "GitLab MCP CI/CD tools for pipeline automation. Trigger pipelines, read bounded job logs and individual artifact files, manage variables with environment scoping, and control deployments with typed inputs."
+description: 'GitLab MCP CI/CD tools for pipeline automation. Trigger pipelines, read bounded job logs and individual artifact files, manage variables with environment scoping, and control deployments with typed inputs.'
 head:
   - - meta
     - name: keywords
@@ -13,14 +13,14 @@ Pipeline management, job control, logs, individual artifact files, and CI/CD var
 
 ## Tools Overview
 
-| Tool | Type | Purpose |
-|------|------|---------|
-| `browse_pipelines` | Query | List pipelines and jobs, read logs and artifact files |
-| `manage_pipeline` | Command | Trigger/retry/cancel pipelines; play/retry/cancel individual jobs |
-| `browse_variables` | Query | List and get CI/CD variables |
-| `manage_variable` | Command | Create, update, delete variables |
-| `browse_environments` | Query | List environments and deployments |
-| `manage_environment` | Command | Create, update, stop, delete environments; update deployment status |
+| Tool                  | Type    | Purpose                                                             |
+| --------------------- | ------- | ------------------------------------------------------------------- |
+| `browse_pipelines`    | Query   | List pipelines and jobs, read logs and artifact files               |
+| `manage_pipeline`     | Command | Trigger/retry/cancel pipelines; play/retry/cancel individual jobs   |
+| `browse_variables`    | Query   | List and get CI/CD variables                                        |
+| `manage_variable`     | Command | Create, update, delete variables                                    |
+| `browse_environments` | Query   | List environments and deployments                                   |
+| `manage_environment`  | Command | Create, update, stop, delete environments; update deployment status |
 
 ## browse_pipelines
 
@@ -29,15 +29,17 @@ View pipeline status, job details, console output, and individual artifact files
 ### Actions
 
 <!-- @autogen:tool browse_pipelines -->
-| Action | Description |
-|--------|-------------|
-| `list` | List pipelines with filtering |
-| `get` | Get single pipeline details |
-| `jobs` | List jobs in a pipeline |
-| `triggers` | List bridge/trigger jobs in a pipeline |
-| `job` | Get single job details |
-| `logs` | Read job logs with bounded memory and explicit byte truncation |
+
+| Action          | Description                                                                           |
+| --------------- | ------------------------------------------------------------------------------------- |
+| `list`          | List pipelines with filtering                                                         |
+| `get`           | Get single pipeline details                                                           |
+| `jobs`          | List jobs in a pipeline                                                               |
+| `triggers`      | List bridge/trigger jobs in a pipeline                                                |
+| `job`           | Get single job details                                                                |
+| `logs`          | Read job logs with bounded memory and explicit byte truncation                        |
 | `artifact_file` | Read one artifact file as bounded UTF-8 text; inspect job metadata to choose its path |
+
 <!-- @autogen:end -->
 
 ### Examples
@@ -77,19 +79,19 @@ View pipeline status, job details, console output, and individual artifact files
 
 ### Pipeline Filters
 
-| Parameter | Description |
-|-----------|-------------|
-| `status` | `running`, `pending`, `success`, `failed`, `canceled`, `manual` |
-| `ref` | Branch or tag name |
-| `source` | `push`, `web`, `schedule`, `merge_request_event`, `api` |
-| `username` | Filter by triggering user |
-| `order_by` | `id`, `status`, `ref`, `updated_at` |
+| Parameter  | Description                                                     |
+| ---------- | --------------------------------------------------------------- |
+| `status`   | `running`, `pending`, `success`, `failed`, `canceled`, `manual` |
+| `ref`      | Branch or tag name                                              |
+| `source`   | `push`, `web`, `schedule`, `merge_request_event`, `api`         |
+| `username` | Filter by triggering user                                       |
+| `order_by` | `id`, `status`, `ref`, `updated_at`                             |
 
 ### Log Navigation
 
-| Parameter | Description |
-|-----------|-------------|
-| `start` | Line number (positive from start, negative from end) |
+| Parameter  | Description                                                |
+| ---------- | ---------------------------------------------------------- |
+| `start`    | Line number (positive from start, negative from end)       |
 | `per_page` | Maximum source lines to return, default 200, maximum 10000 |
 
 Without `start`, logs return the last `per_page` lines. A negative `start` selects
@@ -165,7 +167,8 @@ cancelled transfer returns an error, never apparent successful partial content.
 Binary or invalid UTF-8 content returns `ARTIFACT_READ_REFUSED` with a reason,
 bounded metadata and a GitLab `artifact_view_url`. Other refusals describe an
 invalid offset, an undersized window, invalid ranges or unsupported encoding.
-The action does not render HTML. Treat artifact content as untrusted data.
+The action does not render HTML. ANSI color escapes are preserved as text data.
+Treat artifact content as untrusted data.
 Missing paths, expired or deleted artifacts and access-hidden artifacts can all
 produce GitLab 404 responses; the action does not claim to distinguish them.
 GitLab authentication and permission failures retain their normal handling.
@@ -181,14 +184,16 @@ Trigger and control pipeline execution.
 ### Actions
 
 <!-- @autogen:tool manage_pipeline -->
-| Action | Description |
-|--------|-------------|
-| `create` | Trigger a new pipeline on branch/tag |
-| `retry` | Re-run a failed/canceled pipeline |
-| `cancel` | Stop a running pipeline |
-| `play_job` | Trigger a manual job |
-| `retry_job` | Re-run a failed/canceled job |
-| `cancel_job` | Stop a running job |
+
+| Action       | Description                          |
+| ------------ | ------------------------------------ |
+| `create`     | Trigger a new pipeline on branch/tag |
+| `retry`      | Re-run a failed/canceled pipeline    |
+| `cancel`     | Stop a running pipeline              |
+| `play_job`   | Trigger a manual job                 |
+| `retry_job`  | Re-run a failed/canceled job         |
+| `cancel_job` | Stop a running job                   |
+
 <!-- @autogen:end -->
 
 ### Examples
@@ -200,9 +205,7 @@ Trigger and control pipeline execution.
   "action": "create",
   "project_id": "my-org/api",
   "ref": "main",
-  "variables": [
-    { "key": "DEPLOY_ENV", "value": "staging" }
-  ]
+  "variables": [{ "key": "DEPLOY_ENV", "value": "staging" }]
 }
 ```
 
@@ -240,9 +243,7 @@ Trigger and control pipeline execution.
   "action": "play_job",
   "project_id": "my-org/api",
   "job_id": "5678",
-  "job_variables_attributes": [
-    { "key": "TARGET", "value": "production" }
-  ]
+  "job_variables_attributes": [{ "key": "TARGET", "value": "production" }]
 }
 ```
 
@@ -299,6 +300,7 @@ Trigger with inputs:
 ```
 
 ::: tip Variables vs Inputs
+
 - **`variables`**: Legacy key-value pairs, no type validation
 - **`inputs`**: Typed parameters with schema validation (requires GitLab 17.10+ for the pipeline creation API)
 
@@ -356,12 +358,12 @@ Manage CI/CD environment variables with scoping and protection.
 
 ### Variable Properties
 
-| Property | Description |
-|----------|-------------|
-| `protected` | Only available to protected branches/tags |
-| `masked` | Hidden in job logs (requires 8+ chars, specific charset) |
-| `environment_scope` | `*` for all, or specific like `production` |
-| `variable_type` | `env_var` (default) or `file` |
+| Property            | Description                                              |
+| ------------------- | -------------------------------------------------------- |
+| `protected`         | Only available to protected branches/tags                |
+| `masked`            | Hidden in job logs (requires 8+ chars, specific charset) |
+| `environment_scope` | `*` for all, or specific like `production`               |
+| `variable_type`     | `env_var` (default) or `file`                            |
 
 ## browse_environments
 
@@ -370,11 +372,13 @@ Inspect environments and their deployment history. Gated by `USE_ENVIRONMENTS`.
 ### Actions
 
 <!-- @autogen:tool browse_environments -->
-| Action | Description |
-|--------|-------------|
-| `list` | List environments for a project |
-| `get` | Get a single environment by ID, including its last deployment |
+
+| Action             | Description                                                        |
+| ------------------ | ------------------------------------------------------------------ |
+| `list`             | List environments for a project                                    |
+| `get`              | Get a single environment by ID, including its last deployment      |
 | `list_deployments` | List deployments for a project, optionally filtered by environment |
+
 <!-- @autogen:end -->
 
 ### Examples
@@ -416,13 +420,15 @@ folded into this tool rather than a separate pair. Gated by `USE_ENVIRONMENTS`.
 ### Actions
 
 <!-- @autogen:tool manage_environment -->
-| Action | Description |
-|--------|-------------|
-| `create` | Create a new environment |
-| `update` | Update an existing environment (name cannot be changed via the API) |
-| `stop` | Stop an environment (required before it can be deleted) |
-| `delete` | Delete a stopped environment |
+
+| Action                     | Description                                                                                    |
+| -------------------------- | ---------------------------------------------------------------------------------------------- |
+| `create`                   | Create a new environment                                                                       |
+| `update`                   | Update an existing environment (name cannot be changed via the API)                            |
+| `stop`                     | Stop an environment (required before it can be deleted)                                        |
+| `delete`                   | Delete a stopped environment                                                                   |
 | `update_deployment_status` | Update the status of a deployment. Only deployments not tied to a pipeline job can be updated. |
+
 <!-- @autogen:end -->
 
 ### Examples

@@ -86,7 +86,7 @@ function gitlabResponse(label: string, request: IncomingMessage, response: Serve
     response.writeHead(302, { Location: 'file:///etc/passwd' });
     response.end();
   } else if (path.endsWith('/loop.txt')) {
-    response.writeHead(302, { Location: path });
+    response.writeHead(302, { Location: 'loop.txt' });
     response.end();
   } else if (path.endsWith('/missing-location.txt')) {
     response.writeHead(302);
@@ -97,7 +97,7 @@ function gitlabResponse(label: string, request: IncomingMessage, response: Serve
     response.setHeader('Content-Encoding', 'gzip');
     response.end(gzipSync(Buffer.alloc(1024 * 1024, 65)));
   } else if (/\/(204|205|304|401|403|404|429)\.txt$/.test(path)) {
-    response.statusCode = Number(path.match(/(\d+)\.txt$/)![1]);
+    response.statusCode = Number(path.match(/(\d{3})\.txt$/)![1]);
     response.setHeader('Retry-After', '30');
     if ([204, 205, 304].includes(response.statusCode)) response.end();
     else response.end('{"message":"Rejected"}');

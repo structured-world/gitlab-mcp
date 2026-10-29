@@ -78,6 +78,7 @@ async function artifactResponse(url: string, offset: number, limit: number) {
     });
     if (![301, 302, 303, 307, 308].includes(response.status)) return { response, external };
     const location = response.headers.get('location');
+    // Each redirect depends on this response; finish cancellation before following its Location.
     await response.body?.cancel();
     if (!location) throw new Error('Artifact redirect has no Location');
     const next = resolveArtifactRedirect(target, location);

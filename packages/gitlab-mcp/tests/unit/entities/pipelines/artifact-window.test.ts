@@ -1,5 +1,29 @@
 import { readArtifactWindow } from '../../../../src/entities/pipelines/artifact-window';
 
+// Lookahead bytes belong to the next window and must not reject the current text.
+it('classifies control bytes only within the returned window', async () => {
+  const content = Buffer.from('abcd\u0000tail');
+  expect(await readArtifactWindow(new Response(content), 0, 4)).toMatchObject({
+    text: 'abcd',
+    byte_end: 4,
+    next_byte_offset: 4,
+    complete: false,
+  });
+  await expect(readArtifactWindow(new Response(content), 4, 4)).rejects.toMatchObject({
+    reason: 'not_text',
+  });
+});
+
+// ANSI color escapes are text produced by CI tools and must survive without rendering.
+it('preserves ANSI escapes in a UTF-8 text artifact', async () => {
+  const text = '\u001b[31mfailed\u001b[0m\n';
+  expect(await readArtifactWindow(new Response(text), 0, 128)).toMatchObject({
+    text,
+    complete: true,
+    byte_end: Buffer.byteLength(text),
+  });
+});
+
 // Continuations must reconstruct the source, never replace or drop a split UTF-8 character.
 it('reconstructs multibyte text across small byte windows', async () => {
   const original = 'A\u20ac\ud83d\ude00B\n';
@@ -59,17 +83,22 @@ it('bounds reads and cancels a huge chunked body without Content-Length', async 
 });
 
 // The source can be empty or exactly end at the requested window.
-it.each(['', 'abc'])('recognizes complete content %j', async (text) => {
+it.each(['', 'abc', '\u00e9'])('recognizes complete content %j', async (text) => {
   const page = await readArtifactWindow(new Response(text), 0, 4);
   expect(page).toEqual({
     text,
     byte_start: 0,
-    byte_end: text.length,
+    byte_end: Buffer.byteLength(text),
     next_byte_offset: null,
-    total_bytes: text.length,
+    total_bytes: Buffer.byteLength(text),
     complete: true,
     truncated: false,
   });
+});
+
+// A missing transport body cannot masquerade as an empty, successfully downloaded file.
+it('rejects an HTTP response without a readable body', async () => {
+  await expect(readArtifactWindow(new Response(null), 0, 8)).rejects.toThrow('no readable body');
 });
 
 // Malformed ranges must not attach a requested offset to bytes from another interval.

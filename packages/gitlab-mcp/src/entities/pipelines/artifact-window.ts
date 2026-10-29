@@ -32,7 +32,9 @@ export async function readArtifactWindow(
   if (response.status === 416) return unsatisfiedWindow(response, offset);
   const { bytes, range, eof } = await readBoundedBody(response, offset, limit);
   const { text, end } = decodeWindow(bytes, limit, eof);
-  const total = range ? range.total : eof ? offset + bytes.length : null;
+  let total: number | null = null;
+  if (range) total = range.total;
+  else if (eof) total = offset + bytes.length;
   const complete = range ? total !== null && offset + end === total : eof && end === bytes.length;
   const continuationLimited = !complete && offset + end > ARTIFACT_MAX_OFFSET;
   return {
@@ -56,7 +58,7 @@ function unsatisfiedWindow(response: Response, offset: number): ArtifactWindow {
   // RFC 9110 section 14.4: a 416 Content-Range reports the selected representation's size.
   // https://www.rfc-editor.org/rfc/rfc9110.html#section-14.4
   const match = response.headers.get('content-range')?.match(/^bytes \*\/(\d+)$/i);
-  const total = match ? Number(match[1]) : NaN;
+  const total = match ? Number(match[1]) : Number.NaN;
   if (!Number.isSafeInteger(total) || offset < total) {
     throw new ArtifactReadError(
       'invalid_range',
@@ -161,8 +163,10 @@ async function readBoundedBody(response: Response, offset: number, limit: number
 }
 
 function decodeWindow(bytes: Uint8Array, limit: number, eof: boolean) {
-  for (const byte of bytes) {
-    if (byte === 0 || (byte < 32 && byte !== 9 && byte !== 10 && byte !== 12 && byte !== 13)) {
+  // Lookahead establishes continuation; only this window determines its text classification.
+  for (let index = 0; index < Math.min(limit, bytes.length); index++) {
+    const byte = bytes[index];
+    if (byte < 32 && byte !== 9 && byte !== 10 && byte !== 12 && byte !== 13 && byte !== 27) {
       throw new ArtifactReadError('not_text', 'Artifact is binary and cannot be returned as text');
     }
   }
@@ -194,16 +198,16 @@ function utf8End(bytes: Uint8Array, end: number, eof: boolean): number {
   let lead = end - 1;
   while (lead > 0 && (bytes[lead] & 0xc0) === 0x80) lead--;
   const byte = bytes[lead];
-  const width =
-    byte >= 0xc2 && byte <= 0xdf
-      ? 2
-      : byte >= 0xe0 && byte <= 0xef
-        ? 3
-        : byte >= 0xf0 && byte <= 0xf4
-          ? 4
-          : 1;
+  const width = utf8Width(byte);
   if (end - lead < width && !(eof && end === bytes.length)) return lead;
   return end;
+}
+
+function utf8Width(byte: number): number {
+  if (byte >= 0xc2 && byte <= 0xdf) return 2;
+  if (byte >= 0xe0 && byte <= 0xef) return 3;
+  if (byte >= 0xf0 && byte <= 0xf4) return 4;
+  return 1;
 }
 
 function readRange(value: string | null, offset: number, limit: number) {

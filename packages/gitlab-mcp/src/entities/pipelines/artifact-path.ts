@@ -31,9 +31,9 @@ export function encodeArtifactPath(path: string): string {
 }
 
 function hasControl(value: string): boolean {
-  for (let index = 0; index < value.length; index++) {
-    const code = value.charCodeAt(index);
+  for (let index = 0; ; index++) {
+    const code = value.codePointAt(index);
+    if (code === undefined) return false;
     if (code < 32 || code === 127) return true;
   }
-  return false;
 }

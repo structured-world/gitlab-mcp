@@ -17,6 +17,19 @@ const args = {
   byte_limit: 8,
 };
 
+// Unicode filenames remain intact while controls following surrogate pairs are rejected.
+it('preserves a supplementary Unicode filename', async () => {
+  mockEnhancedFetch.mockResolvedValueOnce(new Response('report'));
+  await pipelinesToolRegistry.get('browse_pipelines')!.handler({
+    ...args,
+    artifact_path: 'reports/\ud83d\ude00.txt',
+  });
+  expect(mockEnhancedFetch).toHaveBeenCalledWith(
+    'https://gitlab.example.com/api/v4/projects/test%2Fproject/jobs/34/artifacts/reports/%F0%9F%98%80.txt',
+    expect.anything(),
+  );
+});
+
 // A new action must reach the single-file route and expose a bounded continuation.
 it('reads one text window instead of the artifacts archive', async () => {
   expect(BrowsePipelinesSchema.safeParse(args).success).toBe(true);
@@ -49,6 +62,7 @@ it.each([
   { artifact_path: 'a/%ff%2fb' },
   { artifact_path: 'a\\b' },
   { artifact_path: 'a\nb' },
+  { artifact_path: 'a/\ud83d\ude00\u0000' },
   { artifact_path: 'https://other.example/file' },
   { job_id: '../jobs' },
   { project_id: '../projects' },

@@ -126,7 +126,7 @@ export const getTestGroup = () => {
  *   (avoids "file unchanged" when re-seeding an already-valid project).
  */
 export const buildCiConfigBase64 = (marker = ''): string => {
-  const yaml = `spec:
+  const yaml = String.raw`spec:
   inputs:
     environment:
       type: string
@@ -142,10 +142,10 @@ test-job:
   script:
     - echo "Environment is $[[ inputs.environment ]]"
     - mkdir -p reports/nested
-    - printf 'Artifact report A\\342\\202\\254\\360\\237\\230\\200\\n' > reports/nested/result.txt
+    - printf 'Artifact report A\342\202\254\360\237\230\200\n' > reports/nested/result.txt
     - 'cp reports/nested/result.txt "reports/nested/a #?.txt"'
     - cp reports/nested/result.txt reports/nested/a%ff.txt
-    - printf '\\000\\377' > reports/binary.bin
+    - printf '\000\377' > reports/binary.bin
     - touch reports/empty.txt
   artifacts:
     paths:

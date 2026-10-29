@@ -12,7 +12,7 @@
  */
 
 import * as fs from 'fs';
-import { Readable } from 'node:stream';
+import { ReadableStream as NodeReadableStream } from 'node:stream/web';
 import { STATUS_CODES } from 'node:http';
 import { createNetworkDispatcher } from './network-dispatcher';
 import { assertSafeApiUrl } from './api-path';
@@ -416,25 +416,43 @@ export async function requestUndecoded(
     bodyTimeout: BODY_TIMEOUT_MS,
     highWaterMark: 16 * 1024,
   });
-  const responseHeaders = new Headers();
-  for (const [name, value] of Object.entries(raw.headers)) {
-    if (Array.isArray(value)) value.forEach((item) => responseHeaders.append(name, item));
-    else if (value !== undefined) responseHeaders.set(name, value);
-  }
-  const noBody = [204, 205, 304].includes(raw.statusCode);
-  if (noBody) raw.body.destroy();
-  return new Response(
-    noBody
-      ? null
-      : (Readable.toWeb(raw.body, {
-          strategy: { highWaterMark: 16 * 1024, size: (chunk: Uint8Array) => chunk.byteLength },
-        }) as ReadableStream<Uint8Array>),
-    {
+  // Async iteration exposes the stored error when pulled, including errors before the first read.
+  // An unread or cancelled body still needs an error listener until destruction completes.
+  raw.body.on('error', () => {});
+  try {
+    const responseHeaders = new Headers();
+    for (const [name, value] of Object.entries(raw.headers)) {
+      if (Array.isArray(value)) value.forEach((item) => responseHeaders.append(name, item));
+      else if (value !== undefined) responseHeaders.set(name, value);
+    }
+    const noBody = [204, 205, 304].includes(raw.statusCode);
+    let body: ReadableStream<Uint8Array> | null = null;
+    if (noBody) raw.body.destroy();
+    else {
+      // Node 24's toWeb() can enqueue after cancellation; from() is pull-driven with no queue.
+      // https://github.com/nodejs/node/blob/v24.0.0/lib/internal/webstreams/adapters.js#L434-L469
+      const iterator = raw.body[Symbol.asyncIterator]();
+      body = NodeReadableStream.from<Uint8Array>({
+        [Symbol.asyncIterator]: () => ({
+          next: () => iterator.next(),
+          async return() {
+            // return() alone does not destroy a Node stream whose iterator has never been pulled.
+            raw.body.destroy();
+            await iterator.return?.();
+            return { done: true, value: undefined };
+          },
+        }),
+      }) as ReadableStream<Uint8Array>;
+    }
+    return new Response(body, {
       status: raw.statusCode,
       statusText: STATUS_CODES[raw.statusCode],
       headers: responseHeaders,
-    },
-  );
+    });
+  } catch (error) {
+    raw.body.destroy();
+    throw error;
+  }
 }
 
 /**

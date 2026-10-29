@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { gzipSync } from 'node:zlib';
 import { randomBytes } from 'node:crypto';
+import { setImmediate } from 'node:timers';
 
 const originalEnv = process.env;
 const mockLogs: unknown[] = [];
@@ -26,6 +27,7 @@ let sourceUrl: string;
 let secondUrl: string;
 let storageUrl: string;
 let bytesSent = 0;
+let transferClosed: (() => void) | undefined;
 let read: (args: unknown) => Promise<unknown>;
 let asAccount: typeof import('../../../../src/oauth/token-context').runWithTokenContext;
 let shutdown: () => Promise<void>;
@@ -44,9 +46,25 @@ function record(server: string, request: IncomingMessage) {
 
 function gitlabResponse(label: string, request: IncomingMessage, response: ServerResponse) {
   record(label, request);
-  if (request.url!.endsWith('/timeout.txt')) {
+  if (request.url!.endsWith('/timeout.txt') || request.url!.endsWith('/timeout-unread.txt')) {
+    const notify = transferClosed;
+    response.once('close', () => notify?.());
+    response.writeHead(200);
+    if (request.url!.endsWith('/timeout-unread.txt')) response.flushHeaders();
+    else response.write('start');
+    return;
+  }
+  if (request.url!.endsWith('/unread.txt')) {
+    const notify = transferClosed;
+    response.once('close', () => notify?.());
+    response.writeHead(200);
+    response.flushHeaders();
+    return;
+  }
+  if (request.url!.endsWith('/broken.txt')) {
     response.writeHead(200);
     response.write('start');
+    setImmediate(() => response.destroy());
     return;
   }
   const path = request.url!;
@@ -70,15 +88,19 @@ function gitlabResponse(label: string, request: IncomingMessage, response: Serve
   } else if (path.endsWith('/loop.txt')) {
     response.writeHead(302, { Location: path });
     response.end();
+  } else if (path.endsWith('/missing-location.txt')) {
+    response.writeHead(302);
+    response.end();
   } else if (path.endsWith('/binary.bin')) {
     response.end(Buffer.from([0, 1, 255]));
   } else if (path.endsWith('/gzip.txt')) {
     response.setHeader('Content-Encoding', 'gzip');
     response.end(gzipSync(Buffer.alloc(1024 * 1024, 65)));
-  } else if (/\/(401|403|404|429)\.txt$/.test(path)) {
+  } else if (/\/(204|205|304|401|403|404|429)\.txt$/.test(path)) {
     response.statusCode = Number(path.match(/(\d+)\.txt$/)![1]);
     response.setHeader('Retry-After', '30');
-    response.end('{"message":"Rejected"}');
+    if ([204, 205, 304].includes(response.statusCode)) response.end();
+    else response.end('{"message":"Rejected"}');
   } else if (path.endsWith('/huge.txt')) {
     const chunk = Buffer.alloc(64 * 1024, 65);
     const send = () => {
@@ -110,6 +132,7 @@ const storage = createServer((request, response) => {
   if (request.url === '/return') {
     response.writeHead(302, {
       Location: `${sourceUrl}/api/v4/projects/test%2Fproject/jobs/34/artifacts/final.txt`,
+      'Set-Cookie': ['storage=fixture; HttpOnly; Secure', 'other=fixture; HttpOnly; Secure'],
     });
     response.end();
   } else if (request.url?.startsWith('/unauthorized')) {
@@ -167,6 +190,7 @@ beforeEach(() => {
   calls.length = 0;
   mockLogs.length = 0;
   bytesSent = 0;
+  transferClosed = undefined;
 });
 afterAll(async () => {
   try {
@@ -309,6 +333,45 @@ it('preserves an artifact body timeout', async () => {
   });
 });
 
+// Cancellation before the first pull must still destroy the underlying HTTP request.
+it('closes an unread response immediately on cancellation', async () => {
+  const closed = new Promise<void>((resolve) => {
+    transferClosed = resolve;
+  });
+  const response = await requestUndecoded(
+    `${sourceUrl}/api/v4/projects/1/jobs/34/artifacts/unread.txt`,
+    {},
+    undefined,
+  );
+  await response.body!.cancel();
+  await closed;
+  expect(response.bodyUsed).toBe(true);
+});
+
+// An error before the first pull must remain observable without an unhandled Node error.
+it('propagates a timeout that occurs before reading begins', async () => {
+  const closed = new Promise<void>((resolve) => {
+    transferClosed = resolve;
+  });
+  const response = await requestUndecoded(
+    `${sourceUrl}/api/v4/projects/1/jobs/34/artifacts/timeout-unread.txt`,
+    {},
+    undefined,
+  );
+  await closed;
+  const reader = response.body!.getReader();
+  try {
+    await expect(reader.read()).rejects.toMatchObject({ code: 'UND_ERR_BODY_TIMEOUT' });
+  } finally {
+    reader.releaseLock();
+  }
+});
+
+// A disconnected producer must not turn the received prefix into successful partial text.
+it('propagates a mid-transfer socket failure', async () => {
+  await expect(call('broken.txt')).rejects.toMatchObject({ code: 'UND_ERR_SOCKET' });
+});
+
 // API failures must retain the status used by MCP authentication and rate-limit conversion.
 it.each([401, 403, 404, 429])('preserves HTTP %i', async (status) => {
   await expect(call(`${status}.txt`)).rejects.toMatchObject({ status });
@@ -318,4 +381,22 @@ it.each([401, 403, 404, 429])('preserves HTTP %i', async (status) => {
 it.each(['unsafe.txt', 'loop.txt'])('refuses redirect %s', async (path) => {
   await expect(call(path)).rejects.toThrow(/unsafe redirect|redirect limit/);
   expect(calls.length).toBeLessThanOrEqual(21);
+});
+
+// A broken redirect must fail explicitly rather than retry the same authenticated URL.
+it('refuses a redirect without Location', async () => {
+  await expect(call('missing-location.txt')).rejects.toThrow('no Location');
+  expect(calls).toHaveLength(1);
+});
+
+// Statuses that prohibit content must not construct a body or leave an unhandled Node error.
+it.each([204, 205, 304])('adapts empty HTTP %i safely', async (status) => {
+  const response = await requestUndecoded(
+    `${sourceUrl}/api/v4/projects/1/jobs/34/artifacts/${status}.txt`,
+    {},
+    undefined,
+  );
+  expect(response.status).toBe(status);
+  expect(response.body).toBeNull();
+  expect(await response.text()).toBe('');
 });

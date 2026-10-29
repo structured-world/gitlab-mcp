@@ -18,8 +18,10 @@ export function encodeArtifactPath(path: string): string {
         if (decoded === '.' || decoded === '..' || /[/\\]/.test(decoded) || hasControl(decoded)) {
           throw new Error('Artifact path cannot contain traversal or encoded separators');
         }
-        if (!/%[0-9a-f]{2}/i.test(decoded)) break;
-        const next = decodeURIComponent(decoded);
+        // Only ASCII escapes alter path syntax; other percent sequences are literal filenames.
+        const next = decoded.replace(/%([0-7][0-9a-f])/gi, (_encoded, hex: string) =>
+          String.fromCodePoint(Number.parseInt(hex, 16)),
+        );
         if (next === decoded) break;
         decoded = next;
       }

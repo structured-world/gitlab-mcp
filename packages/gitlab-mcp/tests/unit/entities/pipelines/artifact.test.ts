@@ -46,6 +46,9 @@ it.each([
   { artifact_path: 'a/%2fb' },
   { artifact_path: 'a/%255cb' },
   { artifact_path: 'a/%00b' },
+  { artifact_path: 'a/%ff%2fb' },
+  { artifact_path: 'a\\b' },
+  { artifact_path: 'a\nb' },
   { artifact_path: 'https://other.example/file' },
   { job_id: '../jobs' },
   { project_id: '../projects' },
@@ -135,4 +138,33 @@ it('builds a canonical artifact view link', () => {
   expect(() => artifactViewUrl('https://user:secret@gitlab.example.com/job', 'file')).toThrow(
     'invalid artifact-view',
   );
+});
+
+// A literal percent sign followed by non-UTF-8 hex bytes is still a valid filename.
+it('preserves literal percent sequences without allowing encoded separators', async () => {
+  mockEnhancedFetch.mockResolvedValueOnce(new Response('report'));
+  expect(
+    await pipelinesToolRegistry.get('browse_pipelines')!.handler({
+      ...args,
+      artifact_path: 'reports/a%ff.txt',
+    }),
+  ).toMatchObject({ text: 'report', complete: true });
+  expect(mockEnhancedFetch).toHaveBeenCalledWith(
+    'https://gitlab.example.com/api/v4/projects/test%2Fproject/jobs/34/artifacts/reports/a%25ff.txt',
+    expect.anything(),
+  );
+});
+
+// A refused download must release its connection before a metadata lookup needs the same pool.
+it('cancels a binary MIME response before requesting the job view URL', async () => {
+  const response = new Response(new ReadableStream({}, { highWaterMark: 0 }), {
+    headers: { 'Content-Type': 'image/png' },
+  });
+  mockEnhancedFetch.mockResolvedValueOnce(response).mockImplementationOnce(async () => {
+    expect(response.bodyUsed).toBe(true);
+    return Response.json({ web_url: 'https://gitlab.example.com/test/project/-/jobs/34' });
+  });
+  await expect(pipelinesToolRegistry.get('browse_pipelines')!.handler(args)).rejects.toMatchObject({
+    structuredError: { reason: 'not_text', artifact_view_url: expect.any(String) },
+  });
 });

@@ -129,6 +129,17 @@ describe('Enhanced Fetch Utilities', () => {
     expect(require('undici').request).not.toHaveBeenCalled();
   });
 
+  // A response-construction failure must not retain a live response body and its connection.
+  it('destroys a raw body when the status cannot construct a Response', async () => {
+    const body = require('node:stream').Readable.from([Buffer.from('untrusted body')]);
+    require('undici').request.mockResolvedValueOnce({ statusCode: 600, headers: {}, body });
+    const { requestUndecoded } = require('../../../src/utils/fetch');
+    await expect(
+      requestUndecoded('https://storage.example.com/file', {}, undefined),
+    ).rejects.toThrow();
+    expect(body.destroyed).toBe(true);
+  });
+
   // Helper function to create proper Response mocks
   const createMockResponse = (overrides: Partial<Response> = {}): Response =>
     ({

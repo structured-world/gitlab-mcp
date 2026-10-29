@@ -144,6 +144,7 @@ test-job:
     - mkdir -p reports/nested
     - printf 'Artifact report A\\342\\202\\254\\360\\237\\230\\200\\n' > reports/nested/result.txt
     - 'cp reports/nested/result.txt "reports/nested/a #?.txt"'
+    - cp reports/nested/result.txt reports/nested/a%ff.txt
     - printf '\\000\\377' > reports/binary.bin
     - touch reports/empty.txt
   artifacts:

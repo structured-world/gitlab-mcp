@@ -108,6 +108,7 @@ export async function readArtifactFile(input: ArtifactInput) {
       throw new GitLabTimeoutError('body', BODY_TIMEOUT_MS, error);
     }
     if (error instanceof ArtifactReadError) {
+      await discardUnreadBody(response);
       let viewUrl: string | undefined;
       if (error.reason === 'not_text') {
         // Resolve a canonical browser link only for the refusal, not for every successful window.
@@ -120,8 +121,12 @@ export async function readArtifactFile(input: ArtifactInput) {
     }
     throw error;
   } finally {
-    if (!response.bodyUsed && !response.body?.locked) await response.body?.cancel();
+    await discardUnreadBody(response);
   }
+}
+
+async function discardUnreadBody(response: Response): Promise<void> {
+  if (!response.bodyUsed && !response.body?.locked) await response.body?.cancel();
 }
 
 function assertDownloadStatus(response: Response, external: boolean, input: ArtifactInput): void {

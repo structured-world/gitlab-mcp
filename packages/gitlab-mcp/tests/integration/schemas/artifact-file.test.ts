@@ -100,6 +100,7 @@ describe('individual artifact files - GitLab integration', () => {
       }
       expect(text).toBe('Artifact report A\u20ac\ud83d\ude00\n');
       expect(await read('reports/nested/a #?.txt')).toMatchObject({ text, complete: true });
+      expect(await read('reports/nested/a%ff.txt')).toMatchObject({ text, complete: true });
       expect(await read('reports/empty.txt')).toMatchObject({
         text: '',
         complete: true,

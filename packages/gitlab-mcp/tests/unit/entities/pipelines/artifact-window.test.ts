@@ -138,6 +138,19 @@ it('refuses a known binary MIME type before reading its body', async () => {
   expect(pull).not.toHaveBeenCalled();
 });
 
+// Allocation and prefix-scan caps are enforced by the reader even without the MCP schema.
+it.each([
+  [0, 1024 * 1024 + 1],
+  [20 * 1024 * 1024 + 1, 200],
+])('refuses an over-budget window at offset %i with limit %i', async (offset, limit) => {
+  const pull = jest.fn();
+  const response = new Response(new ReadableStream({ pull }, { highWaterMark: 0 }));
+  await expect(readArtifactWindow(response, offset, limit)).rejects.toMatchObject({
+    reason: 'window_limit',
+  });
+  expect(pull).not.toHaveBeenCalled();
+});
+
 // A broken transfer cannot return a successful partial document or replace the source error.
 it('propagates a stream failure and releases its reader', async () => {
   const response = new Response(

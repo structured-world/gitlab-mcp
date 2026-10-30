@@ -7,7 +7,7 @@
       "args": [
         "-y",
         "--package",
-        "@structured-world/gitlab-mcp@12.1.0",
+        "@structured-world/gitlab-mcp@13.0.0",
         "gitlab-mcp-plugin",
         "${PLUGIN_DATA}"
       ],

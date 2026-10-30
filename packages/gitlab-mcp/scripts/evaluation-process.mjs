@@ -33,11 +33,12 @@ export function launchSync(command, args, options) {
   return result.stdout;
 }
 
-export function runEvaluation(command, args, { cwd, timeoutMs = 180000 }) {
+export function runEvaluation(command, args, { cwd, env, timeoutMs = 180000 }) {
   const taskkill = process.platform === 'win32' ? resolveExecutable('taskkill') : undefined;
   return new Promise((resolveRun, reject) => {
     const child = launch(command, args, {
       cwd,
+      env,
       detached: process.platform !== 'win32',
       stdio: ['ignore', 'pipe', 'pipe'],
     });

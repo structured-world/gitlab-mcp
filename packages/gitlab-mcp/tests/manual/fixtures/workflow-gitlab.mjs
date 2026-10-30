@@ -2,7 +2,7 @@ import { createServer } from 'node:http';
 import { parse, visit, Kind } from 'graphql';
 
 /** Deterministic GitLab fixture for real-client evaluations; no live credentials. */
-export async function startWorkflowGitLab() {
+export async function startWorkflowGitLab({ emptyMergeRequests = false } = {}) {
   const requests = [];
   const user = {
     id: 1,
@@ -108,7 +108,7 @@ export async function startWorkflowGitLab() {
   }
 
   function projectRest(path, response, json) {
-    if (path.endsWith('/merge_requests')) return json([mr]);
+    if (path.endsWith('/merge_requests')) return json(emptyMergeRequests ? [] : [mr]);
     if (path.endsWith('/merge_requests/12/changes'))
       return json({
         ...mr,

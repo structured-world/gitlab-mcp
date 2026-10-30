@@ -23,6 +23,7 @@ GitLab MCP works with all major AI coding assistants that support the Model Cont
 | [Cline](/clients/cline) | stdio | Extension dir | JSON config |
 | [Roo Code](/clients/roo-code) | stdio | Config dir | JSON config |
 | [Codex](/guide/installation/codex) | stdio or HTTP | CLI command | Plugin or `codex mcp` |
+| [Antigravity CLI](/clients/antigravity) | stdio or HTTP | No | Workspace JSON |
 
 All clients can also connect via HTTP (StreamableHTTP or SSE) to a [remote server deployment](/deployment/).
 

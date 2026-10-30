@@ -4,6 +4,22 @@
 
 * exempt stdio session from idle timeout cleanup ([#363](https://github.com/structured-world/gitlab-mcp/issues/363)) ([ca563bd](https://github.com/structured-world/gitlab-mcp/commit/ca563bda9aa969d5d7680d3d89c2c72f32344838)), closes [#361](https://github.com/structured-world/gitlab-mcp/issues/361)
 
+## [12.1.0](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-v12.0.3...gitlab-mcp-v12.1.0) (2026-10-30)
+
+
+### Features
+
+* **pipelines:** read individual artifact files ([#727](https://github.com/structured-world/gitlab-mcp/issues/727)) ([5b4ed94](https://github.com/structured-world/gitlab-mcp/commit/5b4ed9440e6795a665ebc2c28045b6702a658300)), closes [#675](https://github.com/structured-world/gitlab-mcp/issues/675)
+
+
+### Bug Fixes
+
+* **context:** explain user lookup failures ([#723](https://github.com/structured-world/gitlab-mcp/issues/723)) ([bd63c5d](https://github.com/structured-world/gitlab-mcp/commit/bd63c5de8bb106d74c8c447d73756cf21968cd9f))
+* **http:** preserve Retry-After in MCP errors ([#726](https://github.com/structured-world/gitlab-mcp/issues/726)) ([acd5138](https://github.com/structured-world/gitlab-mcp/commit/acd513808a89a947fd9ca021612f7a7d9d27351d))
+* **refs:** verify protection across GitLab tiers ([#724](https://github.com/structured-world/gitlab-mcp/issues/724)) ([e0876ef](https://github.com/structured-world/gitlab-mcp/commit/e0876ef3cb0bddc11ffafc98feed4b7dc991e1b9))
+* **search:** explain unsupported code scopes ([#722](https://github.com/structured-world/gitlab-mcp/issues/722)) ([cf54a5b](https://github.com/structured-world/gitlab-mcp/commit/cf54a5bc79aaddc0554b1f8f68312ac3e6e1c44f))
+* **wiki:** preserve paths in title-less updates ([#720](https://github.com/structured-world/gitlab-mcp/issues/720)) ([8b65c6d](https://github.com/structured-world/gitlab-mcp/commit/8b65c6db4052352eea1364a92dd63321689f3a0b))
+
 ## [12.0.3](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-v12.0.2...gitlab-mcp-v12.0.3) (2026-10-28)
 
 

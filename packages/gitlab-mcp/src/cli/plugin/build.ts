@@ -17,6 +17,7 @@ import {
 } from './listing';
 import { PluginFlavor, validateEndpoint, validatePackage } from './validate';
 import { compareCodeUnits, createZip } from './zip';
+import { collectRuntime } from './runtime';
 
 const PACKAGE_NAME = '@structured-world/gitlab-mcp';
 const PLUGIN_SCHEMA = 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json';
@@ -36,7 +37,11 @@ const LISTING_IMAGES = [
 
 export interface PluginBuildOptions {
   /** MCP endpoint the package connects to. */
-  endpoint: string;
+  endpoint?: string;
+  /** Resolve the published, version-pinned npm runtime instead of embedding dependencies. */
+  npmRuntime?: boolean;
+  /** Export an installable marketplace ZIP instead of a directory-submission ZIP. */
+  marketplaceZip?: boolean;
   flavor: PluginFlavor;
   /** Directory receiving the marketplace, the plugin folder and the ZIP. */
   outDir: string;
@@ -52,6 +57,7 @@ export interface PluginBuildResult {
   marketplacePath: string;
   zipPath: string;
   sha256: string;
+  checksumPath?: string;
   files: string[];
 }
 
@@ -155,11 +161,69 @@ function mergeMarketplace(existing: Marketplace | undefined): Marketplace {
   return { ...existing, plugins: [...plugins, entry] };
 }
 
+/** OAuth discovery and registration come from the selected endpoint itself. */
+function connectionManifest(
+  options: PluginBuildOptions,
+  endpoint: URL | undefined,
+  version: string,
+) {
+  return {
+    $schema: MCP_SCHEMA,
+    mcpServers: {
+      [MCP_SERVER_NAME]: endpoint
+        ? { type: 'streamable-http', url: endpoint.href }
+        : {
+            type: 'stdio',
+            command: options.npmRuntime ? 'npx' : 'node',
+            args: options.npmRuntime
+              ? [
+                  '-y',
+                  '--package',
+                  `${PACKAGE_NAME}@${version}`,
+                  'gitlab-mcp-plugin',
+                  '${PLUGIN_DATA}',
+                ]
+              : ['${PLUGIN_ROOT}/runtime/src/plugin/main.js', '${PLUGIN_DATA}'],
+            cwd: '${PLUGIN_ROOT}',
+          },
+    },
+  };
+}
+
+function writeArchive(files: Map<string, Buffer>, options: PluginBuildOptions, version: string) {
+  const entries = [...files].map(([path, data]) => ({
+    path: options.marketplaceZip ? `plugins/${PLUGIN_NAME}/${path}` : path,
+    data,
+  }));
+  if (options.marketplaceZip) {
+    // A standalone export must not include unrelated entries from the caller's catalog.
+    entries.push({
+      path: '.agents/plugins/marketplace.json',
+      data: Buffer.from(`${JSON.stringify(mergeMarketplace(undefined), null, 2)}\n`),
+    });
+  }
+  const zip = createZip(entries);
+  const zipPath = join(
+    options.outDir,
+    options.marketplaceZip ? `${PLUGIN_NAME}-codex.zip` : `${PLUGIN_NAME}-${version}.zip`,
+  );
+  writeFileSync(zipPath, zip);
+  const sha256 = createHash('sha256').update(zip).digest('hex');
+  const checksumPath = options.marketplaceZip ? `${zipPath}.sha256` : undefined;
+  if (checksumPath) writeFileSync(checksumPath, `${sha256}  ${basename(zipPath)}\n`);
+  return { zipPath, sha256, ...(checksumPath ? { checksumPath } : {}) };
+}
+
 export function buildPlugin(options: PluginBuildOptions): PluginBuildResult {
+  if (options.marketplaceZip && options.flavor === 'public')
+    throw new Error('Marketplace archives cannot use directory submission rules.');
   const root = options.packageRoot ?? findPackageRoot();
-  const endpoint = validateEndpoint(options.endpoint, options.flavor);
+  const endpoint =
+    options.endpoint === undefined ? undefined : validateEndpoint(options.endpoint, options.flavor);
   const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as PackageJson;
   if (!pkg.version) throw new Error('package.json has no version');
+  if (endpoint && options.npmRuntime)
+    throw new Error('--npm-runtime cannot be combined with --endpoint');
   // The documentation site; the npm homepage points at the repository README.
   const homepage = pkg.mcp?.homepage ?? pkg.homepage;
   const support = urlOf(pkg.bugs);
@@ -193,14 +257,10 @@ export function buildPlugin(options: PluginBuildOptions): PluginBuildResult {
       },
     },
   };
-  // OAuth discovery (RFC 9728) and dynamic client registration come from the
-  // server itself, so the package declares only where it is.
-  const mcp = {
-    $schema: MCP_SCHEMA,
-    mcpServers: { [MCP_SERVER_NAME]: { type: 'streamable-http', url: endpoint.href } },
-  };
+  const mcp = connectionManifest(options, endpoint, pkg.version);
 
   const files = collectFiles(root, manifest, mcp);
+  if (!endpoint && !options.npmRuntime) collectRuntime(root, files);
   const schema = (name: string): object =>
     JSON.parse(readFileSync(join(root, 'plugin', 'schemas', name), 'utf8')) as object;
   validatePackage(
@@ -225,16 +285,11 @@ export function buildPlugin(options: PluginBuildOptions): PluginBuildResult {
   mkdirSync(dirname(marketplacePath), { recursive: true });
   writeFileSync(marketplacePath, `${JSON.stringify(marketplace, null, 2)}\n`);
 
-  const zip = createZip([...files].map(([path, data]) => ({ path, data })));
-  const zipPath = join(options.outDir, `${PLUGIN_NAME}-${pkg.version}.zip`);
-  writeFileSync(zipPath, zip);
-
   return {
     version: pkg.version,
     pluginDir,
     marketplacePath,
-    zipPath,
-    sha256: createHash('sha256').update(zip).digest('hex'),
+    ...writeArchive(files, options, pkg.version),
     files: [...files.keys()].sort(compareCodeUnits),
   };
 }

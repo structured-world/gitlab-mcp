@@ -1,7 +1,7 @@
 ---
 layout: home
 titleTemplate: false
-description: "Advanced GitLab MCP server with 58 tools across 26 entity types"
+description: "Advanced GitLab MCP server with 64 tools across 26 entity types"
 head:
   - - meta
     - name: keywords
@@ -9,7 +9,7 @@ head:
 
 hero:
   name: GitLab MCP server
-  tagline: Connect AI agents to GitLab with 58 tools across 26 entity types
+  tagline: Connect AI agents to GitLab with 64 tools across 26 entity types
   image:
     src: /logo-hero.png
     alt: GitLab MCP Logo
@@ -26,7 +26,7 @@ hero:
 
 features:
   - icon: "\U0001F527"
-    title: 58 Tools, 26 Entities
+    title: 64 Tools, 26 Entities
     details: Complete GitLab API coverage — projects, merge requests, pipelines, work items, wikis, and more.
   - icon: "\U0001F517"
     title: Multi-Instance Support
@@ -44,9 +44,16 @@ features:
 
 ## One-Click Install
 
-<a href="/downloads/gitlab-mcp-8.0.0.mcpb" download><img src="https://img.shields.io/badge/Claude_Desktop-Install_Extension-F97316?style=for-the-badge&logoColor=white" alt="Install in Claude Desktop"></a>
+<a href="/downloads/gitlab-mcp-12.0.3.mcpb" download><img src="https://img.shields.io/badge/Claude_Desktop-Install_Extension-F97316?style=for-the-badge&logoColor=white" alt="Install in Claude Desktop"></a>
 [![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_MCP_Server-007ACC?style=for-the-badge&logo=visualstudiocode&logoColor=white)](vscode:mcp/install?%7B%22name%22%3A%22gitlab-mcp%22%2C%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40structured-world%2Fgitlab-mcp%22%5D%7D)
 [![Install in VS Code Insiders](https://img.shields.io/badge/VS_Code_Insiders-Install_MCP_Server-24bfa5?style=for-the-badge&logo=visualstudiocode&logoColor=white)](vscode-insiders:mcp/install?%7B%22name%22%3A%22gitlab-mcp%22%2C%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40structured-world%2Fgitlab-mcp%22%5D%7D)
+
+**Codex:** download the [ready-made marketplace ZIP](https://github.com/structured-world/gitlab-mcp/releases/latest/download/gitlab-mcp-codex.zip)
+and [checksum](https://github.com/structured-world/gitlab-mcp/releases/latest/download/gitlab-mcp-codex.zip.sha256).
+Follow [Codex setup](/guide/installation/codex#install-from-a-release) to add its
+marketplace once, then open the installation button in Codex. Configure a GitLab
+instance or an existing MCP server in the plugin's private connection panel.
+Node.js 24+ is required. This is separate from the Claude Desktop extension.
 
 ::: warning After one-click install
 You must configure `GITLAB_TOKEN` in your MCP client settings before the server can connect. See the [Installation Guide](/guide/installation/npm) for token setup.

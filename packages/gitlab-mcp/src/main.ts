@@ -63,12 +63,6 @@ async function main(): Promise<void> {
     }
   }
 
-  // Handle plugin subcommand
-  if (cliArgs.plugin) {
-    const { runPluginCommand } = await import('./cli/plugin');
-    process.exit(runPluginCommand(cliArgs.pluginArgs));
-  }
-
   // Handle docker subcommand
   if (cliArgs.docker) {
     // docker init is alias for setup --mode=server

@@ -14,6 +14,8 @@ import {
 } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
+import { createHash } from 'crypto';
+import { inflateRawSync } from 'zlib';
 import { buildPlugin, findPackageRoot, parseAuthor } from '../../../../src/cli/plugin/build';
 import { PluginValidationError } from '../../../../src/cli/plugin/validate';
 
@@ -39,7 +41,107 @@ function readJson(path: string): Record<string, unknown> {
   return JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>;
 }
 
+function zipFiles(path: string): Map<string, Buffer> {
+  const zip = readFileSync(path);
+  const files = new Map<string, Buffer>();
+  let offset = 0;
+  while (zip.readUInt32LE(offset) === 0x04034b50) {
+    const size = zip.readUInt32LE(offset + 18);
+    const nameLength = zip.readUInt16LE(offset + 26);
+    const extraLength = zip.readUInt16LE(offset + 28);
+    const name = zip.toString('utf8', offset + 30, offset + 30 + nameLength);
+    const dataAt = offset + 30 + nameLength + extraLength;
+    files.set(name, inflateRawSync(zip.subarray(dataAt, dataAt + size)));
+    offset = dataAt + size;
+  }
+  return files;
+}
+
 describe('buildPlugin', () => {
+  it('exports a complete standalone marketplace and a verifiable checksum', () => {
+    // Downloading the submission ZIP alone loses the catalog needed for installation.
+    const built = buildPlugin({
+      flavor: 'private',
+      npmRuntime: true,
+      marketplaceZip: true,
+      outDir,
+    });
+    const files = zipFiles(built.zipPath);
+    const catalog = JSON.parse(files.get('.agents/plugins/marketplace.json')!.toString());
+    expect(catalog).toEqual(readJson(built.marketplacePath));
+    expect([...files.keys()].sort()).toEqual(
+      [
+        '.agents/plugins/marketplace.json',
+        ...built.files.map((path) => `plugins/gitlab-mcp/${path}`),
+      ].sort(),
+    );
+    expect(files.get('plugins/gitlab-mcp/mcp.json')).toEqual(
+      readFileSync(join(built.pluginDir, 'mcp.json')),
+    );
+    expect(built.zipPath).toBe(join(outDir, 'gitlab-mcp-codex.zip'));
+    const checksum = createHash('sha256').update(readFileSync(built.zipPath)).digest('hex');
+    expect(readFileSync(built.checksumPath!, 'utf8')).toBe(`${checksum}  gitlab-mcp-codex.zip\n`);
+    expect(
+      buildPlugin({ flavor: 'private', npmRuntime: true, marketplaceZip: true, outDir }).sha256,
+    ).toBe(checksum);
+  });
+
+  it('keeps another marketplace private when exporting its GitLab package', () => {
+    // A release archive must not disclose or reference a team's other local plugins.
+    const path = join(outDir, '.agents/plugins/marketplace.json');
+    mkdirSync(join(outDir, '.agents/plugins'), { recursive: true });
+    const existing = { name: 'private-team', plugins: [{ name: 'private-plugin' }] };
+    writeFileSync(path, JSON.stringify(existing));
+    const built = buildPlugin({
+      flavor: 'private',
+      npmRuntime: true,
+      marketplaceZip: true,
+      outDir,
+    });
+    const catalog = JSON.parse(
+      zipFiles(built.zipPath).get('.agents/plugins/marketplace.json')!.toString(),
+    );
+    expect(catalog.name).toBe('gitlab-mcp');
+    expect(catalog.plugins.map((plugin: { name: string }) => plugin.name)).toEqual(['gitlab-mcp']);
+    expect(readJson(path)).toMatchObject({
+      name: 'private-team',
+      plugins: expect.arrayContaining(existing.plugins),
+    });
+  });
+
+  it('rejects marketplace archives for public directory submission before writing', () => {
+    // Directory submission requires plugin.json at the ZIP root instead of a catalog.
+    expect(() => buildPlugin({ ...PUBLIC, marketplaceZip: true, outDir })).toThrow(
+      'Marketplace archives cannot use directory submission rules.',
+    );
+    expect(existsSync(join(outDir, 'plugins'))).toBe(false);
+  });
+
+  it('builds a version-pinned configurable npm launcher without an endpoint', () => {
+    // Repository marketplaces reference the shipped entry point, without vendoring dependencies.
+    const built = buildPlugin({ flavor: 'private', npmRuntime: true, outDir });
+    expect(readJson(join(built.pluginDir, 'mcp.json'))).toEqual({
+      $schema: 'https://agent-plugins.org/schemas/1.0.0/mcp.schema.json',
+      mcpServers: {
+        'gitlab-sw': {
+          type: 'stdio',
+          command: 'npx',
+          cwd: '${PLUGIN_ROOT}',
+          args: [
+            '-y',
+            '--package',
+            `@structured-world/gitlab-mcp@${built.version}`,
+            'gitlab-mcp-plugin',
+            '${PLUGIN_DATA}',
+          ],
+        },
+      },
+    });
+    expect(built.files.some((path) => path.startsWith('runtime/'))).toBe(false);
+    expect(() => buildPlugin({ ...PUBLIC, npmRuntime: true, outDir })).toThrow(
+      'cannot be combined',
+    );
+  });
   it('writes the plugin folder, a local marketplace and a ZIP for the endpoint', () => {
     const result = buildPlugin({ ...PUBLIC, outDir });
     const version = (readJson(join(ROOT, 'package.json')) as { version: string }).version;
@@ -236,6 +338,25 @@ describe('buildPlugin from a minimal package', () => {
 
   afterEach(() => {
     rmSync(root, { recursive: true, force: true });
+  });
+
+  it('builds a public desktop-only package with its local runtime and no HTTP endpoint', () => {
+    // Approved local MCP submissions use stdio, so public listing rules must not require HTTP.
+    writePackage({ ...readJson(join(ROOT, 'package.json')), dependencies: {} });
+    mkdirSync(join(root, 'dist/src/plugin'), { recursive: true });
+    writeFileSync(join(root, 'dist/src/plugin/main.js'), 'module.exports = {};');
+    const built = buildPlugin({ ...PUBLIC, endpoint: undefined, packageRoot: root, outDir });
+    expect(readJson(join(built.pluginDir, 'mcp.json')).mcpServers).toEqual({
+      'gitlab-sw': {
+        type: 'stdio',
+        command: 'node',
+        args: ['${PLUGIN_ROOT}/runtime/src/plugin/main.js', '${PLUGIN_DATA}'],
+        cwd: '${PLUGIN_ROOT}',
+      },
+    });
+    expect(zipFiles(built.zipPath).get('runtime/src/plugin/main.js')?.toString()).toBe(
+      'module.exports = {};',
+    );
   });
 
   it('takes links from string fields and the npm homepage when there is no mcp block', () => {

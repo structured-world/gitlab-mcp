@@ -113,7 +113,7 @@ const marketplaceName = readJson(join(marketplace, '.agents', 'plugins', 'market
 const pluginId = `${PLUGIN_NAME}@${marketplaceName}`;
 const manifest = readJson(join(pluginSource, 'plugin.json'));
 // The package declares one server; Codex lists it under that key.
-const [[SERVER_NAME, { url: endpoint }]] = Object.entries(
+const [[SERVER_NAME, declaredServer]] = Object.entries(
   readJson(join(pluginSource, 'mcp.json')).mcpServers,
 );
 
@@ -136,8 +136,17 @@ try {
   // The installed copy, not the source tree, is what users run: it must match file for file.
   assert.deepEqual(snapshot(installed.installedPath), snapshot(pluginSource));
   const server = servers().find((s) => s.name === SERVER_NAME);
-  assert.deepEqual(server?.transport?.type, 'streamable_http');
-  assert.equal(server.transport.url, endpoint);
+  if (declaredServer.type === 'stdio') {
+    assert.equal(server?.transport?.type, 'stdio');
+    assert.equal(server.transport.command, declaredServer.command);
+    assert(
+      server.transport.args.every((arg) => !arg.includes('${')),
+      'plugin paths were not expanded',
+    );
+  } else {
+    assert.deepEqual(server?.transport?.type, 'streamable_http');
+    assert.equal(server.transport.url, declaredServer.url);
+  }
   assertUnrelatedStateKept();
 
   step('disable and enable');
@@ -159,9 +168,10 @@ try {
   run('mcp', 'add', SERVER_NAME, '--', 'gitlab-mcp');
   const shadowed = servers().filter((s) => s.name === SERVER_NAME);
   assert.equal(shadowed.length, 1, 'Codex runs both the global entry and the plugin server');
-  assert.equal(shadowed[0].transport.type, 'stdio');
+  assert.equal(shadowed[0].transport.command, 'gitlab-mcp', 'the plugin server was not hidden');
   run('mcp', 'remove', SERVER_NAME);
-  assert.equal(servers().find((s) => s.name === SERVER_NAME)?.transport?.url, endpoint);
+  const restored = servers().find((s) => s.name === SERVER_NAME);
+  assert.deepEqual(restored?.transport, server.transport);
 
   step('upgrade');
   const [major, minor, patch] = manifest.version.split(/[.+-]/).map(Number);

@@ -170,6 +170,14 @@ jobs:
         run: ./scripts/prepare-release.sh "${{ needs.release-please.outputs.release-version }}"
         working-directory: packages/gitlab-mcp
 
+      - name: Build configurable Codex marketplace
+        working-directory: packages/gitlab-mcp
+        run: node scripts/build-codex-plugin.mjs codex-release
+
+      - name: Verify the exact Codex release archive
+        working-directory: packages/gitlab-mcp
+        run: node scripts/qualify-codex-plugin.mjs --archive codex-release/gitlab-mcp-codex.zip
+
       # Note: server.json version is updated by release-please extra-files.
       # Dynamic counts (README.md, package.json manifest) are updated by prepare-release.sh
       # locally for the build but NOT committed back — they'll be current in the next release PR.
@@ -231,6 +239,17 @@ jobs:
           files: |
             packages/gitlab-mcp/gitlab-mcp-[0-9]*.mcpb
             packages/gitlab-mcp/gitlab-mcp-db-*.mcpb
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Codex marketplace to GitHub Release
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
+        with:
+          tag_name: ${{ needs.release-please.outputs.release-tag }}
+          fail_on_unmatched_files: true
+          files: |
+            packages/gitlab-mcp/codex-release/gitlab-mcp-codex.zip
+            packages/gitlab-mcp/codex-release/gitlab-mcp-codex.zip.sha256
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -373,17 +392,36 @@ jobs:
         working-directory: packages/gitlab-mcp
         run: '"$GITHUB_WORKSPACE/mcp-publisher" publish'
 
-  # Job 3: Sync generated metadata into the open release PR
-  # When release-please updates (not merges) the release PR, regenerate the
-  # dynamic artifacts (package.json MCP manifest + tool counts, README counts,
-  # server.json description) and commit them onto the PR branch so the committed
-  # state always matches what will be published — alongside the version bump and
-  # CHANGELOG that already live on that branch.
-  #
-  # Loop-safe: this pushes to the release PR branch, and the workflow only triggers
-  # on push to main, so the commit never re-triggers the workflow. release-please
-  # may rebuild its PR branch on the next push to main; this job re-runs then and
-  # re-applies the metadata, so the PR is current whenever it is merged.
+  notify-plugin-marketplace:
+    name: Refresh the shared plugin marketplace
+    runs-on: ubuntu-latest
+    needs: [release-please, post-release]
+    if: needs.release-please.outputs.release-created == 'true' && needs.post-release.result == 'success'
+    permissions: {}
+    steps:
+      - name: Generate marketplace dispatch token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3
+        id: marketplace-token
+        with:
+          app-id: ${{ secrets.RELEASER_APP_ID }}
+          private-key: ${{ secrets.RELEASER_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: repo
+          permission-contents: write
+
+      - name: Request publication of the released plugin
+        env:
+          GH_TOKEN: ${{ steps.marketplace-token.outputs.token }}
+          RELEASE_TAG: ${{ needs.release-please.outputs.release-tag }}
+        run: |
+          jq -n --arg tag "$RELEASE_TAG" '{event_type: "refresh-gitlab-mcp-plugin", client_payload: {release_tag: $tag}}' \
+            | gh api --method POST repos/structured-world/repo/dispatches --input -
+
+  # Sync generated metadata into the open release PR. After its version bump,
+  # regenerate package manifests, README counts and the registry description.
+  # This pushes to the release PR branch while the workflow triggers on main,
+  # so it does not create a publication loop. If release-please rebuilds that
+  # branch on the next main push, this job reapplies the generated metadata.
   sync-release-pr:
     name: Sync generated metadata into release PR
     runs-on: ubuntu-latest
@@ -493,6 +531,7 @@ jobs:
                 echo "📦 npm: @structured-world/gitlab-mcp@${{ needs.release-please.outputs.release-version }}"
                 echo "🐳 Docker: ghcr.io/${{ env.IMAGE_NAME }}:${{ needs.release-please.outputs.release-version }}"
                 echo "📦 MCPB: gitlab-mcp-${{ needs.release-please.outputs.release-version }}.mcpb"
+                echo "📦 Codex: gitlab-mcp-codex.zip and SHA-256 checksum"
                 echo "🌐 MCP Registry: io.github.structured-world/gitlab-mcp"
               else
                 echo "❌ Post-release publish failed"

@@ -239,20 +239,6 @@ describe('main', () => {
     });
   });
 
-  describe('plugin subcommand', () => {
-    it('exits with the code of the plugin command', async () => {
-      const mockConsoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
-      mockParseCliArgs.mockReturnValue({ plugin: true, pluginArgs: ['build'] });
-      await runMain();
-      // `build` without --endpoint is a usage error.
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining('--endpoint is required'),
-      );
-      expect(mockExit).toHaveBeenCalledWith(2);
-      mockConsoleError.mockRestore();
-    });
-  });
-
   describe('--show-project-config flag', () => {
     it('should display project config and exit 0', async () => {
       mockParseCliArgs.mockReturnValue({

@@ -1,6 +1,6 @@
 ---
 title: Tool Reference
-description: "Complete reference for 58 GitLab MCP tools across 26 entity types. Explore browse_* query and manage_* command operations organized by category with feature flags."
+description: "Complete reference for 64 GitLab MCP tools across 26 entity types. Explore browse_* query and manage_* command operations organized by category with feature flags."
 head:
   - - meta
     - name: keywords
@@ -9,7 +9,7 @@ head:
 
 # Tool Reference
 
-GitLab MCP Server provides **58 tools** across 26 entity types.
+GitLab MCP Server provides **64 tools** across 26 entity types.
 
 ## Architecture
 

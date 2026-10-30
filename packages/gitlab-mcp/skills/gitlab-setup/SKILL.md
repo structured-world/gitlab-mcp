@@ -7,6 +7,13 @@ description: Diagnose a GitLab MCP connection, selected account, token permissio
 
 Use the installed GitLab MCP tools; their prefix depends on the host and connection name. Discover the available catalog rather than assuming a fixed prefix. Keep the user's selected account and namespace. Do not request tokens, passwords, cookies, or client secrets in conversation.
 
+If the catalog exposes `gitlab_plugin_open_connection`, use it for initial setup,
+reconnect or a requested connection change. Its private panel accepts either a GitLab
+address for local core execution or an existing HTTP MCP endpoint. Wait for a verified
+identity and refresh discovery before using backend tools. Never pass credentials
+through chat or call the app-only connection mutation tool on the user's behalf.
+The backend's settings and authorization remain authoritative after connecting.
+
 1. Call `manage_context` with `{"action":"show"}` to identify the host, read-only mode, preset and namespace scope. This works while GitLab is disconnected.
 2. Call `manage_context` with `{"action":"whoami"}` when available to inspect the connected identity, token permissions, expiry, instance version/tier and warnings. Report only what the response proves. An unavailable diagnostic is not proof of an invalid credential.
 3. Explain the concrete cause: connection failure, insufficient permission, read-only policy, disabled feature, denied action, or unsupported instance capability. Distinguish these from an empty successful query.

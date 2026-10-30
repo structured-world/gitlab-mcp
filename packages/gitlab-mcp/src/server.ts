@@ -960,7 +960,7 @@ export async function startServer(): Promise<void> {
 }
 
 // Graceful shutdown - close all sessions and save to storage backend before exit
-async function gracefulShutdown(signal: string): Promise<void> {
+export async function gracefulShutdown(signal: string): Promise<void> {
   logInfo('Shutting down GitLab MCP Server...', { signal });
   try {
     await closeTagMatchers();

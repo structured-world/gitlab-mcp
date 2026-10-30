@@ -13,6 +13,11 @@ Each GitLab account that uses the server has its own settings, and each chat can
 them for itself. Settings only narrow what the server administrator allows; they never
 widen it.
 
+For the configurable Codex plugin, its settings page also opens a private connection
+panel before authentication. That panel chooses local GitLab execution or an existing
+HTTP MCP server and manages credentials on this computer. Connection selection is
+separate from the three backend policy layers below. See [Codex setup](/guide/installation/codex).
+
 ## Three layers
 
 | Layer   | Who sets it                                                              | Applies to                                                                                  | Kept                              |

@@ -5,6 +5,7 @@
 Advanced GitLab MCP server: 64 CQRS tools exposing 235 GitLab operations across 26 entity types. The tool catalog and parameters are filtered to each instance's GitLab version, tier, and token scopes, so the agent sees only what the connected instance actually supports.
 
 [![Install in Claude Desktop](https://img.shields.io/badge/Claude_Desktop-Install_Extension-F97316?style=for-the-badge)](https://gitlab-mcp.sw.foundation/downloads/gitlab-mcp-12.1.0.mcpb)
+[![Set up in Codex](https://img.shields.io/badge/Codex-Setup_%26_Download-111827?style=for-the-badge)](https://gitlab-mcp.sw.foundation/guide/installation/codex#install-from-a-release)
 [![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_MCP_Server-007ACC?style=for-the-badge&logo=visualstudiocode&logoColor=white)](vscode:mcp/install?%7B%22name%22%3A%22gitlab-mcp%22%2C%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40structured-world%2Fgitlab-mcp%22%5D%7D)
 [![Install in VS Code Insiders](https://img.shields.io/badge/VS_Code_Insiders-Install_MCP_Server-24bfa5?style=for-the-badge&logo=visualstudiocode&logoColor=white)](vscode-insiders:mcp/install?%7B%22name%22%3A%22gitlab-mcp%22%2C%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40structured-world%2Fgitlab-mcp%22%5D%7D)
 
@@ -38,7 +39,7 @@ This is a monorepo with two npm packages:
 
 | Client | Setup |
 |--------|-------|
-| **Codex (CLI and desktop)** | [Local MCP registration or remote HTTP server](https://gitlab-mcp.sw.foundation/guide/installation/codex) |
+| **Codex (CLI and desktop)** | [Configurable local plugin, local MCP registration or HTTP server](https://gitlab-mcp.sw.foundation/guide/installation/codex) |
 | **Antigravity CLI (`agy`)** | [Workspace MCP configuration and tested compatibility](https://gitlab-mcp.sw.foundation/clients/antigravity) |
 | Claude Desktop | [Desktop extension or MCP configuration](https://gitlab-mcp.sw.foundation/clients/claude-desktop) |
 | Claude Code | [CLI or MCP configuration](https://gitlab-mcp.sw.foundation/clients/claude-code) |
@@ -47,6 +48,22 @@ This is a monorepo with two npm packages:
 | Windsurf | [MCP configuration](https://gitlab-mcp.sw.foundation/clients/windsurf) |
 | Cline | [MCP configuration](https://gitlab-mcp.sw.foundation/clients/cline) |
 | Roo Code | [MCP configuration](https://gitlab-mcp.sw.foundation/clients/roo-code) |
+
+The Codex plugin can be installed before configuring a target. Its connection
+panel supports a GitLab instance with a locally started core server, or an existing
+HTTP MCP server. The local plugin requires Node.js 24+; credentials are entered in
+its private panel. See the installation guide for marketplace setup and authentication.
+
+The [shared sw.foundation marketplace](https://repo.sw.foundation/plugins/) lists
+verified releases. Add it once with `codex plugin marketplace add structured-world/repo --sparse .agents/plugins`,
+then install GitLab MCP from that catalog after its first configurable plugin release.
+
+Download the ready-made [Codex marketplace ZIP](https://github.com/structured-world/gitlab-mcp/releases/latest/download/gitlab-mcp-codex.zip)
+and its [SHA-256 checksum](https://github.com/structured-world/gitlab-mcp/releases/latest/download/gitlab-mcp-codex.zip.sha256)
+from GitHub Releases. It includes the local runtime and dependencies, separately from
+the Claude Desktop MCPB bundles. Add the extracted marketplace once, then install
+through Codex. An install link requires an already configured marketplace; downloading
+the ZIP does not install it automatically. Older releases may not contain these assets.
 
 With the Codex CLI installed and `GITLAB_API_URL` and `GITLAB_TOKEN` set in your
 environment, run `npx @structured-world/gitlab-mcp install --codex` to register a

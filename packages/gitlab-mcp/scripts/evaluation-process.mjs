@@ -6,7 +6,11 @@ import { delimiter, resolve } from 'node:path';
 export function resolveExecutable(name, environment = process.env, platform = process.platform) {
   const extensions = platform === 'win32' ? ['.exe', '.cmd', '.bat', '.com', ''] : [''];
   const path = Object.entries(environment).find(([key]) => key.toUpperCase() === 'PATH')?.[1];
-  for (const directory of (path ?? '').split(delimiter)) {
+  const directories =
+    name.includes('/') || (platform === 'win32' && name.includes('\\'))
+      ? [process.cwd()]
+      : (path ?? '').split(delimiter);
+  for (const directory of directories) {
     if (!directory) continue;
     for (const extension of extensions) {
       const candidate = resolve(directory, name + extension);

@@ -2,8 +2,16 @@
   "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
   "mcpServers": {
     "gitlab-sw": {
-      "type": "streamable-http",
-      "url": "http://127.0.0.1:3002/mcp"
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "--package",
+        "@structured-world/gitlab-mcp@12.1.0",
+        "gitlab-mcp-plugin",
+        "${PLUGIN_DATA}"
+      ],
+      "cwd": "${PLUGIN_ROOT}"
     }
   }
 }

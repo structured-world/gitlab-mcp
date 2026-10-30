@@ -100,15 +100,11 @@ jobs:
           echo "Manifest template is valid (JSON + required fields)"
         working-directory: packages/gitlab-mcp
 
-      # Builds the plugin with the directory submission rules from the built CLI,
+      # Builds the plugin with the directory submission rules,
       # so a missing asset, a bad skill header or an embedded secret fails the PR.
       - name: Validate Codex plugin package
-        run: >-
-          node dist/src/main.js plugin build --public
-          --endpoint https://mcp.example.com/mcp
-          --privacy-url https://example.com/privacy
-          --terms-url https://example.com/terms
-          --out "$RUNNER_TEMP/codex-plugin"
+        run: |
+          node -e 'require("./dist/src/cli/plugin/build.js").buildPlugin({flavor: "public", endpoint: "https://mcp.example.com/mcp", privacyPolicyUrl: "https://example.com/privacy", termsOfServiceUrl: "https://example.com/terms", outDir: process.env.RUNNER_TEMP + "/codex-plugin"})'
         working-directory: packages/gitlab-mcp
 
       # The repository marketplace (.agents/plugins and plugins/ at the repo root) is
@@ -125,11 +121,37 @@ jobs:
 
       # Installs that package into a real Codex CLI and runs install, disable, enable,
       # upgrade, reinstall and uninstall against the installed copy.
+      - name: Build configurable Codex plugin archive
+        run: >-
+          node scripts/build-codex-plugin.mjs "$RUNNER_TEMP/codex-configurable"
+        working-directory: packages/gitlab-mcp
+
       - name: Codex plugin lifecycle
         run: |
           npm install --prefix "$RUNNER_TEMP/codex-cli" --no-save --no-package-lock @openai/codex@0.163.0
           node scripts/codex-plugin-lifecycle.mjs --codex "$RUNNER_TEMP/codex-cli/node_modules/.bin/codex" "$RUNNER_TEMP/codex-plugin"
+          node --test tests/scripts/plugin-artifact.test.mjs
+          node scripts/qualify-codex-plugin.mjs --archive "$RUNNER_TEMP/codex-configurable/gitlab-mcp-codex.zip" --coverage --codex "$RUNNER_TEMP/codex-cli/node_modules/.bin/codex"
         working-directory: packages/gitlab-mcp
+
+      - name: Upload Codex plugin archive
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: codex-plugin
+          path: |
+            ${{ runner.temp }}/codex-configurable/gitlab-mcp-codex.zip
+            ${{ runner.temp }}/codex-configurable/gitlab-mcp-codex.zip.sha256
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload Codex plugin contract coverage
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./packages/gitlab-mcp/coverage/plugin.lcov.info
+          flags: codex-plugin
+          fail_ci_if_error: false
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v7
@@ -340,22 +362,22 @@ jobs:
     steps:
       - name: Summary
         run: |
-          echo "## Pipeline Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Pipeline Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
 
           if [[ "${{ needs.quality-checks.result }}" == "success" ]]; then
-            echo "✅ Quality checks: Passed" >> $GITHUB_STEP_SUMMARY
+            echo "✅ Quality checks: Passed" >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "❌ Quality checks: Failed" >> $GITHUB_STEP_SUMMARY
+            echo "❌ Quality checks: Failed" >> "$GITHUB_STEP_SUMMARY"
           fi
 
           if [[ "${{ needs.docker-build.result }}" == "success" ]]; then
-            echo "✅ Docker build: Passed" >> $GITHUB_STEP_SUMMARY
+            echo "✅ Docker build: Passed" >> "$GITHUB_STEP_SUMMARY"
           elif [[ "${{ needs.docker-build.result }}" == "skipped" ]]; then
-            echo "⏭️ Docker build: Skipped" >> $GITHUB_STEP_SUMMARY
+            echo "⏭️ Docker build: Skipped" >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "❌ Docker build: Failed" >> $GITHUB_STEP_SUMMARY
+            echo "❌ Docker build: Failed" >> "$GITHUB_STEP_SUMMARY"
           fi
 
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "ℹ️ Release and publishing handled by [Release workflow](${{ github.server_url }}/${{ github.repository }}/actions/workflows/release-please.yml)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "ℹ️ Release and publishing handled by [Release workflow](${{ github.server_url }}/${{ github.repository }}/actions/workflows/release-please.yml)" >> "$GITHUB_STEP_SUMMARY"

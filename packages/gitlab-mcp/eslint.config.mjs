@@ -9,7 +9,7 @@ export default [
   },
   js.configs.recommended,
   {
-    files: ['**/*.js'],
+    files: ['**/*.js', 'tests/plugin/**/*.cjs'],
     languageOptions: {
       sourceType: 'commonjs',
       globals: {

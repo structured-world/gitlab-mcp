@@ -292,7 +292,6 @@ export default defineConfig({
             { text: "setup", link: "/cli/setup" },
             { text: "init", link: "/cli/init" },
             { text: "install", link: "/cli/install" },
-            { text: "plugin", link: "/cli/plugin" },
             { text: "instances", link: "/cli/instances" },
             { text: "docker", link: "/cli/docker" },
             { text: "list-tools", link: "/cli/list-tools" },

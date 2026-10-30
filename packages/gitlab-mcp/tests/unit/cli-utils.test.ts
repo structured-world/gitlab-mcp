@@ -59,24 +59,14 @@ describe('cli-utils', () => {
         installArgs: [],
         docker: false,
         dockerArgs: [],
-        plugin: false,
-        pluginArgs: [],
       });
     });
 
-    it('should route the plugin subcommand with its arguments', () => {
-      const result = parseCliArgs([
-        'node',
-        'main.js',
-        'plugin',
-        'build',
-        '--endpoint',
-        'https://mcp.example.com/mcp',
-      ]);
-
-      expect(result.plugin).toBe(true);
-      expect(result.pluginArgs).toEqual(['build', '--endpoint', 'https://mcp.example.com/mcp']);
-      expect(result.install).toBe(false);
+    it('rejects the removed packaging command instead of starting a server', () => {
+      // Packaging belongs to release automation and must not be dispatched by the server CLI.
+      expect(() => parseCliArgs(['node', 'main.js', 'plugin', 'build'])).toThrow(
+        'Unknown command: plugin',
+      );
     });
 
     it('should parse --profile flag', () => {
@@ -151,8 +141,6 @@ describe('cli-utils', () => {
         installArgs: [],
         docker: false,
         dockerArgs: [],
-        plugin: false,
-        pluginArgs: [],
       });
     });
 

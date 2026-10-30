@@ -4,6 +4,17 @@
 
 * exempt stdio session from idle timeout cleanup ([#363](https://github.com/structured-world/gitlab-mcp/issues/363)) ([ca563bd](https://github.com/structured-world/gitlab-mcp/commit/ca563bda9aa969d5d7680d3d89c2c72f32344838)), closes [#361](https://github.com/structured-world/gitlab-mcp/issues/361)
 
+## [13.0.0](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-v12.1.0...gitlab-mcp-v13.0.0) (2026-10-30)
+
+
+### ⚠ BREAKING CHANGES
+
+* **codex:** Remove gitlab-mcp plugin build. Install the released plugin and configure its connection in the plugin settings.
+
+### Features
+
+* **codex:** install a configurable local plugin ([#730](https://github.com/structured-world/gitlab-mcp/issues/730)) ([1618361](https://github.com/structured-world/gitlab-mcp/commit/1618361abdf68c2172eda21530bc9707435ad239)), closes [#729](https://github.com/structured-world/gitlab-mcp/issues/729)
+
 ## [12.1.0](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-v12.0.3...gitlab-mcp-v12.1.0) (2026-10-30)
 
 

@@ -1,5 +1,23 @@
 # Changelog
 
+## [13.0.0](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-db-v12.1.0...gitlab-mcp-db-v13.0.0) (2026-10-30)
+
+
+### ⚠ BREAKING CHANGES
+
+* **codex:** Remove gitlab-mcp plugin build. Install the released plugin and configure its connection in the plugin settings.
+
+### Features
+
+* **codex:** install a configurable local plugin ([#730](https://github.com/structured-world/gitlab-mcp/issues/730)) ([1618361](https://github.com/structured-world/gitlab-mcp/commit/1618361abdf68c2172eda21530bc9707435ad239)), closes [#729](https://github.com/structured-world/gitlab-mcp/issues/729)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @structured-world/gitlab-mcp bumped to 13.0.0
+
 ## [12.1.0](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-db-v12.0.3...gitlab-mcp-db-v12.1.0) (2026-10-30)
 
 

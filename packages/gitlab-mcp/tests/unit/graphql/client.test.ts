@@ -41,6 +41,19 @@ describe('GraphQLClient', () => {
   });
 
   describe('constructor', () => {
+    // Duo history must be bounded before JSON parsing, while ordinary requests keep their contract.
+    it('reads a bounded GraphQL response', async () => {
+      mockEnhancedFetch.mockResolvedValueOnce(
+        new Response(JSON.stringify({ data: { project: { id: 'project' } } })),
+      );
+      expect(await client.request(testQuery, { id: 'test' }, undefined, 256)).toEqual({
+        project: { id: 'project' },
+      });
+      mockEnhancedFetch.mockResolvedValueOnce(new Response('x'.repeat(257)));
+      await expect(client.request(testQuery, { id: 'test' }, undefined, 256)).rejects.toThrow(
+        '256-byte limit',
+      );
+    });
     it('should initialize with endpoint and default headers', () => {
       expect(client.endpoint).toBe('https://gitlab.example.com/api/graphql');
     });

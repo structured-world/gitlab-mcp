@@ -15,7 +15,7 @@ Configure GitLab MCP for [Claude Desktop](https://claude.ai/download).
 
 The easiest way to install — download and open the `.mcpb` bundle:
 
-<a href="/downloads/gitlab-mcp-8.0.0.mcpb" download>
+<a href="/downloads/gitlab-mcp-13.0.0.mcpb" download>
   <img src="https://img.shields.io/badge/Claude_Desktop-Install_Extension-F97316?style=for-the-badge&logoColor=white" alt="Install in Claude Desktop">
 </a>
 

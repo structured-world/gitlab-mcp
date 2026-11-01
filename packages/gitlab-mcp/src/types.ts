@@ -1,4 +1,5 @@
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
+import type { EffectivePolicy } from './configuration/policy';
 
 // Transport mode constants and type
 const TransportModeObj = {
@@ -58,7 +59,7 @@ export interface ToolRequirements {
 
 // Enhanced tool definition interface that includes handler function
 export interface EnhancedToolDefinition extends ToolDefinition {
-  handler: (args: unknown) => Promise<unknown>;
+  handler: (args: unknown, policy?: EffectivePolicy) => Promise<unknown>;
   /** Explicitly opt in to native MCP envelopes; ordinary entity data is never guessed by shape. */
   resultFormat?: 'mcp';
   gate?: FeatureGate; // Optional - tools without gate are always enabled

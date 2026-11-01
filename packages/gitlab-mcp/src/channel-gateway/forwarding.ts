@@ -52,6 +52,11 @@ export async function forwardWithPolicy(
   try {
     return await policy.call(name, args);
   } catch (err) {
+    if (name === 'manage_duo_session' && err instanceof DownstreamDisconnectedError) {
+      err.message =
+        'Duo mutation outcome is unknown. Inspect browse_duo_sessions list or get before another command. Do not automatically replay the write.';
+      throw err;
+    }
     // Replay only after a lost link, never a valid protocol/schema rejection.
     if (policy.isRead(name) && err instanceof DownstreamDisconnectedError) {
       await policy.waitForConnection();

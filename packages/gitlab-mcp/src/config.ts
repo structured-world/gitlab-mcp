@@ -342,6 +342,7 @@ export const USE_REGISTRY = process.env.USE_REGISTRY !== 'false';
 export const USE_ACCESS_TOKENS = process.env.USE_ACCESS_TOKENS !== 'false';
 export const USE_AUDIT_EVENTS = process.env.USE_AUDIT_EVENTS !== 'false';
 export const USE_VULNERABILITIES = process.env.USE_VULNERABILITIES !== 'false';
+export const USE_DUO = process.env.USE_DUO !== 'false';
 export const HOST = process.env.HOST ?? '127.0.0.1';
 export const PORT = process.env.PORT ?? 3002;
 // Use the same size units as Express; the default fits a JSON-escaped 1 MiB note.

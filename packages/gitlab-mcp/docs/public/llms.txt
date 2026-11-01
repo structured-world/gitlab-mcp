@@ -1,5 +1,5 @@
 > Advanced GitLab MCP server
-> Provides 58 tools across 26 entity types using CQRS pattern (browse_* for reads, manage_* for writes)
+> Provides 66 tools across 27 entity types using CQRS pattern (browse_* for reads, manage_* for writes)
 
 # Quick Start
 
@@ -10,7 +10,7 @@ npx @structured-world/gitlab-mcp init
 Required: GITLAB_TOKEN (Personal Access Token or OAuth)
 Optional: GITLAB_API_URL (defaults to https://gitlab.com)
 
-# Tools (58 total, CQRS pattern: browse_* = read, manage_* = write)
+# Tools (66 total, CQRS pattern: browse_* = read, manage_* = write)
 
 ## Projects & Namespaces
 - browse_projects: Search, list, or get project details. Actions: search, list, get.

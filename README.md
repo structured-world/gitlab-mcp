@@ -2,7 +2,7 @@
 
 [![npm version](https://img.shields.io/npm/v/@structured-world/gitlab-mcp)](https://www.npmjs.com/package/@structured-world/gitlab-mcp) [![npm downloads](https://img.shields.io/npm/dm/@structured-world/gitlab-mcp)](https://www.npmjs.com/package/@structured-world/gitlab-mcp) [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](./LICENSE) [![Release](https://github.com/structured-world/gitlab-mcp/workflows/Release/badge.svg)](https://github.com/structured-world/gitlab-mcp/actions) [![Coverage](https://codecov.io/gh/structured-world/gitlab-mcp/graph/badge.svg)](https://codecov.io/gh/structured-world/gitlab-mcp) [![Coverage Report](https://img.shields.io/badge/Coverage-Live%20Report-brightgreen?logo=github)](https://gitlab-mcp.sw.foundation/coverage/)
 
-Advanced GitLab MCP server: 64 CQRS tools exposing 236 GitLab operations across 26 entity types. The tool catalog and parameters are filtered to each instance's GitLab version, tier, and token scopes, so the agent sees only what the connected instance actually supports.
+Advanced GitLab MCP server: 66 CQRS tools exposing 241 GitLab operations across 27 entity types. The tool catalog and parameters are filtered to each instance's GitLab version, tier, and token scopes, so the agent sees only what the connected instance actually supports.
 
 [![Install in Claude Desktop](https://img.shields.io/badge/Claude_Desktop-Install_Extension-F97316?style=for-the-badge)](https://gitlab-mcp.sw.foundation/downloads/gitlab-mcp-13.1.0.mcpb)
 [![Set up in Codex](https://img.shields.io/badge/Codex-Setup_%26_Download-111827?style=for-the-badge)](https://gitlab-mcp.sw.foundation/guide/installation/codex#install-from-a-release)
@@ -35,7 +35,15 @@ This is a monorepo with two npm packages:
 
 **Requirements:** Node.js >= 24
 
+## GitLab Duo sessions
+
+GitLab Duo sessions are also supported: discover agents and flows, inspect
+progress and outputs, and explicitly start or answer asynchronous CI sessions.
+Commands can consume credits and change GitLab. See the
+[Duo session guide](https://gitlab-mcp.sw.foundation/guides/duo-sessions).
+
 ## Supported clients
+
 
 | Client | Setup |
 |--------|-------|
@@ -78,7 +86,7 @@ for all setup guides.
 
 ## Highlights
 
-- **64 tools** across 26 entity types — projects, merge requests, pipelines, work items, wiki, and more
+- **66 tools** across 27 entity types: projects, merge requests, pipelines, work items, wiki, and more
 - **CQRS architecture** — `browse_*` for queries, `manage_*` for commands
 - **Connection resilience** — Bounded startup, auto-reconnect with exponential backoff, disconnected mode when GitLab is unreachable
 - **Multi-instance support** — Connect to GitLab.com, self-managed, and self-hosted instances with per-instance OAuth and rate limiting; one connection can link several accounts, such as a company GitLab and a personal GitLab.com account, and each chat switches between them
@@ -93,8 +101,8 @@ for all setup guides.
 
 GitLab exposes hundreds of API operations. Giving each its own MCP tool floods an
 agent's context; a thin API wrapper pushes that complexity back onto the agent. This
-server takes a third path: 64 CQRS tools, each holding several typed
-actions, expose 236 operations across 26 entity types.
+server takes a third path: 66 CQRS tools, each holding several typed
+actions, expose 241 operations across 27 entity types.
 
 - `browse_*` tools are read-only queries; `manage_*` tools are writes.
 - Sub-resources fold into actions rather than new tools — `browse_pipelines` covers
@@ -119,7 +127,7 @@ Full documentation is available at **[gitlab-mcp.sw.foundation](https://gitlab-m
 | [Installation](https://gitlab-mcp.sw.foundation/guide/installation/npm) | npm, Docker, VS Code, Codex |
 | [Configuration](https://gitlab-mcp.sw.foundation/guide/configuration) | Environment variables, feature flags |
 | [Multi-Instance](https://gitlab-mcp.sw.foundation/guide/multi-instance) | Connect to multiple GitLab instances |
-| [Tool Reference](https://gitlab-mcp.sw.foundation/tools/) | All 64 tools with parameters |
+| [Tool Reference](https://gitlab-mcp.sw.foundation/tools/) | All 66 tools with parameters |
 | [OAuth Setup](https://gitlab-mcp.sw.foundation/security/oauth) | Team authentication with Claude |
 | [TLS/HTTPS](https://gitlab-mcp.sw.foundation/advanced/tls) | Production deployment with SSL |
 | [Customization](https://gitlab-mcp.sw.foundation/advanced/customization) | Tool descriptions, action filtering |

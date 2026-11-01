@@ -12,6 +12,7 @@ description: "Code Reviewer - MR discussions, approvals, code context"
 read_only: false
 
 features:
+  duo: false      # This preset does not start CI jobs
   wiki: false      # Not needed for code review
   milestones: false
   pipelines: true  # Check CI status for MRs

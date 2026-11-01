@@ -53,7 +53,7 @@ You MUST select `api` scope for full functionality. Without it, most tools will 
 
 | Scope | Required? | What it enables |
 |-------|-----------|-----------------|
-| `api` | **YES** | All 58 scope-gated tools (projects, MRs, issues, pipelines, etc.) |
+| `api` | **YES** | All 66 scope-gated tools (projects, MRs, issues, pipelines, etc.) |
 | `read_user` | Recommended | User info display, avatar, email |
 | `read_api` | Alternative | Read-only access (use with `GITLAB_READ_ONLY_MODE=true`) |
 | `read_repository` | Optional | File content access (covered by `api`) |
@@ -64,7 +64,7 @@ You MUST select `api` scope for full functionality. Without it, most tools will 
 **Minimum for read-only:** `read_api` + `read_user`
 
 ::: warning Common mistake
-Selecting only `read_user` gives access to just 2 of 58 tools (user search and events only).
+Selecting only `read_user` gives access to just 2 of 66 tools (user search and events only).
 GraphQL API is completely blocked without `api` or `read_api`.
 :::
 
@@ -108,7 +108,7 @@ With full access (`api` + `read_user`):
 
 With limited access (`read_user` only):
 ```
-[INFO] Token "gitlab-mcp" has limited scopes - 2 of 58 scope-gated tools available
+[INFO] Token "gitlab-mcp" has limited scopes - 2 of 66 scope-gated tools available
 [INFO] GraphQL introspection skipped (requires 'api' or 'read_api' scope)
 [INFO] For full functionality, create a token with 'api' scope:
        https://gitlab.com/-/user_settings/personal_access_tokens?name=gitlab-mcp&scopes=api%2Cread_user
@@ -125,11 +125,11 @@ When your token expires within 7 days:
 
 | Token Scopes | Available Tools | GraphQL | REST Projects | What Works |
 |-------------|----------------|---------|---------------|------------|
-| `api, read_user` | **58/58** | Full | Full | Everything |
-| `read_api, read_user` | **32/58** | Read-only | Read-only | All browse_* tools |
-| `read_user` only | **2/58** | Blocked | Blocked | Only browse_users, browse_events |
-| `read_repository` only | **1/58** | Blocked | Blocked | Only browse_files |
-| No scopes | **0/58** | Blocked | Blocked | Nothing |
+| `api, read_user` | **66/66** | Full | Full | Everything |
+| `read_api, read_user` | **33/66** | Read-only | Read-only | All browse_* tools |
+| `read_user` only | **2/66** | Blocked | Blocked | Only browse_users, browse_events |
+| `read_repository` only | **1/66** | Blocked | Blocked | Only browse_files |
+| No scopes | **0/66** | Blocked | Blocked | Nothing |
 
 ## Option B: OAuth (Server/Team Deployment) {#oauth}
 
@@ -205,7 +205,7 @@ See [OAuth details](/security/oauth) for full flow documentation.
 
 Your token is missing `api` or `read_api` scope. The server will show which scopes are detected:
 ```
-[INFO] Token "mcp" has limited scopes - 2 of 58 scope-gated tools available
+[INFO] Token "mcp" has limited scopes - 2 of 66 scope-gated tools available
 [INFO] GraphQL introspection skipped (requires 'api' or 'read_api' scope)
 ```
 

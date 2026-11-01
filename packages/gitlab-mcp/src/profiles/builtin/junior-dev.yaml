@@ -14,6 +14,7 @@ description: "Junior Developer - code, MRs, basic issue tracking"
 read_only: false
 
 features:
+  duo: false      # CI execution is outside this preset
   wiki: false
   milestones: false
   pipelines: false

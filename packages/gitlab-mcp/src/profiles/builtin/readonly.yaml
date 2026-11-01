@@ -15,6 +15,7 @@ read_only: true
 denied_tools_regex: "^manage_|^create_"
 
 features:
+  duo: true        # Read-only mode removes the command tool
   wiki: true
   milestones: true
   pipelines: true

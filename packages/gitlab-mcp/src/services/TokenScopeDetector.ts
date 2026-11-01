@@ -161,6 +161,8 @@ const TOOL_SCOPE_REQUIREMENTS: Record<string, GitLabScope[]> = {
 
   // Vulnerabilities (Ultimate)
   browse_vulnerabilities: ['api', 'read_api'],
+  browse_duo_sessions: ['api', 'read_api'],
+  manage_duo_session: ['api'],
   manage_vulnerability: ['api'],
 
   // Wiki

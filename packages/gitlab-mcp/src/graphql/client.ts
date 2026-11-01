@@ -4,6 +4,7 @@ import { DEFAULT_HEADERS } from '../http-client';
 import { enhancedFetch } from '../utils/fetch';
 import type { SchemaFieldIndex } from '../services/SchemaIntrospector';
 import { prepareDocument } from './prepare-document';
+import { readBoundedJson } from '../utils/bounded-json';
 
 export interface GraphQLClientOptions {
   endpoint: string;
@@ -49,6 +50,7 @@ export class GraphQLClient {
     document: TypedDocumentNode<TResult, TVariables>,
     variables?: TVariables,
     requestHeaders?: Record<string, string>,
+    responseByteLimit?: number,
   ): Promise<TResult> {
     const prepared = prepareDocument(document, this.schemaIndexProvider());
     const query = print(prepared.document);
@@ -79,7 +81,11 @@ export class GraphQLClient {
       throw new Error(`GraphQL request failed: ${response.status} ${response.statusText}`);
     }
 
-    const result: ExecutionResult<TResult> = (await response.json()) as ExecutionResult<TResult>;
+    const result = (
+      responseByteLimit === undefined
+        ? await response.json()
+        : await readBoundedJson(response, responseByteLimit)
+    ) as ExecutionResult<TResult>;
 
     if (result.errors) {
       throw new Error(`GraphQL errors: ${result.errors.map((e) => e.message).join(', ')}`);

@@ -14,6 +14,7 @@ description: "Standard developer access - no admin features"
 read_only: false
 
 features:
+  duo: true        # Asynchronous development assistance
   wiki: true
   milestones: true
   pipelines: true

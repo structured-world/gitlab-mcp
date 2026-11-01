@@ -11,6 +11,7 @@ import { ManageMrDiscussionSchema } from '../../src/entities/mrs/schema';
 import { BrowseWorkItemsSchema } from '../../src/entities/workitems/schema-readonly';
 import { ManageWorkItemSchema } from '../../src/entities/workitems/schema';
 import { BrowsePipelinesSchema } from '../../src/entities/pipelines/schema-readonly';
+import { BrowseDuoSessionsSchema, ManageDuoSessionSchema } from '../../src/entities/duo/schema';
 
 const schemas = {
   'gitlab-setup': [ManageContextSchema],
@@ -18,6 +19,7 @@ const schemas = {
   'gitlab-review': [BrowseMergeRequestsSchema, BrowseMrDiscussionsSchema, ManageMrDiscussionSchema],
   'gitlab-work-items': [BrowseWorkItemsSchema, ManageWorkItemSchema],
   'gitlab-ci': [BrowsePipelinesSchema],
+  'gitlab-duo': [BrowseDuoSessionsSchema, ManageDuoSessionSchema],
 };
 
 describe('portable installed skills', () => {

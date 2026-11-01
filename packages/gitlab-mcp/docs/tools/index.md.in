@@ -11,6 +11,17 @@ head:
 
 GitLab MCP Server provides **__TOOL_COUNT__ tools** across __ENTITY_COUNT__ entity types.
 
+## GitLab Duo (`USE_DUO=true`)
+
+| Tool | Actions | Description |
+|------|---------|-------------|
+| `browse_duo_sessions` | `agents_and_flows`, `list`, `get` | Discover project agents and flows; inspect session progress, answers and created objects |
+| `manage_duo_session` | `start`, `send_input` | Explicitly start CI execution or answer, approve or reject a waiting session |
+
+Commands can change GitLab and consume credits. Read-only mode removes them.
+See [Duo sessions](/guides/duo-sessions) for version support, prerequisites,
+pagination, bounded output and ambiguous-write recovery.
+
 ## Architecture
 
 Tools follow the **CQRS pattern**:

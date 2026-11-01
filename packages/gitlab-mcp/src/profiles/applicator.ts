@@ -41,6 +41,7 @@ const FEATURE_ENV_MAP: Record<string, string> = {
   access_tokens: 'USE_ACCESS_TOKENS',
   audit_events: 'USE_AUDIT_EVENTS',
   vulnerabilities: 'USE_VULNERABILITIES',
+  duo: 'USE_DUO',
 };
 
 // ============================================================================

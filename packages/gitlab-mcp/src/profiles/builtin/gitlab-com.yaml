@@ -14,6 +14,7 @@ description: "Optimized for gitlab.com - respects rate limits, safe defaults"
 read_only: false
 
 features:
+  duo: true        # GitLab enforces project execution and billing eligibility
   wiki: true
   milestones: true
   pipelines: true

@@ -15,6 +15,7 @@ description: "Senior Developer - code review, discussions, pipeline monitoring"
 read_only: false
 
 features:
+  duo: true
   wiki: true
   milestones: false
   pipelines: true

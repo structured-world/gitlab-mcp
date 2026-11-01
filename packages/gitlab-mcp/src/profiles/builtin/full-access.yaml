@@ -11,6 +11,7 @@ description: "Full access - all features enabled (tech lead)"
 read_only: false
 
 features:
+  duo: true
   wiki: true
   milestones: true
   pipelines: true

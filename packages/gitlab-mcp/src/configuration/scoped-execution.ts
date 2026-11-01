@@ -5,6 +5,7 @@
  */
 
 import type { EffectivePolicy } from './policy';
+import { BrowseDuoSessionsSchema, ManageDuoSessionSchema } from '../entities/duo/schema';
 import type { ScopeEnforcer } from '../profiles/scope-enforcer';
 import type { ScopeConfig } from '../profiles/types';
 import { parseGitLabApiError } from '../utils/error-handler';
@@ -126,6 +127,8 @@ const SCOPED_TOOL_SCHEMAS: Readonly<Record<string, ZodType>> = {
   browse_runners: BrowseRunnersSchema,
   browse_audit_events: BrowseAuditEventsSchema,
   browse_vulnerabilities: BrowseVulnerabilitiesSchema,
+  browse_duo_sessions: BrowseDuoSessionsSchema,
+  manage_duo_session: ManageDuoSessionSchema,
   manage_project: ManageProjectSchema,
 };
 /** Requests one scoped call keeps in flight, so a large scope stays within rate limits. */

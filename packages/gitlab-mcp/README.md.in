@@ -35,7 +35,15 @@ This is a monorepo with two npm packages:
 
 **Requirements:** Node.js >= 24
 
+## GitLab Duo sessions
+
+GitLab Duo sessions are also supported: discover agents and flows, inspect
+progress and outputs, and explicitly start or answer asynchronous CI sessions.
+Commands can consume credits and change GitLab. See the
+[Duo session guide](https://gitlab-mcp.sw.foundation/guides/duo-sessions).
+
 ## Supported clients
+
 
 | Client | Setup |
 |--------|-------|
@@ -78,7 +86,7 @@ for all setup guides.
 
 ## Highlights
 
-- **__TOOL_COUNT__ tools** across __ENTITY_COUNT__ entity types — projects, merge requests, pipelines, work items, wiki, and more
+- **__TOOL_COUNT__ tools** across __ENTITY_COUNT__ entity types: projects, merge requests, pipelines, work items, wiki, and more
 - **CQRS architecture** — `browse_*` for queries, `manage_*` for commands
 - **Connection resilience** — Bounded startup, auto-reconnect with exponential backoff, disconnected mode when GitLab is unreachable
 - **Multi-instance support** — Connect to GitLab.com, self-managed, and self-hosted instances with per-instance OAuth and rate limiting; one connection can link several accounts, such as a company GitLab and a personal GitLab.com account, and each chat switches between them

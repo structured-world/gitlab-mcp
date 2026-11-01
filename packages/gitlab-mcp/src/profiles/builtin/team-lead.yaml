@@ -15,6 +15,7 @@ description: "Team Lead - planning, milestones, team oversight, code review"
 read_only: false
 
 features:
+  duo: true        # Delegate explicitly requested development work
   wiki: true
   milestones: true
   pipelines: true

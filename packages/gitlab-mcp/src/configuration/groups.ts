@@ -39,6 +39,7 @@ export const TOOL_GROUPS: readonly ToolGroup[] = [
   { id: 'integrations', title: 'Integrations', registries: ['integrations'] },
   { id: 'audit_events', title: 'Audit events', registries: ['audit_events'] },
   { id: 'vulnerabilities', title: 'Vulnerabilities', registries: ['vulnerabilities'] },
+  { id: 'duo', title: 'Duo agents and flows', registries: ['duo'] },
 ];
 
 const GROUP_OF_REGISTRY = new Map(

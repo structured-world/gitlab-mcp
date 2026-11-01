@@ -15,8 +15,8 @@ Install GitLab MCP as a Claude Desktop Extension with one click.
 
 Download the latest bundle and open it:
 
-<a href="/downloads/gitlab-mcp-8.0.0.mcpb" class="vp-button brand" download>
-  Download gitlab-mcp-8.0.0.mcpb
+<a href="/downloads/gitlab-mcp-13.0.0.mcpb" class="vp-button brand" download>
+  Download gitlab-mcp-13.0.0.mcpb
 </a>
 
 Or drag-and-drop the `.mcpb` file into your Claude Desktop window.
@@ -26,7 +26,7 @@ Or drag-and-drop the `.mcpb` file into your Claude Desktop window.
 1. Claude Desktop shows the extension details
 2. You enter your GitLab token and instance URL
 3. The extension installs locally — no external services needed
-4. All 58 tools become available in your Claude conversations
+4. All 66 tools become available in your Claude conversations
 
 ## Configuration
 
@@ -45,7 +45,7 @@ If you prefer manual setup, use the [npm method](/guide/installation/npm) or [JS
 ## Updating
 
 When a new version is released, download the latest `.mcpb` from the
-<a href="/downloads/gitlab-mcp-8.0.0.mcpb" download>documentation site</a> or the
+<a href="/downloads/gitlab-mcp-13.0.0.mcpb" download>documentation site</a> or the
 [GitHub releases page](https://github.com/structured-world/gitlab-mcp/releases).
 
 ## Advanced Configuration

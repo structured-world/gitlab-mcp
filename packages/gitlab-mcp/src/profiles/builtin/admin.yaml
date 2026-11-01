@@ -12,6 +12,7 @@ description: "Full admin access - all features enabled"
 read_only: false
 
 features:
+  duo: true
   wiki: true
   milestones: true
   pipelines: true

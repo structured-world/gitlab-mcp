@@ -160,6 +160,7 @@ Enable or disable tool groups:
 | `USE_ACCESS_TOKENS` | Project/group/personal access token management | `true` |
 | `USE_AUDIT_EVENTS` | Audit events (Premium+) | `true` |
 | `USE_VULNERABILITIES` | Vulnerability management (Ultimate) | `true` |
+| `USE_DUO` | Duo session discovery, progress and explicit CI execution | `true` |
 
 ## Server Configuration
 

@@ -102,6 +102,8 @@ function extractCategory(toolName) {
     browse_search: 'Discovery',
     browse_iterations: 'Planning',
     manage_context: 'Session',
+    browse_duo_sessions: 'Duo',
+    manage_duo_session: 'Duo',
   };
 
   return categoryMap[toolName] || 'General';

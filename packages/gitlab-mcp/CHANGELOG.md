@@ -4,6 +4,18 @@
 
 * exempt stdio session from idle timeout cleanup ([#363](https://github.com/structured-world/gitlab-mcp/issues/363)) ([ca563bd](https://github.com/structured-world/gitlab-mcp/commit/ca563bda9aa969d5d7680d3d89c2c72f32344838)), closes [#361](https://github.com/structured-world/gitlab-mcp/issues/361)
 
+## [13.1.0](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-v13.0.0...gitlab-mcp-v13.1.0) (2026-11-01)
+
+
+### Features
+
+* **workitems:** reorder issue cards ([#736](https://github.com/structured-world/gitlab-mcp/issues/736)) ([0b61706](https://github.com/structured-world/gitlab-mcp/commit/0b61706bf55f9a5bd6da9e4c022fa0722eb5596b)), closes [#734](https://github.com/structured-world/gitlab-mcp/issues/734)
+
+
+### Bug Fixes
+
+* **http:** isolate OAuth reconnect quotas ([#733](https://github.com/structured-world/gitlab-mcp/issues/733)) ([0d21275](https://github.com/structured-world/gitlab-mcp/commit/0d21275c669dda6641cdb2e9101068c76cd34e5e))
+
 ## [13.0.0](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-v12.1.0...gitlab-mcp-v13.0.0) (2026-10-30)
 
 

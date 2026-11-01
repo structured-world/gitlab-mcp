@@ -17,6 +17,10 @@ domain with `USE_DUO=false`. Read-only mode keeps browsing and removes commands.
 Preset restrictions, working scope and `GITLAB_ALLOWED_PROJECT_IDS` apply to the
 actual session project, which is resolved before detailed results are fetched.
 
+Use an external GitLab credential with `api` scope for the complete lifecycle;
+`read_api` supports browsing. The tools do not assume that the official server's
+`mcp` scope or `ai_features` alone permits their external REST and GraphQL calls.
+
 Metadata browsing starts at GitLab 17.3, catalog discovery at 18.5 and configured
 consumer execution at 18.7. Catalog input resumption requires 19.4, whose native
 permission also checks completion of the preceding CI job. GitLab 19.5 supports

@@ -89,8 +89,8 @@ beforeEach(() => {
   });
   (graphqlSupports as jest.Mock).mockReturnValue(true);
   (instanceAtLeast as jest.Mock).mockReturnValue(true);
-  (gitlab.get as jest.Mock).mockResolvedValue(project);
-  (gitlab.post as jest.Mock).mockResolvedValue({ id: 73, status: 'created' });
+  (gitlab.get as jest.Mock).mockReset().mockResolvedValue(project);
+  (gitlab.post as jest.Mock).mockReset().mockResolvedValue({ id: 73, status: 'created' });
   responses.DuoConfiguredConsumer = { aiCatalogItemConsumer: consumer };
   responses.DuoProjectEnablement = {
     project: {
@@ -124,7 +124,7 @@ beforeEach(() => {
       ],
     },
   };
-  request.mockImplementation(async (document) => {
+  request.mockReset().mockImplementation(async (document) => {
     const name = getOperationAST(document)?.name?.value;
     if (!name || !(name in responses)) throw new Error(`Unexpected local query: ${name}`);
     const result = responses[name];

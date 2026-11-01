@@ -13,6 +13,12 @@ import {
   isMcpTransportRequest,
 } from '../../../src/middleware/mcp-auth-routes';
 
+// A prefix match must not defer the anonymous IP quota for an unrelated route.
+it('does not classify a transport path prefix as an MCP route', () => {
+  const req = { path: '/mcp/other', method: 'GET', headers: {} } as Request;
+  expect(isMcpTransportRequest(req, true)).toBe(false);
+});
+
 describe.each(['GET', 'HEAD'])('root %s classification', (method) => {
   // Without a dashboard, even a root request without stream headers belongs to MCP.
   it('authenticates the root when the dashboard is disabled', () => {

@@ -94,6 +94,7 @@ Time tracking: when available, `browse_work_items` returns a `TIME_TRACKING` wid
 | `delete_timelog` | Delete a time tracking entry from a work item |
 | `add_link` | Add a relationship link between two work items |
 | `remove_link` | Remove a relationship link between two work items |
+| `reorder` | Reorder an issue card without changing its list or hierarchy |
 <!-- @autogen:end -->
 
 ::: code-group

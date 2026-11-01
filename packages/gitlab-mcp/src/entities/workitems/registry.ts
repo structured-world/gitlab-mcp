@@ -1,6 +1,7 @@
 import * as z from 'zod';
 import { BrowseWorkItemsSchema } from './schema-readonly';
 import { ManageWorkItemSchema } from './schema';
+import { reorderWorkItem } from './reorder';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
 import { ConnectionManager } from '../../services/ConnectionManager';
 import { assertActionAllowed } from '../utils';
@@ -502,7 +503,7 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
     {
       name: 'manage_work_item',
       description:
-        'Create, update, delete, or link work items (issues, epics, tasks). Actions: create (epics need GROUP namespace, issues/tasks need PROJECT), update (widgets: dates, time tracking, weight, iterations, health, progress, hierarchy), delete (permanent), delete_timelog (remove a time tracking entry by its global ID), add_link/remove_link (BLOCKS/BLOCKED_BY/RELATED). Related: browse_work_items for discovery.',
+        'Create, update, delete, reorder, or link work items (issues, epics, tasks). Actions: create (epics need GROUP namespace, issues/tasks need PROJECT), update (widgets: dates, time tracking, weight, iterations, health, progress, hierarchy), reorder (issue card before/after other global IDs; board discovered internally), delete (permanent), delete_timelog (remove a time tracking entry by its global ID), add_link/remove_link (BLOCKS/BLOCKED_BY/RELATED). Related: browse_work_items for discovery.',
       inputSchema: z.toJSONSchema(ManageWorkItemSchema),
       // create/update adapt to the instance schema (widgets its create input lacks
       // go through a follow-up update). The linked-items mutations have no older
@@ -526,6 +527,8 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
         assertActionAllowed('manage_work_item', input.action);
 
         switch (input.action) {
+          case 'reorder':
+            return reorderWorkItem(input);
           case 'create': {
             const {
               namespace,

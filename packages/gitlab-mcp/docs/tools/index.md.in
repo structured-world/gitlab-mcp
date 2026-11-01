@@ -135,7 +135,19 @@ not retry the request or automatically search additional projects.
 | Tool | Type | Description |
 |------|------|-------------|
 | `browse_work_items` | Query | List and get issues/epics/tasks |
-| `manage_work_item` | Command | Create, update, delete work items |
+| `manage_work_item` | Command | Create, update, delete, link and reorder work items |
+
+Use `manage_work_item` with `action: "reorder"`, the issue's global `id`, and
+`beforeId` and/or `afterId` to change manual card order. Neighbours use global work
+item IDs, not project-local IIDs. The server resolves the issue's project and finds
+an accessible project or ancestor-group board internally; no `boardId` is required.
+The operation changes GitLab's shared issue-relative order, without changing lists,
+labels or hierarchy. It is a write and respects read-only mode and action/project
+restrictions. GitLab remains authoritative for board and issue permissions.
+
+```json
+{"action":"reorder","id":"123","beforeId":"456"}
+```
 
 ### Webhooks (`USE_WEBHOOKS=true`, default: enabled)
 
@@ -241,7 +253,7 @@ See [role-based prompts](/prompts/by-role/developer) for workflows tailored to e
 | **Jobs** | — (via browse_pipelines) | `manage_pipeline` (play_job, retry_job, cancel_job) |
 | **Variables** | `browse_variables` (list, get) | `manage_variable` (create, update, delete) |
 | **Files** | `browse_files` (tree, content, download_attachment) | `manage_files` (single, batch, upload) |
-| **Work Items** | `browse_work_items` (list, get) | `manage_work_item` (create, update, delete) |
+| **Work Items** | `browse_work_items` (list, get) | `manage_work_item` (create, update, delete, link, reorder) |
 | **Milestones** | `browse_milestones` (list, get, issues, burndown) | `manage_milestone` (create, update, delete, promote) |
 | **Labels** | `browse_labels` (list, get) | `manage_label` (create, update, delete) |
 | **Iterations** | `browse_iterations` (list, get) | — |

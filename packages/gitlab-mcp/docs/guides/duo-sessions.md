@@ -24,7 +24,9 @@ Use an external GitLab credential with `api` scope for the complete lifecycle;
 Metadata browsing starts at GitLab 17.3, catalog discovery at 18.5 and configured
 consumer execution at 18.7. Catalog input resumption requires 19.4, whose native
 permission also checks completion of the preceding CI job. GitLab 19.5 supports
-foundational agent CI sessions, URL-targeted flows and all three input checkpoints.
+foundational agent CI sessions and all three input checkpoints. URL-targeted flows
+use GitLab's native branch and context resolution from 19.5; earlier supported
+flow versions resolve the same context through read-only REST and GraphQL calls.
 Older schemas expose supported metadata and mark missing details explicitly.
 
 GitLab requires an eligible account and namespace, enabled Duo features, execution
@@ -62,7 +64,9 @@ Call `manage_duo_session` only when the user requested execution:
 This schedules real CI work, can change GitLab and can consume credits. The
 response returns a workflow ID immediately. `fix_pipeline/v1` requires a pipeline
 URL and `code_review/v1` requires a merge-request URL, both on the selected instance
-and project. GitLab resolves their branch and context; no default branch is substituted.
+and project. Their source branch and context are resolved before starting; no
+default branch is substituted. Legacy pipeline context discovery is bounded to
+ten REST requests and fails before starting if it cannot finish within that limit.
 
 ## Progress and results
 
@@ -70,7 +74,9 @@ Call `browse_duo_sessions` with `get` and the returned `workflow_id`. `list` fin
 the caller's sessions, optionally filtered by `project_id`, with opaque pagination.
 Under a working scope, rows with invalid project IDs or projects returning 404 are
 omitted and counted in `skipped_unverifiable_sessions`. Missing project provenance
-is counted the same way. Other project lookup failures, including 401, 403, 429,
+is counted the same way for rows eligible for scope resolution. Operator project
+restrictions and an explicit project filter run first; rows they exclude are not
+included in this counter. Other project lookup failures, including 401, 403, 429,
 server errors and network failures, remain errors of the whole request. A skipped
 row does not end pagination or change the upstream cursor.
 

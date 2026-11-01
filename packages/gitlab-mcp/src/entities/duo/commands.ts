@@ -24,6 +24,7 @@ import {
 } from './queries';
 import { WAITING, statusCode } from './sessions';
 import type { ManageDuoSessionInput } from './schema';
+import { legacyGoalContext } from './legacy-goal-context';
 
 const INPUT_STATE = gql`
   query DuoResumeState($id: AiDuoWorkflowsWorkflowID!) {
@@ -120,17 +121,20 @@ async function goalContext(
   const id = pathname.slice(prefix.length);
   if (!/^[1-9]\d*$/.test(id))
     throw new Error('Duo target URL must identify one pipeline or merge request');
-  const object = await gitlab.get<{ project_id: number; ref?: string; source_branch?: string }>(
+  const object = await gitlab.get<{
+    project_id: number;
+    ref?: string;
+    source_branch?: string;
+    source?: string;
+    sha?: string;
+  }>(
     `projects/${normalizeProjectId(project.id)}/${encodeApiSegment(kind)}/${encodeApiSegment(id)}`,
     { responseByteLimit: DUO_RESPONSE_BYTES, rawResponse: true },
   );
   if (String(object.project_id) !== project.id)
     throw new Error('Duo goal target belongs to another project');
   // GitLab 19.5 resolves the validated URL to its branch and additional context itself.
-  if (!instanceAtLeast('19.5'))
-    throw new Error(
-      'URL-targeted Duo flows require GitLab 19.5 to preserve target branch and context',
-    );
+  if (!instanceAtLeast('19.5')) return legacyGoalContext(project, flow, object, target.href, id);
   return { goal: target.href };
 }
 

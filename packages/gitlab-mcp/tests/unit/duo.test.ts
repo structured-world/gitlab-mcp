@@ -1,7 +1,6 @@
 /** Local API doubles only: no Duo execution, settings changes, CI jobs or credits. */
 import { getOperationAST, print } from 'graphql';
 import { createServer } from 'node:http';
-import { performance } from 'node:perf_hooks';
 import { setImmediate } from 'node:timers';
 import { ConnectionManager } from '../../src/services/ConnectionManager';
 import { gitlab, GitLabApiError } from '../../src/utils/gitlab-api';
@@ -228,6 +227,33 @@ describe('Duo schemas and discovery', () => {
     expect(names).toContain('manage_duo_session');
     expect(RegistryManager.getInstance().isReadOnlyTool('browse_duo_sessions')).toBe(true);
     expect(RegistryManager.getInstance().isReadOnlyTool('manage_duo_session')).toBe(false);
+  });
+  // Dispatch must forward authenticated policy instead of dropping it at the registry.
+  it('dispatches Duo reads with explicit policy', async () => {
+    const registry = RegistryManager.getInstance();
+    const url = 'https://duo-registry.example';
+    registry.refreshCache(url);
+    await expect(
+      registry.executeTool('browse_duo_sessions', { action: 'list' }, url, undefined, policy),
+    ).resolves.toMatchObject({ sessions: [{ workflow_id: '73' }] });
+    await expect(
+      registry.executeTool('browse_duo_sessions', { action: 'list' }, url),
+    ).rejects.toThrow('authenticated call execution policy');
+  });
+  // Tierless discovery still honors operator flags, unlike unconditional release metadata.
+  it('omits disabled Duo tools from tierless metadata', () => {
+    const previous = process.env.USE_DUO;
+    try {
+      process.env.USE_DUO = 'false';
+      const names = RegistryManager.getInstance()
+        .getAllToolDefinitionsTierless()
+        .map((tool) => tool.name);
+      expect(names).not.toContain('browse_duo_sessions');
+      expect(names).not.toContain('manage_duo_session');
+    } finally {
+      if (previous === undefined) delete process.env.USE_DUO;
+      else process.env.USE_DUO = previous;
+    }
   });
   // Preset parsing must retain the domain switch used by effective call policy.
   it('retains an explicit Duo preset restriction', () => {
@@ -486,7 +512,6 @@ describe('Duo project boundaries and progress', () => {
   });
   // Repeated session projects must cost one HTTP lookup per project and invocation.
   it('resolves repeated projects once per page', async () => {
-    let bytes = 0;
     let requests = 0;
     const server = createServer((req, res) => {
       const id = Number(req.url!.split('/').at(-1));
@@ -496,7 +521,6 @@ describe('Duo project boundaries and progress', () => {
         name_with_namespace: `Test / project-${id}`,
       });
       requests++;
-      bytes += Buffer.byteLength(body);
       res.end(body);
     });
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -517,20 +541,11 @@ describe('Duo project boundaries and progress', () => {
           pageInfo,
         },
       };
-      const started = performance.now();
       const result = await browse(
         { action: 'list', first: 100 },
         {
           scopeEnforcer: new ScopeEnforcer({ group: 'test' }),
         },
-      );
-      process.stdout.write(
-        JSON.stringify({
-          fixture: '100 sessions / 10 projects',
-          requests,
-          bytes,
-          milliseconds: performance.now() - started,
-        }) + '\n',
       );
       expect(result).toMatchObject({ sessions: expect.any(Array) });
       expect((result as { sessions: unknown[] }).sessions).toHaveLength(100);
@@ -744,6 +759,31 @@ describe('Duo project boundaries and progress', () => {
     });
   });
 
+  // Workflow ID fields are numeric strings, but history arguments require a Global ID.
+  it('normalizes a numeric returned workflow ID before reading history', async () => {
+    const numeric = { ...session, id: '73', statusName: 'finished' };
+    responses.DuoSessionDetails = { duoWorkflowWorkflows: { nodes: [numeric] } };
+    responses.DuoSessionLatestAnswer = {
+      duoWorkflowWorkflows: {
+        nodes: [
+          {
+            ...numeric,
+            latestCheckpoint: {
+              duoMessages: [{ role: 'assistant', content: 'Done' }],
+            },
+          },
+        ],
+      },
+    };
+    expect(await browse({ action: 'get', workflow_id: '73' })).toMatchObject({
+      history: 'available',
+    });
+    const call = request.mock.calls.find(
+      ([document]) => getOperationAST(document)?.name?.value === 'DuoSessionLatestAnswer',
+    );
+    expect(call?.[1]).toEqual({ id: session.id });
+  });
+
   // The last log entry may be a tool result rather than the agent's final response.
   it('finds the latest agent answer and bounds created-object previews', async () => {
     responses.DuoSessionDetails = {
@@ -950,8 +990,193 @@ describe('Duo project boundaries and progress', () => {
 });
 
 describe('Duo command construction with local doubles', () => {
-  // Target validation covers origin, resource syntax, project identity and native context support.
-  it.each(['origin', 'resource', 'project', 'version'])(
+  // Older REST routes accept explicit context and must not silently use the default branch.
+  it.each(['code_review/v1', 'fix_pipeline/v1'])(
+    'emulates URL context before 19.5 for %s',
+    async (flow) => {
+      (instanceAtLeast as jest.Mock).mockReturnValue(false);
+      (gitlab.get as jest.Mock)
+        .mockResolvedValueOnce(project)
+        .mockResolvedValueOnce({
+          project_id: project.id,
+          source_branch: 'feature/legacy',
+          ref: 'feature/legacy',
+          source: 'push',
+          sha: 'a'.repeat(40),
+        })
+        .mockResolvedValueOnce([]);
+      const goal = `https://gitlab.example/gitlab/test/project/-/${flow === 'code_review/v1' ? 'merge_requests' : 'pipelines'}/12`;
+      await manage({ action: 'start', project_id: '41', flow, goal });
+      const body = (gitlab.post as jest.Mock).mock.calls[0][1].body;
+      expect(body).toMatchObject({
+        goal,
+        source_branch: 'feature/legacy',
+        workflow_definition: flow,
+      });
+      if (flow === 'fix_pipeline/v1') {
+        expect(body.additional_context).toEqual([
+          {
+            Category: 'merge_request',
+            Content: JSON.stringify({ url: '' }),
+            metadata: { version: '1.0.0' },
+          },
+          {
+            Category: 'pipeline',
+            Content: JSON.stringify({ source_branch: 'feature/legacy', source: 'push' }),
+            metadata: { version: '1.0.0' },
+          },
+        ]);
+      }
+    },
+  );
+
+  // Select the newest MR containing the commit, including fork targets, and reject unrelated sources.
+  it('selects the newest associated open MR for legacy pipeline context', async () => {
+    (instanceAtLeast as jest.Mock).mockReturnValue(false);
+    const sha = 'a'.repeat(40);
+    const mr = {
+      id: 101,
+      iid: 7,
+      project_id: 56,
+      source_project_id: 41,
+      source_branch: 'feature/legacy',
+      state: 'opened',
+      web_url: 'https://gitlab.example/test/target/-/merge_requests/7',
+      author: { id: 13 },
+    };
+    (gitlab.get as jest.Mock)
+      .mockResolvedValueOnce(project)
+      .mockResolvedValueOnce({ project_id: 41, ref: 'feature/legacy', source: 'push', sha })
+      .mockResolvedValueOnce([
+        mr,
+        { ...mr, id: 102, iid: 8 },
+        { ...mr, id: 103, source_project_id: 99 },
+      ])
+      .mockResolvedValueOnce([{ id: 'b'.repeat(40) }])
+      .mockResolvedValueOnce([{ id: sha }]);
+    await manage({
+      action: 'start',
+      project_id: '41',
+      flow: 'fix_pipeline/v1',
+      goal: 'https://gitlab.example/gitlab/test/project/-/pipelines/12',
+    });
+    const body = (gitlab.post as jest.Mock).mock.calls[0][1].body;
+    expect(JSON.parse(body.additional_context[0].Content)).toEqual({
+      url: mr.web_url,
+      author_id: '13',
+    });
+    expect(gitlab.get).toHaveBeenNthCalledWith(
+      4,
+      'projects/56/merge_requests/8/commits',
+      expect.any(Object),
+    );
+  });
+
+  // MR pipelines expose an internal ref; their attached MR owns the actual source branch.
+  it.each(['opened', 'merged'])('resolves a legacy %s MR pipeline source branch', async (state) => {
+    (instanceAtLeast as jest.Mock).mockReturnValue(false);
+    (gitlab.get as jest.Mock).mockResolvedValueOnce(project).mockResolvedValueOnce({
+      project_id: 41,
+      source: 'merge_request_event',
+      ref: 'refs/merge-requests/7/head',
+    });
+    const mr = {
+      sourceBranch: 'feature/mr',
+      state,
+      webUrl: 'https://gitlab.example/mr/7',
+      author: { id: 'gid://gitlab/User/13' },
+    };
+    responses.DuoPipelineContext = {
+      project: { id: 'gid://gitlab/Project/41', pipeline: { id: '12', mergeRequest: mr } },
+    };
+    await manage({
+      action: 'start',
+      project_id: '41',
+      flow: 'fix_pipeline/v1',
+      goal: 'https://gitlab.example/gitlab/test/project/-/pipelines/12',
+    });
+    const body = (gitlab.post as jest.Mock).mock.calls[0][1].body;
+    expect(body.source_branch).toBe('feature/mr');
+    expect(JSON.parse(body.additional_context[0].Content)).toEqual(
+      state === 'opened' ? { url: mr.webUrl, author_id: '13' } : { url: '' },
+    );
+    const call = request.mock.calls.find(
+      ([document]) => getOperationAST(document)?.name?.value === 'DuoPipelineContext',
+    );
+    expect(call?.[1]).toEqual({ path: 'test/project', id: 'gid://gitlab/Ci::Pipeline/12' });
+  });
+
+  // Incomplete or mismatched provenance must fail before scheduling any CI work.
+  it.each([
+    { project: null },
+    { project: { id: '42' } },
+    { project: { id: '41', pipeline: null } },
+    { project: { id: '41', pipeline: { id: '13' } } },
+    { project: { id: '41', pipeline: { id: '12', mergeRequest: null } } },
+  ])('refuses unverifiable legacy MR pipeline context: %j', async (result) => {
+    (instanceAtLeast as jest.Mock).mockReturnValue(false);
+    (gitlab.get as jest.Mock)
+      .mockResolvedValueOnce(project)
+      .mockResolvedValueOnce({ project_id: 41, source: 'merge_request_event' });
+    responses.DuoPipelineContext = result;
+    await expect(
+      manage({
+        action: 'start',
+        project_id: '41',
+        flow: 'fix_pipeline/v1',
+        goal: 'https://gitlab.example/gitlab/test/project/-/pipelines/12',
+      }),
+    ).rejects.toThrow('source merge request');
+    expect(gitlab.post).not.toHaveBeenCalled();
+  });
+
+  // Bound all context pages together; a partial lookup must never become a no-MR default.
+  it.each([
+    'budget',
+    'invalid_page',
+    'oversized_page',
+    'missing_sha',
+    'missing_source',
+    'invalid_id',
+    'http_error',
+  ])('does not start a legacy pipeline with incomplete context (%s)', async (condition) => {
+    (instanceAtLeast as jest.Mock).mockReturnValue(false);
+    const target = { project_id: 41, ref: 'feature/legacy', source: 'push', sha: 'a'.repeat(40) };
+    const mr = {
+      id: Number.NaN,
+      source_project_id: 41,
+      source_branch: 'feature/legacy',
+      state: 'opened',
+    };
+    (gitlab.get as jest.Mock)
+      .mockResolvedValue([])
+      .mockResolvedValueOnce(project)
+      .mockResolvedValueOnce({
+        ...target,
+        sha: condition === 'missing_sha' ? undefined : target.sha,
+        source: condition === 'missing_source' ? undefined : target.source,
+      });
+    if (condition === 'budget') (gitlab.get as jest.Mock).mockResolvedValue(Array(100).fill(mr));
+    if (condition === 'invalid_page') (gitlab.get as jest.Mock).mockResolvedValueOnce({});
+    if (condition === 'oversized_page')
+      (gitlab.get as jest.Mock).mockResolvedValueOnce(Array(101).fill(mr));
+    if (condition === 'invalid_id') (gitlab.get as jest.Mock).mockResolvedValueOnce([mr]);
+    if (condition === 'http_error')
+      (gitlab.get as jest.Mock).mockRejectedValueOnce(new Error('HTTP 403'));
+    await expect(
+      manage({
+        action: 'start',
+        project_id: '41',
+        flow: 'fix_pipeline/v1',
+        goal: 'https://gitlab.example/gitlab/test/project/-/pipelines/12',
+      }),
+    ).rejects.toThrow();
+    expect(gitlab.post).not.toHaveBeenCalled();
+    if (condition === 'budget') expect(gitlab.get).toHaveBeenCalledTimes(12);
+  });
+
+  // Target validation covers origin, resource syntax, project identity and missing branch data.
+  it.each(['origin', 'resource', 'project', 'missing_branch'])(
     'rejects an invalid targeted flow (%s)',
     async (condition) => {
       let goal = 'https://gitlab.example/gitlab/test/project/-/merge_requests/12';
@@ -960,7 +1185,7 @@ describe('Duo command construction with local doubles', () => {
       (gitlab.get as jest.Mock)
         .mockResolvedValueOnce(project)
         .mockResolvedValueOnce({ project_id: condition === 'project' ? 99 : project.id });
-      if (condition === 'version') (instanceAtLeast as jest.Mock).mockReturnValue(false);
+      if (condition === 'missing_branch') (instanceAtLeast as jest.Mock).mockReturnValue(false);
       await expect(
         manage({ action: 'start', project_id: '41', flow: 'code_review/v1', goal }),
       ).rejects.toThrow();

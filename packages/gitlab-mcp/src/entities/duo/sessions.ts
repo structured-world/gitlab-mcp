@@ -187,7 +187,7 @@ async function latestAnswer(
     return { answer: preview(null, 4000), history: 'unsupported' };
   try {
     const result = await requestDuo<{ duoWorkflowWorkflows: { nodes: History[] } }>(HISTORY, {
-      id: row.id,
+      id: workflowGid(row.id),
     });
     const workflow = result.duoWorkflowWorkflows.nodes.find((entry) => entry.id === row.id);
     if (workflow?.projectId !== row.projectId) throw new Error('Duo provenance changed');

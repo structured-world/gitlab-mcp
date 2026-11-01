@@ -105,8 +105,8 @@ export function preview(
   if (value === undefined || value === null) return { text: null, truncated: false };
   let end = 0;
   for (let characters = 0; characters < limit && end < value.length; characters++) {
-    const codePoint = value.codePointAt(end);
-    if (codePoint === undefined) throw new RangeError('Invalid text preview offset');
+    // The loop condition keeps the offset within the string.
+    const codePoint = value.codePointAt(end) as number;
     end += codePoint > 0xffff ? 2 : 1;
   }
   return { text: value.slice(0, end), truncated: end < value.length };

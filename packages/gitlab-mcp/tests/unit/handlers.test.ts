@@ -729,6 +729,24 @@ describe('handlers', () => {
       );
     });
 
+    // Duo resolves session ownership itself and needs the complete effective call policy.
+    it('passes effective policy to the Duo registry without changing ordinary tool calls', async () => {
+      await callToolHandler({
+        params: { name: 'browse_duo_sessions', arguments: { action: 'list' } },
+      });
+      expect(mockRegistryManager.executeTool).toHaveBeenCalledWith(
+        'browse_duo_sessions',
+        { action: 'list' },
+        'https://gitlab.example.com',
+        undefined,
+        expect.objectContaining({
+          readOnly: false,
+          disabledGroups: expect.any(Set),
+          deniedActions: expect.any(Map),
+        }),
+      );
+    });
+
     it('normalizes omitted arguments to an empty object for no-input tools', async () => {
       // MCP permits omitted arguments; native settings/profile reads use no inputs.
       const mockRequest = {

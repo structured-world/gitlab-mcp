@@ -69,6 +69,7 @@ const FeatureFlagsSchema = z
     access_tokens: z.boolean().optional(),
     audit_events: z.boolean().optional(),
     vulnerabilities: z.boolean().optional(),
+    duo: z.boolean().optional(),
   })
   .optional();
 

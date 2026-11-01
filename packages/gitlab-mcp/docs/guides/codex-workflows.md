@@ -15,6 +15,7 @@ MCP tools and work with a configured Codex or Claude Code connection:
 | `gitlab-review`     | Inspect MR changes/discussions and publish requested feedback        |
 | `gitlab-work-items` | Find and manage requested issues and other work items                |
 | `gitlab-ci`         | Investigate failed jobs with bounded log reads                       |
+| `gitlab-duo`        | Discover and inspect Duo sessions; execute only on user request      |
 
 Plugin packaging can include this directory directly. For a project-scoped skill
 installation, place the packaged skill directories in the host's supported project

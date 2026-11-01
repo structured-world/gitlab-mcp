@@ -792,9 +792,11 @@ async function executeInScope(
   // executeScoped wraps this runner so every call it makes in place of the requested one is
   // held to the preset's denied actions; the operator's are checked by each tool itself.
   const run = (tool: string, toolArgs: Record<string, unknown>): Promise<unknown> =>
-    requestScopes === undefined
-      ? registryManager.executeTool(tool, toolArgs, instanceUrl)
-      : registryManager.executeTool(tool, toolArgs, instanceUrl, requestScopes);
+    tool === 'browse_duo_sessions' || tool === 'manage_duo_session'
+      ? registryManager.executeTool(tool, toolArgs, instanceUrl, requestScopes, policy)
+      : requestScopes === undefined
+        ? registryManager.executeTool(tool, toolArgs, instanceUrl)
+        : registryManager.executeTool(tool, toolArgs, instanceUrl, requestScopes);
   return executeScoped(run, toolName, requested, policy, true);
 }
 

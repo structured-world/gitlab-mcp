@@ -5,6 +5,37 @@ jest.mock('../../../src/utils/fetch', () => ({ enhancedFetch: jest.fn() }));
 installFetchMock();
 
 describe('REST query values', () => {
+  // An explicitly selected redirect policy must survive the otherwise optionless GET path.
+  it('honors an explicit redirect policy on an empty GET', async () => {
+    mockOk({});
+    await gitlab.get('projects', { redirect: 'error' });
+    expect(lastFetchCall()[1]).toEqual({ method: 'GET', redirect: 'error' });
+  });
+  // Duo writes use bounded receipts and refuse redirects without changing shared error metadata.
+  it('bounds native command receipts and preserves Retry-After', async () => {
+    mockEnhancedFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify({ id: 'receipt', status: 'created' })),
+    );
+    expect(
+      await gitlab.post('ai/duo_workflows/workflows', {
+        body: { goal: 'Inspect' },
+        rawResponse: true,
+        redirect: 'error',
+        responseByteLimit: 256,
+      }),
+    ).toEqual({ id: 'receipt', status: 'created' });
+    expect(lastFetchCall()[1]).toMatchObject({ method: 'POST', redirect: 'error' });
+    mockEnhancedFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify({ message: 'Rate limited' }), {
+        status: 429,
+        headers: { 'Retry-After': '30' },
+      }),
+    );
+    await expect(
+      gitlab.post('ai/duo_workflows/workflows', { responseByteLimit: 256 }),
+    ).rejects.toMatchObject({ status: 429, retryAfterSeconds: 30 });
+    expect(mockEnhancedFetch).toHaveBeenCalledTimes(2);
+  });
   // Preserve the provider's wait independently of its diagnostic body before the response is discarded.
   it('retains Retry-After on a typed write error', async () => {
     mockEnhancedFetch.mockResolvedValueOnce(

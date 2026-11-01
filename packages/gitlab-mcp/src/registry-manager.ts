@@ -92,6 +92,7 @@ import {
   USE_RUNNERS,
   USE_AUDIT_EVENTS,
   USE_VULNERABILITIES,
+  USE_DUO,
   getToolDescriptionOverrides,
 } from './config';
 import {
@@ -100,6 +101,8 @@ import {
   getUnavailableActions,
 } from './services/InstanceCapabilities';
 import { ConnectionManager } from './services/ConnectionManager';
+import { duoToolRegistry, getDuoReadOnlyToolNames } from './entities/duo/registry';
+import type { EffectivePolicy } from './configuration/policy';
 import { HealthMonitor } from './services/HealthMonitor';
 import { isToolAvailableForScopes } from './services/TokenScopeDetector';
 import type { GitLabTier } from './services/GitLabVersionDetector';
@@ -273,6 +276,7 @@ class RegistryManager {
     if (USE_VULNERABILITIES) {
       this.registries.set('vulnerabilities', vulnerabilitiesToolRegistry);
     }
+    if (USE_DUO) this.registries.set('duo', duoToolRegistry);
 
     // All entity registries have been migrated to the new pattern!
   }
@@ -396,6 +400,7 @@ class RegistryManager {
     if (USE_VULNERABILITIES) {
       readOnlyTools.push(...getVulnerabilitiesReadOnlyToolNames());
     }
+    if (USE_DUO) readOnlyTools.push(...getDuoReadOnlyToolNames());
 
     return readOnlyTools;
   }
@@ -775,6 +780,7 @@ class RegistryManager {
     args: unknown,
     instanceUrl?: string,
     scopes?: readonly string[],
+    policy?: EffectivePolicy,
   ): Promise<unknown> {
     const tool = this.getTool(toolName, instanceUrl, scopes);
     if (!tool) {
@@ -789,7 +795,7 @@ class RegistryManager {
       if (reason) throw new Error(`Action '${action}' of ${toolName} is unavailable: ${reason}`);
     }
 
-    return await tool.handler(args);
+    return policy === undefined ? await tool.handler(args) : await tool.handler(args, policy);
   }
 
   /**
@@ -1006,6 +1012,7 @@ class RegistryManager {
     if (useRunners) registriesToUse.set('runners', runnersToolRegistry);
     if (useAuditEvents) registriesToUse.set('audit_events', auditEventsToolRegistry);
     if (useVulnerabilities) registriesToUse.set('vulnerabilities', vulnerabilitiesToolRegistry);
+    if (process.env.USE_DUO !== 'false') registriesToUse.set('duo', duoToolRegistry);
 
     // Dynamically load description overrides
     const descOverrides = getToolDescriptionOverrides();
@@ -1112,6 +1119,7 @@ class RegistryManager {
       runnersToolRegistry,
       auditEventsToolRegistry,
       vulnerabilitiesToolRegistry,
+      duoToolRegistry,
     ];
 
     for (const registry of allRegistries) {

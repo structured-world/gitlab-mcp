@@ -925,6 +925,18 @@ export function createTimeoutError(
   timeoutMs: number,
   retryable: boolean = false,
 ): TimeoutError {
+  if (tool === 'manage_duo_session') {
+    return {
+      error_code: 'TIMEOUT',
+      tool,
+      action,
+      timeout_ms: timeoutMs,
+      retryable: false,
+      message: `Duo mutation outcome is unknown after ${timeoutMs}ms`,
+      suggested_fix:
+        'Inspect browse_duo_sessions list or get before another command. Do not automatically replay the write.',
+    };
+  }
   const retryHint = retryable
     ? ' This is a read-only operation - you can safely retry.'
     : ' This is a write operation - check if it completed before retrying.';

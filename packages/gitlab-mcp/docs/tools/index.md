@@ -1,6 +1,6 @@
 ---
 title: Tool Reference
-description: "Complete reference for 64 GitLab MCP tools across 26 entity types. Explore browse_* query and manage_* command operations organized by category with feature flags."
+description: "Complete reference for 66 GitLab MCP tools across 27 entity types. Explore browse_* query and manage_* command operations organized by category with feature flags."
 head:
   - - meta
     - name: keywords
@@ -9,7 +9,18 @@ head:
 
 # Tool Reference
 
-GitLab MCP Server provides **64 tools** across 26 entity types.
+GitLab MCP Server provides **66 tools** across 27 entity types.
+
+## GitLab Duo (`USE_DUO=true`)
+
+| Tool | Actions | Description |
+|------|---------|-------------|
+| `browse_duo_sessions` | `agents_and_flows`, `list`, `get` | Discover project agents and flows; inspect session progress, answers and created objects |
+| `manage_duo_session` | `start`, `send_input` | Explicitly start CI execution or answer, approve or reject a waiting session |
+
+Commands can change GitLab and consume credits. Read-only mode removes them.
+See [Duo sessions](/guides/duo-sessions) for version support, prerequisites,
+pagination, bounded output and ambiguous-write recovery.
 
 ## Architecture
 

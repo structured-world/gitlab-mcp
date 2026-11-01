@@ -16,6 +16,7 @@ import { cleanGidsFromObject } from './idConversion';
 import { assertSafeApiPath } from './api-path';
 import { normalizeProjectId } from './projectIdentifier';
 import { parseRetryAfterSeconds } from './retry-after';
+import { readBoundedJson, readBoundedText } from './bounded-json';
 
 type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
 
@@ -32,6 +33,10 @@ interface RequestOptions {
   contentType?: 'json' | 'form';
   /** Skip GID cleanup from response */
   rawResponse?: boolean;
+  /** Bound response bytes before decoding; used for potentially large Duo payloads. */
+  responseByteLimit?: number;
+  /** Non-idempotent Duo commands refuse redirects rather than replaying their body. */
+  redirect?: RequestRedirect;
 }
 
 /** HTTP failure with the same diagnostic text and machine-readable response metadata. */
@@ -147,11 +152,12 @@ async function request<T>(
   const hasHeaders = Object.keys(headers).length > 0;
 
   let response: Response;
-  if (method === 'GET' && !hasBody && !hasHeaders) {
+  if (method === 'GET' && !hasBody && !hasHeaders && options.redirect === undefined) {
     response = await enhancedFetch(url);
   } else {
     const fetchOptions: RequestInit = {
       method,
+      ...(options.redirect === undefined ? {} : { redirect: options.redirect }),
       ...(hasBody && { body }),
       ...(hasHeaders && { headers }),
     };
@@ -167,7 +173,10 @@ async function request<T>(
     let errorDetails = '';
     try {
       if (typeof response.text === 'function') {
-        const text = await response.text();
+        const text =
+          options.responseByteLimit === undefined
+            ? await response.text()
+            : await readBoundedText(response, options.responseByteLimit);
         if (text.trim()) {
           // Try to parse as JSON and extract meaningful error info
           const errorResponse = JSON.parse(text) as {
@@ -212,7 +221,11 @@ async function request<T>(
     return undefined as T;
   }
 
-  const data = (await response.json()) as T;
+  const data = (
+    options.responseByteLimit === undefined
+      ? await response.json()
+      : await readBoundedJson(response, options.responseByteLimit)
+  ) as T;
   receiveHeaders?.(response.headers);
   return options.rawResponse ? data : cleanGidsFromObject(data);
 }

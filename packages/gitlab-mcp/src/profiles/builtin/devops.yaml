@@ -15,6 +15,7 @@ description: "DevOps Engineer - CI/CD pipelines, variables, infrastructure"
 read_only: false
 
 features:
+  duo: true        # CI investigation and repair flows
   wiki: false
   milestones: false
   pipelines: true

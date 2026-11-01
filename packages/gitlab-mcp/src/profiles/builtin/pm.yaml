@@ -15,6 +15,7 @@ description: "Project Manager - planning, tracking, documentation (no code ops)"
 read_only: false
 
 features:
+  duo: false      # No code execution
   wiki: true
   milestones: true
   pipelines: false

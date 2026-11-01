@@ -13,7 +13,7 @@ Advanced GitLab MCP server providing AI agents with comprehensive access to the 
 
 ## Features
 
-- **58 tools** across 26 entity types covering the full GitLab API
+- **66 tools** across 27 entity types covering the full GitLab API
 - **CQRS pattern** — `browse_*` for read operations, `manage_*` for writes
 - **Multi-instance** — Connect to multiple GitLab instances with per-instance OAuth and rate limiting
 - **Multiple transports** — stdio, SSE, and StreamableHTTP

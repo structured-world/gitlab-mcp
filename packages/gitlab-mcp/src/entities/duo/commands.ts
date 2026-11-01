@@ -3,6 +3,7 @@ import type { EffectivePolicy } from '../../configuration/policy';
 import { gitlab, GitLabApiError } from '../../utils/gitlab-api';
 import { getGitLabBaseUrl } from '../../utils/gitlab-base-url';
 import { normalizeProjectId } from '../../utils/projectIdentifier';
+import { encodeApiSegment } from '../../utils/api-path';
 import { extractSimpleId } from '../../utils/idConversion';
 import { instanceAtLeast } from '../instance-version';
 import { readDuoProject, assertDuoProject, assertWorkflowProject, type DuoProject } from './access';
@@ -12,6 +13,7 @@ import {
   projectEnablement,
   isDuoChat,
   executionUnavailable,
+  type Consumer,
 } from './discovery';
 import {
   DUO_RESPONSE_BYTES,
@@ -119,7 +121,7 @@ async function goalContext(
   if (!/^[1-9]\d*$/.test(id))
     throw new Error('Duo target URL must identify one pipeline or merge request');
   const object = await gitlab.get<{ project_id: number; ref?: string; source_branch?: string }>(
-    `projects/${normalizeProjectId(project.id)}/${kind}/${id}`,
+    `projects/${normalizeProjectId(project.id)}/${encodeApiSegment(kind)}/${encodeApiSegment(id)}`,
     { responseByteLimit: DUO_RESPONSE_BYTES, rawResponse: true },
   );
   if (String(object.project_id) !== project.id)
@@ -130,6 +132,50 @@ async function goalContext(
       'URL-targeted Duo flows require GitLab 19.5 to preserve target branch and context',
     );
   return { goal: target.href };
+}
+
+async function checkedConsumer(
+  id: string,
+  project: DuoProject,
+): Promise<NonNullable<Consumer['item']>> {
+  const consumer = await readConsumer(id);
+  if (!consumer.project || extractSimpleId(consumer.project.id) !== project.id)
+    throw new Error('Configured Duo consumer does not belong to the selected project');
+  if (!consumer.enabled || consumer.item?.itemType !== 'FLOW')
+    throw new Error('Configured Duo consumer is not an enabled flow');
+  if (consumer.userPermissions?.executeAiCatalogItem === false)
+    throw new Error('GitLab does not permit executing this Duo flow');
+  return consumer.item;
+}
+
+async function startSelection(
+  input: Extract<ManageDuoSessionInput, { action: 'start' }>,
+  project: DuoProject,
+  enabledFlows: string[] | null | undefined,
+): Promise<{ body: Record<string, unknown>; flow: string | null | undefined }> {
+  const body: Record<string, unknown> = {};
+  let flow: string | null | undefined = input.flow;
+  if (input.consumer_id !== undefined) {
+    const item = await checkedConsumer(input.consumer_id, project);
+    flow = item.foundationalFlowReference;
+    body.ai_catalog_item_consumer_id = input.consumer_id;
+  } else if (input.agent !== undefined) {
+    if (!instanceAtLeast('19.5'))
+      throw new Error('Foundational agent CI sessions require GitLab 19.5');
+    const available = (await foundationalAgents(project)).some(
+      (entry) => entry.referenceWithVersion === input.agent,
+    );
+    if (!available || isDuoChat(input.agent))
+      throw new Error('Select a startable foundational agent from project discovery');
+    body.workflow_definition = input.agent;
+  } else {
+    if (input.flow === undefined || !enabledFlows?.includes(input.flow))
+      throw new Error(
+        'The foundational flow is not enabled in this project; select a configured consumer from discovery',
+      );
+    body.workflow_definition = input.flow;
+  }
+  return { body, flow };
 }
 
 export async function startDuoSession(
@@ -143,40 +189,8 @@ export async function startDuoSession(
     throw new Error(
       'GitLab Duo CI execution is unavailable; inspect agents_and_flows prerequisites',
     );
-  const body: Record<string, unknown> = {
-    project_id: project.id,
-    start_workflow: true,
-    environment: 'ambient',
-  };
-  let flow: string | null | undefined = input.flow;
-  if (input.consumer_id !== undefined) {
-    const consumer = await readConsumer(input.consumer_id);
-    if (!consumer.project || extractSimpleId(consumer.project.id) !== project.id)
-      throw new Error('Configured Duo consumer does not belong to the selected project');
-    if (!consumer.enabled || consumer.item?.itemType !== 'FLOW')
-      throw new Error('Configured Duo consumer is not an enabled flow');
-    if (consumer.userPermissions?.executeAiCatalogItem === false)
-      throw new Error('GitLab does not permit executing this Duo flow');
-    flow = consumer.item.foundationalFlowReference;
-    body.ai_catalog_item_consumer_id = input.consumer_id;
-  } else {
-    if (input.agent !== undefined) {
-      if (!instanceAtLeast('19.5'))
-        throw new Error('Foundational agent CI sessions require GitLab 19.5');
-      const agent = (await foundationalAgents(project)).find(
-        (entry) => entry.referenceWithVersion === input.agent,
-      );
-      if (!agent || isDuoChat(input.agent))
-        throw new Error('Select a startable foundational agent from project discovery');
-      body.workflow_definition = input.agent;
-    } else {
-      if (input.flow === undefined || !enablement?.enabledFoundationalFlows?.includes(input.flow))
-        throw new Error(
-          'The foundational flow is not enabled in this project; select a configured consumer from discovery',
-        );
-      body.workflow_definition = input.flow;
-    }
-  }
+  const { body, flow } = await startSelection(input, project, enablement?.enabledFoundationalFlows);
+  Object.assign(body, { project_id: project.id, start_workflow: true, environment: 'ambient' });
   Object.assign(body, await goalContext(project, flow, input.goal));
   return mutate('ai/duo_workflows/workflows', body);
 }

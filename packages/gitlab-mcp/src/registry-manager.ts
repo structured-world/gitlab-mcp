@@ -102,7 +102,7 @@ import {
 } from './services/InstanceCapabilities';
 import { ConnectionManager } from './services/ConnectionManager';
 import { duoToolRegistry, getDuoReadOnlyToolNames } from './entities/duo/registry';
-import type { EffectivePolicy } from './configuration/policy';
+import type { EffectivePolicy, ToolFacts } from './configuration/policy';
 import { HealthMonitor } from './services/HealthMonitor';
 import { isToolAvailableForScopes } from './services/TokenScopeDetector';
 import type { GitLabTier } from './services/GitLabVersionDetector';
@@ -120,7 +120,6 @@ import {
 import { resolveRelatedReferences, stripRelatedSection } from './utils/description-utils';
 import { normalizeInstanceUrl } from './utils/url';
 import { groupOfRegistry } from './configuration/groups';
-import type { ToolFacts } from './configuration/policy';
 import { getGitLabApiUrlFromContext, getTokenContext } from './oauth/token-context';
 import { isOAuthEnabled } from './oauth/config';
 import { currentTokenAccount } from './accounts/token-account';

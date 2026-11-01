@@ -68,6 +68,11 @@ and project. GitLab resolves their branch and context; no default branch is subs
 
 Call `browse_duo_sessions` with `get` and the returned `workflow_id`. `list` finds
 the caller's sessions, optionally filtered by `project_id`, with opaque pagination.
+Under a working scope, rows with invalid project IDs or projects returning 404 are
+omitted and counted in `skipped_unverifiable_sessions`. Missing project provenance
+is counted the same way. Other project lookup failures, including 401, 403, 429,
+server errors and network failures, remain errors of the whole request. A skipped
+row does not end pagination or change the upstream cursor.
 
 Results include status, available links, summary, latest agent answer, created
 merge requests, work items and notes, and pending input. Summaries are limited

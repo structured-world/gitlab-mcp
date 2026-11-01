@@ -142,6 +142,30 @@ export async function readConsumer(id: string): Promise<Consumer> {
   return result.aiCatalogItemConsumer;
 }
 
+function catalogItem(
+  consumer: Consumer,
+  item: NonNullable<Consumer['item']>,
+  enablement: Enablement | null,
+): Record<string, unknown> {
+  const permitted = consumer.userPermissions?.executeAiCatalogItem;
+  const refused =
+    item.itemType !== 'FLOW' || permitted === false || executionUnavailable(enablement);
+  // Execution permission alone does not prove runner, billing and composite-identity readiness.
+  return {
+    kind: item.itemType.toLowerCase(),
+    catalog_item_id: extractSimpleId(item.id),
+    consumer_id: extractSimpleId(consumer.id),
+    name: item.name,
+    description: preview(item.description, 200),
+    flow: item.foundationalFlowReference ?? null,
+    can_start_session: refused ? false : null,
+    can_execute_catalog_item: permitted ?? null,
+    service_account_configured: !!(
+      consumer.serviceAccount ?? consumer.parentItemConsumer?.serviceAccount
+    ),
+  };
+}
+
 export async function discoverDuo(
   project: DuoProject,
   first: number,
@@ -168,24 +192,7 @@ export async function discoverDuo(
     const item = consumer.item;
     if (!consumer.enabled || !item || (item.itemType === 'AGENT' && item.foundational)) continue;
     if (itemType !== undefined && item.itemType.toLowerCase() !== itemType) continue;
-    const permitted = consumer.userPermissions?.executeAiCatalogItem;
-    const refused =
-      item.itemType !== 'FLOW' || permitted === false || executionUnavailable(enablement);
-    // Execution permission alone does not prove runner, billing and composite-identity readiness.
-    const canStart = refused ? false : null;
-    items.push({
-      kind: item.itemType.toLowerCase(),
-      catalog_item_id: extractSimpleId(item.id),
-      consumer_id: extractSimpleId(consumer.id),
-      name: item.name,
-      description: preview(item.description, 200),
-      flow: item.foundationalFlowReference ?? null,
-      can_start_session: canStart,
-      can_execute_catalog_item: permitted ?? null,
-      service_account_configured: !!(
-        consumer.serviceAccount ?? consumer.parentItemConsumer?.serviceAccount
-      ),
-    });
+    items.push(catalogItem(consumer, item, enablement));
   }
   if (after === undefined && (itemType === undefined || itemType === 'agent')) {
     for (const agent of await foundationalAgents(project)) {

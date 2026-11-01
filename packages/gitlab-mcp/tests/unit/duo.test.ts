@@ -1,5 +1,7 @@
 /** Local API doubles only: no Duo execution, settings changes, CI jobs or credits. */
-import { getOperationAST } from 'graphql';
+import { getOperationAST, print } from 'graphql';
+import { createServer } from 'node:http';
+import { performance } from 'node:perf_hooks';
 import { ConnectionManager } from '../../src/services/ConnectionManager';
 import { gitlab, GitLabApiError } from '../../src/utils/gitlab-api';
 import { getGitLabBaseUrl } from '../../src/utils/gitlab-base-url';
@@ -134,6 +136,74 @@ beforeEach(() => {
 });
 
 describe('Duo schemas and discovery', () => {
+  // Calling a handler without authenticated policy must not bypass the central restrictions.
+  it('requires the authenticated execution policy', async () => {
+    await expect(
+      duoToolRegistry.get('browse_duo_sessions')!.handler({ action: 'list' }),
+    ).rejects.toThrow('authenticated call execution policy');
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  // Older schemas and nullable catalog permissions must not invent execution eligibility.
+  it('uses the older catalog query and preserves unknown permissions', async () => {
+    (graphqlSupports as jest.Mock).mockReturnValue(false);
+    responses.DuoCatalog = {
+      aiCatalogConfiguredItems: {
+        nodes: [
+          { ...consumer, userPermissions: null },
+          { ...consumer, item: { ...consumer.item, itemType: 'AGENT', foundational: true } },
+        ],
+        pageInfo,
+      },
+    };
+    expect(await browse({ action: 'agents_and_flows', project_id: '41' })).toMatchObject({
+      items: [{ can_start_session: null, can_execute_catalog_item: null }],
+    });
+    const document = request.mock.calls.find(
+      ([doc]) => getOperationAST(doc)?.name?.value === 'DuoCatalog',
+    )![0];
+    expect(print(document)).not.toContain('includeFoundationalConsumers');
+    expect(
+      request.mock.calls.some(
+        ([doc]) => getOperationAST(doc)?.name?.value === 'DuoFoundationalAgents',
+      ),
+    ).toBe(false);
+  });
+
+  // Missing native entities remain errors; an empty agent catalog remains an empty catalog.
+  it('handles unavailable discovery entities without claiming startability', async () => {
+    responses.DuoProjectEnablement = { project: null };
+    await expect(browse({ action: 'agents_and_flows', project_id: '41' })).rejects.toThrow(
+      'project is unavailable',
+    );
+    responses.DuoConfiguredConsumer = { aiCatalogItemConsumer: null };
+    await expect(readConsumer('91')).rejects.toThrow('consumer is unavailable');
+    responses.DuoProjectEnablement = { project: { duoWorkflowStatusCheck: null } };
+    responses.DuoFoundationalAgents = { aiFoundationalChatAgents: null };
+    expect(await browse({ action: 'agents_and_flows', project_id: '41' })).toMatchObject({
+      items: [{ kind: 'flow', can_start_session: null }],
+    });
+  });
+
+  // Native availability does not prove credits or runner execution eligibility.
+  it('keeps visible foundational agents startability unknown', async () => {
+    expect(
+      await browse({ action: 'agents_and_flows', project_id: '41', item_type: 'agent' }),
+    ).toMatchObject({ items: [{ kind: 'foundational_agent', can_start_session: null }] });
+  });
+
+  // Native execution denial is distinct from unknown prerequisites in discovery.
+  it('reports a catalog flow that GitLab refuses to execute', async () => {
+    responses.DuoCatalog = {
+      aiCatalogConfiguredItems: {
+        nodes: [{ ...consumer, userPermissions: { executeAiCatalogItem: false } }],
+        pageInfo,
+      },
+    };
+    expect(
+      await browse({ action: 'agents_and_flows', project_id: '41', item_type: 'flow' }),
+    ).toMatchObject({ items: [{ can_start_session: false, can_execute_catalog_item: false }] });
+  });
   // New tools must not affect a GitLab 16 catalog or expose unsupported operations there.
   it('hides Duo on GitLab 16 while retaining ordinary project browsing', () => {
     const connection = ConnectionManager.getInstance();
@@ -260,6 +330,280 @@ describe('Duo schemas and discovery', () => {
 });
 
 describe('Duo project boundaries and progress', () => {
+  // Unrestricted metadata reads need no project REST lookup, including absent provenance.
+  it.each([
+    ['CREATED', 'created', 120],
+    ['STOPPED', 'stopped', null],
+    [null, null, null],
+  ])('preserves metadata with native status %s', async (native, status, delay) => {
+    responses.DuoSessionMetadata = {
+      duoWorkflowWorkflows: {
+        nodes: [
+          {
+            ...session,
+            projectId: null,
+            project: null,
+            statusName: undefined,
+            status: native,
+            workflowDefinition: undefined,
+          },
+        ],
+        pageInfo,
+      },
+    };
+    expect(await browse({ action: 'list' })).toMatchObject({
+      sessions: [
+        {
+          project_id: null,
+          flow: null,
+          status,
+          poll_after_seconds: delay,
+        },
+      ],
+      skipped_unverifiable_sessions: 0,
+    });
+    expect(gitlab.get).not.toHaveBeenCalled();
+  });
+
+  // Missing workflow identities and deleted projects cannot authorize detailed reads.
+  it('rejects absent sessions and deleted projects before details', async () => {
+    responses.DuoSessionMetadataById = { duoWorkflowWorkflows: { nodes: [] } };
+    const restriction = { operatorProjectIds: new Set(['41']) };
+    await expect(browse({ action: 'get', workflow_id: '73' }, restriction)).rejects.toThrow(
+      'unavailable',
+    );
+    responses.DuoSessionMetadataById = {
+      duoWorkflowWorkflows: { nodes: [{ ...session, project: null }] },
+    };
+    (gitlab.get as jest.Mock).mockRejectedValue(
+      new GitLabApiError(404, 'Deleted', 'GitLab API error: 404 - Deleted'),
+    );
+    await expect(browse({ action: 'get', workflow_id: '73' }, restriction)).rejects.toThrow(
+      'project is unavailable',
+    );
+    expect(
+      request.mock.calls.every(
+        ([doc]) => getOperationAST(doc)?.name?.value === 'DuoSessionMetadataById',
+      ),
+    ).toBe(true);
+  });
+
+  // Optional results stay explicit without fabricating permissions or object links.
+  it('reports unknown input permission and absent project provenance without restrictions', async () => {
+    responses.DuoSessionDetails = {
+      duoWorkflowWorkflows: {
+        nodes: [
+          {
+            ...session,
+            projectId: null,
+            project: null,
+            statusName: 'input_required',
+            latestCheckpoint: { lastDuoMessage: { role: 'assistant', content: 'Waiting' } },
+            mergeRequestLinks: {
+              nodes: [null, { mergeRequest: null }],
+              pageInfo: { hasNextPage: false },
+            },
+          },
+        ],
+      },
+    };
+    expect(await browse({ action: 'get', workflow_id: '73' })).toMatchObject({
+      project_id: null,
+      pending_input: { can_send: null },
+      created_objects: { merge_requests: [] },
+    });
+  });
+
+  // A history response cannot replace the session's verified project identity.
+  it('withholds history whose project provenance changed', async () => {
+    responses.DuoSessionDetails = {
+      duoWorkflowWorkflows: { nodes: [{ ...session, statusName: 'finished' }] },
+    };
+    responses.DuoSessionLatestAnswer = {
+      duoWorkflowWorkflows: {
+        nodes: [
+          {
+            ...session,
+            projectId: 'gid://gitlab/Project/99',
+            latestCheckpoint: { duoMessages: [{ role: 'assistant', content: 'Foreign result' }] },
+          },
+        ],
+      },
+    };
+    expect(await browse({ action: 'get', workflow_id: '73' })).toMatchObject({
+      history: 'unreadable',
+      answer: { text: null, truncated: false },
+    });
+  });
+
+  // Resume failures retain the exact workflow recovery hint and never repeat the write.
+  it('preserves resume HTTP failure and its recovery workflow', async () => {
+    const error = new GitLabApiError(403, 'Unavailable', 'GitLab API error: 403 - Unavailable');
+    (gitlab.post as jest.Mock).mockRejectedValue(error);
+    await expect(
+      manage({ action: 'send_input', workflow_id: '73', human_approval: true }),
+    ).rejects.toThrow('workflow 73');
+    expect(gitlab.post).toHaveBeenCalledTimes(1);
+  });
+  // Repeated session projects must cost one HTTP lookup per project and invocation.
+  it('resolves repeated projects once per page', async () => {
+    let bytes = 0;
+    let requests = 0;
+    const server = createServer((req, res) => {
+      const id = Number(req.url!.split('/').at(-1));
+      const body = JSON.stringify({
+        id,
+        path_with_namespace: `test/project-${id}`,
+        name_with_namespace: `Test / project-${id}`,
+      });
+      requests++;
+      bytes += Buffer.byteLength(body);
+      res.end(body);
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    try {
+      const address = server.address();
+      if (!address || typeof address === 'string') throw new Error('Missing fixture address');
+      (gitlab.get as jest.Mock).mockImplementation(async (path) =>
+        fetch(`http://127.0.0.1:${address.port}/${path}`).then((result) => result.json()),
+      );
+      responses.DuoSessionMetadata = {
+        duoWorkflowWorkflows: {
+          nodes: Array.from({ length: 100 }, (_, index) => ({
+            ...session,
+            id: `gid://gitlab/Ai::DuoWorkflows::Workflow/${index + 1}`,
+            projectId: `gid://gitlab/Project/${(index % 10) + 1}`,
+            project: null,
+          })),
+          pageInfo,
+        },
+      };
+      const started = performance.now();
+      const result = await browse(
+        { action: 'list', first: 100 },
+        {
+          scopeEnforcer: new ScopeEnforcer({ group: 'test' }),
+        },
+      );
+      process.stdout.write(
+        JSON.stringify({
+          fixture: '100 sessions / 10 projects',
+          requests,
+          bytes,
+          milliseconds: performance.now() - started,
+        }) + '\n',
+      );
+      expect(result).toMatchObject({ sessions: expect.any(Array) });
+      expect((result as { sessions: unknown[] }).sessions).toHaveLength(100);
+      expect(requests).toBe(10);
+    } finally {
+      server.closeAllConnections();
+      await new Promise<void>((resolve, reject) =>
+        server.close((error) => (error ? reject(error) : resolve())),
+      );
+    }
+  });
+
+  // Invalid identities and confirmed deletion cannot hide valid rows or pagination.
+  it('counts unverifiable rows without swallowing provider failures', async () => {
+    responses.DuoSessionMetadata = {
+      duoWorkflowWorkflows: {
+        nodes: [
+          session,
+          { ...session, projectId: 'invalid', project: null },
+          { ...session, projectId: 'gid://gitlab/Project/99', project: null },
+        ],
+        pageInfo: { hasNextPage: true, endCursor: 'opaque' },
+      },
+    };
+    (gitlab.get as jest.Mock).mockRejectedValue(
+      new GitLabApiError(404, 'Not found', 'GitLab API error: 404 - Not found'),
+    );
+    expect(
+      await browse(
+        { action: 'list' },
+        {
+          scopeEnforcer: new ScopeEnforcer({ group: 'test' }),
+        },
+      ),
+    ).toMatchObject({
+      sessions: [{ workflow_id: '73' }],
+      skipped_unverifiable_sessions: 2,
+      pageInfo: { hasNextPage: true, endCursor: 'opaque' },
+    });
+  });
+
+  // Authentication, throttling and transport failures remain actionable failures.
+  it.each([401, 403, 429, 500, 'network'])(
+    'preserves project lookup failure %s and stops later reads',
+    async (status) => {
+      const error =
+        typeof status === 'number'
+          ? new GitLabApiError(
+              status,
+              'Unavailable',
+              `GitLab API error: ${status} - Unavailable`,
+              30,
+            )
+          : new Error('Network unavailable');
+      responses.DuoSessionMetadata = {
+        duoWorkflowWorkflows: {
+          nodes: [
+            { ...session, project: null },
+            { ...session, project: null, projectId: 'gid://gitlab/Project/99' },
+          ],
+          pageInfo,
+        },
+      };
+      (gitlab.get as jest.Mock).mockRejectedValue(error);
+      await expect(
+        browse(
+          { action: 'list' },
+          {
+            scopeEnforcer: new ScopeEnforcer({ group: 'test' }),
+          },
+        ),
+      ).rejects.toBe(error);
+      expect(gitlab.get).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  // A page-local cache cannot retain authorization across calls or override native metadata.
+  it('rechecks each call and trusts each row native project over cached REST metadata', async () => {
+    responses.DuoSessionMetadata = {
+      duoWorkflowWorkflows: {
+        nodes: [
+          { ...session, project: null },
+          { ...session, project: { ...session.project, fullPath: 'other/project' } },
+        ],
+        pageInfo,
+      },
+    };
+    const restriction = { scopeEnforcer: new ScopeEnforcer({ group: 'test' }) };
+    expect(await browse({ action: 'list' }, restriction)).toMatchObject({
+      sessions: [{ workflow_id: '73' }],
+    });
+    (gitlab.get as jest.Mock).mockResolvedValue({
+      ...project,
+      path_with_namespace: 'other/project',
+    });
+    expect(await browse({ action: 'list' }, restriction)).toMatchObject({ sessions: [] });
+    expect(gitlab.get).toHaveBeenCalledTimes(2);
+  });
+
+  // An explicit selected project outside scope must fail before fetching sessions.
+  it('rejects a selected project outside the working scope', async () => {
+    await expect(
+      browse(
+        { action: 'list', project_id: '41' },
+        {
+          scopeEnforcer: new ScopeEnforcer({ project: 'other/project' }),
+        },
+      ),
+    ).rejects.toThrow('outside');
+    expect(request).not.toHaveBeenCalled();
+  });
+
   // Resolve absent nested project metadata, but reject provenance that cannot be verified.
   it.each(['missing', 'invalid', 'none'])(
     'verifies session project metadata (%s)',
@@ -508,6 +852,7 @@ describe('Duo project boundaries and progress', () => {
       sessions: [],
       pageInfo: next,
       filtered: true,
+      skipped_unverifiable_sessions: 0,
     });
   });
 

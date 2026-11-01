@@ -7,6 +7,8 @@ import {
   permitsDuoProject,
   readDuoProject,
   workflowProject,
+  UnverifiableDuoProjectError,
+  type DuoProject,
 } from './access';
 import { preview, isDuoChat } from './discovery';
 import {
@@ -35,6 +37,9 @@ export function statusCode(row: Workflow): string | null {
 
 export function sessionMetadata(row: Workflow): Record<string, unknown> {
   const status = statusCode(row);
+  let pollAfter: number | null = null;
+  if (status === 'created') pollAfter = 120;
+  else if (status === 'running') pollAfter = 30;
   return {
     workflow_id: extractSimpleId(row.id),
     project_id: row.projectId === null ? null : extractSimpleId(row.projectId),
@@ -43,8 +48,31 @@ export function sessionMetadata(row: Workflow): Record<string, unknown> {
     flow: row.workflowDefinition ?? null,
     web_url: row.webUrl ?? null,
     created_at: row.createdAt,
-    poll_after_seconds: status === 'created' ? 120 : status === 'running' ? 30 : null,
+    poll_after_seconds: pollAfter,
   };
+}
+
+function listedSession(
+  row: Workflow,
+  selected: DuoProject | null,
+  policy: EffectivePolicy,
+): boolean {
+  if (isDuoChat(row.workflowDefinition)) return false;
+  const id = row.projectId === null ? null : extractSimpleId(row.projectId);
+  if (selected && id !== selected.id) return false;
+  return !policy.operatorProjectIds || (id !== null && policy.operatorProjectIds.has(id));
+}
+
+async function listedProject(
+  row: Workflow,
+  projectReads: Map<string, Promise<DuoProject>>,
+): Promise<DuoProject | null> {
+  try {
+    return await workflowProject(row, projectReads);
+  } catch (error) {
+    if (error instanceof UnverifiableDuoProjectError) return null;
+    throw error;
+  }
 }
 
 /** Metadata-only pagination: detailed messages from disallowed projects are never requested. */
@@ -57,22 +85,27 @@ export async function listDuoSessions(
     throw new Error('Duo project is outside the working scope');
   const page = await workflowPage(input.first, input.after);
   const sessions: Record<string, unknown>[] = [];
+  const projectReads = new Map<string, Promise<DuoProject>>();
+  if (selected) projectReads.set(selected.id, Promise.resolve(selected));
+  let skipped = 0;
   for (const row of page.nodes) {
-    if (isDuoChat(row.workflowDefinition)) continue;
-    if (selected && (row.projectId === null || extractSimpleId(row.projectId) !== selected.id))
-      continue;
-    if (
-      policy.operatorProjectIds &&
-      (row.projectId === null || !policy.operatorProjectIds.has(extractSimpleId(row.projectId)))
-    )
-      continue;
+    if (!listedSession(row, selected, policy)) continue;
     if (policy.scopeEnforcer) {
-      const project = await workflowProject(row);
-      if (!project || !permitsDuoProject(project, policy)) continue;
+      const project = await listedProject(row, projectReads);
+      if (!project) {
+        skipped++;
+        continue;
+      }
+      if (!permitsDuoProject(project, policy)) continue;
     }
     sessions.push(sessionMetadata(row));
   }
-  return { sessions, pageInfo: page.pageInfo, filtered: true };
+  return {
+    sessions,
+    pageInfo: page.pageInfo,
+    filtered: true,
+    skipped_unverifiable_sessions: skipped,
+  };
 }
 
 interface LinkConnection<T> {

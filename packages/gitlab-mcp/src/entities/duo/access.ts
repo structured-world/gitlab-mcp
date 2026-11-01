@@ -11,6 +11,9 @@ export interface DuoProject {
   path: string;
 }
 
+/** A missing project or invalid session project ID cannot establish provenance. */
+export class UnverifiableDuoProjectError extends Error {}
+
 /** The MCP invocation supplies its already combined operator, account and chat policy. */
 export function duoPolicy(
   tool: string,
@@ -34,7 +37,7 @@ export async function readDuoProject(id: string): Promise<DuoProject> {
       rawResponse: true,
     }),
   );
-  if (!project) throw new Error('Duo project is unavailable');
+  if (!project) throw new UnverifiableDuoProjectError('Duo project is unavailable');
   return project;
 }
 
@@ -53,13 +56,21 @@ export function assertDuoProject(project: DuoProject, policy: EffectivePolicy): 
 }
 
 /** Resolve provenance from GitLab, never from a caller's project hint. */
-export async function workflowProject(workflow: Workflow): Promise<DuoProject | null> {
+export async function workflowProject(
+  workflow: Workflow,
+  projectReads?: Map<string, Promise<DuoProject>>,
+): Promise<DuoProject | null> {
   if (workflow.projectId === null) return null;
   const id = extractSimpleId(workflow.projectId);
-  if (!/^[1-9]\d*$/.test(id)) throw new Error('GitLab returned an invalid Duo project identity');
+  if (!/^[1-9]\d*$/.test(id))
+    throw new UnverifiableDuoProjectError('GitLab returned an invalid Duo project identity');
   if (workflow.project && extractSimpleId(workflow.project.id) === id)
     return { id, path: canonicalProjectPath(workflow.project.fullPath) };
-  return readDuoProject(id);
+  const cached = projectReads?.get(id);
+  if (cached) return cached;
+  const pending = readDuoProject(id);
+  projectReads?.set(id, pending);
+  return pending;
 }
 
 export async function assertWorkflowProject(

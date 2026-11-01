@@ -207,7 +207,7 @@ it('admits authorized sessions after the shared anonymous IP quota is exhausted'
 });
 
 // Express accepts these route spellings, so they must not pass through a second anonymous quota.
-it.each(['/mcp/', '/MCP', '/MCP/'])(
+it.each(['/mcp/', '/MCP', '/MCP/', '//'])(
   'classifies the accepted transport path %s consistently',
   async (path) => {
     await request();
@@ -248,29 +248,35 @@ it('does not exempt a rejected bearer token using another live transport ID', as
 });
 
 // Stream reconnects must reach MCP, not receive a successful dashboard response and reconnect again.
-it('routes streaming root GET through OAuth and the transport after an anonymous burst', async () => {
-  await request();
-  await request();
-  const a = account();
-  expect(
-    (
-      await request(a.mcpAccessToken, '/', {
-        method: 'GET',
-        headers: { Accept: 'text/event-stream' },
-      })
-    ).status,
-  ).toBe(404);
-});
+it.each(['/', '//'])(
+  'routes streaming GET at %s through OAuth after an anonymous burst',
+  async (path) => {
+    await request();
+    await request();
+    const a = account();
+    expect(
+      (
+        await request(a.mcpAccessToken, path, {
+          method: 'GET',
+          headers: { Accept: 'text/event-stream' },
+        })
+      ).status,
+    ).toBe(404);
+  },
+);
 
 // A root stream without a token must receive an OAuth challenge, never public dashboard JSON.
-it('challenges an unauthenticated root stream before returning any dashboard response', async () => {
-  const response = await request(undefined, '/', {
-    method: 'GET',
-    headers: { Accept: 'text/event-stream', 'Mcp-Session-Id': '' },
-  });
-  expect(response.status).toBe(401);
-  expect(response.headers.get('WWW-Authenticate')).toContain('resource_metadata=');
-});
+it.each(['/', '//'])(
+  'challenges an unauthenticated stream at %s before returning any dashboard response',
+  async (path) => {
+    const response = await request(undefined, path, {
+      method: 'GET',
+      headers: { Accept: 'text/event-stream', 'Mcp-Session-Id': '' },
+    });
+    expect(response.status).toBe(401);
+    expect(response.headers.get('WWW-Authenticate')).toContain('resource_metadata=');
+  },
+);
 
 // Express serves HEAD through a GET route; ordinary dashboard probes must retain that behavior.
 it('preserves public dashboard HEAD requests', async () => {
@@ -285,9 +291,12 @@ it('preserves public dashboard HEAD requests', async () => {
 });
 
 // Public dashboard traffic remains anonymous and cannot exhaust an authenticated connection's budget.
-it('keeps ordinary dashboard requests in the anonymous quota', async () => {
-  const extra = { method: 'GET', headers: { Accept: 'application/json', 'Mcp-Session-Id': '' } };
-  expect((await request(undefined, '/', extra)).status).toBe(200);
-  expect((await request(undefined, '/', extra)).status).toBe(200);
-  expect((await request(undefined, '/', extra)).status).toBe(429);
-});
+it.each(['/', '//'])(
+  'keeps ordinary dashboard requests at %s in the anonymous quota',
+  async (path) => {
+    const extra = { method: 'GET', headers: { Accept: 'application/json', 'Mcp-Session-Id': '' } };
+    expect((await request(undefined, path, extra)).status).toBe(200);
+    expect((await request(undefined, path, extra)).status).toBe(200);
+    expect((await request(undefined, path, extra)).status).toBe(429);
+  },
+);

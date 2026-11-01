@@ -8,7 +8,7 @@ import type { Express, Request, RequestHandler } from 'express';
 export const MCP_TRANSPORT_PATHS = ['/', '/mcp', '/sse', '/messages'];
 // Match Express's default case-insensitive, optional-trailing-slash route behavior.
 const transportPath = new RegExp(
-  `^(?:${MCP_TRANSPORT_PATHS.map((path) => (path === '/' ? path : path + '/?')).join('|')})$`,
+  `^(?:${MCP_TRANSPORT_PATHS.map((path) => path + '/?').join('|')})$`,
   'i',
 );
 
@@ -17,7 +17,11 @@ const transportPath = new RegExp(
  */
 export function isMcpTransportRequest(req: Request, dashboardEnabled: boolean): boolean {
   if (!transportPath.test(req.path)) return false;
-  if (req.path !== '/' || (req.method !== 'GET' && req.method !== 'HEAD') || !dashboardEnabled)
+  if (
+    (req.path !== '/' && req.path !== '//') ||
+    (req.method !== 'GET' && req.method !== 'HEAD') ||
+    !dashboardEnabled
+  )
     return true;
   return (
     Boolean(req.headers['mcp-session-id']) ||

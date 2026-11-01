@@ -178,7 +178,7 @@ import {
   loadOAuthConfig,
 } from '../../src/oauth/index';
 import { startSessionStore } from '../../src/oauth/grant-revocation';
-import { oauthAuthMiddleware } from '../../src/middleware';
+import * as middleware from '../../src/middleware';
 
 describe('server', () => {
   let originalArgv: string[];
@@ -548,14 +548,17 @@ describe('server', () => {
     // In OAuth mode the legacy SSE transport ran tools without any credentials check.
     it('authenticates the SSE transport in OAuth mode', async () => {
       (isOAuthEnabled as jest.Mock).mockReturnValue(true);
+      const createAuth = jest.spyOn(middleware, 'createOAuthMiddleware');
       try {
         await startServer();
 
+        expect(createAuth).toHaveBeenCalledTimes(1);
         expect(mockApp.all).toHaveBeenCalledWith(
           ['/', '/mcp', '/sse', '/messages'],
-          oauthAuthMiddleware,
+          createAuth.mock.results[0].value,
         );
       } finally {
+        createAuth.mockRestore();
         (isOAuthEnabled as jest.Mock).mockReturnValue(false);
       }
     });

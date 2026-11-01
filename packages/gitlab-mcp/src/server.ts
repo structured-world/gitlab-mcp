@@ -49,11 +49,11 @@ import { startSessionStore } from './oauth/grant-revocation';
 import type { TokenContext } from './oauth/types';
 // Middleware imports
 import {
-  oauthAuthMiddleware,
+  createOAuthMiddleware,
   rateLimiterMiddleware,
   responseWriteTimeoutMiddleware,
 } from './middleware/index';
-import { authenticateMcpTransports } from './middleware/mcp-auth-routes';
+import { authenticateMcpTransports, isMcpTransportRequest } from './middleware/mcp-auth-routes';
 import { mcpJsonBodyParser } from './middleware/mcp-json-body';
 
 // Dashboard imports
@@ -538,8 +538,16 @@ export async function startServer(): Promise<void> {
         next();
       });
 
-      // Rate limiting middleware (protects anonymous requests, authenticated users skip)
-      app.use(rateLimiterMiddleware());
+      // OAuth transport requests choose their quota after authentication. Public routes
+      // and static-token deployments use the anonymous/transport quota here.
+      // createOAuthMiddleware applies this limiter to both accepted and rejected tokens;
+      // a shared anonymous IP budget must not prevent a valid OAuth session from reconnecting.
+      const rateLimit = rateLimiterMiddleware();
+      const oauthEnabled = isOAuthEnabled();
+      app.use((req, res, next) => {
+        if (oauthEnabled && isMcpTransportRequest(req, DASHBOARD_ENABLED)) return next();
+        return rateLimit(req, res, next);
+      });
 
       // Register OAuth endpoints if OAuth mode is enabled
       if (isOAuthEnabled()) {
@@ -550,7 +558,10 @@ export async function startServer(): Promise<void> {
       // Only handles GET requests; POST requests fall through to MCP transport
       // Can be disabled via DASHBOARD_ENABLED=false
       if (DASHBOARD_ENABLED) {
-        app.get('/', dashboardHandler);
+        app.get('/', (req, res, next) => {
+          if (isMcpTransportRequest(req, DASHBOARD_ENABLED)) next();
+          else dashboardHandler(req, res);
+        });
         logInfo('Dashboard enabled at GET /');
       }
 
@@ -575,7 +586,7 @@ export async function startServer(): Promise<void> {
       // OAuth authentication middleware for MCP endpoints (when OAuth mode is enabled)
       // Returns 401 with WWW-Authenticate header if no valid token, triggering OAuth flow.
       if (isOAuthEnabled()) {
-        authenticateMcpTransports(app, oauthAuthMiddleware);
+        authenticateMcpTransports(app, createOAuthMiddleware(rateLimit));
       }
 
       // Transport storage for both SSE and StreamableHTTP

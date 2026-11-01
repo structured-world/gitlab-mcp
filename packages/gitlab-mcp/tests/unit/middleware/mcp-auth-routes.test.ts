@@ -6,11 +6,32 @@
 
 import * as http from 'node:http';
 import { AddressInfo } from 'node:net';
-import express from 'express';
+import express, { type Request } from 'express';
 import {
   authenticateMcpTransports,
   MCP_TRANSPORT_PATHS,
+  isMcpTransportRequest,
 } from '../../../src/middleware/mcp-auth-routes';
+
+// A prefix match must not defer the anonymous IP quota for an unrelated route.
+it('does not classify a transport path prefix as an MCP route', () => {
+  const req = { path: '/mcp/other', method: 'GET', headers: {} } as Request;
+  expect(isMcpTransportRequest(req, true)).toBe(false);
+});
+
+describe.each(['GET', 'HEAD'])('root %s classification', (method) => {
+  // Without a dashboard, even a root request without stream headers belongs to MCP.
+  it('authenticates the root when the dashboard is disabled', () => {
+    const req = { path: '/', method, headers: {} } as Request;
+    expect(isMcpTransportRequest(req, false)).toBe(true);
+  });
+
+  // Missing Accept and session headers must not turn a public dashboard probe into MCP.
+  it('preserves a dashboard request without an Accept header', () => {
+    const req = { path: '/', method, headers: {} } as Request;
+    expect(isMcpTransportRequest(req, true)).toBe(false);
+  });
+});
 
 describe('authenticateMcpTransports', () => {
   let server: http.Server;

@@ -75,6 +75,25 @@ async function listedProject(
   }
 }
 
+/** Bound simultaneous project responses, counting cache misses rather than session rows. */
+async function listedProjects(
+  rows: Workflow[],
+  projectReads: Map<string, Promise<DuoProject>>,
+): Promise<Array<DuoProject | null>> {
+  const projects: Array<DuoProject | null> = [];
+  const pending: Array<Promise<DuoProject | null>> = [];
+  let started = projectReads.size;
+  for (const row of rows) {
+    pending.push(listedProject(row, projectReads));
+    if (projectReads.size - started < 4) continue;
+    projects.push(...(await Promise.all(pending)));
+    pending.length = 0;
+    started = projectReads.size;
+  }
+  projects.push(...(await Promise.all(pending)));
+  return projects;
+}
+
 /** Metadata-only pagination: detailed messages from disallowed projects are never requested. */
 export async function listDuoSessions(
   input: Extract<BrowseDuoSessionsInput, { action: 'list' }>,
@@ -85,27 +104,30 @@ export async function listDuoSessions(
     throw new Error('Duo project is outside the working scope');
   const page = await workflowPage(input.first, input.after);
   const sessions: Record<string, unknown>[] = [];
-  const projectReads = new Map<string, Promise<DuoProject>>();
-  if (selected) projectReads.set(selected.id, Promise.resolve(selected));
-  let skipped = 0;
-  for (const row of page.nodes) {
-    if (!listedSession(row, selected, policy)) continue;
-    if (policy.scopeEnforcer) {
-      const project = await listedProject(row, projectReads);
-      if (!project) {
-        skipped++;
-        continue;
-      }
-      if (!permitsDuoProject(project, policy)) continue;
-    }
-    sessions.push(sessionMetadata(row));
-  }
-  return {
+  const result = {
     sessions,
     pageInfo: page.pageInfo,
     filtered: true,
-    skipped_unverifiable_sessions: skipped,
+    skipped_unverifiable_sessions: 0,
   };
+  if (!policy.scopeEnforcer) {
+    for (const row of page.nodes)
+      if (listedSession(row, selected, policy)) sessions.push(sessionMetadata(row));
+    return result;
+  }
+  const projectReads = new Map<string, Promise<DuoProject>>();
+  if (selected) projectReads.set(selected.id, Promise.resolve(selected));
+  const rows = page.nodes.filter((row) => listedSession(row, selected, policy));
+  const projects = await listedProjects(rows, projectReads);
+  for (let index = 0; index < rows.length; index++) {
+    const project = projects[index];
+    if (!project) {
+      result.skipped_unverifiable_sessions++;
+      continue;
+    }
+    if (permitsDuoProject(project, policy)) sessions.push(sessionMetadata(rows[index]));
+  }
+  return result;
 }
 
 interface LinkConnection<T> {

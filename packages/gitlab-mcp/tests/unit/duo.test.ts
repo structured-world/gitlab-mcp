@@ -2,6 +2,7 @@
 import { getOperationAST, print } from 'graphql';
 import { createServer } from 'node:http';
 import { performance } from 'node:perf_hooks';
+import { setImmediate } from 'node:timers';
 import { ConnectionManager } from '../../src/services/ConnectionManager';
 import { gitlab, GitLabApiError } from '../../src/utils/gitlab-api';
 import { getGitLabBaseUrl } from '../../src/utils/gitlab-base-url';
@@ -330,6 +331,44 @@ describe('Duo schemas and discovery', () => {
 });
 
 describe('Duo project boundaries and progress', () => {
+  // Independent reads overlap, but a page cannot launch unbounded project requests.
+  it('runs at most four project lookups concurrently and preserves session order', async () => {
+    let hold = true;
+    const release: Array<() => void> = [];
+    (gitlab.get as jest.Mock).mockImplementation((path: string) => {
+      const id = Number(path.split('/').at(-1));
+      const value = { ...project, id, path_with_namespace: `test/project-${id}` };
+      if (!hold) return Promise.resolve(value);
+      return new Promise((resolve) => release.push(() => resolve(value)));
+    });
+    responses.DuoSessionMetadata = {
+      duoWorkflowWorkflows: {
+        nodes: Array.from({ length: 5 }, (_, index) => ({
+          ...session,
+          id: String(index + 1),
+          project: null,
+          projectId: `gid://gitlab/Project/${index + 1}`,
+        })),
+        pageInfo,
+      },
+    };
+    const operation = browse(
+      { action: 'list' },
+      {
+        scopeEnforcer: new ScopeEnforcer({ group: 'test' }),
+      },
+    );
+    try {
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(gitlab.get).toHaveBeenCalledTimes(4);
+    } finally {
+      hold = false;
+      for (const complete of release.reverse()) complete();
+      const result = (await operation) as { sessions: Array<{ workflow_id: string }> };
+      expect(result.sessions.map((row) => row.workflow_id)).toEqual(['1', '2', '3', '4', '5']);
+    }
+  });
+
   // Unrestricted metadata reads need no project REST lookup, including absent provenance.
   it.each([
     ['CREATED', 'created', 120],
@@ -535,7 +574,7 @@ describe('Duo project boundaries and progress', () => {
 
   // Authentication, throttling and transport failures remain actionable failures.
   it.each([401, 403, 429, 500, 'network'])(
-    'preserves project lookup failure %s and stops later reads',
+    'preserves project lookup failure %s and stops later batches',
     async (status) => {
       const error =
         typeof status === 'number'
@@ -548,10 +587,11 @@ describe('Duo project boundaries and progress', () => {
           : new Error('Network unavailable');
       responses.DuoSessionMetadata = {
         duoWorkflowWorkflows: {
-          nodes: [
-            { ...session, project: null },
-            { ...session, project: null, projectId: 'gid://gitlab/Project/99' },
-          ],
+          nodes: Array.from({ length: 5 }, (_, index) => ({
+            ...session,
+            project: null,
+            projectId: `gid://gitlab/Project/${index + 1}`,
+          })),
           pageInfo,
         },
       };
@@ -564,7 +604,7 @@ describe('Duo project boundaries and progress', () => {
           },
         ),
       ).rejects.toBe(error);
-      expect(gitlab.get).toHaveBeenCalledTimes(1);
+      expect(gitlab.get).toHaveBeenCalledTimes(4);
     },
   );
 

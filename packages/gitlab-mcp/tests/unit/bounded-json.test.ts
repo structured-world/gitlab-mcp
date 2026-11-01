@@ -24,6 +24,19 @@ it('cancels before copying a chunk that exceeds the response budget', async () =
     ResponseLimitError,
   );
   expect(cancel).toHaveBeenCalledTimes(1);
+  expect(stream.locked).toBe(false);
+});
+
+// A failed provider stream must retain its error and release the exclusive reader.
+it('releases the stream reader after a provider read failure', async () => {
+  const failure = new Error('Provider stream failed');
+  const stream = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      controller.error(failure);
+    },
+  });
+  await expect(readBoundedText(new Response(stream), 32)).rejects.toBe(failure);
+  expect(stream.locked).toBe(false);
 });
 
 it('rejects malformed UTF-8 rather than silently replacing answer text', async () => {

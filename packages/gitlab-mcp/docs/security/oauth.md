@@ -204,6 +204,40 @@ The flow is selected automatically based on the presence of `redirect_uri` in th
 
 The Device Flow needs GitLab 17.3 or later (17.2 with the `oauth2_device_grant_flow` feature flag). On older instances a request without `redirect_uri` is refused with `invalid_request`; clients there use the Authorization Code flow.
 
+### Request rate limits
+
+MCP requests are authenticated before the server selects their rate-limit identity.
+A valid OAuth session does not consume the anonymous IP quota, including during
+initialization and when its MCP transport session was lost after a restart.
+Authenticated requests are unlimited by default. With `RATE_LIMIT_SESSION_ENABLED=true`,
+each OAuth session has its own quota, shared by its transport connections. Separate
+OAuth sessions have separate quotas even when their users share one source IP.
+
+Anonymous requests and rejected credentials share the source address's IP quota.
+Supplying a transport session ID does not prove OAuth authentication. Users behind
+the same NAT still share this anonymous quota: `TRUST_PROXY` can recover the address
+forwarded by a trusted proxy, but cannot distinguish users of one public IP. Trust
+only the actual proxy addresses or network, rather than arbitrary forwarded headers.
+
+| Variable                          | Default | Effect                                           |
+| --------------------------------- | ------- | ------------------------------------------------ |
+| `RATE_LIMIT_IP_ENABLED`           | `true`  | Enable the anonymous source-address quota        |
+| `RATE_LIMIT_IP_WINDOW_MS`         | `60000` | Anonymous quota window in milliseconds           |
+| `RATE_LIMIT_IP_MAX_REQUESTS`      | `100`   | Requests per anonymous source address per window |
+| `RATE_LIMIT_SESSION_ENABLED`      | `false` | Enable the optional authenticated-session quota  |
+| `RATE_LIMIT_SESSION_WINDOW_MS`    | `60000` | Authenticated quota window in milliseconds       |
+| `RATE_LIMIT_SESSION_MAX_REQUESTS` | `300`   | Requests per OAuth session per window            |
+
+Counters belong to each server process and reset on restart; they are not a shared
+quota across replicas. Exceeded quotas return `429` with `Retry-After`. These limits
+are separate from GitLab's API limits and the client-registration limit below.
+Disabling `RATE_LIMIT_IP_ENABLED` does not disable OAuth or change GitLab permissions.
+
+The root endpoint serves the public dashboard for ordinary browser or JSON requests.
+Streaming GET requests (`Accept: text/event-stream`) and requests naming an MCP
+session go through the authenticated MCP transport instead. An expired transport
+session returns `404`, so the client can initialize a new session.
+
 ### Token binding
 
 - **Client and redirect:** the Authorization Code flow requires a client registered through `/register`, and `redirect_uri` must be one of its registered URIs; otherwise the request fails without a redirect. The Device Flow does not use a redirect and needs no registration.

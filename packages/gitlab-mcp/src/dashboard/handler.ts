@@ -36,7 +36,7 @@ function prefersHtml(req: Request): boolean {
  * Dashboard endpoint handler
  *
  * Returns server health dashboard as HTML or JSON based on Accept header.
- * Safe for MCP clients - they use POST /mcp or SSE endpoints, not GET /.
+ * The server routes MCP streaming GETs to the authenticated transport before invoking this handler.
  *
  * @param req - Express request
  * @param res - Express response

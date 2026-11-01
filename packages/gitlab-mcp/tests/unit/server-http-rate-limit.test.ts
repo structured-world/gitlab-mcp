@@ -15,6 +15,7 @@ const issuer = 'https://mcp.example.com';
 const mockGetSession = jest.fn(async (id: string) => mockSessions.get(id));
 
 jest.mock('../../src/logger', () => ({
+  logger: { info: jest.fn(), warn: jest.fn(), debug: jest.fn(), error: jest.fn() },
   logInfo: jest.fn(),
   logWarn: jest.fn(),
   logDebug: jest.fn(),
@@ -164,7 +165,7 @@ async function request(token?: string, path = '/mcp', extra: RequestInit = {}): 
       ...(token && { Authorization: `Bearer ${token}` }),
       ...extra.headers,
     },
-    body: extra.method === 'GET' ? undefined : '{}',
+    body: extra.method === 'GET' || extra.method === 'HEAD' ? undefined : '{}',
   });
   await response.arrayBuffer();
   return response;
@@ -180,7 +181,41 @@ it('admits authorized sessions after the shared anonymous IP quota is exhausted'
   expect((await request(a.mcpAccessToken)).status).toBe(404);
   expect((await request(b.mcpAccessToken, '/')).status).toBe(404);
   expect(mockGetSession).toHaveBeenCalledTimes(2);
+  // Fresh initialization has no transport ID at all, but still has the same verified OAuth identity.
+  const response = await fetch(baseUrl + '/mcp', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json, text/event-stream',
+      'X-Forwarded-For': source,
+      Authorization: `Bearer ${a.mcpAccessToken}`,
+    },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'initialize',
+      params: {
+        protocolVersion: '2025-11-25',
+        capabilities: {},
+        clientInfo: { name: 'codex', version: '1' },
+      },
+    }),
+  });
+  expect(response.status).toBe(200);
+  expect(response.headers.get('Mcp-Session-Id')).toBeTruthy();
+  expect(await response.text()).toContain('rate-limit-fixture');
 });
+
+// Express accepts these route spellings, so they must not pass through a second anonymous quota.
+it.each(['/mcp/', '/MCP', '/MCP/'])(
+  'classifies the accepted transport path %s consistently',
+  async (path) => {
+    await request();
+    await request();
+    const a = account();
+    expect((await request(a.mcpAccessToken, path)).status).toBe(404);
+  },
+);
 
 // Several transport IDs of one OAuth session share its own optional quota, while B stays independent.
 it('uses separate OAuth quotas rather than a common NAT or transport quota', async () => {
@@ -192,7 +227,7 @@ it('uses separate OAuth quotas rather than a common NAT or transport quota', asy
     (await request(a.mcpAccessToken, '/mcp', { headers: { 'Mcp-Session-Id': 'other-lost' } }))
       .status,
   ).toBe(404);
-  const limited = await request(a.mcpAccessToken);
+  const limited = await request(a.mcpAccessToken, '/messages?sessionId=other-lost');
   expect(limited.status).toBe(429);
   expect(Number(limited.headers.get('Retry-After'))).toBeGreaterThan(0);
   expect((await request(b.mcpAccessToken)).status).toBe(404);
@@ -225,6 +260,28 @@ it('routes streaming root GET through OAuth and the transport after an anonymous
       })
     ).status,
   ).toBe(404);
+});
+
+// A root stream without a token must receive an OAuth challenge, never public dashboard JSON.
+it('challenges an unauthenticated root stream before returning any dashboard response', async () => {
+  const response = await request(undefined, '/', {
+    method: 'GET',
+    headers: { Accept: 'text/event-stream', 'Mcp-Session-Id': '' },
+  });
+  expect(response.status).toBe(401);
+  expect(response.headers.get('WWW-Authenticate')).toContain('resource_metadata=');
+});
+
+// Express serves HEAD through a GET route; ordinary dashboard probes must retain that behavior.
+it('preserves public dashboard HEAD requests', async () => {
+  expect(
+    (
+      await request(undefined, '/', {
+        method: 'HEAD',
+        headers: { Accept: 'application/json', 'Mcp-Session-Id': '' },
+      })
+    ).status,
+  ).toBe(200);
 });
 
 // Public dashboard traffic remains anonymous and cannot exhaust an authenticated connection's budget.

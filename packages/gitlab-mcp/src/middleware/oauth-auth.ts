@@ -12,7 +12,7 @@
  * 5. Sets up token context for the request
  */
 
-import { Request, Response, NextFunction } from 'express';
+import { Request, Response, NextFunction, RequestHandler } from 'express';
 import { loadOAuthConfig } from '../oauth/config';
 import { sessionStore } from '../oauth/session-store';
 import { isPastAgeLimit } from '../oauth/storage/types';
@@ -45,46 +45,49 @@ export async function oauthAuthMiddleware(
   res: Response,
   next: NextFunction,
 ): Promise<void> {
+  const reject = await authenticateRequest(req, res);
+  if (reject) reject();
+  else next();
+}
+
+/** Authenticate once; defer error responses until the caller has applied its quota. */
+async function authenticateRequest(req: Request, res: Response): Promise<(() => void) | undefined> {
   const config = loadOAuthConfig();
   if (!config) {
-    sendUnauthorized(req, res, 'server_error', 'OAuth not configured');
-    return;
+    return () => sendUnauthorized(req, res, 'server_error', 'OAuth not configured');
   }
 
   // Extract Bearer token from Authorization header
   const authHeader = req.headers.authorization;
   if (!authHeader) {
-    sendUnauthorized(req, res, 'unauthorized', 'Missing Authorization header');
-    return;
+    return () => sendUnauthorized(req, res, 'unauthorized', 'Missing Authorization header');
   }
 
   if (!authHeader.startsWith('Bearer ')) {
-    sendUnauthorized(
-      req,
-      res,
-      'unauthorized',
-      'Invalid Authorization header format. Expected: Bearer <token>',
-    );
-    return;
+    return () =>
+      sendUnauthorized(
+        req,
+        res,
+        'unauthorized',
+        'Invalid Authorization header format. Expected: Bearer <token>',
+      );
   }
 
   const token = authHeader.slice(7); // Remove "Bearer " prefix
 
   if (!token) {
-    sendUnauthorized(req, res, 'unauthorized', 'Empty Bearer token');
-    return;
+    return () => sendUnauthorized(req, res, 'unauthorized', 'Empty Bearer token');
   }
 
   // Verify JWT token
   const payload = verifyMCPToken(token, config.sessionSecret);
   if (!payload) {
-    sendUnauthorized(req, res, 'invalid_token', 'Token is invalid or expired');
-    return;
+    return () => sendUnauthorized(req, res, 'invalid_token', 'Token is invalid or expired');
   }
 
   if (!isIssuedForThisServer(config.issuer, payload)) {
-    sendUnauthorized(req, res, 'invalid_token', 'Token was not issued for this server');
-    return;
+    return () =>
+      sendUnauthorized(req, res, 'invalid_token', 'Token was not issued for this server');
   }
 
   // Get session from token
@@ -95,30 +98,28 @@ export async function oauthAuthMiddleware(
   } catch (error: unknown) {
     // Storage outage: the credentials cannot be verified, which is not a bad token.
     logError('Failed to load OAuth session', { err: error as Error });
-    res.status(503).json({
-      error: 'temporarily_unavailable',
-      error_description: 'Session storage is unavailable',
-    });
-    return;
+    return () => {
+      res.status(503).json({
+        error: 'temporarily_unavailable',
+        error_description: 'Session storage is unavailable',
+      });
+    };
   }
 
   // A session past its age limit stays stored until cleanup ends its grants, and an access
   // token can outlive that limit; it authenticates nothing either way.
   if (!session || isPastAgeLimit(session)) {
-    sendUnauthorized(req, res, 'invalid_token', 'Session not found or expired');
-    return;
+    return () => sendUnauthorized(req, res, 'invalid_token', 'Session not found or expired');
   }
 
   // Verify token matches session
   if (session.mcpAccessToken !== token) {
     // Token might have been rotated
-    sendUnauthorized(req, res, 'invalid_token', 'Token has been superseded');
-    return;
+    return () => sendUnauthorized(req, res, 'invalid_token', 'Token has been superseded');
   }
 
   if (!hasGrantedScope(payload.scope, session.scopes)) {
-    sendInsufficientScope(req, res);
-    return;
+    return () => sendInsufficientScope(req, res);
   }
 
   // Refresh GitLab token if it's expiring soon (5 minute buffer)
@@ -128,25 +129,26 @@ export async function oauthAuthMiddleware(
   } catch (error: unknown) {
     logError('Failed to refresh GitLab token during request', { err: error as Error });
     if (error instanceof GitLabGrantRevokedError) {
-      sendUnauthorized(
-        req,
-        res,
-        'invalid_token',
-        'GitLab token refresh failed. Please re-authenticate.',
-      );
+      return () =>
+        sendUnauthorized(
+          req,
+          res,
+          'invalid_token',
+          'GitLab token refresh failed. Please re-authenticate.',
+        );
     } else {
       // A GitLab outage is not a bad token: the account stays linked, the client retries.
-      res.status(503).json({
-        error: 'temporarily_unavailable',
-        error_description: 'GitLab is temporarily unavailable',
-      });
+      return () => {
+        res.status(503).json({
+          error: 'temporarily_unavailable',
+          error_description: 'GitLab is temporarily unavailable',
+        });
+      };
     }
-    return;
   }
 
   if (!updatedSession) {
-    sendUnauthorized(req, res, 'invalid_token', 'Session lost during token refresh');
-    return;
+    return () => sendUnauthorized(req, res, 'invalid_token', 'Session lost during token refresh');
   }
 
   // Store OAuth session info in res.locals for route handlers
@@ -176,18 +178,21 @@ export async function oauthAuthMiddleware(
     path: req.path,
   });
 
-  // Continue to route handler - token context will be set up there
-  next();
+  return undefined;
 }
 
 /**
  * Create OAuth middleware for specific routes
  *
- * Returns the middleware function configured for OAuth authentication.
- * Use this when you need to programmatically apply the middleware.
+ * Apply the request quota after OAuth classification, including rejected requests.
+ * A live transport ID does not authenticate a caller; the quota uses verified OAuth locals.
  */
-export function createOAuthMiddleware(): typeof oauthAuthMiddleware {
-  return oauthAuthMiddleware;
+export function createOAuthMiddleware(rateLimit: RequestHandler): RequestHandler {
+  return async (req, res, next): Promise<void> => {
+    const reject = await authenticateRequest(req, res);
+    if (reject) return rateLimit(req, res, reject);
+    return rateLimit(req, res, next);
+  };
 }
 
 /**

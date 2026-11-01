@@ -21,6 +21,7 @@ import {
 } from '../config';
 import { logDebug, logWarn } from '../logger';
 import { getSessionManager } from '../session-manager';
+import { isOAuthEnabled } from '../oauth/config';
 import { getMinimalRequestContext, buildRateLimitInfo, truncateId } from '../utils/request-logger';
 
 interface RateLimitEntry {
@@ -82,12 +83,19 @@ function getIpAddress(req: Request): string {
  * Session the request belongs to, or undefined for an anonymous request. The same id is
  * the key of the optional per-session limit.
  */
-function authenticatedSessionId(req: Request, res: Response): string | undefined {
+function authenticatedSessionId(
+  req: Request,
+  res: Response,
+  oauthEnabled: boolean,
+): string | undefined {
   // OAuth session ID set by auth middleware
   const oauthSessionId = res.locals.oauthSessionId as string | undefined;
   if (oauthSessionId) {
     return oauthSessionId;
   }
+
+  // OAuth authentication, not a caller-supplied transport ID, establishes the quota identity.
+  if (oauthEnabled) return undefined;
 
   // An MCP session ID counts only when it names a session this process holds: any client
   // can send one, and a made-up one must not lift the per-IP limit. Streamable HTTP sends
@@ -170,6 +178,7 @@ function setRateLimitHeaders(
 export function rateLimiterMiddleware(): RequestHandler {
   // Start cleanup on first use
   startCleanup();
+  const oauthEnabled = isOAuthEnabled();
 
   return (req: Request, res: Response, next: NextFunction): void => {
     // Skip health check endpoint (monitoring should always work)
@@ -178,7 +187,7 @@ export function rateLimiterMiddleware(): RequestHandler {
       return;
     }
 
-    const sessionId = authenticatedSessionId(req, res);
+    const sessionId = authenticatedSessionId(req, res, oauthEnabled);
 
     // Authenticated users skip rate limiting by default
     // (they've proven who they are and shouldn't suffer security measures)
@@ -271,7 +280,7 @@ export function rateLimiterMiddleware(): RequestHandler {
         ...getMinimalRequestContext(req),
         rateLimit: rateLimitInfo,
         authClassification: 'anonymous',
-        authReason: 'no OAuth session and no MCP-Session-Id header',
+        authReason: 'no authenticated session',
       });
     }
 
@@ -287,7 +296,7 @@ export function rateLimiterMiddleware(): RequestHandler {
         ...getMinimalRequestContext(req),
         rateLimit: rateLimitInfo,
         authClassification: 'anonymous',
-        authReason: 'no OAuth session and no MCP-Session-Id header',
+        authReason: 'no authenticated session',
         mcpSessionId: truncateId(mcpSessionHeader),
       });
 

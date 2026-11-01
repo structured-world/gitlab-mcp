@@ -555,9 +555,31 @@ describe('OAuth Authentication Middleware', () => {
   });
 
   describe('createOAuthMiddleware', () => {
-    it('should return the oauthAuthMiddleware function', () => {
-      const middleware = createOAuthMiddleware();
-      expect(middleware).toBe(oauthAuthMiddleware);
+    it('classifies the OAuth session before applying its quota', async () => {
+      // One validation supplies both the quota identity and the protected handler context.
+      const req = createMockReq({ headers: { authorization: 'Bearer valid-mcp-token' } });
+      const res = createMockRes();
+      const limit = jest.fn((_req: Request, response: Response, next: NextFunction) => {
+        expect(response.locals.oauthSessionId).toBe(mockSession.id);
+        next();
+      });
+      await createOAuthMiddleware(limit)(req, res, mockNext);
+      expect(limit).toHaveBeenCalledTimes(1);
+      expect(mockSessionStore.getSession).toHaveBeenCalledTimes(1);
+      expect(mockNext).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not send an OAuth rejection after the quota has returned 429', async () => {
+      // Invalid credentials remain rate limited without a second response overwriting Retry-After.
+      const req = createMockReq();
+      const res = createMockRes();
+      const limit = jest.fn((_req: Request, response: Response) => {
+        response.status(429).json({ error: 'rate limited' });
+      });
+      await createOAuthMiddleware(limit)(req, res, mockNext);
+      expect(res.status).toHaveBeenCalledTimes(1);
+      expect(res.status).toHaveBeenCalledWith(429);
+      expect(mockNext).not.toHaveBeenCalled();
     });
   });
 

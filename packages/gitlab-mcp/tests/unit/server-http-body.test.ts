@@ -64,6 +64,19 @@ jest.mock('../../src/middleware/index', () => ({
     if (mockRateLimited) res.status(429).json({ error: 'rate limited' });
     else next();
   },
+  createOAuthMiddleware:
+    (limit: RequestHandler): RequestHandler =>
+    (req, res, next) => {
+      const authorization = req.headers.authorization;
+      if (authorization !== 'Bearer owner' && authorization !== 'Bearer other') {
+        limit(req, res, () => {
+          res.status(401).json({ error: 'unauthorized' });
+        });
+        return;
+      }
+      res.locals.oauthSessionId = authorization;
+      limit(req, res, next);
+    },
   oauthAuthMiddleware: ((req, res, next) => {
     const authorization = req.headers.authorization;
     if (authorization !== 'Bearer owner' && authorization !== 'Bearer other') {

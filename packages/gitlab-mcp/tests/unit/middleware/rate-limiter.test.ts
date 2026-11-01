@@ -19,6 +19,8 @@ jest.mock('../../../src/config', () => ({
   RATE_LIMIT_SESSION_MAX_REQUESTS: 300,
 }));
 
+jest.mock('../../../src/oauth/config', () => ({ isOAuthEnabled: () => false }));
+
 // Mock logger
 jest.mock('../../../src/logger', () => ({
   logger: {

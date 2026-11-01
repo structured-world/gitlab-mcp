@@ -307,7 +307,7 @@
       },
       {
         "name": "manage_work_item",
-        "description": "Create, update, delete, or link work items (issues, epics, tasks).",
+        "description": "Create, update, delete, reorder, or link work items (issues, epics, tasks).",
         "category": "Planning",
         "tier": "free",
         "readOnly": false

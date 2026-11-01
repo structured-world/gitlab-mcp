@@ -8,7 +8,7 @@ import type { Express, Request, RequestHandler } from 'express';
 export const MCP_TRANSPORT_PATHS = ['/', '/mcp', '/sse', '/messages'];
 // Match Express's default case-insensitive, optional-trailing-slash route behavior.
 const transportPath = new RegExp(
-  `^(?:${MCP_TRANSPORT_PATHS.map((path) => (path === '/' ? path : `${path}/?`)).join('|')})$`,
+  `^(?:${MCP_TRANSPORT_PATHS.map((path) => (path === '/' ? path : path + '/?')).join('|')})$`,
   'i',
 );
 

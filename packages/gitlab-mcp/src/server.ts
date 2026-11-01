@@ -540,6 +540,8 @@ export async function startServer(): Promise<void> {
 
       // OAuth transport requests choose their quota after authentication. Public routes
       // and static-token deployments use the anonymous/transport quota here.
+      // createOAuthMiddleware applies this limiter to both accepted and rejected tokens;
+      // a shared anonymous IP budget must not prevent a valid OAuth session from reconnecting.
       const rateLimit = rateLimiterMiddleware();
       const oauthEnabled = isOAuthEnabled();
       app.use((req, res, next) => {

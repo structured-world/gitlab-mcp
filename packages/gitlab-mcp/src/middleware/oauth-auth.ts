@@ -50,7 +50,9 @@ export async function oauthAuthMiddleware(
   else next();
 }
 
-/** Authenticate once; defer error responses until the caller has applied its quota. */
+/** Authenticate once; defer error responses until the caller has applied its quota.
+ * A signed token still needs a session lookup to detect revocation before choosing its quota.
+ */
 async function authenticateRequest(req: Request, res: Response): Promise<(() => void) | undefined> {
   const config = loadOAuthConfig();
   if (!config) {

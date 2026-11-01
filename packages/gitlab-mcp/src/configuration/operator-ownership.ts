@@ -128,7 +128,8 @@ function workItemIds(tool: string, args: Args): Set<string> {
   // Namespace + IID wins over a global ID, just as in the work item handler.
   if (!(tool === 'browse_work_items' && args.namespace !== undefined && args.iid !== undefined))
     addWorkItemId(ids, args.id);
-  for (const field of ['targetId', 'parentId']) addWorkItemId(ids, args[field]);
+  for (const field of ['targetId', 'parentId', 'beforeId', 'afterId'])
+    addWorkItemId(ids, args[field]);
   if (Array.isArray(args.childrenIds)) for (const id of args.childrenIds) addWorkItemId(ids, id);
   return ids;
 }

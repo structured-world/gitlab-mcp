@@ -3419,6 +3419,43 @@ describe('handlers', () => {
       expect(result.tools).toHaveLength(3);
     });
 
+    // Reorder is a write even though it changes neither content nor labels.
+    it('refuses direct reorder in read-only mode before any lookup or mutation', async () => {
+      await service().updateSession(staticCaller(), { readOnly: true });
+      const result = await callToolHandler(
+        {
+          params: {
+            name: 'manage_work_item',
+            arguments: { action: 'reorder', id: '1', beforeId: '2' },
+          },
+        },
+        { sessionId: 'sess-1' },
+      );
+      expect(result.isError).toBe(true);
+      expect(result.content?.[0].text).toContain('read-only mode is on');
+      expect(mockRegistryManager.executeTool).not.toHaveBeenCalled();
+      expect(mockConnectionManager.initialize).not.toHaveBeenCalled();
+    });
+
+    // A hidden or stale client action must still respect the preset on direct invocation.
+    it('refuses reorder when the preset denies it before calling GitLab', async () => {
+      mockPresets.reorderDenied = { denied_actions: ['manage_work_item:reorder'] };
+      await service().updateSession(staticCaller(), { preset: 'reorderDenied' });
+      const result = await callToolHandler(
+        {
+          params: {
+            name: 'manage_work_item',
+            arguments: { action: 'reorder', id: '1', beforeId: '2' },
+          },
+        },
+        { sessionId: 'sess-1' },
+      );
+      expect(result.isError).toBe(true);
+      expect(result.content?.[0].text).toContain("denies the 'reorder' action");
+      expect(mockRegistryManager.executeTool).not.toHaveBeenCalled();
+      expect(mockConnectionManager.initialize).not.toHaveBeenCalled();
+    });
+
     it('refuses a direct call to a write tool in read-only mode without running it', async () => {
       await service().updateSession(staticCaller(), { readOnly: true });
 

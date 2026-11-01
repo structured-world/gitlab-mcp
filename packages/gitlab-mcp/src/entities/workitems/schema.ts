@@ -7,7 +7,7 @@ import {
 
 // ============================================================================
 // manage_work_item - CQRS Command Tool (discriminated union schema)
-// Actions: create, update, delete, delete_timelog, add_link, remove_link
+// Actions: create, update, delete, delete_timelog, add_link, remove_link, reorder
 // Uses z.discriminatedUnion() for type-safe action handling.
 // Schema pipeline flattens to flat JSON Schema for AI clients that don't support oneOf.
 // ============================================================================
@@ -268,6 +268,42 @@ const RemoveLinkSchema = z.object({
   // Note: linkType is NOT used by GitLab API for remove - links identified by source+target only
 });
 
+const reorderId = z
+  .string()
+  .regex(/^(?:gid:\/\/gitlab\/WorkItem\/)?[1-9]\d*$/, 'Expected a positive work item ID');
+
+const ReorderWorkItemSchema = z
+  .object({
+    action: z
+      .literal('reorder')
+      .describe('Reorder an issue card without changing its list or hierarchy'),
+    id: reorderId.describe('Global work item ID of the issue to move, not its project-local IID'),
+    beforeId: reorderId.optional().describe('Global work item ID to place the issue before'),
+    afterId: reorderId.optional().describe('Global work item ID to place the issue after'),
+  })
+  .superRefine((input, ctx) => {
+    if (input.beforeId === undefined && input.afterId === undefined)
+      ctx.addIssue({ code: 'custom', message: 'Provide beforeId or afterId' });
+    const simple = (id: string): string => id.slice(id.lastIndexOf('/') + 1);
+    for (const field of ['beforeId', 'afterId'] as const) {
+      const value = input[field];
+      if (value !== undefined && simple(value) === simple(input.id))
+        ctx.addIssue({
+          code: 'custom',
+          path: [field],
+          message: 'An issue cannot be its own neighbour',
+        });
+    }
+    if (
+      input.beforeId !== undefined &&
+      input.afterId !== undefined &&
+      simple(input.beforeId) === simple(input.afterId)
+    )
+      ctx.addIssue({ code: 'custom', message: 'The two neighbours must be different issues' });
+  });
+
+export type ReorderWorkItemInput = z.infer<typeof ReorderWorkItemSchema>;
+
 // --- Discriminated union combining all actions ---
 export const ManageWorkItemSchema = z.discriminatedUnion('action', [
   CreateWorkItemSchema,
@@ -276,6 +312,7 @@ export const ManageWorkItemSchema = z.discriminatedUnion('action', [
   DeleteTimelogSchema,
   AddLinkSchema,
   RemoveLinkSchema,
+  ReorderWorkItemSchema,
 ]);
 
 // ============================================================================

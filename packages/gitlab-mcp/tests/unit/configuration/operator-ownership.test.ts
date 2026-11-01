@@ -21,6 +21,27 @@ const project = { id: 'gid://gitlab/Project/71' };
 afterEach(() => jest.restoreAllMocks());
 
 describe('operator ownership', () => {
+  // A permitted target must not allow a neighbour from a forbidden project.
+  it.each(['beforeId', 'afterId'])('checks the actual owner of reorder %s', async (field) => {
+    const read = jest
+      .fn()
+      .mockResolvedValueOnce({ workItem: { project } })
+      .mockResolvedValueOnce({ workItem: { project: { id: 'gid://gitlab/Project/72' } } });
+    await expect(
+      assertOperatorOwnership(
+        'manage_work_item',
+        { action: 'reorder', id: '1', [field]: '2' },
+        policy,
+        active,
+        read,
+      ),
+    ).rejects.toThrow('not owned');
+    expect(read.mock.calls.map((call) => call[1])).toEqual([
+      { id: 'gid://gitlab/WorkItem/1' },
+      { id: 'gid://gitlab/WorkItem/2' },
+    ]);
+  });
+
   // Project-scoped listings and ordinary discussions have no global object to resolve.
   it.each([
     'browse_registry',

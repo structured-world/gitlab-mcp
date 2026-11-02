@@ -4,6 +4,7 @@
  */
 
 import { ConnectionManager, type InstanceState } from '../../../src/services/ConnectionManager';
+import { GitLabVersionDetector } from '../../../src/services/GitLabVersionDetector';
 import { runWithCaller } from '../../../src/configuration/caller';
 
 // Mock isOAuthEnabled and getGitLabApiUrlFromContext
@@ -89,7 +90,7 @@ describe('ConnectionManager Unit', () => {
     const stored = {
       version: '19.5.0',
       tier: 'free' as const,
-      features: {} as any,
+      features: GitLabVersionDetector.determineFeatures('19.5.0', 'free'),
       detectedAt: new Date(),
     };
     injectInstanceState(manager, 'https://gitlab.com', { instanceInfo: stored });

@@ -17,6 +17,7 @@ const contracts = [
   'tests/plugin/lifecycle.test.cjs',
   'tests/plugin/refresh-lock.test.cjs',
   'tests/plugin/server.test.cjs',
+  'tests/plugin/resources.test.cjs',
   'tests/plugin/bootstrap.test.cjs',
   'tests/plugin/oauth-errors.test.cjs',
   'tests/plugin/oauth-binding.test.cjs',

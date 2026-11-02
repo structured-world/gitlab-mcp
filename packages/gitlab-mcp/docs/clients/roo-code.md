@@ -22,14 +22,15 @@ configuration for the same server name.
 For the standard VS Code profile, automatic setup writes the extension's global
 `settings/mcp_settings.json`:
 
-On Linux, the standard profile is under `XDG_CONFIG_HOME/Code` when the variable
-is nonempty, or `~/.config/Code` otherwise.
+When `VSCODE_APPDATA` is nonempty, its `Code` directory takes precedence on all
+platforms. Otherwise, Linux uses `XDG_CONFIG_HOME/Code` when the variable is
+nonempty, or `~/.config/Code`.
 
 ```bash
 npx @structured-world/gitlab-mcp install --roo-code
 ```
 
-With a custom VS Code profile, another editor or Roo's custom storage path, open
+With portable VS Code, a custom profile or `--user-data-dir`, another editor, or Roo's custom storage path, open
 **Edit Global MCP** to find and edit the active configuration. The installer does
 not migrate the unused home-level `~/.roo/mcp.json` file.
 

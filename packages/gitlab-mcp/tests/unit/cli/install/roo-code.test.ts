@@ -1,7 +1,8 @@
 import * as fs from 'fs';
 import { homedir } from 'os';
-import { join } from 'path';
+import { dirname, join, normalize } from 'path';
 import { installRooCode } from '../../../../src/cli/install/installers';
+import { detectClient } from '../../../../src/cli/install/detector';
 
 jest.mock('fs');
 jest.mock('../../../../src/cli/install/backup', () => ({
@@ -14,9 +15,11 @@ describe('Roo Code global installation', () => {
   const platform = process.platform;
   const appData = process.env.APPDATA;
   const configHome = process.env.XDG_CONFIG_HOME;
+  const vscodeAppData = process.env.VSCODE_APPDATA;
 
   beforeEach(() => {
     delete process.env.XDG_CONFIG_HOME;
+    delete process.env.VSCODE_APPDATA;
   });
 
   afterEach(() => {
@@ -25,6 +28,8 @@ describe('Roo Code global installation', () => {
     else process.env.APPDATA = appData;
     if (configHome === undefined) delete process.env.XDG_CONFIG_HOME;
     else process.env.XDG_CONFIG_HOME = configHome;
+    if (vscodeAppData === undefined) delete process.env.VSCODE_APPDATA;
+    else process.env.VSCODE_APPDATA = vscodeAppData;
     jest.clearAllMocks();
   });
 
@@ -47,6 +52,40 @@ describe('Roo Code global installation', () => {
     expect(written.mcpServers.other).toEqual({ command: 'other-server' });
     expect(written.mcpServers.gitlab).toEqual({ command: 'node', args: ['server.js'] });
   });
+
+  // VS Code's application-data override wins over platform defaults for detection and writes.
+  test.each(['linux', 'darwin', 'win32'])(
+    'uses VSCODE_APPDATA for detection and installation on %s',
+    (os) => {
+      Object.defineProperty(process, 'platform', { value: os });
+      process.env.XDG_CONFIG_HOME = join(homedir(), 'unused-config');
+      process.env.VSCODE_APPDATA = join(homedir(), 'custom-vscode-data');
+      const expected = `${process.env.VSCODE_APPDATA}/Code/User/globalStorage/rooveterinaryinc.roo-cline/settings/mcp_settings.json`;
+      mockedFs.existsSync.mockImplementation(
+        (path) =>
+          normalize(String(path)) === normalize(expected) ||
+          normalize(String(path)) === dirname(normalize(expected)),
+      );
+      mockedFs.readFileSync.mockReturnValue(
+        JSON.stringify({ mcpServers: { other: { command: 'other-server' } } }),
+      );
+
+      expect(detectClient('roo-code')).toMatchObject({
+        detected: true,
+        configExists: true,
+        configPath: expected,
+      });
+      expect(installRooCode({ command: 'node', args: ['server.js'], env: {} })).toMatchObject({
+        success: true,
+        configPath: expected,
+      });
+      const written = JSON.parse(mockedFs.writeFileSync.mock.calls[0][1] as string);
+      expect(written.mcpServers).toEqual({
+        other: { command: 'other-server' },
+        gitlab: { command: 'node', args: ['server.js'] },
+      });
+    },
+  );
 
   // Prevent successful installs into an unused home-level .roo file on any supported OS.
   test.each([

@@ -685,10 +685,16 @@ async function withoutRestrictedTools<
   const catalog = await runWithCaller(caller, async () => {
     let targets = namespaceTargetsForScope(policy.scope);
     if (hasNamespaceSubscriptions(caller.instanceUrl) && GITLAB_ALLOWED_PROJECT_IDS.length > 0) {
+      targets = [];
       if (canResolveNamespaceTier(caller.instanceUrl)) {
-        policy = await withOperatorProjects(policy);
-        targets = namespaceTargetsForScope(policy.scope);
-      } else targets = [];
+        try {
+          const operatorPolicy = await withOperatorProjects(policy);
+          targets = namespaceTargetsForScope(operatorPolicy.scope);
+        } catch {
+          // Billing discovery is optional; execution still verifies operator restrictions.
+          logWarn('Could not resolve operator projects for namespace discovery');
+        }
+      }
     }
     return withNamespaceCapabilities(caller.instanceUrl, targets, true, tools);
   });

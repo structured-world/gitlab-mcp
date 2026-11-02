@@ -4,6 +4,7 @@
  */
 
 import { setImmediate } from 'node:timers';
+import { inspect } from 'node:util';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import {
   CallToolRequestSchema,
@@ -375,14 +376,51 @@ describe('handlers', () => {
         settings: { scope: { type: 'project', path: 'outside/project', includeSubgroups: false } },
       });
       try {
-        await getRegisteredHandler(mockServer, ListToolsRequestSchema)(
+        const result = await getRegisteredHandler(mockServer, ListToolsRequestSchema)(
           {},
           { sessionId: 'namespace-chat' },
         );
+        expect(result.tools).toEqual([expect.objectContaining({ name: 'test_tool' })]);
         expect(lookup).not.toHaveBeenCalled();
         expect(read).toHaveBeenCalledTimes(1);
         expect(read).toHaveBeenCalledWith('projects/1');
       } finally {
+        runtimeConfig.GITLAB_ALLOWED_PROJECT_IDS.splice(0);
+        read.mockRestore();
+        auth.mockRestore();
+      }
+    });
+
+    // Optional operator metadata must not take down discovery or leak provider diagnostics.
+    it('keeps discovery available when operator project metadata fails', async () => {
+      const detector = await import('../../src/services/NamespaceTierDetector');
+      const { currentNamespaceTier } = await import('../../src/services/namespace-tier-context');
+      const auth = jest.spyOn(detector, 'canResolveNamespaceTier').mockReturnValue(true);
+      const read = jest.spyOn(gitlab, 'get').mockRejectedValue(new Error('provider-secret'));
+      runtimeConfig.GITLAB_ALLOWED_PROJECT_IDS.push('1');
+      const tiers: unknown[] = [];
+      mockRegistryManager.getAllToolDefinitions.mockImplementation(() => {
+        tiers.push(currentNamespaceTier(url)?.tier);
+        return [
+          {
+            name: 'test_tool',
+            description: 'Test tool',
+            inputSchema: { type: 'object', properties: {} },
+          },
+        ];
+      });
+      try {
+        const result = await getRegisteredHandler(mockServer, ListToolsRequestSchema)(
+          {},
+          { sessionId: 'namespace-chat' },
+        );
+        expect(result.tools).toEqual([expect.objectContaining({ name: 'test_tool' })]);
+        expect(tiers).toEqual([null]);
+        expect(lookup).not.toHaveBeenCalled();
+        const { logWarn } = await import('../../src/logger');
+        expect(inspect(jest.mocked(logWarn).mock.calls)).not.toContain('provider-secret');
+      } finally {
+        mockRegistryManager.getAllToolDefinitions.mockReset();
         runtimeConfig.GITLAB_ALLOWED_PROJECT_IDS.splice(0);
         read.mockRestore();
         auth.mockRestore();

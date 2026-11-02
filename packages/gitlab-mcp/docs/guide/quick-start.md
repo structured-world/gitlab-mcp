@@ -38,7 +38,12 @@ See the [step-by-step authentication guide](/guide/authentication) for detailed 
 
 ## 2. Configure Your MCP Client
 
-Add to your MCP client configuration:
+The example below is for Claude Desktop and Cursor. VS Code workspace configuration
+uses `servers` instead of `mcpServers`; follow the [VS Code guide](/clients/vscode).
+For Codex, use the [plugin or manual setup guide](/guide/installation/codex).
+Other clients have [their own configuration formats](/clients/).
+
+Add the following to a compatible client's configuration:
 
 ```json
 {

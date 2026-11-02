@@ -48,19 +48,30 @@ Create or edit `.vscode/mcp.json` in your project root:
 
 ```json
 {
+  "inputs": [
+    {
+      "type": "promptString",
+      "id": "gitlab-token",
+      "description": "GitLab access token",
+      "password": true
+    }
+  ],
   "servers": {
     "gitlab": {
       "type": "stdio",
       "command": "npx",
       "args": ["-y", "@structured-world/gitlab-mcp"],
       "env": {
-        "GITLAB_TOKEN": "glpat-xxxxxxxxxxxxxxxxxxxx",
+        "GITLAB_TOKEN": "${input:gitlab-token}",
         "GITLAB_API_URL": "https://gitlab.com"
       }
     }
   }
 }
 ```
+
+VS Code prompts for the token without writing its value into this workspace file.
+Do not replace the input reference with a literal token in a committed configuration.
 
 ## Remote Server
 

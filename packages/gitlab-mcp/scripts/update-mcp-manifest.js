@@ -3,12 +3,11 @@
 /**
  * Update MCP manifest tools section in package.json
  *
- * This script reads tool definitions from stdin (from yarn list-tools --json)
+ * This script reads the complete catalog and its metrics from stdin
  * and updates the mcp.tools section in package.json.
  *
  * Usage:
- *   yarn list-tools --json | node scripts/update-mcp-manifest.js
- *   node scripts/update-mcp-manifest.js < tools.json
+ *   node dist/src/cli/tool-catalog.js | node scripts/update-mcp-manifest.js
  *
  * The script also updates mcp.description with the current tool count.
  */
@@ -110,15 +109,6 @@ function extractCategory(toolName) {
 }
 
 /**
- * Check if tool is read-only based on naming convention
- * @param {string} toolName - Tool name
- * @returns {boolean}
- */
-function isReadOnly(toolName) {
-  return toolName.startsWith('browse_') || toolName === 'manage_context';
-}
-
-/**
  * Transform tool data for MCP manifest
  * @param {Object} tool - Tool from list-tools --json
  * @returns {Object} - Simplified tool for manifest
@@ -132,7 +122,7 @@ function transformTool(tool) {
     description: truncateDescription(tool.description),
     category: extractCategory(tool.name),
     tier,
-    readOnly: isReadOnly(tool.name),
+    readOnly: tool.readOnly,
   };
 }
 
@@ -166,23 +156,27 @@ async function main() {
   const packageJsonPath = path.resolve(process.cwd(), 'package.json');
 
   // Read tools from stdin
-  let toolsJson;
+  let catalog;
   try {
     const input = await readStdin();
     if (!input.trim()) {
       console.error(
-        'Error: No input received. Usage: yarn list-tools --json | node scripts/update-mcp-manifest.js',
+        'Error: No catalog received. Pipe the output of dist/src/cli/tool-catalog.js into this script.',
       );
       process.exit(1);
     }
-    toolsJson = JSON.parse(input);
+    catalog = JSON.parse(input);
   } catch (error) {
     console.error('Error parsing tools JSON:', error.message);
     process.exit(1);
   }
 
-  if (!Array.isArray(toolsJson)) {
-    console.error('Error: Expected array of tools');
+  if (
+    !Array.isArray(catalog.tools) ||
+    catalog.metrics?.toolCount !== catalog.tools.length ||
+    typeof catalog.metrics.description !== 'string'
+  ) {
+    console.error('Error: Expected a complete tool catalog with matching metrics');
     process.exit(1);
   }
 
@@ -201,7 +195,7 @@ async function main() {
   }
 
   // Transform and update tools
-  const transformedTools = toolsJson.map(transformTool);
+  const transformedTools = catalog.tools.map(transformTool);
   pkg.mcp.tools = transformedTools;
 
   // Count tools by category for summary
@@ -213,11 +207,10 @@ async function main() {
   // Count read-only tools
   const readOnlyCount = transformedTools.filter((t) => t.readOnly).length;
 
-  // Count unique entity types (categories)
-  const entityCount = Object.keys(categoryCounts).length;
+  const categoryCount = Object.keys(categoryCounts).length;
 
   // Update description with current counts
-  pkg.mcp.description = `Advanced GitLab MCP server - ${transformedTools.length} tools across ${entityCount} entity types with CQRS architecture, OAuth 2.1, and multiple transport modes`;
+  pkg.mcp.description = catalog.metrics.description;
 
   // Write updated package.json
   try {
@@ -228,7 +221,7 @@ async function main() {
   }
 
   console.log(
-    `MCP manifest updated: ${transformedTools.length} tools (${readOnlyCount} read-only), ${entityCount} categories`,
+    `MCP manifest updated: ${transformedTools.length} tools (${readOnlyCount} available in read-only mode), ${categoryCount} display categories`,
   );
   console.log(
     'Categories:',

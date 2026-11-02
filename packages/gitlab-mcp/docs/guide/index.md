@@ -13,7 +13,7 @@ Advanced GitLab MCP server providing AI agents with comprehensive access to the 
 
 ## Features
 
-- **66 tools** across 27 entity types covering the full GitLab API
+- **66 tools** across 27 registry groups covering the GitLab API
 - **CQRS pattern** — `browse_*` for read operations, `manage_*` for writes
 - **Multi-instance** — Connect to multiple GitLab instances with per-instance OAuth and rate limiting
 - **Multiple transports** — stdio, SSE, and StreamableHTTP
@@ -37,7 +37,7 @@ The server uses a **CQRS (Command Query Responsibility Segregation)** pattern:
 | Query | `browse_*` | Read-only operations | `browse_merge_requests` |
 | Command | `manage_*` | Write operations | `manage_merge_request` |
 
-Each tool accepts an `action` parameter that selects the specific operation. This consolidates what would be many individual tools into a manageable set optimized for AI context windows.
+Each CQRS tool accepts an `action` parameter that selects the specific operation. This consolidates what would be many individual tools into a manageable set optimized for AI context windows. Helpers such as `get_profile` have their own input schemas and may not accept `action`.
 
 ## Next Steps
 

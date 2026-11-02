@@ -5,7 +5,7 @@
   "description": "Advanced GitLab MCP server",
   "mcp": {
     "name": "GitLab MCP Server",
-    "description": "Advanced GitLab MCP server - 66 tools across 16 entity types with CQRS architecture, OAuth 2.1, and multiple transport modes",
+    "description": "66 tools, 241 typed actions, 27 registry groups",
     "repository": "https://github.com/structured-world/gitlab-mcp",
     "homepage": "https://gitlab-mcp.sw.foundation",
     "author": "Dmitry Prudnikov",
@@ -143,42 +143,42 @@
         "description": "Identify the GitLab account this connection uses: a stable account id, display name, email when GitLab provides it, and the username with its instance.",
         "category": "General",
         "tier": "free",
-        "readOnly": false
+        "readOnly": true
       },
       {
         "name": "get_settings",
         "description": "Show this account's settings, which apply to all of its chats except where a chat chose otherwise: working preset, read-only mode, default project or group, and which tool groups are on, with what ...",
         "category": "General",
         "tier": "free",
-        "readOnly": false
+        "readOnly": true
       },
       {
         "name": "update_settings",
         "description": "Change this account's settings, at once for all of its chats except where a chat chose otherwise.",
         "category": "General",
         "tier": "free",
-        "readOnly": false
+        "readOnly": true
       },
       {
         "name": "check_connection",
         "description": "Check the GitLab connection: which account it uses, whether GitLab answers, the restrictions in effect, and what to do about problems.",
         "category": "General",
         "tier": "free",
-        "readOnly": false
+        "readOnly": true
       },
       {
         "name": "open_settings_panel",
         "description": "Open the GitLab connection panel to search projects and groups, choose where this chat or all chats of the account work, and check the connection.",
         "category": "General",
         "tier": "free",
-        "readOnly": false
+        "readOnly": true
       },
       {
         "name": "find_scope_targets",
         "description": "Find projects you are a member of and groups you can see by name or path, to choose a working scope.",
         "category": "General",
         "tier": "free",
-        "readOnly": false
+        "readOnly": true
       },
       {
         "name": "browse_labels",
@@ -408,7 +408,7 @@
         "name": "browse_iterations",
         "description": "View group iterations for agile sprint planning.",
         "category": "Planning",
-        "tier": "free",
+        "tier": "premium",
         "readOnly": true
       },
       {
@@ -499,21 +499,21 @@
         "name": "browse_audit_events",
         "description": "Inspect audit events: the immutable record of who did what, when.",
         "category": "Security",
-        "tier": "free",
+        "tier": "premium",
         "readOnly": true
       },
       {
         "name": "browse_vulnerabilities",
         "description": "Inspect security vulnerabilities (Ultimate).",
         "category": "Security",
-        "tier": "free",
+        "tier": "ultimate",
         "readOnly": true
       },
       {
         "name": "manage_vulnerability",
         "description": "Drive the vulnerability state machine (Ultimate).",
         "category": "Security",
-        "tier": "free",
+        "tier": "ultimate",
         "readOnly": false
       },
       {

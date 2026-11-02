@@ -1,6 +1,6 @@
 ---
 title: Tool Reference
-description: "Complete reference for __TOOL_COUNT__ GitLab MCP tools across __ENTITY_COUNT__ entity types. Explore browse_* query and manage_* command operations organized by category with feature flags."
+description: "Complete reference for __TOOL_COUNT__ GitLab MCP tools across __TOOL_GROUP_COUNT__ registry groups. Explore browse_* query and manage_* command operations organized by category with feature flags."
 head:
   - - meta
     - name: keywords
@@ -9,7 +9,7 @@ head:
 
 # Tool Reference
 
-GitLab MCP Server provides **__TOOL_COUNT__ tools** across __ENTITY_COUNT__ entity types.
+GitLab MCP Server provides **__TOOL_COUNT__ tools** across __TOOL_GROUP_COUNT__ registry groups.
 
 ## GitLab Duo (`USE_DUO=true`)
 
@@ -24,11 +24,12 @@ pagination, bounded output and ambiguous-write recovery.
 
 ## Architecture
 
-Tools follow the **CQRS pattern**:
+Action-based tools follow the **CQRS pattern**:
 - **`browse_*`** — Read-only query operations
 - **`manage_*`** — Write/command operations
 
-Each tool accepts an `action` parameter selecting the specific operation.
+Each CQRS tool accepts an `action` parameter selecting the specific operation.
+Helpers such as `get_profile` have their own input schemas and may not accept `action`.
 
 ## Tool Categories
 

@@ -132,6 +132,37 @@ import { currentTokenAccount } from './accounts/token-account';
 
 const NONE_UNAVAILABLE: ReadonlyMap<string, string> = new Map();
 
+// The complete catalog and its read-only policy share the owning entity registries.
+const ALL_REGISTRIES: ReadonlyArray<readonly [ToolRegistry, () => string[]]> = [
+  [coreToolRegistry, getCoreReadOnlyToolNames],
+  [contextToolRegistry, getContextReadOnlyToolNames],
+  [labelsToolRegistry, getLabelsReadOnlyToolNames],
+  [mrsToolRegistry, getMrsReadOnlyToolNames],
+  [filesToolRegistry, getFilesReadOnlyToolNames],
+  [milestonesToolRegistry, getMilestonesReadOnlyToolNames],
+  [pipelinesToolRegistry, getPipelinesReadOnlyToolNames],
+  [variablesToolRegistry, getVariablesReadOnlyToolNames],
+  [wikiToolRegistry, getWikiReadOnlyToolNames],
+  [workitemsToolRegistry, getWorkitemsReadOnlyToolNames],
+  [snippetsToolRegistry, getSnippetsReadOnlyToolNames],
+  [webhooksToolRegistry, getWebhooksReadOnlyToolNames],
+  [integrationsToolRegistry, getIntegrationsReadOnlyToolNames],
+  [releasesToolRegistry, getReleasesReadOnlyToolNames],
+  [refsToolRegistry, getRefsReadOnlyToolNames],
+  [membersToolRegistry, getMembersReadOnlyToolNames],
+  [searchToolRegistry, getSearchReadOnlyToolNames],
+  [iterationsToolRegistry, getIterationsReadOnlyToolNames],
+  [jobTokenScopeToolRegistry, getJobTokenScopeReadOnlyToolNames],
+  [deployKeysToolRegistry, getDeployKeysReadOnlyToolNames],
+  [environmentsToolRegistry, getEnvironmentsReadOnlyToolNames],
+  [containerRegistryToolRegistry, getContainerRegistryReadOnlyToolNames],
+  [accessTokensToolRegistry, getAccessTokensReadOnlyToolNames],
+  [runnersToolRegistry, getRunnersReadOnlyToolNames],
+  [auditEventsToolRegistry, getAuditEventsReadOnlyToolNames],
+  [vulnerabilitiesToolRegistry, getVulnerabilitiesReadOnlyToolNames],
+  [duoToolRegistry, getDuoReadOnlyToolNames],
+];
+
 /**
  * Central registry manager that aggregates tools from all entity registries
  * and provides a unified interface for tool discovery and execution
@@ -1108,38 +1139,7 @@ class RegistryManager {
   public getAllToolDefinitionsUnfiltered(): EnhancedToolDefinition[] {
     const allTools: EnhancedToolDefinition[] = [];
 
-    // All registries without any filtering
-    const allRegistries: ToolRegistry[] = [
-      coreToolRegistry,
-      contextToolRegistry,
-      labelsToolRegistry,
-      mrsToolRegistry,
-      filesToolRegistry,
-      milestonesToolRegistry,
-      pipelinesToolRegistry,
-      variablesToolRegistry,
-      wikiToolRegistry,
-      workitemsToolRegistry,
-      snippetsToolRegistry,
-      webhooksToolRegistry,
-      integrationsToolRegistry,
-      releasesToolRegistry,
-      refsToolRegistry,
-      membersToolRegistry,
-      searchToolRegistry,
-      iterationsToolRegistry,
-      jobTokenScopeToolRegistry,
-      deployKeysToolRegistry,
-      environmentsToolRegistry,
-      containerRegistryToolRegistry,
-      accessTokensToolRegistry,
-      runnersToolRegistry,
-      auditEventsToolRegistry,
-      vulnerabilitiesToolRegistry,
-      duoToolRegistry,
-    ];
-
-    for (const registry of allRegistries) {
+    for (const [registry] of ALL_REGISTRIES) {
       for (const [, tool] of registry) {
         // Return original schema without transformation
         // This preserves discriminated union structure for documentation
@@ -1148,6 +1148,19 @@ class RegistryManager {
     }
 
     return allTools;
+  }
+
+  /** Complete publication catalog, independent of instance, account and feature filters. */
+  public getUnfilteredCatalog(): {
+    tools: EnhancedToolDefinition[];
+    toolGroupCount: number;
+    readOnlyToolNames: string[];
+  } {
+    return {
+      tools: this.getAllToolDefinitionsUnfiltered(),
+      toolGroupCount: ALL_REGISTRIES.length,
+      readOnlyToolNames: ALL_REGISTRIES.flatMap(([, names]) => names()),
+    };
   }
 
   /**

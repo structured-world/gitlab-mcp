@@ -1,7 +1,7 @@
 ---
 layout: home
 titleTemplate: false
-description: "Advanced GitLab MCP server with 66 tools across 27 entity types"
+description: "Advanced GitLab MCP server with 66 tools across 27 registry groups"
 head:
   - - meta
     - name: keywords
@@ -9,7 +9,7 @@ head:
 
 hero:
   name: GitLab MCP server
-  tagline: Connect AI agents to GitLab with 66 tools across 27 entity types
+  tagline: Connect AI agents to GitLab with 66 tools across 27 registry groups
   image:
     src: /logo-hero.png
     alt: GitLab MCP Logo
@@ -26,7 +26,7 @@ hero:
 
 features:
   - icon: "\U0001F527"
-    title: 66 Tools, 27 Entities
+    title: 66 Tools, 27 Registry Groups
     details: Complete GitLab API coverage — projects, merge requests, pipelines, work items, wikis, and more.
   - icon: "\U0001F517"
     title: Multi-Instance Support

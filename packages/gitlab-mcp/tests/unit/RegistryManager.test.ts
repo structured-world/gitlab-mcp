@@ -1809,6 +1809,17 @@ describe('RegistryManager', () => {
   });
 
   describe('getAllToolDefinitionsUnfiltered', () => {
+    // Publication metadata must include disabled groups and their owning read-only policy.
+    it('exposes a complete publication catalog independently of runtime filters', () => {
+      process.env.USE_LABELS = 'false';
+      process.env.GITLAB_READ_ONLY_MODE = 'true';
+      const catalog = registryManager.getUnfilteredCatalog();
+      expect(catalog.tools).toEqual(registryManager.getAllToolDefinitionsUnfiltered());
+      expect(catalog.tools.map((tool) => tool.name)).toContain('labels_tool_1');
+      expect(catalog.readOnlyToolNames).toContain('labels_readonly');
+      expect(catalog.toolGroupCount).toBeGreaterThan(0);
+    });
+
     it('should return all tools without any filtering', () => {
       // Set up environment to filter tools
       process.env.USE_LABELS = 'false';

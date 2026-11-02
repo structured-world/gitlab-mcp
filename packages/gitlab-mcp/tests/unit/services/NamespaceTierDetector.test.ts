@@ -1,14 +1,17 @@
 /** REST subscription observations, credential isolation and bounded cache lifecycle. */
 import {
+  canResolveNamespaceTier,
   clearNamespaceTierCache,
   getNamespaceTier,
   getNamespaceTierCacheMetrics,
 } from '../../../src/services/NamespaceTierDetector';
 import * as tokenContext from '../../../src/oauth/token-context';
+import { isOAuthEnabled } from '../../../src/oauth/config';
 import * as fetchUtils from '../../../src/utils/fetch';
 import { getGitLabBaseUrl } from '../../../src/utils/gitlab-base-url';
 
 jest.mock('../../../src/oauth/token-context');
+jest.mock('../../../src/oauth/config', () => ({ isOAuthEnabled: jest.fn(() => false) }));
 jest.mock('../../../src/utils/fetch');
 jest.mock('../../../src/utils/gitlab-base-url');
 jest.mock('../../../src/logger', () => ({
@@ -23,6 +26,7 @@ const mockedEnhancedFetch = jest.mocked(fetchUtils.enhancedFetch);
 describe('NamespaceTierDetector', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    jest.mocked(isOAuthEnabled).mockReturnValue(false);
     clearNamespaceTierCache();
     jest.mocked(getGitLabBaseUrl).mockImplementation(() => mockedGetTokenContext()?.apiUrl ?? '');
     jest.mocked(fetchUtils.getAuthHeaders).mockImplementation((): Record<string, string> => {
@@ -161,6 +165,32 @@ describe('NamespaceTierDetector', () => {
   it('returns unknown without usable authentication', async () => {
     mockedGetTokenContext.mockReturnValue({ ...context, gitlabToken: '' });
     expect((await getNamespaceTier('team')).tier).toBeNull();
+    expect(mockedEnhancedFetch).not.toHaveBeenCalled();
+  });
+
+  // Known insufficient OAuth scopes must avoid optional billing requests entirely.
+  it('returns unknown when the credential cannot read API metadata', async () => {
+    mockedGetTokenContext.mockReturnValue({ ...context, gitlabScopes: ['read_user'] });
+    expect(canResolveNamespaceTier(context.apiUrl)).toBe(false);
+    expect((await getNamespaceTier('team')).tier).toBeNull();
+    expect(mockedEnhancedFetch).not.toHaveBeenCalled();
+  });
+
+  // OAuth mode must not borrow static credentials when no user token is selected.
+  it('returns unknown without an OAuth token context', async () => {
+    jest.mocked(isOAuthEnabled).mockReturnValue(true);
+    mockedGetTokenContext.mockReturnValue(undefined);
+    expect(canResolveNamespaceTier(context.apiUrl)).toBe(false);
+    expect((await getNamespaceTier('team')).tier).toBeNull();
+    expect(mockedEnhancedFetch).not.toHaveBeenCalled();
+  });
+
+  // Billing observations belong only to the authenticated transport's selected instance.
+  it('resolves metadata only for the selected instance', () => {
+    expect(canResolveNamespaceTier(context.apiUrl)).toBe(true);
+    expect(canResolveNamespaceTier('https://other.example')).toBe(false);
+    jest.mocked(getGitLabBaseUrl).mockReturnValue('');
+    expect(canResolveNamespaceTier(context.apiUrl)).toBe(false);
     expect(mockedEnhancedFetch).not.toHaveBeenCalled();
   });
 

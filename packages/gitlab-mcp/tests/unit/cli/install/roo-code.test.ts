@@ -56,7 +56,8 @@ describe('Roo Code global installation', () => {
   ])('writes the active default VS Code extension configuration on %s', (os, storage) => {
     Object.defineProperty(process, 'platform', { value: os });
     process.env.APPDATA = 'C:/Profiles/test/AppData/Roaming';
-    const expected = `${storage}/rooveterinaryinc.roo-cline/settings/mcp_settings.json`;
+    const suffix = 'rooveterinaryinc.roo-cline/settings/mcp_settings.json';
+    const expected = os === 'win32' ? `${storage}/${suffix}` : join(storage, suffix);
     const existing = { mcpServers: { other: { command: 'other-server' } } };
     mockedFs.existsSync.mockImplementation((path) => String(path) === expected);
     mockedFs.readFileSync.mockReturnValue(JSON.stringify(existing));

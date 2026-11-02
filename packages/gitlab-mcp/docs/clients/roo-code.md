@@ -56,13 +56,17 @@ Add to the configuration file opened by Roo Code:
       "command": "npx",
       "args": ["-y", "@structured-world/gitlab-mcp"],
       "env": {
-        "GITLAB_TOKEN": "glpat-xxxxxxxxxxxxxxxxxxxx",
+        "GITLAB_TOKEN": "${env:GITLAB_TOKEN}",
         "GITLAB_API_URL": "https://gitlab.com"
       }
     }
   }
 }
 ```
+
+Set `GITLAB_TOKEN` in the environment of the VS Code process before starting Roo
+Code. Roo resolves `${env:GITLAB_TOKEN}` from that environment. Do not replace the
+reference with a literal token in `.roo/mcp.json` or commit credentials to Git.
 
 ## Remote Server
 

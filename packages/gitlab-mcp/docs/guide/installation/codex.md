@@ -116,6 +116,12 @@ The verified identity appears after connecting. Account presets, scope, read-onl
 mode and tool groups remain at the selected backend; see [Account settings](/configuration/settings).
 Changing a connection applies to this user's other plugin processes as well.
 
+The connection panel remains available without a connected backend. Resource
+discovery combines that panel with the selected server's resources and templates,
+preserving pagination and access errors. Resource-list change notifications are
+supported; subscriptions to individual resources are not. The
+`ui://gitlab-mcp-local/` URI namespace is reserved for the plugin's own UI.
+
 Codex [install links](https://learn.chatgpt.com/docs/app/commands#plugin-install)
 work only with known marketplaces. They do not register a repository or import a
 ZIP URL. Public local-MCP directory listings separately require OpenAI approval.

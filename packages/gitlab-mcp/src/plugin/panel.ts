@@ -1,4 +1,5 @@
-export const CONNECTION_PANEL_URI = 'ui://gitlab-mcp-local/connection.html';
+export const CONNECTION_PANEL_NAMESPACE = 'ui://gitlab-mcp-local/';
+export const CONNECTION_PANEL_URI = CONNECTION_PANEL_NAMESPACE + 'connection.html';
 export const CONNECTION_PANEL_META = {
   ui: { csp: { connectDomains: [], resourceDomains: [], frameDomains: [] }, prefersBorder: true },
 };

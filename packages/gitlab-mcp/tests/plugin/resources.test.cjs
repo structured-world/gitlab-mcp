@@ -3,11 +3,12 @@ const assert = require('node:assert/strict');
 const { mkdtempSync, rmSync } = require('node:fs');
 const { tmpdir } = require('node:os');
 const { join } = require('node:path');
+const { setImmediate } = require('node:timers');
 const { runtimeRequire } = require('./runtime.cjs');
 const { Client } = runtimeRequire('@modelcontextprotocol/sdk/client/index.js');
 const { Server } = runtimeRequire('@modelcontextprotocol/sdk/server/index.js');
 const { InMemoryTransport } = runtimeRequire('@modelcontextprotocol/sdk/inMemory.js');
-const { ErrorCode, McpError, ResourceListChangedNotificationSchema } = runtimeRequire(
+const { ErrorCode, McpError, ResourceListChangedNotificationSchema, ResultSchema } = runtimeRequire(
   '@modelcontextprotocol/sdk/types.js',
 );
 const { Connections } = runtimeRequire('./connections.js');
@@ -26,10 +27,12 @@ async function fixture(t) {
     await frontend.close();
     await plugin.close();
     await connections.close();
-    for (const backend of backends) {
-      await backend.client.close();
-      await backend.server.close();
-    }
+    await Promise.all(
+      backends.map(async (backend) => {
+        await backend.client.close();
+        await backend.server.close();
+      }),
+    );
     rmSync(dir, { recursive: true, force: true });
   });
   await plugin.connect(transport);
@@ -95,6 +98,42 @@ test('unconfigured template discovery is an empty list', async (t) => {
   assert.deepEqual(await frontend.listResourceTemplates(), { resourceTemplates: [] });
 });
 
+// Missing provider resources are distinct from malformed resource-read parameters.
+test('unconfigured reads distinguish missing resources from invalid parameters', async (t) => {
+  const { frontend } = await fixture(t);
+  await assert.rejects(
+    frontend.readResource({ uri: 'fixture://missing' }),
+    (error) => error.code === -32002,
+  );
+  await assert.rejects(
+    frontend.request(
+      {
+        method: 'resources/read',
+        params: { uri: 42 },
+      },
+      ResultSchema,
+    ),
+    (error) => error.code === ErrorCode.InvalidParams,
+  );
+});
+
+// Invalid pagination must fail before it can start a saved backend connection.
+test('invalid resource cursors do not initialize a backend', async (t) => {
+  const { frontend, connections } = await fixture(t);
+  const ready = t.mock.method(connections, 'ready', async () => {
+    throw new Error('Backend must not be consulted');
+  });
+  await Promise.all(
+    ['listResources', 'listResourceTemplates'].map((method) =>
+      assert.rejects(
+        frontend[method]({ cursor: 42 }),
+        (error) => error.code === ErrorCode.InvalidParams,
+      ),
+    ),
+  );
+  assert.equal(ready.mock.callCount(), 0);
+});
+
 // A raw request cannot opt back into an unsupported subscription through a backend.
 test('subscriptions remain unsupported with a subscription-capable backend', async (t) => {
   const f = await fixture(t);
@@ -107,12 +146,14 @@ test('subscriptions remain unsupported with a subscription-capable backend', asy
     { resources: { subscribe: true } },
   );
   assert.equal(f.frontend.getServerCapabilities().resources.subscribe, undefined);
-  for (const method of ['subscribeResource', 'unsubscribeResource']) {
-    await assert.rejects(
-      f.frontend[method]({ uri: CONNECTION_PANEL_URI }),
-      (error) => error.code === ErrorCode.MethodNotFound,
-    );
-  }
+  await Promise.all(
+    ['subscribeResource', 'unsubscribeResource'].map((method) =>
+      assert.rejects(
+        f.frontend[method]({ uri: CONNECTION_PANEL_URI }),
+        (error) => error.code === ErrorCode.MethodNotFound,
+      ),
+    ),
+  );
   assert.equal(calls, 0);
 });
 
@@ -146,6 +187,21 @@ test('resource pages preserve metadata and include the local panel only once', a
     _meta: { page: 'last' },
   });
   assert.deepEqual(seen, [undefined, '']);
+});
+
+// Protocol extension data must survive the bridge, not just the standard resource fields.
+test('raw resource responses retain provider extension metadata', async (t) => {
+  const f = await fixture(t);
+  const resource = {
+    uri: 'ui://gitlab-mcp/settings.html',
+    name: 'Backend settings',
+    vendorExtension: { nested: ['fixture'] },
+    _meta: { ui: { prefersBorder: true } },
+  };
+  await f.select(async () => ({ resources: [resource], vendorCatalog: { revision: 'fixture' } }));
+  const page = await f.frontend.request({ method: 'resources/list' }, ResultSchema);
+  assert.deepEqual(page.resources[1], resource);
+  assert.deepEqual(page.vendorCatalog, { revision: 'fixture' });
 });
 
 // A provider cannot publish an identifier owned by the plugin on any listing page.
@@ -184,6 +240,10 @@ test('a backend without resource capabilities leaves the local catalog available
   assert.deepEqual(
     (await f.frontend.listResources()).resources.map((r) => r.uri),
     [CONNECTION_PANEL_URI],
+  );
+  await assert.rejects(
+    f.frontend.readResource({ uri: 'fixture://missing' }),
+    (error) => error.code === -32002,
   );
   assert.equal(calls, 0);
 });
@@ -291,5 +351,24 @@ test('an in-flight listing is rejected after switching backends', async (t) => {
   await started.promise;
   await f.select(async () => ({ resources: [] }));
   finish.resolve({ resources: [{ uri: 'fixture://old', name: 'Old' }] });
+  await pending;
+});
+
+// An obsolete unsupported-method response cannot become a successful empty current catalog.
+test('template fallback rejects an obsolete backend result', async (t) => {
+  const f = await fixture(t);
+  const started = Promise.withResolvers();
+  const finish = Promise.withResolvers();
+  await f.select(async () => {
+    started.resolve();
+    return finish.promise;
+  });
+  const pending = assert.rejects(
+    f.frontend.listResourceTemplates(),
+    (error) => error.code === ErrorCode.InvalidRequest,
+  );
+  await started.promise;
+  await f.select(async () => ({ resourceTemplates: [] }));
+  finish.reject(new McpError(ErrorCode.MethodNotFound, 'No old templates'));
   await pending;
 });

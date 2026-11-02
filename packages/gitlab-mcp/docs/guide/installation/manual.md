@@ -120,18 +120,20 @@ For containerized execution:
 
 ## Alternative: HTTP/SSE Remote Server
 
-For connecting to a running GitLab MCP server:
+For connecting Claude Code to a running GitLab MCP server:
 
 ```json
 {
   "mcpServers": {
     "gitlab": {
-      "type": "streamable-http",
+      "type": "http",
       "url": "http://localhost:3333/mcp"
     }
   }
 }
 ```
+
+Other clients use different configuration formats. See the [client guides](/clients/).
 
 ## Verifying Configuration
 

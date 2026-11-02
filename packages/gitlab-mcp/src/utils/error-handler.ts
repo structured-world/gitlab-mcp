@@ -486,7 +486,7 @@ function detectTierRestriction(
 
   // Check for iterations
   if (tool === 'browse_iterations') {
-    if (!connectionManager.isFeatureAvailable('iterations')) {
+    if (connectionManager.isFeatureAvailable('iterations') === false) {
       return createRestrictionInfo('iterations', currentTier);
     }
   }
@@ -494,7 +494,7 @@ function detectTierRestriction(
   // Check for group webhooks (tool name pattern)
   if ((tool === 'browse_webhooks' || tool === 'manage_webhook') && toolArgs?.scope === 'group') {
     // Group webhooks require Premium - check if we have serviceDesk (Premium feature) as proxy
-    if (!connectionManager.isFeatureAvailable('serviceDesk')) {
+    if (connectionManager.isFeatureAvailable('serviceDesk') === false) {
       return {
         feature: 'serviceDesk', // Using serviceDesk as proxy for Premium tier
         name: 'Group Webhooks',
@@ -530,21 +530,21 @@ function checkWorkItemTypeRestriction(
 
   // Check for EPIC
   if (types.includes('EPIC')) {
-    if (!connectionManager.isFeatureAvailable('epics')) {
+    if (connectionManager.isFeatureAvailable('epics') === false) {
       return createRestrictionInfo('epics', currentTier);
     }
   }
 
   // Check for OBJECTIVE/KEY_RESULT (OKRs)
   if (types.includes('OBJECTIVE') || types.includes('KEY_RESULT')) {
-    if (!connectionManager.isFeatureAvailable('okrs')) {
+    if (connectionManager.isFeatureAvailable('okrs') === false) {
       return createRestrictionInfo('okrs', currentTier);
     }
   }
 
   // Check for REQUIREMENT
   if (types.includes('REQUIREMENT')) {
-    if (!connectionManager.isFeatureAvailable('requirements')) {
+    if (connectionManager.isFeatureAvailable('requirements') === false) {
       return createRestrictionInfo('requirements', currentTier);
     }
   }

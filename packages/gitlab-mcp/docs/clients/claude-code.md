@@ -70,12 +70,22 @@ Connect to a running GitLab MCP HTTP server:
 {
   "mcpServers": {
     "gitlab": {
-      "type": "streamable-http",
+      "type": "http",
       "url": "http://localhost:3333/mcp"
     }
   }
 }
 ```
+
+Alternatively, use Claude Code's native registration and browser sign-in:
+
+```bash
+claude mcp add --transport http gitlab https://mcp.example.com/mcp
+```
+
+Run `/mcp` in Claude Code to authenticate an OAuth server. Registration defaults
+to the current project's local scope; add `--scope user` for all your projects.
+See the [official MCP configuration guide](https://code.claude.com/docs/en/mcp).
 
 ## Verification
 

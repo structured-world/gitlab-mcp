@@ -5,6 +5,9 @@ description: Discover and inspect asynchronous GitLab Duo sessions, and explicit
 
 # GitLab Duo sessions
 
+Available from GitLab MCP **13.2.0**. Use that release or later for these tools;
+the earlier 13.1.0 plugin archive does not include them.
+
 `browse_duo_sessions` discovers agents and flows, lists sessions and reads their
 progress. `manage_duo_session` starts a CI session or answers a checkpoint.
 GitLab owns execution, authorization, history and billing. The MCP server adds

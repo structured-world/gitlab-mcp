@@ -282,6 +282,165 @@ describe('handlers', () => {
     mockSessionManager.setSessionInstanceUrl.mockReturnValue(undefined);
   });
 
+  describe('namespace capabilities', () => {
+    const url = 'https://gitlab.com';
+    let lookup: jest.SpyInstance;
+
+    beforeEach(async () => {
+      const detector = await import('../../src/services/NamespaceTierDetector');
+      lookup = jest
+        .spyOn(detector, 'getNamespaceTier')
+        .mockResolvedValue({ tier: 'ultimate', cachedAt: new Date() });
+      mockSessionManager.getSessionInstanceUrl.mockReturnValue(url);
+      await setupHandlers(mockServer);
+    });
+
+    afterEach(() => {
+      lookup.mockRestore();
+      jest.useRealTimers();
+    });
+
+    // Catalog construction must observe the chat's scoped namespace on its selected host.
+    it('builds the catalog inside the selected namespace context', async () => {
+      const { currentNamespaceTier } = await import('../../src/services/namespace-tier-context');
+      mockSettings.set(`token:${url}`, {
+        accountKey: `token:${url}`,
+        version: 1,
+        updatedAt: 1,
+        settings: { scope: { type: 'project', path: 'paid/project', includeSubgroups: false } },
+      });
+      const tiers: unknown[] = [];
+      mockRegistryManager.getAllToolDefinitions.mockImplementationOnce(() => {
+        tiers.push(currentNamespaceTier(url)?.tier);
+        return [];
+      });
+      await getRegisteredHandler(mockServer, ListToolsRequestSchema)(
+        {},
+        { sessionId: 'namespace-chat' },
+      );
+      expect(lookup).toHaveBeenCalledWith('paid/project', 'project');
+      expect(tiers).toEqual(['ultimate']);
+      expect(currentNamespaceTier(url)).toBeUndefined();
+    });
+
+    // Execution must bind each argument's namespace independently of another concurrent call.
+    it('dispatches concurrent paid-tool calls in their target namespace contexts', async () => {
+      const { currentNamespaceTier } = await import('../../src/services/namespace-tier-context');
+      lookup.mockImplementation(async (path: string) => ({
+        tier: path === 'paid' ? 'ultimate' : 'free',
+        cachedAt: new Date(),
+      }));
+      mockRegistryManager.getTool.mockReturnValue({
+        requirements: { default: { tier: 'premium' } },
+      });
+      const tiers: unknown[] = [];
+      const execute = mockRegistryManager.executeTool.getMockImplementation();
+      mockRegistryManager.executeTool.mockImplementation(async () => {
+        await Promise.resolve();
+        tiers.push(currentNamespaceTier(url)?.tier);
+        return { ok: true };
+      });
+      try {
+        await Promise.all(
+          ['free', 'paid'].map((group_id) =>
+            runWithTokenAccount({ instanceUrl: url, token: 'fixture' }, () =>
+              getRegisteredHandler(mockServer, CallToolRequestSchema)(
+                { params: { name: 'browse_iterations', arguments: { action: 'list', group_id } } },
+                { sessionId: `chat-${group_id}` },
+              ),
+            ),
+          ),
+        );
+        expect(tiers.sort()).toEqual(['free', 'ultimate']);
+      } finally {
+        if (execute) mockRegistryManager.executeTool.mockImplementation(execute);
+      }
+    });
+
+    // Discovery may inspect only namespaces within the operator's project intersection.
+    it('does not look up the plan of a configured project outside the operator list', async () => {
+      const { gitlab } = await import('../../src/utils/gitlab-api');
+      const detector = await import('../../src/services/NamespaceTierDetector');
+      const auth = jest.spyOn(detector, 'canResolveNamespaceTier').mockReturnValue(true);
+      const read = jest.spyOn(gitlab, 'get').mockResolvedValue({
+        id: 1,
+        path_with_namespace: 'allowed/project',
+        name_with_namespace: 'Allowed / Project',
+      });
+      runtimeConfig.GITLAB_ALLOWED_PROJECT_IDS.push('1');
+      mockSettings.set(`token:${url}`, {
+        accountKey: `token:${url}`,
+        version: 1,
+        updatedAt: 1,
+        settings: { scope: { type: 'project', path: 'outside/project', includeSubgroups: false } },
+      });
+      try {
+        await getRegisteredHandler(mockServer, ListToolsRequestSchema)(
+          {},
+          { sessionId: 'namespace-chat' },
+        );
+        expect(lookup).not.toHaveBeenCalled();
+        expect(read).toHaveBeenCalledTimes(1);
+        expect(read).toHaveBeenCalledWith('projects/1');
+      } finally {
+        runtimeConfig.GITLAB_ALLOWED_PROJECT_IDS.splice(0);
+        read.mockRestore();
+        auth.mockRestore();
+      }
+    });
+
+    // Invalid paid-tool input must fail validation before an optional metadata read.
+    it('validates required arguments before namespace resolution', async () => {
+      mockRegistryManager.getTool.mockReturnValue({
+        requirements: { default: { tier: 'premium' } },
+      });
+      const result = await runWithTokenAccount({ instanceUrl: url, token: 'fixture' }, () =>
+        getRegisteredHandler(mockServer, CallToolRequestSchema)(
+          { params: { name: 'browse_iterations', arguments: { action: 'list' } } },
+          { sessionId: 'namespace-chat' },
+        ),
+      );
+      expect(result.isError).toBe(true);
+      expect(lookup).not.toHaveBeenCalled();
+      expect(mockRegistryManager.executeTool).not.toHaveBeenCalled();
+    });
+
+    // A metadata read finishing after the request deadline must never start a late operation.
+    it('does not execute a tool after namespace discovery exceeds the deadline', async () => {
+      let markStarted!: () => void;
+      let release!: (value: { tier: 'ultimate'; cachedAt: Date }) => void;
+      const started = new Promise<void>((resolve) => {
+        markStarted = resolve;
+      });
+      const metadata = new Promise<{ tier: 'ultimate'; cachedAt: Date }>((resolve) => {
+        release = resolve;
+      });
+      lookup.mockImplementation(() => {
+        markStarted();
+        return metadata;
+      });
+      mockRegistryManager.getTool.mockReturnValue({
+        requirements: { default: { tier: 'premium' } },
+      });
+      jest.useFakeTimers();
+      const request = runWithTokenAccount({ instanceUrl: url, token: 'fixture' }, () =>
+        getRegisteredHandler(mockServer, CallToolRequestSchema)(
+          {
+            params: { name: 'browse_iterations', arguments: { action: 'list', group_id: 'paid' } },
+          },
+          { sessionId: 'namespace-chat' },
+        ),
+      );
+      await started;
+      await jest.advanceTimersByTimeAsync(101);
+      expect((await request).isError).toBe(true);
+      release({ tier: 'ultimate', cachedAt: new Date() });
+      jest.useRealTimers();
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(mockRegistryManager.executeTool).not.toHaveBeenCalled();
+    });
+  });
+
   describe('setupHandlers', () => {
     it('should initialize health monitor and set up request handlers', async () => {
       await setupHandlers(mockServer);

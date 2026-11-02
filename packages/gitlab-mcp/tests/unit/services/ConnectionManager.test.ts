@@ -77,6 +77,34 @@ function injectInstanceState(
 }
 
 describe('ConnectionManager Unit', () => {
+  // Instance-wide detection must not manufacture a subscription shared by SaaS namespaces.
+  it('projects request-local subscriptions without changing the stored connection', async () => {
+    const { runWithNamespaceTier } = await import('../../../src/services/namespace-tier-context');
+    const manager = ConnectionManager.getInstance();
+    const stored = {
+      version: '19.5.0',
+      tier: 'free' as const,
+      features: {} as any,
+      detectedAt: new Date(),
+    };
+    injectInstanceState(manager, 'https://gitlab.com', { instanceInfo: stored });
+    expect(manager.getInstanceInfo('https://gitlab.com').tier).toBeNull();
+    expect(manager.isFeatureAvailable('epics', 'https://gitlab.com')).toBeNull();
+    await Promise.all(
+      ['free', 'ultimate'].map((tier) =>
+        runWithNamespaceTier('https://gitlab.com', tier as 'free' | 'ultimate', async () => {
+          await Promise.resolve();
+          expect(manager.getInstanceInfo('https://gitlab.com').tier).toBe(tier);
+          expect(manager.isFeatureAvailable('epics', 'https://gitlab.com')).toBe(
+            tier === 'ultimate',
+          );
+        }),
+      ),
+    );
+    expect(stored.tier).toBe('free');
+    expect(manager.getInstanceInfo('https://gitlab.com').tier).toBeNull();
+  });
+
   beforeEach(() => {
     // Reset singleton instance for each test
     (ConnectionManager as unknown as { instance: null }).instance = null;

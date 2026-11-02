@@ -4,6 +4,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parse } from 'yaml';
 
+// Refresh downloads after the release workflow has finished uploading its assets.
+test('docs rebuild after release publication completes', () => {
+  const workflow = parse(
+    readFileSync(join(__dirname, '../../../../../.github/workflows/docs.yml'), 'utf8'),
+  );
+  expect(workflow.on.workflow_run.workflows).toContain('Release');
+});
+
 // Execute the production workflow step offline: component tags must produce usable asset versions.
 test.each(['13.1.0', '13.2.0'])(
   'docs download resolves release %s from its component tag',

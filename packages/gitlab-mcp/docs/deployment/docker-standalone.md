@@ -39,18 +39,20 @@ Select "standalone" when prompted for deployment type.
 
 ## Client Configuration
 
-### StreamableHTTP (Recommended)
+### Claude Code over HTTP (Recommended)
 
 ```json
 {
   "mcpServers": {
     "gitlab": {
-      "type": "streamable-http",
+      "type": "http",
       "url": "http://localhost:3333/mcp"
     }
   }
 }
 ```
+
+For other clients, follow the corresponding [client guide](/clients/).
 
 ### SSE (Legacy)
 

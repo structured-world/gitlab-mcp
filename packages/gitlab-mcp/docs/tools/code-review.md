@@ -32,6 +32,7 @@ Find and inspect merge requests.
 |--------|-------------|
 | `list` | List merge requests with filtering |
 | `get` | Get single MR by IID or branch name |
+| `closing_issues` | Read one page of visible issues GitLab would close on merge; does not close issues |
 | `diffs` | Get file changes/diffs for an MR |
 | `compare` | Compare two branches or commits |
 | `versions` | List all diff versions of an MR (each push creates a version) |

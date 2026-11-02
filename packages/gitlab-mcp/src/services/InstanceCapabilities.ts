@@ -15,10 +15,10 @@ import { parseVersion } from '../utils/version';
 export interface InstanceCapabilities {
   /** Detected GitLab version (semver string), or 'unknown' when not yet probed. */
   version: string;
-  /** Licensed tier. Free covers CE and EE-without-license. */
-  tier: GitLabTier;
-  /** Per-feature availability map (epics, iterations, vulnerabilities, ...). */
-  features: GitLabFeatures;
+  /** Observed subscription or license tier; null means unavailable billing metadata. */
+  tier: GitLabTier | null;
+  /** Per-feature availability; an absent key is unknown, not a confirmed refusal. */
+  features: Partial<GitLabFeatures>;
   /** Token scopes (api, read_api, ...). Empty when scope detection was skipped. */
   scopes: GitLabScope[];
   /**
@@ -44,7 +44,11 @@ export interface InstanceCapabilities {
 export type CapabilityGate = Pick<InstanceCapabilities, 'version' | 'tier' | 'adminModeActive'>;
 
 /** Tier hierarchy for comparison: free < premium < ultimate. */
-const TIER_ORDER: Record<string, number> = { free: 0, premium: 1, ultimate: 2 };
+export const TIER_ORDER: Readonly<Record<GitLabTier, number>> = {
+  free: 0,
+  premium: 1,
+  ultimate: 2,
+};
 
 /** Default requirement applied when a tool/action omits an explicit tier. */
 const DEFAULT_TIER = 'free' as const;
@@ -94,7 +98,7 @@ export function meetsRequirement(req: ToolRequirement, caps: CapabilityGate): bo
   if (req.requiresAdmin && caps.adminModeActive === false) return false;
   if (caps.version === 'unknown') return true;
   if (parseVersion(caps.version) < parseVersion(effectiveMinVersion(req))) return false;
-  if (!isTierSufficient(caps.tier, req.tier)) return false;
+  if (caps.tier !== null && !isTierSufficient(caps.tier, req.tier)) return false;
   return true;
 }
 
@@ -179,7 +183,7 @@ export function getUnmetReason(
     return `Requires GitLab ${minVersion}+, current version is ${caps.version}`;
   }
   if (!req) return null;
-  if (!isTierSufficient(caps.tier, req.tier)) {
+  if (caps.tier !== null && !isTierSufficient(caps.tier, req.tier)) {
     return `Requires GitLab ${req.tier ?? DEFAULT_TIER} tier or higher, current tier is ${caps.tier}`;
   }
   return null;

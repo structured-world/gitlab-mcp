@@ -11,10 +11,8 @@
  * Free group and Ultimate group simultaneously.
  */
 export interface NamespaceTierInfo {
-  /** Tier level (free, premium, ultimate) */
-  tier: 'free' | 'premium' | 'ultimate';
-  /** Available features for this tier */
-  features: Record<string, boolean>;
+  /** Confirmed subscription tier, or null when billing information is undisclosed. */
+  tier: 'free' | 'premium' | 'ultimate' | null;
   /** Cache timestamp */
   cachedAt: Date;
 }

@@ -39,7 +39,16 @@ import {
   BrowseProjectsSchema,
   BrowseTodosSchema,
 } from '../entities/core/schema-readonly';
-import { ManageProjectSchema, ManageTodosSchema } from '../entities/core/schema';
+import {
+  ManageProjectSchema,
+  ManageNamespaceSchema,
+  ManageTodosSchema,
+} from '../entities/core/schema';
+import { BrowseIterationsSchema } from '../entities/iterations/schema-readonly';
+import { BrowseMilestonesSchema } from '../entities/milestones/schema-readonly';
+import { ManageMilestoneSchema } from '../entities/milestones/schema';
+import { BrowseRefsSchema } from '../entities/refs/schema-readonly';
+import { ManageRefSchema } from '../entities/refs/schema';
 import { BrowseSearchSchema } from '../entities/search/schema-readonly';
 import { BrowseMergeRequestsSchema } from '../entities/mrs/schema-readonly';
 import {
@@ -103,6 +112,12 @@ const PROJECT_LIST_OPTIONS = new Set([
 ]);
 /** The input schemas of the tools whose calls the scope rewrites, filters or emulates. */
 const SCOPED_TOOL_SCHEMAS: Readonly<Record<string, ZodType>> = {
+  browse_iterations: BrowseIterationsSchema,
+  browse_milestones: BrowseMilestonesSchema,
+  manage_milestone: ManageMilestoneSchema,
+  browse_refs: BrowseRefsSchema,
+  manage_ref: ManageRefSchema,
+  manage_namespace: ManageNamespaceSchema,
   browse_work_items: BrowseWorkItemsSchema,
   manage_work_item: ManageWorkItemSchema,
   browse_registry: BrowseRegistrySchema,

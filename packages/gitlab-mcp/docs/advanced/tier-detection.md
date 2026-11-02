@@ -1,204 +1,113 @@
 ---
 title: Tier Detection
-description: "Understand how GitLab MCP detects namespace tier (Free/Premium/Ultimate) for feature availability. Learn about per-namespace caching, GraphQL queries, and tier-based tool restrictions."
+description: "How GitLab MCP combines namespace subscriptions, GitLab versions and permissions when exposing tools and fields."
 head:
   - - meta
     - name: keywords
       content: tier detection, namespace tier, free, premium, ultimate, feature availability, MCP
 ---
 
-# GitLab Tier Detection for Premium Features
+# GitLab Tier Detection
 
-How GitLab MCP detects the tier (Free/Premium/Ultimate) of each namespace to determine feature availability.
+On GitLab.com, subscriptions belong to **root namespaces**. One account can work
+with a Free personal namespace, a Premium organization and an Ultimate customer
+at the same time. A subgroup or project inherits its root namespace's subscription.
+See [GitLab subscription management](https://docs.gitlab.com/subscriptions/manage_subscription/).
 
-## Critical Concept
+Self-managed GitLab uses its instance license. Namespace subscription detection
+does not replace that existing instance-level path.
 
-::: danger Important
-**Tier is per-NAMESPACE, not per-instance!**
-
-On gitlab.com, a single user can access Free, Premium, and Ultimate namespaces simultaneously. Detecting tier at the instance level would be incorrect.
+::: info Available from 13.2.0
+Namespace observations are applied to tool discovery, action requirements and
+Work Item widget checks from 13.2.0. Earlier versions use instance-level capability
+data for these checks.
 :::
 
-## How It Works
+## What the client sees
 
-### GraphQL Query
+With a selected project or group, the advertised tools and fields use that
+namespace's observed subscription. A scope covering several roots advertises
+their union, so a Free project does not hide tools needed by an Ultimate project.
 
-GitLab MCP queries the namespace tier via GraphQL:
+Execution resolves the actual project or group arguments again. Parallel requests
+use separate contexts, including when two chats share the same GitLab.com account.
+They do not change a shared connection's tier.
 
-```graphql
-query GetNamespaceTier($fullPath: ID!) {
-  namespace(fullPath: $fullPath) {
-    id
-    fullPath
+An unscoped request, an opaque ID that cannot yet be resolved, or a call spanning
+different subscriptions has **unknown** tier. Unknown does not mean Free:
+discovery does not hide paid features solely because billing metadata is missing.
+GitLab still checks the actual operation's license, permissions and feature flags.
 
-    # For groups - check plan directly
-    ... on Group {
-      plan
-    }
+Version requirements, token scopes, admin elevation, read-only settings and
+operator project restrictions remain independent checks.
 
-    # For projects - check parent group's plan
-    ... on Project {
-      group {
-        plan
-      }
-    }
-  }
-}
+## Subscription lookup
+
+The server reads the root entity through REST API v4:
+
+```http
+GET /api/v4/namespaces/example-team
 ```
 
-### Tier Normalization
+A numeric project ID is first resolved through `GET /projects/:id`; a numeric
+group ID through `GET /groups/:id?with_projects=false`. Numeric namespace
+arguments that accept either kind follow the handler's group-first resolution
+and try a project only after a group 404.
 
-GitLab plan names are normalized to three tiers:
+The `plan` attribute is permission-dependent. Access to a project does not
+guarantee access to its root's billing metadata. Missing attributes, an unknown
+plan, inaccessible metadata and lookup failures leave the subscription unknown.
+A lookup failure does not turn an otherwise usable GitLab operation into a
+license refusal.
 
-| GitLab Plan | Normalized Tier |
-|-------------|-----------------|
-| `ultimate`, `gold` | Ultimate |
-| `premium`, `silver`, `bronze`, `starter` | Premium |
-| `free`, `null`, other | Free |
+See the [GitLab Namespaces API](https://docs.gitlab.com/api/namespaces/) for
+visibility rules. The endpoint and conditional plan attribute already exist in
+the [GitLab 16.0 namespace entity](https://gitlab.com/gitlab-org/gitlab/-/blob/v16.0.0-ee/ee/lib/ee/api/entities/namespace.rb).
 
-### Caching
+| Observed plan | Tier |
+| --- | --- |
+| `free`, `default` | Free |
+| `premium`, `premium_trial`, `silver` | Premium |
+| `ultimate`, `ultimate_trial`, `gold`, `opensource` | Ultimate |
+| Missing, unrecognized or legacy plan without a supported equivalent | Unknown |
 
-Namespace tier is cached per-session with 5-minute TTL:
+A plan is an input to capability checks, not proof that every feature is enabled.
+Individual tools declare their version and tier requirements; widget checks use
+the same request-local tier. GitLab's response remains authoritative.
 
-```
-Session Cache Key: ${sessionId}:${namespacePath}
-Example: abc123:gitlab-org → Ultimate
-```
+## Caching and request cost
 
-Cache is cleared when:
-- TTL expires (5 minutes)
-- User switches GitLab instance (static token mode)
-- Session ends
+Observations, including unknown results, have a five-minute TTL. Cache keys
+separate the selected instance, credential, session and root namespace.
+Replacing a token or changing account cannot reuse another credential's facts.
+The disposable process-local cache has a total capacity of 1,024 entries; it
+contains no stored token values.
 
-## Feature Availability
+Descendants of one root share a lookup. A catalog spanning several roots resolves
+at most five distinct targets concurrently and stops starting queued optional
+reads after an unknown observation prevents a complete tier decision. Free-only
+tool calls do not perform subscription lookups.
 
-Each tier enables different features:
-
-| Feature | Free | Premium | Ultimate |
-|---------|------|---------|----------|
-| Issues | Yes | Yes | Yes |
-| Merge Requests | Yes | Yes | Yes |
-| Wiki | Yes | Yes | Yes |
-| Epics | No | Yes | Yes |
-| Iterations | No | Yes | Yes |
-| Roadmaps | No | Yes | Yes |
-| OKRs | No | No | Yes |
-| Health Status | No | Yes | Yes |
-| Weight | No | Yes | Yes |
-| Multi-level Epics | No | Yes | Yes |
-| Requirements | No | Yes | Yes |
-| Security Dashboard | No | No | Yes |
-| Compliance Framework | No | Yes | Yes |
-
-### Feature Checks in Tools
-
-Tools that require specific features check the namespace tier:
-
-```typescript
-// Example: Creating an epic
-async function handleCreateEpic(args) {
-  const tierInfo = await getNamespaceTier(args.groupPath);
-
-  if (!tierInfo.features.epics) {
-    throw new Error(
-      `Epics require GitLab Premium or Ultimate. ` +
-      `Namespace "${args.groupPath}" is on ${tierInfo.tier} tier.`
-    );
-  }
-
-  // Proceed with epic creation...
-}
-```
-
-### Error Messages
-
-When a feature is unavailable, users receive helpful error messages:
-
-```
-Error: Epics require GitLab Premium or Ultimate.
-Namespace "my-free-group" is on free tier.
-
-Consider:
-- Upgrade the namespace to Premium or Ultimate
-- Use a different namespace with higher tier
-```
-
-## SaaS vs Self-Hosted
-
-### GitLab.com (SaaS)
-
-- Each namespace can have a different tier
-- Tier detection via GraphQL is required
-- Same user may access Free/Premium/Ultimate namespaces
-
-### Self-Hosted
-
-- Typically has a single license for the entire instance
-- All namespaces share the same tier
-- Tier can be cached at instance level (optimization)
-
-GitLab MCP detects SaaS vs self-hosted and optimizes accordingly.
-
-## API Functions
-
-### getNamespaceTier
-
-```typescript
-async function getNamespaceTier(
-  namespacePath: string
-): Promise<NamespaceTierInfo>
-
-interface NamespaceTierInfo {
-  tier: 'free' | 'premium' | 'ultimate';
-  features: Record<string, boolean>;
-  cachedAt: Date;
-}
-```
-
-### isFeatureAvailable
-
-```typescript
-async function isFeatureAvailable(
-  namespacePath: string,
-  feature: string
-): Promise<boolean>
-
-// Example usage
-const canCreateEpic = await isFeatureAvailable('my-group', 'epics');
-```
-
-### clearNamespaceTierCache
-
-```typescript
-function clearNamespaceTierCache(sessionId?: string): void
-
-// Clear for specific session
-clearNamespaceTierCache('abc123');
-
-// Clear all caches
-clearNamespaceTierCache();
-```
+This cache is an optimization, not session or authorization storage. Each server
+replica can rebuild its own observations. Refreshing facts never changes another
+request's active tier, and an expired request cannot start a tool after a late
+metadata response.
 
 ## Troubleshooting
 
-### Feature unavailable error
-
-If you receive a feature unavailability error:
-
-1. Check the namespace path is correct
-2. Verify the namespace has the required tier in GitLab UI
-3. Wait 5 minutes for cache to expire if tier was recently upgraded
-
-### Tier not detected correctly
-
-If tier detection seems incorrect:
-
-1. Check GitLab API access - token must have `api` or `read_api` scope
-2. Verify the namespace exists and is accessible
-3. Check for GraphQL errors in server logs
+- Confirm the selected account and project or group in `get_context`.
+- Check the namespace subscription in GitLab. A user who can read a project may
+  still be unable to read its billing metadata.
+- If a subscription recently changed, allow up to five minutes for cached facts
+  to expire.
+- An explicit unavailable-action error can also be caused by the GitLab version,
+  token permissions or a disabled feature. Changing a subscription alone does
+  not remove those restrictions.
+- Inspect logs for metadata status or read failures. Provider response bodies and
+  parser exception text are excluded from these diagnostics.
 
 ## Related Documentation
 
-- [Multi-Instance Setup](/guide/multi-instance) - Getting started guide
-- [Federation Architecture](/advanced/federation) - Technical deep dive
-- [Context Switching](/advanced/context-switching) - Instance switching behavior
+- [Multi-Instance Setup](/guide/multi-instance)
+- [Federation Architecture](/advanced/federation)
+- [Context Switching](/advanced/context-switching)

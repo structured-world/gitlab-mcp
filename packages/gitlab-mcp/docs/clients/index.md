@@ -25,7 +25,9 @@ GitLab MCP works with all major AI coding assistants that support the Model Cont
 | [Codex](/guide/installation/codex) | stdio or HTTP | CLI command | Plugin or `codex mcp` |
 | [Antigravity CLI](/clients/antigravity) | stdio or HTTP | No | Workspace JSON |
 
-All clients can also connect via HTTP (StreamableHTTP or SSE) to a [remote server deployment](/deployment/).
+Remote HTTP support and configuration syntax depend on the client. Follow its
+specific guide when connecting to a [remote server deployment](/deployment/);
+a stdio-only configuration may need a supported HTTP-to-stdio adapter.
 
 ## Automatic Setup
 

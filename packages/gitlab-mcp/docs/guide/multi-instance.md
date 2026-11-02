@@ -88,15 +88,19 @@ Each entry shows the instance address, below its label when one is set; choosing
 **Tier is per-NAMESPACE, not per-instance!** On gitlab.com, a single user can access Free, Premium, and Ultimate namespaces simultaneously.
 :::
 
-GitLab MCP detects tier per namespace via GraphQL:
-- Tier is cached per-session with 5-minute TTL
-- Different namespaces may have different tiers
-- Features are validated against namespace tier
+From 13.2.0, GitLab.com capability checks use the selected root namespace's REST
+subscription metadata. Descendants inherit the root's subscription. The same
+account can use different tiers concurrently without changing shared connection
+data. Self-managed instances continue to use their instance license.
+
+Observations are cached per credential, instance and session for five minutes.
+If GitLab does not expose the plan, it remains unknown rather than becoming Free.
+Discovery then keeps paid features visible and GitLab checks the actual request.
 
 Example: User has access to:
-- `my-free-group` (Free tier) - no epics
-- `company/premium-proj` (Premium tier) - epics available
-- `enterprise-client` (Ultimate tier) - all features
+- `my-free-group` has a Free root subscription
+- `company/premium-proj` inherits the Premium subscription of `company`
+- `enterprise-client` has an Ultimate root subscription
 
 See [Tier Detection](/advanced/tier-detection) for technical details.
 

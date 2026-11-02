@@ -76,7 +76,16 @@ jest.mock('../../src/entities/labels/registry', () => ({
 jest.mock('../../src/services/ConnectionManager', () => ({
   ConnectionManager: {
     getInstance: jest.fn().mockReturnValue({
-      getInstanceInfo: jest.fn().mockReturnValue({ tier: 'free', version: '17.0.0' }),
+      getInstanceInfo: jest.fn().mockImplementation((url?: string) => {
+        const { currentNamespaceTier, hasNamespaceSubscriptions } = jest.requireActual(
+          '../../src/services/namespace-tier-context',
+        );
+        const tier =
+          url && hasNamespaceSubscriptions(url)
+            ? (currentNamespaceTier(url)?.tier ?? null)
+            : 'free';
+        return { tier, version: '17.0.0' };
+      }),
       getTokenScopeInfo: jest.fn().mockReturnValue(null),
       getAdminInfo: jest.fn().mockReturnValue(null),
       getCurrentInstanceUrl: jest.fn().mockReturnValue('https://gitlab.example.com'),
@@ -408,6 +417,80 @@ describe('RegistryManager', () => {
   });
 
   describe('Tool Availability Filtering', () => {
+    // The same instance and schema mode must retain separate concurrent namespace views.
+    it('isolates namespace catalogs, dispatch and statistics through refresh', async () => {
+      const { runWithNamespaceTier } = jest.requireActual(
+        '../../src/services/namespace-tier-context',
+      );
+      const core = require('../../src/entities/core/registry').coreToolRegistry;
+      const handler = jest.fn().mockResolvedValue({ ok: true });
+      core.set('paid_namespace_tool', {
+        name: 'paid_namespace_tool',
+        description: 'Paid namespace tool',
+        inputSchema: { type: 'object' },
+        requirements: { default: { tier: 'premium' } },
+        handler,
+      });
+      const url = 'https://gitlab.com';
+      try {
+        registryManager.refreshCache(url);
+        const observe = (tier: 'free' | 'ultimate') =>
+          runWithNamespaceTier(url, tier, async () => {
+            await Promise.resolve();
+            const available = tier === 'ultimate';
+            expect(registryManager.getAvailableToolNames(url).includes('paid_namespace_tool')).toBe(
+              available,
+            );
+            expect(
+              registryManager
+                .getAllToolDefinitions(url)
+                .some((t) => t.name === 'paid_namespace_tool'),
+            ).toBe(available);
+            expect(registryManager.getFilterStats(url).available).toBe(
+              registryManager.getAllToolDefinitions(url).length,
+            );
+            if (available)
+              expect(await registryManager.executeTool('paid_namespace_tool', {}, url)).toEqual({
+                ok: true,
+              });
+            else
+              await expect(
+                registryManager.executeTool('paid_namespace_tool', {}, url),
+              ).rejects.toThrow('not found');
+          });
+        await Promise.all([observe('free'), observe('ultimate')]);
+        registryManager.refreshCache(url);
+        await Promise.all([observe('ultimate'), observe('free')]);
+        expect(registryManager.hasToolHandler('paid_namespace_tool', url)).toBe(true);
+        expect(handler).toHaveBeenCalledTimes(2);
+      } finally {
+        core.delete('paid_namespace_tool');
+      }
+    });
+
+    // A SaaS instance has no single subscription: an unscoped catalog cannot assume Free.
+    it('keeps paid SaaS tools discoverable without a known namespace subscription', () => {
+      const core = require('../../src/entities/core/registry').coreToolRegistry;
+      core.set('paid_namespace_tool', {
+        name: 'paid_namespace_tool',
+        description: 'Paid namespace tool',
+        inputSchema: { type: 'object' },
+        requirements: { default: { tier: 'premium' } },
+        handler: jest.fn(),
+      });
+      try {
+        registryManager.refreshCache('https://gitlab.com');
+        expect(registryManager.getAvailableToolNames('https://gitlab.com')).toContain(
+          'paid_namespace_tool',
+        );
+        expect(registryManager.getAvailableToolNames('https://gitlab.example.com')).not.toContain(
+          'paid_namespace_tool',
+        );
+      } finally {
+        core.delete('paid_namespace_tool');
+      }
+    });
+
     it('should filter unavailable tools', () => {
       // ConnectionManager mock reports version 17.0.0; a tool requiring 99.0
       // fails the real InstanceCapabilities version gate and is filtered out.

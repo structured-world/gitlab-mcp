@@ -86,18 +86,20 @@ docker run -i --rm \
   ghcr.io/structured-world/gitlab-mcp:latest
 ```
 
-### StreamableHTTP Client (Recommended)
+### Claude Code over HTTP (Recommended)
 
 ```json
 {
   "mcpServers": {
     "gitlab": {
-      "type": "streamable-http",
+      "type": "http",
       "url": "http://localhost:3333/mcp"
     }
   }
 }
 ```
+
+Other clients have [their own configuration formats](/clients/).
 
 ### SSE Client (Legacy)
 

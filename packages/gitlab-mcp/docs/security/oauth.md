@@ -99,53 +99,26 @@ Use a reverse proxy (nginx, Caddy, Traefik) to add HTTPS. See [TLS/HTTPS Configu
 ## Claude Web Setup
 
 1. Go to [claude.ai](https://claude.ai) and sign in
-2. Navigate to **Settings > Connectors**
+2. Navigate to **Customize > Connectors**
 3. Click **Add custom connector**
-4. Enter your gitlab-mcp server URL: `https://your-mcp-server.com`
+4. Enter your MCP endpoint: `https://mcp.example.com/mcp`
 5. Click **Add**
 6. When prompted, complete authentication:
-   - You'll see a device code (e.g., `ABCD-1234`)
-   - Open your GitLab instance and enter the code
-   - Approve the authorization request
+   - Follow the browser redirect to your GitLab instance
+   - Sign in and approve the authorization request
+   - Return to Claude when authorization completes
 7. The connector is now active
 
 ## Claude Desktop Setup
 
-### macOS / Linux
+For a remote OAuth server, add a custom connector using the same connector UI as
+Claude Web. These connections originate from Anthropic's cloud, including when
+configured in Claude Desktop, so the MCP endpoint must be publicly reachable.
+See [Anthropic's remote connector instructions](https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp).
 
-Edit `~/.config/claude/claude_desktop_config.json`:
-
-```json
-{
-  "mcpServers": {
-    "gitlab": {
-      "type": "streamable-http",
-      "url": "https://your-mcp-server.com/mcp"
-    }
-  }
-}
-```
-
-### Windows
-
-Edit `%APPDATA%\Claude\claude_desktop_config.json`:
-
-```json
-{
-  "mcpServers": {
-    "gitlab": {
-      "type": "streamable-http",
-      "url": "https://your-mcp-server.com/mcp"
-    }
-  }
-}
-```
-
-After adding the server:
-1. Restart Claude Desktop
-2. Claude will prompt you to authenticate
-3. Complete the device flow authorization in GitLab
-4. Start using GitLab tools with your personal identity
+For local access, use a desktop extension or stdio configuration instead.
+See [Claude Desktop integration](/clients/claude-desktop). An HTTP `url` entry is
+not a local stdio configuration in `claude_desktop_config.json`.
 
 ## Private LAN GitLab Architecture
 

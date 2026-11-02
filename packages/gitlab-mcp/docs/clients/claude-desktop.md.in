@@ -88,18 +88,14 @@ To run via Docker instead of npx:
 
 ## Remote Server
 
-Connect to a running GitLab MCP HTTP server:
+Add a remote server through **Customize > Connectors > Add custom connector**,
+using its complete MCP endpoint, for example `https://mcp.example.com/mcp`.
+Complete OAuth when prompted.
 
-```json
-{
-  "mcpServers": {
-    "gitlab": {
-      "type": "streamable-http",
-      "url": "http://localhost:3333/mcp"
-    }
-  }
-}
-```
+Remote connectors run through Anthropic's cloud and cannot reach a server at your
+computer's `localhost`. Keep the local stdio configuration above for local access.
+See [Anthropic's remote connector instructions](https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp)
+and [OAuth setup](/security/oauth).
 
 ## Verification
 

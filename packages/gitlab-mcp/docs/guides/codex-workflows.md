@@ -5,7 +5,7 @@ description: Portable GitLab workflows, independent client schemas, structured d
 
 # Codex and Claude workflow skills
 
-The npm package includes five portable skills under `skills/`. They use the existing
+The npm package includes portable skills under `skills/`. They use the existing
 MCP tools and work with a configured Codex or Claude Code connection:
 
 | Skill               | Workflow                                                             |
@@ -118,7 +118,8 @@ loads its skills into a temporary workspace/session-only plugin, and runs the
 actual built server against a deterministic loopback GitLab fixture. It does not
 use live GitLab credentials or modify global client configuration.
 
-The matrix covers all five direct workflows, indirect discovery/review, a retained
+The evaluation matrix covers setup, discovery, review, work items and CI, indirect
+discovery/review, a retained
 conversation follow-up, an unrelated request and a denied mutation. Assertions
 inspect actual tool calls, prohibit unintended writes/replays, and retain client
 versions, transcripts and fixture requests in the printed temporary directory.

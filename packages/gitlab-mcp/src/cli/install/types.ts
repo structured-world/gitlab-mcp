@@ -190,9 +190,12 @@ export const CLIENT_METADATA: Record<InstallableClient, ClientMetadata> = {
   'roo-code': {
     name: 'Roo Code',
     configPaths: {
-      darwin: '~/.roo/mcp.json',
-      win32: '%USERPROFILE%/.roo/mcp.json',
-      linux: '~/.roo/mcp.json',
+      darwin:
+        '~/Library/Application Support/Code/User/globalStorage/rooveterinaryinc.roo-cline/settings/mcp_settings.json',
+      win32:
+        '%APPDATA%/Code/User/globalStorage/rooveterinaryinc.roo-cline/settings/mcp_settings.json',
+      linux:
+        '~/.config/Code/User/globalStorage/rooveterinaryinc.roo-cline/settings/mcp_settings.json',
     },
     supportsCliInstall: false,
     detectionMethod: 'config-file',

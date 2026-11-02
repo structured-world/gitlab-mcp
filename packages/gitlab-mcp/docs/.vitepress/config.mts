@@ -414,6 +414,7 @@ export default defineConfig({
           items: [
             { text: "Overview", link: "/guides/" },
             { text: "Codex and Claude Skills", link: "/guides/codex-workflows" },
+            { text: "Codex Release Qualification", link: "/guides/codex-qualification" },
             { text: "Duo Sessions", link: "/guides/duo-sessions" },
             { text: "Complete Code Review", link: "/guides/complete-code-review" },
             { text: "Setup CI Notifications", link: "/guides/setup-ci-notifications" },

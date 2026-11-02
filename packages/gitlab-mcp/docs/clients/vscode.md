@@ -38,7 +38,8 @@ Install directly from VS Code:
 | All | `.vscode/mcp.json` (per-project) |
 
 ::: tip
-VS Code uses per-project MCP configuration. Create the config in each project's `.vscode/` directory.
+Use `.vscode/mcp.json` for workspace configuration. VS Code also supports user-level
+MCP configuration through its MCP configuration commands.
 :::
 
 ## Configuration
@@ -47,8 +48,9 @@ Create or edit `.vscode/mcp.json` in your project root:
 
 ```json
 {
-  "mcpServers": {
+  "servers": {
     "gitlab": {
+      "type": "stdio",
       "command": "npx",
       "args": ["-y", "@structured-world/gitlab-mcp"],
       "env": {
@@ -66,14 +68,19 @@ Connect to a running GitLab MCP HTTP server:
 
 ```json
 {
-  "mcpServers": {
+  "servers": {
     "gitlab": {
-      "type": "streamable-http",
+      "type": "http",
       "url": "http://localhost:3333/mcp"
     }
   }
 }
 ```
+
+These examples use the VS Code `.vscode/mcp.json` format with a `servers` root.
+Portable Copilot configurations use `mcpServers` instead; do not interchange the
+formats when selecting a different configuration destination.
+See [Microsoft's MCP server guide](https://code.visualstudio.com/docs/agent-customization/mcp-servers).
 
 ## Verification
 
@@ -85,7 +92,7 @@ Connect to a running GitLab MCP HTTP server:
 ## Troubleshooting
 
 - **Tools not appearing**: Reload the VS Code window (`Cmd+Shift+P` > "Reload Window")
-- **Per-project vs global**: VS Code MCP is per-project; ensure `.vscode/mcp.json` is in your workspace root
+- **Configuration scope**: Check whether the server is registered for your workspace or user profile
 - **Copilot required**: MCP support requires GitHub Copilot extension
 
 ## See Also

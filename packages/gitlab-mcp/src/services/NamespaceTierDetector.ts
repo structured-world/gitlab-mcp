@@ -3,6 +3,7 @@
  * These disposable facts guide discovery, not GitLab authorization.
  */
 import { createHash } from 'node:crypto';
+import { z } from 'zod';
 import type { NamespaceTierInfo } from '../oauth/types';
 import type { GitLabTier } from './GitLabVersionDetector';
 import { getTokenContext } from '../oauth/token-context';
@@ -17,6 +18,9 @@ import { isOAuthEnabled } from '../oauth/config';
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const CACHE_CAPACITY = 1024;
 const namespaceTierCache = new Map<string, Map<string, NamespaceTierInfo>>();
+const ProjectMetadataSchema = z.object({ path_with_namespace: z.string() });
+const GroupMetadataSchema = z.object({ full_path: z.string() });
+const NamespaceMetadataSchema = z.object({ plan: z.string().nullish() });
 
 interface Identity {
   baseUrl: string;
@@ -133,12 +137,6 @@ async function readMetadata(
   return { status: response.status, value: await readBoundedJson(response, limit) };
 }
 
-function stringField(value: unknown, field: string): string | null {
-  if (value === null || typeof value !== 'object' || !(field in value)) return null;
-  const result = (value as Record<string, unknown>)[field];
-  return typeof result === 'string' ? result : null;
-}
-
 /** GitLab namespaces inherit the subscription of their root namespace. */
 function rootOf(path: string): string | null {
   const canonical = canonicalProjectPath(path);
@@ -157,7 +155,12 @@ async function numericTargetPath(
   const collection = kind === 'project' ? 'projects' : 'groups';
   const { status, value } = await readMetadata(collection, id, caller, 1024 * 1024);
   if (kind === 'either' && status === 404) return numericTargetPath(id, 'project', caller);
-  return stringField(value, kind === 'project' ? 'path_with_namespace' : 'full_path');
+  if (kind === 'project') {
+    const parsed = ProjectMetadataSchema.safeParse(value);
+    return parsed.success ? parsed.data.path_with_namespace : null;
+  }
+  const parsed = GroupMetadataSchema.safeParse(value);
+  return parsed.success ? parsed.data.full_path : null;
 }
 
 /**
@@ -187,8 +190,10 @@ export async function getNamespaceTier(
     if (namespace === null) observation = unknown();
     else {
       const { value } = await readMetadata('namespaces', namespace, caller, 64 * 1024);
-      const plan = stringField(value, 'plan');
-      const tier = plan === null ? undefined : PLAN_TIERS.get(plan.toLowerCase());
+      const parsed = NamespaceMetadataSchema.safeParse(value);
+      const plan = parsed.success ? parsed.data.plan : null;
+      const tier =
+        plan === null || plan === undefined ? undefined : PLAN_TIERS.get(plan.toLowerCase());
       observation = { tier: tier ?? null, cachedAt: new Date() };
     }
   } catch {

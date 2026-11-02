@@ -77,6 +77,58 @@ describe('NamespaceTierDetector', () => {
     expect((await getNamespaceTier('team')).tier).toBe(expected);
   });
 
+  // Only a string plan in an object establishes subscription evidence.
+  test.each([null, [], 'premium', { plan: 42 }, { plan: ['premium'] }])(
+    'keeps malformed namespace metadata unknown: %j',
+    async (value) => {
+      mockedEnhancedFetch.mockResolvedValue(new Response(JSON.stringify(value)));
+      expect((await getNamespaceTier('team')).tier).toBeNull();
+    },
+  );
+
+  // Static-token mode has no OAuth user or session but still uses its own credential identity.
+  it('supports authenticated metadata without an OAuth context', async () => {
+    mockedGetTokenContext.mockReturnValue(undefined);
+    jest.mocked(getGitLabBaseUrl).mockReturnValue('https://gitlab.com');
+    jest.mocked(fetchUtils.getAuthHeaders).mockReturnValue({ 'PRIVATE-TOKEN': 'fixture-static' });
+    expect((await getNamespaceTier('team')).tier).toBe('premium');
+    expect((await getNamespaceTier('team/subgroup')).tier).toBe('premium');
+    expect(mockedEnhancedFetch).toHaveBeenCalledTimes(1);
+  });
+
+  // A response without a body still carries no billing evidence and needs no stream cancellation.
+  it('handles an unavailable metadata response without a body', async () => {
+    mockedEnhancedFetch.mockResolvedValue(new Response(null, { status: 403 }));
+    expect((await getNamespaceTier('team')).tier).toBeNull();
+  });
+
+  // Namespace limits are checked before allocating a provider response.
+  it('does not request an overlong root namespace', async () => {
+    expect((await getNamespaceTier('a'.repeat(256))).tier).toBeNull();
+    expect(mockedEnhancedFetch).not.toHaveBeenCalled();
+  });
+
+  // Malformed numeric metadata must not be interpreted as another target's namespace.
+  test.each(['project', 'group'] as const)('rejects malformed %s metadata', async (kind) => {
+    mockedEnhancedFetch.mockResolvedValue(
+      new Response(JSON.stringify({ path_with_namespace: 7, full_path: [] })),
+    );
+    expect((await getNamespaceTier('7', kind)).tier).toBeNull();
+    expect(mockedEnhancedFetch).toHaveBeenCalledTimes(1);
+  });
+
+  // A valid group match must not fall through to a project with the same numeric ID.
+  it('resolves an ambiguous target as a group when the group exists', async () => {
+    mockedEnhancedFetch
+      .mockResolvedValueOnce(new Response(JSON.stringify({ full_path: 'team/subgroup' })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ plan: 'ultimate' })));
+    expect((await getNamespaceTier('7', 'either')).tier).toBe('ultimate');
+    expect(mockedEnhancedFetch.mock.calls.map(([url]) => url)).toEqual([
+      'https://gitlab.com/api/v4/groups/7?with_projects=false',
+      'https://gitlab.com/api/v4/namespaces/team',
+    ]);
+  });
+
   // Descendants share the root subscription and do not issue duplicate metadata requests.
   it('uses the root REST entity and shares its observation with descendants', async () => {
     const first = await getNamespaceTier('team/subgroup/project');

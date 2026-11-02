@@ -19,6 +19,7 @@ test('MCPB publication triggers docs before subsequent publishing steps', () => 
   );
   const docker = steps.findIndex((step: { name: string }) => step.name === 'Set up Docker Buildx');
   expect(upload).toBeGreaterThanOrEqual(0);
+  expect(steps[upload].with.fail_on_unmatched_files).toBe(true);
   expect(notification).toBeGreaterThan(upload);
   expect(notification).toBeLessThan(docker);
   expect(steps[notification].if).toBeUndefined();

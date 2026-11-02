@@ -59,7 +59,7 @@ jobs:
           LATEST_TAG=$(gh release view --json tagName --jq '.tagName' 2>/dev/null || echo "")
           if [ -n "$LATEST_TAG" ]; then
             VERSION="${LATEST_TAG#gitlab-mcp-v}"
-            echo "version=${VERSION}" >> $GITHUB_OUTPUT
+            echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
             gh release download "$LATEST_TAG" --pattern "*.mcpb" --dir docs/public/downloads/ || true
             MCPB_FILE="docs/public/downloads/gitlab-mcp-${VERSION}.mcpb"
             if [ -f "$MCPB_FILE" ]; then
@@ -68,7 +68,7 @@ jobs:
           else
             # Fallback to package.json version if no release exists
             VERSION=$(jq -r '.version' package.json)
-            echo "version=${VERSION}" >> $GITHUB_OUTPUT
+            echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
             echo "MCPB bundle version from package.json: ${VERSION}"
           fi
         env:

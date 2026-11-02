@@ -47,6 +47,10 @@ CLI executable and `unzip` available on `PATH`. The `unzip` requirement also app
 when running qualification on Windows; it is separate from extracting the release
 ZIP through a desktop file manager.
 
+Install [Corepack](https://yarnpkg.com/corepack), run `corepack enable`, and run
+`yarn install --immutable` at the repository root first. This activates the Yarn
+version declared by the repository.
+
 From `packages/gitlab-mcp`:
 
 ```bash

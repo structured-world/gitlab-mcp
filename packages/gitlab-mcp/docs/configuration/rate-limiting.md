@@ -108,7 +108,7 @@ rateLimit:
 ```
 
 GitLab.com has its own endpoint- and account-specific rate limits. Check the
-[current GitLab.com limits](https://docs.gitlab.com/user/gitlab_com/#gitlabcom-specific-rate-limits)
+[current GitLab.com limits](https://docs.gitlab.com/user/gitlab_com/rate_limits/)
 and reduce concurrency when the server returns 429.
 
 ### Self-Hosted (Production)

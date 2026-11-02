@@ -73,10 +73,14 @@ suite and requires Bash. The required Quality Checks job executes it with:
 node --test tests/scripts/docs-download.test.mjs
 ```
 
-### Complete Unit and Integration Test Suite
+### Complete Unit and Integration Test Suite (requires `.env.test`)
 ```bash
 yarn test:all
 ```
+
+Treat this as full-suite evidence only with the protected `.env.test` configuration
+and designated test namespace available. Without that file, the test configuration
+selects unit tests only, even when this command succeeds.
 
 This command:
 - ✅ Uses all feature flags (WORKITEMS, MILESTONE, PIPELINE, GITLAB_WIKI)

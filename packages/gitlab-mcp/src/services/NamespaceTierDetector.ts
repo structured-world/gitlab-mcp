@@ -111,15 +111,20 @@ export function clearNamespaceTierCache(sessionId?: string): void {
 }
 
 async function readMetadata(
-  path: string,
+  collection: 'namespaces' | 'projects' | 'groups',
+  id: string,
   caller: Identity,
   limit: number,
 ): Promise<{ status: number; value: unknown }> {
-  const response = await enhancedFetch(`${caller.baseUrl}/api/v4/${path}`, {
-    method: 'GET',
-    headers: caller.headers,
-    rateLimitBaseUrl: caller.baseUrl,
-  });
+  const query = collection === 'groups' ? '?with_projects=false' : '';
+  const response = await enhancedFetch(
+    `${caller.baseUrl}/api/v4/${collection}/${encodeApiSegment(id)}${query}`,
+    {
+      method: 'GET',
+      headers: caller.headers,
+      rateLimitBaseUrl: caller.baseUrl,
+    },
+  );
   if (!response.ok) {
     await response.body?.cancel();
     logWarn('Namespace subscription metadata is unavailable', { status: response.status });
@@ -150,12 +155,7 @@ async function numericTargetPath(
   caller: Identity,
 ): Promise<string | null> {
   const collection = kind === 'project' ? 'projects' : 'groups';
-  const query = collection === 'groups' ? '?with_projects=false' : '';
-  const { status, value } = await readMetadata(
-    `${collection}/${encodeApiSegment(id)}${query}`,
-    caller,
-    1024 * 1024,
-  );
+  const { status, value } = await readMetadata(collection, id, caller, 1024 * 1024);
   if (kind === 'either' && status === 404) return numericTargetPath(id, 'project', caller);
   return stringField(value, kind === 'project' ? 'path_with_namespace' : 'full_path');
 }
@@ -186,11 +186,7 @@ export async function getNamespaceTier(
     const namespace = path === null ? null : rootOf(path);
     if (namespace === null) observation = unknown();
     else {
-      const { value } = await readMetadata(
-        `namespaces/${encodeApiSegment(namespace)}`,
-        caller,
-        64 * 1024,
-      );
+      const { value } = await readMetadata('namespaces', namespace, caller, 64 * 1024);
       const plan = stringField(value, 'plan');
       const tier = plan === null ? undefined : PLAN_TIERS.get(plan.toLowerCase());
       observation = { tier: tier ?? null, cachedAt: new Date() };

@@ -67,11 +67,10 @@ function distinctRoots(targets: readonly NamespaceTarget[]): NamespaceTarget[] |
       return null;
     }
     const slash = path.indexOf('/');
-    const key = /^\d+$/.test(path)
-      ? `${target.kind}:${path}`
-      : slash < 0
-        ? path
-        : path.slice(0, slash);
+    let key: string;
+    if (/^\d+$/.test(path)) key = `${target.kind}:${path}`;
+    else if (slash < 0) key = path;
+    else key = path.slice(0, slash);
     unique.set(key, target);
   }
   return [...unique.values()];

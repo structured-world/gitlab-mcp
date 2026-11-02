@@ -77,6 +77,11 @@ function injectInstanceState(
 }
 
 describe('ConnectionManager Unit', () => {
+  beforeEach(() => {
+    // Reset singleton instance for each test
+    (ConnectionManager as unknown as { instance: null }).instance = null;
+  });
+
   // Instance-wide detection must not manufacture a subscription shared by SaaS namespaces.
   it('projects request-local subscriptions without changing the stored connection', async () => {
     const { runWithNamespaceTier } = await import('../../../src/services/namespace-tier-context');
@@ -103,11 +108,6 @@ describe('ConnectionManager Unit', () => {
     );
     expect(stored.tier).toBe('free');
     expect(manager.getInstanceInfo('https://gitlab.com').tier).toBeNull();
-  });
-
-  beforeEach(() => {
-    // Reset singleton instance for each test
-    (ConnectionManager as unknown as { instance: null }).instance = null;
   });
 
   describe('singleton pattern', () => {

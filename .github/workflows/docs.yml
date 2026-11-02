@@ -8,10 +8,8 @@ on:
       - 'packages/gitlab-mcp/package.json'
       - 'yarn.lock'
       - '.github/workflows/docs.yml'
-  workflow_run:
-    workflows: ["Release"]
-    types: [completed]
-    branches: [main]
+  repository_dispatch:
+    types: [mcpb-published]
   workflow_dispatch:
 
 permissions:
@@ -26,9 +24,6 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    if: >
-      github.event_name != 'workflow_run' ||
-      github.event.workflow_run.conclusion == 'success'
     # docs/, vitepress, and the docs scripts live in the core package; run the
     # docs steps from there. (uses: steps below set explicit paths where needed.)
     defaults:

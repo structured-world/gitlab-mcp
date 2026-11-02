@@ -182,3 +182,4 @@ GITLAB_TOKEN = "glpat-..."
 
 - [`gitlab-mcp install`](/cli/install)
 - [Codex workflows](/guides/codex-workflows)
+- [Release qualification and desktop acceptance](/guides/codex-qualification)

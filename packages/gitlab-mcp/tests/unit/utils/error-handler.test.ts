@@ -20,7 +20,7 @@ import {
 
 // Mock functions that we'll configure per-test
 const mockGetTier = jest.fn(() => 'free');
-const mockIsFeatureAvailable = jest.fn((feature: string) => {
+const mockIsFeatureAvailable = jest.fn((feature: string): boolean | null => {
   // Default: Free tier - Premium/Ultimate features unavailable
   const premiumFeatures = ['epics', 'iterations', 'serviceDesk', 'weight'];
   const ultimateFeatures = ['okrs', 'requirements', 'securityDashboard'];
@@ -58,6 +58,29 @@ describe('Error Handler', () => {
   });
 
   describe('handleGitLabError', () => {
+    // Unknown billing metadata must not turn a GitLab permission denial into an upgrade claim.
+    test.each([
+      { tool: 'browse_iterations', args: {} },
+      { tool: 'browse_webhooks', args: { scope: 'group' } },
+      { tool: 'browse_work_items', args: { types: ['EPIC'] } },
+      { tool: 'browse_work_items', args: { types: ['OBJECTIVE'] } },
+      { tool: 'manage_work_item', args: { types: ['REQUIREMENT'] } },
+    ])(
+      'preserves permission denial with unknown capabilities for $tool $args',
+      ({ tool, args }) => {
+        mockGetTier.mockReturnValue('unknown');
+        mockIsFeatureAvailable.mockReturnValue(null);
+        const result = handleGitLabError(
+          { status: 403, message: '403 Forbidden' },
+          tool,
+          'list',
+          args,
+        );
+        expect(result.error_code).toBe('PERMISSION_DENIED');
+        expect(result).not.toHaveProperty('tier_required');
+      },
+    );
+
     describe('403 Forbidden - Tier Restricted', () => {
       it('should create tier-restricted error for iterations on Free tier', () => {
         const error: GitLabApiErrorResponse = {

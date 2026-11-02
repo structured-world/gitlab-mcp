@@ -60,12 +60,14 @@ Connect to a running GitLab MCP HTTP server:
 {
   "mcpServers": {
     "gitlab": {
-      "type": "streamable-http",
       "url": "http://localhost:3333/mcp"
     }
   }
 }
 ```
+
+Cursor infers the remote transport from its URL. See its
+[MCP configuration guide](https://cursor.com/docs/mcp).
 
 ## Verification
 

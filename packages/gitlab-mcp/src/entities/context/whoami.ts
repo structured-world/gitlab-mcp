@@ -252,7 +252,7 @@ function buildServerInfo(): WhoamiServerInfo {
     const connectionManager = ConnectionManager.getInstance();
     const instanceInfo = connectionManager.getInstanceInfo(getGitLabApiUrlFromContext());
     version = instanceInfo.version;
-    tier = instanceInfo.tier;
+    if (instanceInfo.tier !== null) tier = instanceInfo.tier;
   } catch {
     // Connection not initialized - use defaults
   }

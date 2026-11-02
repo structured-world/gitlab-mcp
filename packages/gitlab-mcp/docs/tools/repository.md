@@ -230,8 +230,8 @@ always returns base64.
 | `update_branch_protection` | Update protection rules for a branch |
 | `create_tag` | Create a new tag in the repository |
 | `delete_tag` | Delete a tag from the repository |
-| `protect_tag` | Add protection rules to a tag pattern (Premium) |
-| `unprotect_tag` | Remove protection from a tag pattern (Premium) |
+| `protect_tag` | Add protection rules to a tag pattern (all tiers) |
+| `unprotect_tag` | Remove protection from a tag pattern (all tiers) |
 <!-- @autogen:end -->
 
 ::: code-group

@@ -142,6 +142,20 @@ describe('whoami handler', () => {
   });
 
   describe('action: whoami', () => {
+    // A connected SaaS instance can have a known version but no observable namespace plan.
+    it('reports an unknown tier without discarding the detected version', async () => {
+      mockConnectionManager.getInstanceInfo.mockReturnValue({
+        version: '17.5.2',
+        tier: null,
+        features: {},
+        detectedAt: new Date(),
+      });
+      const result = (await handleManageContext({ action: 'whoami' })) as WhoamiResult;
+      expect(result.server.version).toBe('17.5.2');
+      expect(result.server.tier).toBe('unknown');
+      expect(result.userLookup).toBe('ok');
+    });
+
     it('should return complete WhoamiResult structure', async () => {
       const result = (await handleManageContext({ action: 'whoami' })) as WhoamiResult;
 

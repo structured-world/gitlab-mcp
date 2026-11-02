@@ -129,7 +129,7 @@ export class GitLabVersionDetector {
 
     const version = await this.detectVersion();
     const tier = await this.detectTier();
-    const features = this.determineFeatures(version, tier);
+    const features = GitLabVersionDetector.determineFeatures(version, tier);
 
     this.cachedInfo = {
       version,
@@ -239,7 +239,7 @@ export class GitLabVersionDetector {
     return 'free';
   }
 
-  private determineFeatures(version: string, tier: GitLabTier): GitLabFeatures {
+  public static determineFeatures(version: string, tier: GitLabTier): GitLabFeatures {
     const v = parseVersion(version);
 
     const features: GitLabFeatures = {

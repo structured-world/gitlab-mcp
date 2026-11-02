@@ -99,7 +99,13 @@ import {
   isToolAvailable,
   getRestrictedParameters,
   getUnavailableActions,
+  type CapabilityGate,
 } from './services/InstanceCapabilities';
+import {
+  currentNamespaceTier,
+  hasNamespaceSubscriptions,
+  runWithNamespaceTier,
+} from './services/namespace-tier-context';
 import { ConnectionManager } from './services/ConnectionManager';
 import { duoToolRegistry, getDuoReadOnlyToolNames } from './entities/duo/registry';
 import type { EffectivePolicy, ToolFacts } from './configuration/policy';
@@ -465,10 +471,10 @@ class RegistryManager {
    *  Returns undefined fields when connection is not initialized.
    *  @throws on unexpected errors (anything other than expected init errors). */
   private loadInstanceContext(instanceUrl?: string): {
-    instanceInfo?: { tier: GitLabTier; version: string; adminModeActive?: boolean };
+    instanceInfo?: CapabilityGate;
     tokenScopes?: readonly string[];
   } {
-    let instanceInfo: { tier: GitLabTier; version: string; adminModeActive?: boolean } | undefined;
+    let instanceInfo: CapabilityGate | undefined;
     try {
       const info = ConnectionManager.getInstance().getInstanceInfo(instanceUrl);
       instanceInfo = { tier: info.tier, version: info.version };
@@ -513,7 +519,7 @@ class RegistryManager {
     toolName: string,
     tool: EnhancedToolDefinition,
     ctx: {
-      instanceInfo?: { tier: GitLabTier; version: string; adminModeActive?: boolean };
+      instanceInfo?: CapabilityGate;
       tokenScopes?: readonly string[];
     },
     unavailableActions: ReadonlyMap<string, string>,
@@ -550,7 +556,7 @@ class RegistryManager {
   private unavailableActionsFor(
     toolName: string,
     tool: EnhancedToolDefinition,
-    ctx: { instanceInfo?: { tier: GitLabTier; version: string; adminModeActive?: boolean } },
+    ctx: { instanceInfo?: CapabilityGate },
   ): ReadonlyMap<string, string> {
     if (!ctx.instanceInfo || this.registries.get('context')?.has(toolName)) return NONE_UNAVAILABLE;
     return getUnavailableActions(tool.requirements, ctx.instanceInfo);
@@ -558,7 +564,7 @@ class RegistryManager {
 
   /** Filter registries and build transformed tool map (schema + description overrides). */
   private buildFilteredTools(ctx: {
-    instanceInfo?: { tier: GitLabTier; version: string; adminModeActive?: boolean };
+    instanceInfo?: CapabilityGate;
     tokenScopes?: readonly string[];
   }): Map<string, EnhancedToolDefinition> {
     const result = new Map<string, EnhancedToolDefinition>();
@@ -659,22 +665,30 @@ class RegistryManager {
    */
   private resolveCache(instanceUrl?: string): Map<string, EnhancedToolDefinition> {
     const url = this.resolveCacheUrl(instanceUrl);
-    let cache = this.toolLookupCaches.get(url);
+    const key = this.capabilityCacheKey(url);
+    let cache = this.toolLookupCaches.get(key);
     if (!cache) {
       this.buildToolLookupCache(url);
-      cache = this.toolLookupCaches.get(url);
+      cache = this.toolLookupCaches.get(key);
     }
     return cache ?? new Map<string, EnhancedToolDefinition>();
   }
 
+  /** At most three known subscription views per instance, plus the unknown view. */
+  private capabilityCacheKey(url: string): string {
+    const namespace = currentNamespaceTier(url);
+    return hasNamespaceSubscriptions(url) && namespace?.tier ? `${url}\0${namespace.tier}` : url;
+  }
+
   private buildToolLookupCache(instanceUrl?: string): void {
     const url = this.resolveCacheUrl(instanceUrl);
+    const key = this.capabilityCacheKey(url);
 
     let ctx: ReturnType<RegistryManager['loadInstanceContext']>;
     try {
       ctx = this.loadInstanceContext(url);
     } catch (err) {
-      if (this.verifiedContextUrls.has(url)) {
+      if (this.verifiedContextUrls.has(key)) {
         // Fail-close during refresh: preserve the previous verified cache
         // instead of rebuilding with empty context (which would surface tools
         // the instance cannot use). Pre-init caches (built before
@@ -691,10 +705,10 @@ class RegistryManager {
       // Do not leave a permissive pre-init snapshot live after an unexpected
       // refresh failure. Callers (e.g. handlers.ts) may catch refreshCache()
       // and continue serving whatever is still in the per-URL caches.
-      this.toolLookupCaches.delete(url);
-      this.toolDefinitionsCaches.delete(url);
-      this.toolNamesCaches.delete(url);
-      this.filterStatsCaches.delete(url);
+      this.toolLookupCaches.delete(key);
+      this.toolDefinitionsCaches.delete(key);
+      this.toolNamesCaches.delete(key);
+      this.filterStatsCaches.delete(key);
 
       // On cold start there is no prior cache to preserve. Fail fast so the
       // process does not silently continue with no tools available.
@@ -715,22 +729,22 @@ class RegistryManager {
     // temporary empty Map returned by resolveCache(); drop them before swapping.
     // filterStatsCaches is cleared here (not in invalidateCaches) so the last
     // good snapshot survives if this rebuild was triggered by a failed refresh.
-    this.toolDefinitionsCaches.delete(url);
-    this.toolNamesCaches.delete(url);
-    this.filterStatsCaches.delete(url);
+    this.toolDefinitionsCaches.delete(key);
+    this.toolNamesCaches.delete(key);
+    this.filterStatsCaches.delete(key);
 
     // Atomic per-URL swap — in-flight requests that captured a reference
     // to the old map via getTool() keep working; new requests see the
     // updated cache for this URL
-    this.toolLookupCaches.set(url, newCache);
+    this.toolLookupCaches.set(key, newCache);
 
     // Track whether this cache was built with real context. Pre-init caches
     // (built before ConnectionManager is ready) must not be preserved on
     // failure. Updated AFTER swap so the flag describes the live cache.
     if (ctx.instanceInfo) {
-      this.verifiedContextUrls.add(url);
+      this.verifiedContextUrls.add(key);
     } else {
-      this.verifiedContextUrls.delete(url);
+      this.verifiedContextUrls.delete(key);
     }
 
     logDebug('Registry manager built cache after filtering', {
@@ -744,14 +758,16 @@ class RegistryManager {
    */
   private invalidateCaches(instanceUrl?: string): void {
     const url = this.resolveCacheUrl(instanceUrl);
-    this.toolDefinitionsCaches.delete(url);
-    this.toolNamesCaches.delete(url);
-    // filterStatsCaches is intentionally NOT cleared here — it is preserved
-    // until buildToolLookupCache succeeds, so getFilterStats can fall back to
-    // the last good snapshot if the rebuild fails mid-way.
-    // readOnlyToolsCache is derived from registries + config flags (USE_*),
-    // not from instance URL — no need to clear on per-URL refresh.
+    const currentKey = this.capabilityCacheKey(url);
+    const prefix = `${url}\0`;
+    // Each successful build replaces its view atomically. A failed refresh keeps
+    // its own verified snapshot, including descriptors and statistics.
     this.buildToolLookupCache(url);
+    for (const key of this.toolLookupCaches.keys()) {
+      if (key === currentKey || (key !== url && !key.startsWith(prefix))) continue;
+      const tier = key === url ? null : (key.slice(prefix.length) as GitLabTier);
+      runWithNamespaceTier(url, tier, () => this.buildToolLookupCache(url));
+    }
   }
 
   /**
@@ -825,7 +841,8 @@ class RegistryManager {
     const unreachableMode = this.isUnreachableFor(instanceUrl);
     // In unreachable mode, rebuild every call (transient state — don't cache
     // a context-only list that would persist after recovery)
-    const cachedDefs = this.toolDefinitionsCaches.get(url)?.get(mode);
+    const key = this.capabilityCacheKey(url);
+    const cachedDefs = this.toolDefinitionsCaches.get(key)?.get(mode);
     if (cachedDefs === undefined || unreachableMode) {
       const contextTools = unreachableMode ? this.registries.get('context') : null;
 
@@ -840,9 +857,9 @@ class RegistryManager {
         return this.forScopes(defs, scopes);
       }
       const modes =
-        this.toolDefinitionsCaches.get(url) ?? new Map<ClientSchemaMode, ToolDefinition[]>();
+        this.toolDefinitionsCaches.get(key) ?? new Map<ClientSchemaMode, ToolDefinition[]>();
       modes.set(mode, defs);
-      this.toolDefinitionsCaches.set(url, modes);
+      this.toolDefinitionsCaches.set(key, modes);
       return this.forScopes(defs, scopes);
     }
 
@@ -884,7 +901,8 @@ class RegistryManager {
   ): ToolDefinition[] {
     const url = this.resolveCacheUrl(instanceUrl);
     const cache = this.resolveCache(instanceUrl);
-    const cachedDefs = this.toolDefinitionsCaches.get(url)?.get(mode);
+    const key = this.capabilityCacheKey(url);
+    const cachedDefs = this.toolDefinitionsCaches.get(key)?.get(mode);
     // Return the cached full-list when available (same object already stored by
     // getAllToolDefinitions on healthy path). If the cache is absent (e.g. first
     // call, or was cleared after an invalidation) build it now without the
@@ -897,9 +915,9 @@ class RegistryManager {
       defs.push(this.toToolDefinition(tool, mode));
     }
     const modes =
-      this.toolDefinitionsCaches.get(url) ?? new Map<ClientSchemaMode, ToolDefinition[]>();
+      this.toolDefinitionsCaches.get(key) ?? new Map<ClientSchemaMode, ToolDefinition[]>();
     modes.set(mode, defs);
-    this.toolDefinitionsCaches.set(url, modes);
+    this.toolDefinitionsCaches.set(key, modes);
     return defs;
   }
 
@@ -1151,7 +1169,8 @@ class RegistryManager {
     const url = this.resolveCacheUrl(instanceUrl);
     const cache = this.resolveCache(instanceUrl);
     const unreachableMode = this.isUnreachableFor(instanceUrl);
-    const cachedNames = this.toolNamesCaches.get(url);
+    const key = this.capabilityCacheKey(url);
+    const cachedNames = this.toolNamesCaches.get(key);
     if (cachedNames === undefined || unreachableMode) {
       const contextTools = unreachableMode ? this.registries.get('context') : null;
       const names = Array.from(cache.keys()).filter(
@@ -1160,7 +1179,7 @@ class RegistryManager {
       if (unreachableMode) {
         return names;
       }
-      this.toolNamesCaches.set(url, names);
+      this.toolNamesCaches.set(key, names);
       return names;
     }
     return cachedNames;
@@ -1260,6 +1279,7 @@ class RegistryManager {
     // raw instanceUrl for reachability (preserves undefined → global fallback),
     // resolved url for instance context loading (avoids currentInstanceUrl leakage).
     const url = this.resolveCacheUrl(instanceUrl);
+    const key = this.capabilityCacheKey(url);
     const unreachableMode = this.isUnreachableFor(instanceUrl);
     const contextTools = unreachableMode ? this.registries.get('context') : null;
 
@@ -1306,7 +1326,7 @@ class RegistryManager {
       // reflecting the real total so whoami doesn't show totalToolCount: 0.
       const filteredTotal = totalTools;
       return (
-        (accountScopes === undefined ? this.filterStatsCaches.get(url) : undefined) ?? {
+        (accountScopes === undefined ? this.filterStatsCaches.get(key) : undefined) ?? {
           available: 0,
           total: filteredTotal,
           filteredByScopes: filteredTotal,
@@ -1341,7 +1361,7 @@ class RegistryManager {
       filteredByActionDenial,
       filteredByAdmin,
     };
-    if (accountScopes === undefined) this.filterStatsCaches.set(url, stats);
+    if (accountScopes === undefined) this.filterStatsCaches.set(key, stats);
     return stats;
   }
 

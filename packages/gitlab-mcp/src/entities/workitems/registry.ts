@@ -590,7 +590,9 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
                   validationFailure.requiredVersion,
                   validationFailure.detectedVersion,
                   normalizeTier(validationFailure.requiredTier),
-                  normalizeTier(validationFailure.currentTier),
+                  validationFailure.currentTier === null
+                    ? undefined
+                    : normalizeTier(validationFailure.currentTier),
                 ),
               );
             }
@@ -863,7 +865,9 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
                   validationFailure.requiredVersion,
                   validationFailure.detectedVersion,
                   normalizeTier(validationFailure.requiredTier),
-                  normalizeTier(validationFailure.currentTier),
+                  validationFailure.currentTier === null
+                    ? undefined
+                    : normalizeTier(validationFailure.currentTier),
                 ),
               );
             }

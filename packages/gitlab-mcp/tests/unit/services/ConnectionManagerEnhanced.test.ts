@@ -772,7 +772,7 @@ describe('ConnectionManager Enhanced Tests', () => {
         connectionManager.isFeatureAvailable(
           undefined as unknown as keyof import('../../../src/services/GitLabVersionDetector').GitLabInstanceInfo['features'],
         ),
-      ).toBe(undefined);
+      ).toBeNull();
     });
 
     it('should handle instance info with missing features', async () => {
@@ -789,7 +789,7 @@ describe('ConnectionManager Enhanced Tests', () => {
 
       // Should handle gracefully without throwing
       expect(() => connectionManager.isFeatureAvailable('workItems')).not.toThrow();
-      expect(connectionManager.isFeatureAvailable('workItems')).toBe(undefined);
+      expect(connectionManager.isFeatureAvailable('workItems')).toBeNull();
     });
 
     it('should handle parallel initialization attempts', async () => {

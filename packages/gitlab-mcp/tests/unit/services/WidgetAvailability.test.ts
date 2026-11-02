@@ -50,6 +50,22 @@ describe('WidgetAvailability', () => {
   });
 
   describe('widget availability by tier', () => {
+    // Missing billing visibility must not reject a supported widget or bypass its version gate.
+    it('keeps unknown namespace tiers distinct from Free', () => {
+      mockConnectionManager.getInstanceInfo.mockReturnValue({
+        ...mockInstanceInfoFree,
+        tier: null,
+      });
+      expect(WidgetAvailability.isWidgetAvailable(WorkItemWidgetTypes.WEIGHT)).toBe(true);
+      expect(WidgetAvailability.validateWidgetParams({ weight: 1 })).toBeNull();
+      mockConnectionManager.getInstanceInfo.mockReturnValue({
+        ...mockInstanceInfoFree,
+        version: '16.0',
+        tier: null,
+      });
+      expect(WidgetAvailability.isWidgetAvailable(WorkItemWidgetTypes.CUSTOM_FIELDS)).toBe(false);
+    });
+
     describe('free tier widgets', () => {
       beforeEach(() => {
         mockConnectionManager.getInstanceInfo.mockReturnValue(mockInstanceInfoFree);

@@ -22,7 +22,7 @@ The GitLab MCP integration tests follow a **dependency chain pattern** to ensure
 ## 🚨 Critical Rules
 
 1. **Tests CANNOT run standalone** - They depend on lifecycle data
-2. **Must use `--runInBand`** - Tests must run serially to maintain dependencies
+2. **Integration suites run serially** - Use the maintained integration scripts to preserve lifecycle order
 3. **Single infrastructure creation** - Only data-lifecycle.test.ts creates data
 4. **No individual cleanup** - Only final cleanup in data-lifecycle.test.ts
 5. **Real data only** - No mocks, all tests use actual GitLab entities
@@ -55,14 +55,36 @@ enables `--experimental-vm-modules` so Jest can load jsdom's ESM dependencies fr
 the CommonJS settings-panel tests. Use `test`, `test:cov`, `test:integration` or
 `test:all` rather than invoking Jest without that runtime option.
 
-### Complete Integration Test Suite (Recommended)
+### Select the required suite
+
+Run these from `packages/gitlab-mcp`:
+
+| Command | Executes | External prerequisites |
+| --- | --- | --- |
+| `yarn test` | Unit tests only | None |
+| `yarn test:cov` | Unit tests with coverage | None |
+| `yarn test:integration` | Integration suites in lifecycle order | Protected `.env.test`, designated test namespace |
+| `yarn test:all` | Unit and integration suites | The same integration environment |
+
+The Linux publishing-workflow regression runs separately from the portable unit
+suite and requires Bash. The required Quality Checks job executes it with:
+
 ```bash
-yarn test
+node --test tests/scripts/docs-download.test.mjs
 ```
+
+### Complete Unit and Integration Test Suite (requires `.env.test`)
+```bash
+yarn test:all
+```
+
+Treat this as full-suite evidence only with the protected `.env.test` configuration
+and designated test namespace available. Without that file, the test configuration
+selects unit tests only, even when this command succeeds.
 
 This command:
 - ✅ Uses all feature flags (WORKITEMS, MILESTONE, PIPELINE, GITLAB_WIKI)
-- ✅ Runs tests in dependency order with `--runInBand`
+- ✅ Runs suites serially with one worker and lifecycle ordering; accumulated worker memory can be reclaimed between files
 - ✅ Creates complete infrastructure once
 - ✅ Tests all schemas with real data
 - ✅ Cleans up everything at the end
@@ -70,10 +92,10 @@ This command:
 ### Individual Test Files (NOT RECOMMENDED)
 ```bash
 # ❌ DON'T DO THIS - Will fail due to missing dependencies
-yarn test tests/integration/schemas-dependent/merge-requests.test.ts
+yarn test:integration --runTestsByPath tests/integration/schemas-dependent/merge-requests.test.ts
 
 # ✅ If you must, run the full chain:
-yarn test
+yarn test:integration
 ```
 
 ## 📊 Data Lifecycle Stages
@@ -163,7 +185,7 @@ describe('My Schema Tests', () => {
 ```
 Error: Test data not available. Make sure to run data-lifecycle.test.ts first with --runInBand
 ```
-**Solution:** Use `yarn test` instead of individual test files.
+**Solution:** Use `yarn test:integration` instead of individual dependent files.
 
 ### Tests running in parallel
 ```
@@ -186,30 +208,16 @@ Test expects MRs but none found
 5. **Clean**: Single cleanup operation at the end
 6. **Maintainable**: Clear separation between data creation and testing
 
-## ✅ Current Status (2025-01-15)
+## Current results and installed-client qualification
 
-**🎉 ALL CRITICAL ISSUES RESOLVED**:
-- ✅ **Complete test suite passing** - 27/27 test suites, 369/372 tests passing (99.2%)
-- ✅ **Unit tests completely rewritten** - Proper mock infrastructure using enhancedFetch
-- ✅ **Integration tests fully working** - Real GitLab API testing with data lifecycle
-- ✅ **Node-fetch migration complete** - All tests now use native fetch API
-- ✅ **Test dependency chain FIXED** - Persistent file storage enables data sharing between test files
-- ✅ **Soft-fail patterns eliminated** - All tests use real data or fail properly
-- ✅ **Jest configuration enhanced** - Proper serial execution with `--runInBand`
+Use the CI results and coverage report for the exact commit under review. Historical
+test counts do not establish the state of a current release, and unit-only results
+do not establish that integration suites ran.
 
-**Test Results Summary**:
-- **Total Test Suites**: 27 passed, 0 failed
-- **Total Tests**: 369 passed, 3 skipped, 0 failed (372 total)
-- **Integration Tests**: 16 suites passing (200+ tests)
-- **Unit Tests**: 11 suites passing (169+ tests)
-- **Coverage**: 54.92% statements, 37.39% branches, 53.28% functions
-
-**Key Test Categories**:
-- ✅ **Data Lifecycle**: 12/12 tests passing - Complete infrastructure setup/teardown
-- ✅ **Schema Validation**: 150+ tests passing - All GitLab API schemas validated
-- ✅ **Unit Tests**: 169+ tests passing - Full mock-based handler testing
-- ✅ **Work Items GraphQL**: 20+ tests passing - Full CRUD with real GitLab instance
-- ✅ **Integration API**: 30+ tests passing - Real GitLab API validation
+The [Codex release qualification procedure](packages/gitlab-mcp/docs/guides/codex-qualification.md)
+separates archive/CLI checks, read-only provider checks and manual desktop acceptance.
+The [workflow evaluation guide](packages/gitlab-mcp/docs/guides/codex-workflows.md)
+describes authenticated client evaluations against deterministic loopback fixtures.
 
 ## 🎯 Adding New Tests
 

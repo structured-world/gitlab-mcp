@@ -1,5 +1,11 @@
 import { GraphQLClient } from '../graphql/client';
-import { GitLabVersionDetector, GitLabInstanceInfo } from './GitLabVersionDetector';
+import {
+  GitLabVersionDetector,
+  GitLabInstanceInfo,
+  type GitLabTier,
+  type GitLabFeatures,
+} from './GitLabVersionDetector';
+import { currentNamespaceTier, hasNamespaceSubscriptions } from './namespace-tier-context';
 import { SchemaIntrospector, SchemaInfo, type SchemaFieldIndex } from './SchemaIntrospector';
 import {
   detectTokenScopes,
@@ -31,6 +37,12 @@ interface CacheEntry {
   instanceInfo: GitLabInstanceInfo;
   timestamp: number;
 }
+
+/** Instance facts projected into the current namespace, without mutating shared detection. */
+export type RequestInstanceInfo = Omit<GitLabInstanceInfo, 'tier' | 'features'> & {
+  tier: GitLabTier | null;
+  features: Partial<GitLabFeatures>;
+};
 
 /**
  * Per-URL instance state. Each GitLab URL gets isolated client, detectors,
@@ -711,12 +723,24 @@ export class ConnectionManager {
     return state.schemaIntrospector;
   }
 
-  public getInstanceInfo(instanceUrl?: string): GitLabInstanceInfo {
+  public getInstanceInfo(instanceUrl?: string): RequestInstanceInfo {
     const [state, resolvedUrl] = this.resolveState(instanceUrl);
     if (!state.instanceInfo) {
       throw new Error(
         `Instance information is not available for ${resolvedUrl}. Initialization may have completed without version detection (OAuth deferred/REST-only mode).`,
       );
+    }
+    if (hasNamespaceSubscriptions(resolvedUrl)) {
+      const namespace = currentNamespaceTier(resolvedUrl);
+      const tier = namespace === undefined ? null : namespace.tier;
+      return {
+        ...state.instanceInfo,
+        tier,
+        features:
+          tier === null || state.instanceInfo.version === 'unknown'
+            ? {}
+            : GitLabVersionDetector.determineFeatures(state.instanceInfo.version, tier),
+      };
     }
     return state.instanceInfo;
   }
@@ -780,13 +804,14 @@ export class ConnectionManager {
   public isFeatureAvailable(
     feature: keyof GitLabInstanceInfo['features'],
     instanceUrl?: string,
-  ): boolean {
+  ): boolean | null {
     const url = instanceUrl ? normalizeInstanceUrl(instanceUrl) : this.callInstanceUrl();
     if (!url) return false;
     const state = this.instances.get(url);
     if (!state?.instanceInfo) return false;
     this.touchInstance(url); // Keep entry alive in LRU window.
-    return state.instanceInfo.features[feature];
+    const value = this.getInstanceInfo(url).features[feature];
+    return value ?? null;
   }
 
   public getTier(instanceUrl?: string): string {
@@ -795,7 +820,8 @@ export class ConnectionManager {
     const state = this.instances.get(url);
     if (!state?.instanceInfo) return 'unknown';
     this.touchInstance(url); // Keep entry alive in LRU window.
-    return state.instanceInfo.tier;
+    const tier = this.getInstanceInfo(url).tier;
+    return tier ?? 'unknown';
   }
 
   public getVersion(instanceUrl?: string): string {

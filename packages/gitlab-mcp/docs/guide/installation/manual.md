@@ -13,7 +13,10 @@ For users who prefer full control over their setup, you can configure GitLab MCP
 
 ## Configuration Format
 
-All MCP clients use a JSON configuration with the same structure:
+Configuration formats depend on the client. The JSON examples below use the
+`mcpServers` format accepted by Claude Desktop and Cursor. VS Code workspace
+configuration uses `servers` in `.vscode/mcp.json`; Codex manual registration uses
+TOML. Follow the corresponding [client guide](/clients/) before copying an example.
 
 ```json
 {
@@ -46,7 +49,11 @@ See [Supported Clients](/clients/) for the config file location specific to your
 
 ### 3. Edit the Configuration
 
-Add the `gitlab` entry to the `mcpServers` object in your config file. If the file doesn't exist, create it with the full JSON structure above.
+For the clients using the format above, add `gitlab` under `mcpServers` and preserve
+any existing entries. If the file does not exist, create the full structure.
+For VS Code, use its [workspace configuration example](/clients/vscode#configuration),
+including the secure token input. For Codex, follow the
+[Codex installation guide](/guide/installation/codex).
 
 ### 4. Set Environment Variables
 
@@ -120,18 +127,20 @@ For containerized execution:
 
 ## Alternative: HTTP/SSE Remote Server
 
-For connecting to a running GitLab MCP server:
+For connecting Claude Code to a running GitLab MCP server:
 
 ```json
 {
   "mcpServers": {
     "gitlab": {
-      "type": "streamable-http",
+      "type": "http",
       "url": "http://localhost:3333/mcp"
     }
   }
 }
 ```
+
+Other clients use different configuration formats. See the [client guides](/clients/).
 
 ## Verifying Configuration
 

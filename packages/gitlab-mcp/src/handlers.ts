@@ -72,6 +72,14 @@ import { operatorProjectRejection, withOperatorProjects } from './configuration/
 import { assertOperatorOwnership } from './configuration/operator-ownership';
 import { extractProjectsFromArgs } from './profiles/scope-enforcer';
 import { withDefaultProject } from './configuration/default-project';
+import {
+  withNamespaceCapabilities,
+  namespaceTargetsForScope,
+  namespaceTargetsForArgs,
+  needsNamespaceTier,
+} from './configuration/namespace-capabilities';
+import { canResolveNamespaceTier } from './services/NamespaceTierDetector';
+import { hasNamespaceSubscriptions } from './services/namespace-tier-context';
 
 interface JsonSchemaProperty {
   type?: string;
@@ -663,7 +671,7 @@ function recordToolError(errMsg: string): void {
 async function withoutRestrictedTools<
   T extends { name: string; inputSchema: Record<string, unknown> },
 >(
-  tools: T[],
+  tools: () => T[],
   caller: Caller,
   registryManager: import('./registry-manager').RegistryManager,
 ): Promise<T[]> {
@@ -672,10 +680,26 @@ async function withoutRestrictedTools<
     policy = (await getConfigurationService().resolve(caller)).policy;
   } catch (error: unknown) {
     logWarn('Could not read the caller settings for the tool list', { err: error as Error });
-    return tools;
+    return tools();
   }
+  const catalog = await runWithCaller(caller, async () => {
+    let targets = namespaceTargetsForScope(policy.scope);
+    if (hasNamespaceSubscriptions(caller.instanceUrl) && GITLAB_ALLOWED_PROJECT_IDS.length > 0) {
+      targets = [];
+      if (canResolveNamespaceTier(caller.instanceUrl)) {
+        try {
+          const operatorPolicy = await withOperatorProjects(policy);
+          targets = namespaceTargetsForScope(operatorPolicy.scope);
+        } catch {
+          // Billing discovery is optional; execution still verifies operator restrictions.
+          logWarn('Could not resolve operator projects for namespace discovery');
+        }
+      }
+    }
+    return withNamespaceCapabilities(caller.instanceUrl, targets, true, tools);
+  });
   const listed: T[] = [];
-  for (const tool of tools) {
+  for (const tool of catalog) {
     const inputSchema = listedToolSchema(
       policy,
       registryManager.getToolFacts(tool.name),
@@ -783,7 +807,7 @@ async function executeInScope(
   toolName: string,
   requested: Record<string, unknown>,
   policy: EffectivePolicy,
-  instanceUrl: string | undefined,
+  instanceUrl: string,
   requestScopes: readonly string[] | undefined,
   expired: () => boolean,
 ): Promise<unknown> {
@@ -792,11 +816,23 @@ async function executeInScope(
   // executeScoped wraps this runner so every call it makes in place of the requested one is
   // held to the preset's denied actions; the operator's are checked by each tool itself.
   const run = (tool: string, toolArgs: Record<string, unknown>): Promise<unknown> => {
-    if (tool === 'browse_duo_sessions' || tool === 'manage_duo_session')
-      return registryManager.executeTool(tool, toolArgs, instanceUrl, requestScopes, policy);
-    if (requestScopes === undefined)
-      return registryManager.executeTool(tool, toolArgs, instanceUrl);
-    return registryManager.executeTool(tool, toolArgs, instanceUrl, requestScopes);
+    const dispatch = (validated: Record<string, unknown>): Promise<unknown> => {
+      if (expired()) return Promise.reject(new Error('Tool call expired before execution'));
+      if (tool === 'browse_duo_sessions' || tool === 'manage_duo_session')
+        return registryManager.executeTool(tool, validated, instanceUrl, requestScopes, policy);
+      if (requestScopes === undefined)
+        return registryManager.executeTool(tool, validated, instanceUrl);
+      return registryManager.executeTool(tool, validated, instanceUrl, requestScopes);
+    };
+    const definition = registryManager.getTool(tool, instanceUrl, requestScopes);
+    const action = toolArgs.action;
+    if (typeof action === 'string' && definition?.unavailableActions?.has(action.toLowerCase()))
+      return dispatch(toolArgs);
+    if (!needsNamespaceTier(definition?.requirements)) return dispatch(toolArgs);
+    const validated = parseScopedArguments(tool, toolArgs);
+    return withNamespaceCapabilities(instanceUrl, namespaceTargetsForArgs(validated), false, () =>
+      dispatch(validated),
+    );
   };
   return executeScoped(run, toolName, requested, policy, true);
 }
@@ -1022,7 +1058,7 @@ export async function setupHandlers(server: Server): Promise<void> {
     // OAuth deployments declare the token every tool needs; static-token mode keeps
     // the descriptors as before.
     const securitySchemes = isCatalogOAuth() ? OAUTH_SECURITY_SCHEMES : undefined;
-    const catalog =
+    const catalog = () =>
       scopes === undefined
         ? registryManager.getAllToolDefinitions(sessionInstanceUrl, mode)
         : registryManager.getAllToolDefinitions(sessionInstanceUrl, mode, scopes);

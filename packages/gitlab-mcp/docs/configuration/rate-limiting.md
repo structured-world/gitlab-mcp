@@ -13,10 +13,16 @@ Configure per-instance rate limiting to prevent overwhelming GitLab instances wi
 
 ## Overview
 
-GitLab MCP implements per-instance rate limiting to:
-- Prevent hitting GitLab API rate limits
+GitLab MCP implements a shared per-instance concurrency queue to:
+- Bound simultaneous outbound API requests
 - Ensure fair resource usage in multi-user environments
 - Protect self-hosted instances from overload
+
+This queue does not impose a requests-per-minute quota and cannot guarantee that
+GitLab will not return 429. It is separate from the inbound MCP/OAuth request limits
+described in [OAuth request rate limits](/security/oauth#request-rate-limits).
+GitLab response errors expose retry guidance, including `Retry-After` when supplied;
+the server does not automatically replay a write.
 
 ## Configuration
 
@@ -101,7 +107,9 @@ rateLimit:
   queueTimeout: 60000
 ```
 
-GitLab.com can handle high concurrency but has its own rate limits (2000 requests/minute for authenticated users).
+GitLab.com has its own endpoint- and account-specific rate limits. Check the
+[current GitLab.com limits](https://docs.gitlab.com/user/gitlab_com/rate_limits/)
+and reduce concurrency when the server returns 429.
 
 ### Self-Hosted (Production)
 

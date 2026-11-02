@@ -9,7 +9,9 @@ head:
 
 # Local stdio Deployment
 
-Run GitLab MCP locally via standard I/O. The MCP client spawns the server process directly — no network, no ports, no containers.
+Run GitLab MCP locally via standard I/O. The MCP client spawns the server process
+directly, without a local HTTP listener or container. The server still needs network
+access to GitLab.
 
 ## When to Use
 
@@ -79,7 +81,7 @@ See [Configuration reference](/guide/configuration) for all options.
 
 ## Limitations
 
-- One instance per MCP client
+- One server process per MCP client; that process can use several configured GitLab instances
 - No shared access between users
 - No OAuth support (token-based only)
 - Process lifecycle tied to the MCP client

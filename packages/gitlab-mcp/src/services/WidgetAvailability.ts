@@ -2,7 +2,7 @@ import { WorkItemWidgetType, WorkItemWidgetTypes } from '../graphql/workItems';
 import { ConnectionManager } from './ConnectionManager';
 import { GitLabTier } from './GitLabVersionDetector';
 import { parseVersion } from '../utils/version';
-import { effectiveMinVersion } from './InstanceCapabilities';
+import { effectiveMinVersion, TIER_ORDER } from './InstanceCapabilities';
 import { logDebug } from '../logger';
 
 interface WidgetRequirement {
@@ -20,14 +20,8 @@ export interface WidgetValidationFailure {
   requiredVersion: string;
   detectedVersion: string;
   requiredTier: GitLabTier;
-  currentTier: GitLabTier;
+  currentTier: GitLabTier | null;
 }
-
-const TIER_HIERARCHY: Record<GitLabTier, number> = {
-  free: 0,
-  premium: 1,
-  ultimate: 2,
-};
 
 /**
  * Maps manage_work_item input parameters to their corresponding widget types.
@@ -128,12 +122,12 @@ export class WidgetAvailability {
       }
 
       // Check tier requirement
-      if (requirement.tier === 'free') {
-        return true; // Available to all tiers
+      if (requirement.tier === 'free' || instanceInfo.tier === null) {
+        return true; // No confirmed subscription restriction.
       }
 
-      const requiredTierLevel = TIER_HIERARCHY[requirement.tier];
-      const actualTierLevel = TIER_HIERARCHY[instanceInfo.tier];
+      const requiredTierLevel = TIER_ORDER[requirement.tier];
+      const actualTierLevel = TIER_ORDER[instanceInfo.tier];
 
       return actualTierLevel >= requiredTierLevel;
     } catch {
@@ -171,7 +165,7 @@ export class WidgetAvailability {
     const connectionManager = ConnectionManager.getInstance();
 
     let instanceVersion: string;
-    let instanceTier: GitLabTier;
+    let instanceTier: GitLabTier | null;
 
     try {
       const instanceInfo = connectionManager.getInstanceInfo(instanceUrl);
@@ -212,9 +206,9 @@ export class WidgetAvailability {
       }
 
       // Check tier requirement
-      if (requirement.tier !== 'free') {
-        const requiredTierLevel = TIER_HIERARCHY[requirement.tier];
-        const actualTierLevel = TIER_HIERARCHY[instanceTier];
+      if (requirement.tier !== 'free' && instanceTier !== null) {
+        const requiredTierLevel = TIER_ORDER[requirement.tier];
+        const actualTierLevel = TIER_ORDER[instanceTier];
 
         if (actualTierLevel < requiredTierLevel) {
           return {

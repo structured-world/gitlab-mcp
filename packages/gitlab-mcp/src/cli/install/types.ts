@@ -121,6 +121,21 @@ export interface ClientMetadata {
 /**
  * Client metadata registry
  */
+const ROO_SETTINGS_SUFFIX =
+  'Code/User/globalStorage/rooveterinaryinc.roo-cline/settings/mcp_settings.json';
+
+function rooConfigPath(platform: 'darwin' | 'win32' | 'linux'): string {
+  // Match VS Code's application-data precedence for the default profile.
+  // https://github.com/microsoft/vscode/blob/main/src/vs/platform/environment/node/userDataPath.ts
+  const appData = process.env.VSCODE_APPDATA;
+  if (appData) return `${appData}/${ROO_SETTINGS_SUFFIX}`;
+  if (platform === 'darwin') return `~/Library/Application Support/${ROO_SETTINGS_SUFFIX}`;
+  if (platform === 'win32') return `%APPDATA%/${ROO_SETTINGS_SUFFIX}`;
+  const configHome = process.env.XDG_CONFIG_HOME;
+  if (configHome) return `${configHome}/${ROO_SETTINGS_SUFFIX}`;
+  return `~/.config/${ROO_SETTINGS_SUFFIX}`;
+}
+
 export const CLIENT_METADATA: Record<InstallableClient, ClientMetadata> = {
   'claude-desktop': {
     name: 'Claude Desktop',
@@ -190,9 +205,15 @@ export const CLIENT_METADATA: Record<InstallableClient, ClientMetadata> = {
   'roo-code': {
     name: 'Roo Code',
     configPaths: {
-      darwin: '~/.roo/mcp.json',
-      win32: '%USERPROFILE%/.roo/mcp.json',
-      linux: '~/.roo/mcp.json',
+      get darwin(): string {
+        return rooConfigPath('darwin');
+      },
+      get win32(): string {
+        return rooConfigPath('win32');
+      },
+      get linux(): string {
+        return rooConfigPath('linux');
+      },
     },
     supportsCliInstall: false,
     detectionMethod: 'config-file',

@@ -47,11 +47,13 @@ Clients connect to `OAUTH_ISSUER` (from the `.env` file below) with `/mcp` appen
 discovery metadata names that URL as the resource, so a client using any other address
 rejects the server or receives tokens for a different resource.
 
+For example, Claude Code uses this HTTP configuration:
+
 ```json
 {
   "mcpServers": {
     "gitlab": {
-      "type": "streamable-http",
+      "type": "http",
       "url": "https://mcp.example.com/mcp"
     }
   }
@@ -60,6 +62,9 @@ rejects the server or receives tokens for a different resource.
 
 For local testing set `OAUTH_ISSUER=http://localhost:3333` and connect to
 `http://localhost:3333/mcp`.
+
+Other clients use different configuration formats. Follow the
+[client-specific instructions](/clients/).
 
 ## docker-compose.yml
 

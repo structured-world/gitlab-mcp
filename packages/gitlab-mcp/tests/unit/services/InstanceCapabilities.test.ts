@@ -24,6 +24,17 @@ const free17: CapabilityGate = { version: '17.0.0', tier: 'free' };
 const premium17: CapabilityGate = { version: '17.0.0', tier: 'premium' };
 const ultimate17: CapabilityGate = { version: '17.0.0', tier: 'ultimate' };
 
+// Missing billing visibility cannot stand for Free, while version/admin checks still apply.
+test('an unknown namespace tier does not bypass version or admin requirements', () => {
+  const unknown: CapabilityGate = { version: '17.0.0', tier: null };
+  expect(meetsRequirement({ tier: 'ultimate' }, unknown)).toBe(true);
+  expect(meetsRequirement({ tier: 'ultimate', minVersion: '18.0' }, unknown)).toBe(false);
+  expect(meetsRequirement({ requiresAdmin: true }, { ...unknown, adminModeActive: false })).toBe(
+    false,
+  );
+  expect(getUnmetReason({ default: { tier: 'ultimate' } }, unknown)).toBeNull();
+});
+
 const reqs: ToolRequirements = {
   default: { tier: 'free', minVersion: '8.0' },
   actions: {

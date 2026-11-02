@@ -15,7 +15,7 @@ export function instanceAtLeast(minVersion: string): boolean {
 }
 
 /** Detected version/tier of the instance serving the current request, if known. */
-export function currentInstance(): { version: string; tier: GitLabTier } | undefined {
+export function currentInstance(): { version: string; tier: GitLabTier | null } | undefined {
   try {
     return ConnectionManager.getInstance().getInstanceInfo(getGitLabApiUrlFromContext());
   } catch {

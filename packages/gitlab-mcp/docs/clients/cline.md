@@ -60,12 +60,17 @@ Connect to a running GitLab MCP HTTP server:
 {
   "mcpServers": {
     "gitlab": {
-      "type": "streamable-http",
+      "type": "streamableHttp",
       "url": "http://localhost:3333/mcp"
     }
   }
 }
 ```
+
+Cline's transport identifier is `streamableHttp`. You can also add the endpoint
+through **MCP Servers > Remote Servers**, choosing Streamable HTTP. Use
+**Configure MCP Servers** to locate the IDE extension's active configuration file;
+the CLI uses a separate configuration. See [Cline's MCP guide](https://docs.cline.bot/mcp/mcp-overview).
 
 ## Verification
 

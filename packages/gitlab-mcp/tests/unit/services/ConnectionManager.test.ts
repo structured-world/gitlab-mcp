@@ -4,6 +4,7 @@
  */
 
 import { ConnectionManager, type InstanceState } from '../../../src/services/ConnectionManager';
+import { GitLabVersionDetector } from '../../../src/services/GitLabVersionDetector';
 import { runWithCaller } from '../../../src/configuration/caller';
 
 // Mock isOAuthEnabled and getGitLabApiUrlFromContext
@@ -80,6 +81,53 @@ describe('ConnectionManager Unit', () => {
   beforeEach(() => {
     // Reset singleton instance for each test
     (ConnectionManager as unknown as { instance: null }).instance = null;
+  });
+
+  // Instance-wide detection must not manufacture a subscription shared by SaaS namespaces.
+  it('projects request-local subscriptions without changing the stored connection', async () => {
+    const { runWithNamespaceTier } = await import('../../../src/services/namespace-tier-context');
+    const manager = ConnectionManager.getInstance();
+    const stored = {
+      version: '19.5.0',
+      tier: 'free' as const,
+      features: GitLabVersionDetector.determineFeatures('19.5.0', 'free'),
+      detectedAt: new Date(),
+    };
+    injectInstanceState(manager, 'https://gitlab.com', { instanceInfo: stored });
+    expect(manager.getInstanceInfo('https://gitlab.com').tier).toBeNull();
+    expect(manager.isFeatureAvailable('epics', 'https://gitlab.com')).toBeNull();
+    await Promise.all(
+      ['free', 'ultimate'].map((tier) =>
+        runWithNamespaceTier('https://gitlab.com', tier as 'free' | 'ultimate', async () => {
+          await Promise.resolve();
+          expect(manager.getInstanceInfo('https://gitlab.com').tier).toBe(tier);
+          expect(manager.isFeatureAvailable('epics', 'https://gitlab.com')).toBe(
+            tier === 'ultimate',
+          );
+        }),
+      ),
+    );
+    expect(stored.tier).toBe('free');
+    expect(manager.getInstanceInfo('https://gitlab.com').tier).toBeNull();
+  });
+
+  // Knowing a subscription does not establish which version-dependent widgets exist.
+  it('keeps feature availability unknown until the SaaS version is known', async () => {
+    const { runWithNamespaceTier } = await import('../../../src/services/namespace-tier-context');
+    const manager = ConnectionManager.getInstance();
+    injectInstanceState(manager, 'https://gitlab.com', {
+      instanceInfo: {
+        version: 'unknown',
+        tier: 'free',
+        features: GitLabVersionDetector.determineFeatures('19.5.0', 'free'),
+        detectedAt: new Date(),
+      },
+    });
+    runWithNamespaceTier('https://gitlab.com', 'ultimate', () => {
+      expect(manager.getInstanceInfo('https://gitlab.com').features).toEqual({});
+      expect(manager.getTier('https://gitlab.com')).toBe('ultimate');
+      expect(manager.isFeatureAvailable('epics', 'https://gitlab.com')).toBeNull();
+    });
   });
 
   describe('singleton pattern', () => {

@@ -12,7 +12,7 @@ howto:
     - name: "Get a GitLab Token"
       text: "Create a Personal Access Token in GitLab with 'api' and 'read_user' scopes. Go to GitLab Settings > Access Tokens, create a new token with the required scopes, and copy it."
     - name: "Configure Your MCP Client"
-      text: "Add the gitlab-mcp server configuration to your MCP client (Claude Desktop, VS Code, Cursor, etc.). Set GITLAB_TOKEN to your token and GITLAB_API_URL to your GitLab instance URL."
+      text: "Follow your client's configuration guide. The JSON example below is for Claude Desktop and Cursor; VS Code uses a different format. Set GITLAB_TOKEN to your token and GITLAB_API_URL to your GitLab instance URL."
     - name: "Start Using GitLab MCP"
       text: "The server starts automatically when your MCP client connects. All default tools are enabled. You can now ask your AI agent to interact with GitLab."
 ---
@@ -38,7 +38,12 @@ See the [step-by-step authentication guide](/guide/authentication) for detailed 
 
 ## 2. Configure Your MCP Client
 
-Add to your MCP client configuration:
+The example below is for Claude Desktop and Cursor. VS Code workspace configuration
+uses `servers` instead of `mcpServers`; follow the [VS Code guide](/clients/vscode).
+For Codex, use the [plugin or manual setup guide](/guide/installation/codex).
+Other clients have [their own configuration formats](/clients/).
+
+Add the following to a compatible client's configuration:
 
 ```json
 {

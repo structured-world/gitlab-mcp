@@ -13,6 +13,11 @@ Technical deep dive into how GitLab MCP manages multiple GitLab instances with p
 
 ## System Architecture
 
+Namespace-aware capability checks are available from 13.2.0. GitLab.com uses
+root-namespace subscriptions; self-managed instances retain their instance
+license. See [Tier Detection](/advanced/tier-detection) for visibility and unknown
+subscription behavior.
+
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                    MCP Server (single process)              │
@@ -25,7 +30,7 @@ Technical deep dive into how GitLab MCP manages multiple GitLab instances with p
 │  │ v17.2 SaaS  │ v16.8 Self  │ v16.0 Self  │               │
 │  │ Rate: 0/100 │ Rate: 5/50  │ Rate: 2/20  │               │
 │  └─────────────┴─────────────┴─────────────┘               │
-│  NOTE: No tier here! Tier is per-namespace, not instance   │
+│  SaaS tier: per root namespace; self-managed: per instance │
 ├─────────────────────────────────────────────────────────────┤
 │  SessionManager (per-user sessions)                         │
 │  ┌──────────────────┐  ┌──────────────────┐                │
@@ -64,12 +69,12 @@ Technical deep dive into how GitLab MCP manages multiple GitLab instances with p
 │ │ • User info (username, id)                                  ││
 │ └─────────────────────────────────────────────────────────────┘│
 ├─────────────────────────────────────────────────────────────────┤
-│ NAMESPACE-LEVEL CACHE (per session) — TTL: 5 min               │
-│ Tier varies per group/project, especially on gitlab.com        │
+│ NAMESPACE CACHE (session, instance, credential): TTL 5 min     │
+│ GitLab.com projects inherit their root subscription           │
 │ ┌─────────────────────────────────────────────────────────────┐│
-│ │ "gitlab-org" → Ultimate, features: {epics: ✓, iterations: ✓}││
-│ │ "my-free-group" → Free, features: {epics: ✗, iterations: ✗} ││
-│ │ "company/proj" → Premium, features: {epics: ✓, ...}         ││
+│ │ "enterprise" → Ultimate                                  ││
+│ │ "personal" → Free                                        ││
+│ │ "company" → Unknown when plan metadata is unavailable     ││
 │ └─────────────────────────────────────────────────────────────┘│
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -167,31 +172,20 @@ Request flow:
 
 ### NamespaceTierDetector
 
-Detects and caches namespace tier via GraphQL:
+Observes the REST root namespace's optional `plan` attribute. Numeric project and
+group IDs are resolved to paths before looking up their root. Credentials and
+instances have separate cache entries, with a five-minute TTL and a total
+capacity of 1,024 observations. Missing or unrecognized metadata remains unknown.
 
-```graphql
-query GetNamespaceTier($fullPath: ID!) {
-  namespace(fullPath: $fullPath) {
-    id
-    fullPath
+Discovery uses the union of the selected roots. Execution uses the actual target
+arguments. Both run inside a request-local tier context; `ConnectionManager`
+projects that fact into the existing tool and widget capability checks without
+mutating its stored instance information. Unknown tiers defer license decisions
+to GitLab while preserving version, token and operator restrictions.
 
-    ... on Group {
-      plan
-    }
-
-    ... on Project {
-      group {
-        plan
-      }
-    }
-  }
-}
-```
-
-Tier normalization:
-- `ultimate`, `gold` → Ultimate
-- `premium`, `silver`, `bronze`, `starter` → Premium
-- Everything else → Free
+See [Tier Detection](/advanced/tier-detection) for the REST contract, normalization
+and bounded lookup behavior. The cache is disposable and independent on each
+replica; it is not an authorization or session store.
 
 ### TokenContext
 

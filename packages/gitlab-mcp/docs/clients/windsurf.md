@@ -60,12 +60,14 @@ Connect to a running GitLab MCP HTTP server:
 {
   "mcpServers": {
     "gitlab": {
-      "type": "streamable-http",
-      "url": "http://localhost:3333/mcp"
+      "serverUrl": "http://localhost:3333/mcp"
     }
   }
 }
 ```
+
+Windsurf uses `serverUrl` for remote MCP endpoints. Open its MCP configuration
+from Cascade to confirm the active file for your installed version.
 
 ## Verification
 

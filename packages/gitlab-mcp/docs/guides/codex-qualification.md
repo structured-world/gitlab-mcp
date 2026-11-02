@@ -42,7 +42,12 @@ these results do not qualify the unreleased 13.2.0 package.
 
 ## Automated package and lifecycle checks
 
-From `packages/gitlab-mcp`, after installing workspace dependencies:
+This qualification command requires Node.js 24+, workspace dependencies, a Codex
+CLI executable and `unzip` available on `PATH`. The `unzip` requirement also applies
+when running qualification on Windows; it is separate from extracting the release
+ZIP through a desktop file manager.
+
+From `packages/gitlab-mcp`:
 
 ```bash
 yarn build

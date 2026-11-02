@@ -136,9 +136,9 @@ function replacePlaceholders(filePath: string, placeholders: Placeholders): bool
   const result = content
     .replace(/__TOOL_COUNT__/g, String(placeholders.toolCount))
     .replace(/__ACTION_COUNT__/g, String(placeholders.actionCount))
-    .replace(/__TOOL_GROUP_COUNT__/g, String(placeholders.toolGroupCount))
-    .replace(/__CQRS_TOOL_COUNT__/g, String(placeholders.cqrsToolCount))
-    .replace(/__HELPER_TOOL_COUNT__/g, String(placeholders.helperToolCount))
+    .replaceAll('__TOOL_GROUP_COUNT__', String(placeholders.toolGroupCount))
+    .replaceAll('__CQRS_TOOL_COUNT__', String(placeholders.cqrsToolCount))
+    .replaceAll('__HELPER_TOOL_COUNT__', String(placeholders.helperToolCount))
     .replace(/__READONLY_TOOL_COUNT__/g, String(placeholders.readonlyToolCount))
     .replace(/__VERSION__/g, placeholders.version);
 

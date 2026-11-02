@@ -53,19 +53,19 @@ export function extractActions(schema: JsonSchemaProperty): ActionInfo[] {
         });
       }
     }
-  } else {
-    const action = schema.properties?.action;
-    const names = Array.isArray(action?.enum) ? action.enum : [action?.const];
-    for (const name of names) {
-      if (typeof name === 'string')
-        actions.push({
-          name,
-          description:
-            (Array.isArray(action?.enum) ? undefined : action?.description) ??
-            ACTION_DESCRIPTIONS[name] ??
-            `Perform ${name} operation`,
-        });
-    }
+    return actions;
+  }
+  const action = schema.properties?.action;
+  const names = Array.isArray(action?.enum) ? action.enum : [action?.const];
+  for (const name of names) {
+    if (typeof name === 'string')
+      actions.push({
+        name,
+        description:
+          (Array.isArray(action?.enum) ? undefined : action?.description) ??
+          ACTION_DESCRIPTIONS[name] ??
+          `Perform ${name} operation`,
+      });
   }
   return actions;
 }

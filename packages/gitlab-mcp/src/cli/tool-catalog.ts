@@ -28,13 +28,21 @@ const ACTION_DESCRIPTIONS: Record<string, string> = {
   merge: 'Merge a merge request',
   approve: 'Approve a merge request',
   unapprove: 'Remove approval from a merge request',
+  rebase: 'Rebase a merge request',
   cancel: 'Cancel a running operation',
   retry: 'Retry a failed operation',
   play: 'Run a manual job',
   publish: 'Publish draft notes',
+  drafts: 'List draft notes',
+  draft: 'Get a single draft note',
   resolve: 'Resolve a discussion thread',
+  unresolve: 'Unresolve a discussion thread',
+  note: 'Add a note/comment',
+  mark_done: 'Mark as done',
+  mark_pending: 'Mark as pending',
   disable: 'Disable the integration',
   test: 'Test a webhook',
+  read: 'Read item details',
 };
 
 /** Action names and descriptions used by both documentation and publication metrics. */
@@ -75,6 +83,7 @@ export interface CatalogMetrics {
   cqrsToolCount: number;
   helperToolCount: number;
   actionCount: number;
+  /** Complete registry groups, including core/context, not configurable settings switches. */
   toolGroupCount: number;
   readonlyToolCount: number;
   description: string;
@@ -104,7 +113,7 @@ export function measureCatalog(catalog: {
     actionCount,
     toolGroupCount: catalog.toolGroupCount,
     readonlyToolCount,
-    description: `${toolCount} tools, ${actionCount} typed actions, ${catalog.toolGroupCount} tool groups`,
+    description: `${toolCount} tools, ${actionCount} typed actions, ${catalog.toolGroupCount} registry groups`,
   };
 }
 

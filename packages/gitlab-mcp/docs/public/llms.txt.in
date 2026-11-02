@@ -1,5 +1,5 @@
 > Advanced GitLab MCP server
-> Provides __TOOL_COUNT__ tools across __TOOL_GROUP_COUNT__ tool groups: __CQRS_TOOL_COUNT__ CQRS tools with __ACTION_COUNT__ typed actions and __HELPER_TOOL_COUNT__ setup helpers
+> Provides __TOOL_COUNT__ tools across __TOOL_GROUP_COUNT__ registry groups: __CQRS_TOOL_COUNT__ CQRS tools with __ACTION_COUNT__ typed actions and __HELPER_TOOL_COUNT__ setup helpers
 
 # Quick Start
 

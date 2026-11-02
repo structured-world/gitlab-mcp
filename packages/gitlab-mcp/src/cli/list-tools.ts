@@ -4,6 +4,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { RegistryManager } from '../registry-manager';
+import { extractActions } from './tool-catalog';
 import {
   effectiveMinVersion,
   getHighestTier,
@@ -442,11 +443,6 @@ function groupToolsByEntity(tools: any[]): Map<string, any[]> {
   return sortedGrouped;
 }
 
-interface ActionInfo {
-  name: string;
-  description: string;
-}
-
 interface ParameterInfo {
   name: string;
   type: string;
@@ -461,75 +457,6 @@ interface ActionParameter extends ParameterInfo {
 interface GroupedParameters {
   common: ParameterInfo[]; // Shared across all actions
   byAction: Map<string, ActionParameter[]>; // Action-specific parameters
-}
-
-// Action descriptions for documentation generation
-const ACTION_DESCRIPTIONS: Record<string, string> = {
-  list: 'List items with filtering and pagination',
-  get: 'Get a single item by ID',
-  create: 'Create a new item',
-  update: 'Update an existing item',
-  delete: 'Delete an item',
-  search: 'Search for items',
-  diffs: 'Get file changes/diffs',
-  compare: 'Compare two branches or commits',
-  merge: 'Merge a merge request',
-  approve: 'Approve a merge request',
-  unapprove: 'Remove approval from a merge request',
-  rebase: 'Rebase a merge request',
-  cancel: 'Cancel a running operation',
-  retry: 'Retry a failed operation',
-  play: 'Run a manual job',
-  publish: 'Publish draft notes',
-  drafts: 'List draft notes',
-  draft: 'Get a single draft note',
-  resolve: 'Resolve a discussion thread',
-  unresolve: 'Unresolve a discussion thread',
-  note: 'Add a note/comment',
-  mark_done: 'Mark as done',
-  mark_pending: 'Mark as pending',
-  disable: 'Disable the integration',
-  test: 'Test a webhook',
-  read: 'Read item details',
-};
-
-/**
- * Extract actions from a CQRS schema.
- * Tries oneOf branches first (discriminated union), falls back to action.enum (flat schema)
- */
-function extractActions(schema: JsonSchemaProperty): ActionInfo[] {
-  const actions: ActionInfo[] = [];
-
-  // Try discriminated union (oneOf) first - has richer descriptions
-  if (schema.oneOf && Array.isArray(schema.oneOf)) {
-    for (const branch of schema.oneOf) {
-      const actionProp = branch.properties?.action;
-      // In discriminated union, action has "const" instead of "enum"
-      const actionName = actionProp?.const as string | undefined;
-      if (actionName) {
-        // Use description from schema, fallback to ACTION_DESCRIPTIONS
-        const description =
-          (actionProp?.description as string) ??
-          ACTION_DESCRIPTIONS[actionName] ??
-          `Perform ${actionName} operation`;
-        actions.push({ name: actionName, description });
-      }
-    }
-    return actions;
-  }
-
-  // Fallback: flat schema with action enum
-  const actionProp = schema.properties?.action;
-  if (actionProp?.enum && Array.isArray(actionProp.enum)) {
-    for (const actionName of actionProp.enum) {
-      if (typeof actionName === 'string') {
-        const description = ACTION_DESCRIPTIONS[actionName] ?? `Perform ${actionName} operation`;
-        actions.push({ name: actionName, description });
-      }
-    }
-  }
-
-  return actions;
 }
 
 /**

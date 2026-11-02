@@ -44,7 +44,7 @@ test('metrics distinguish CQRS tools, helpers and registry groups', () => {
     actionCount: 4,
     toolGroupCount: 2,
     readonlyToolCount: 2,
-    description: '3 tools, 4 typed actions, 2 tool groups',
+    description: '3 tools, 4 typed actions, 2 registry groups',
   });
 });
 
@@ -57,7 +57,7 @@ test('empty and helper-only catalogs are measured without substitute values', ()
     actionCount: 0,
     toolGroupCount: 0,
     readonlyToolCount: 0,
-    description: '0 tools, 0 typed actions, 0 tool groups',
+    description: '0 tools, 0 typed actions, 0 registry groups',
   });
   expect(
     measureCatalog({

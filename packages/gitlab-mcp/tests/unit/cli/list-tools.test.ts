@@ -73,6 +73,24 @@ describe('list-tools script', () => {
     process.argv = originalArgv;
   });
 
+  // Literal actions must appear in exported documentation and examples, not disappear from the catalog.
+  it('exports a literal action with its existing action description and example', async () => {
+    process.argv = ['node', 'list-tools.ts', '--export'];
+    mockManager.getAllToolDefinitionsUnfiltered.mockReturnValue([
+      {
+        name: 'manage_fixture',
+        description: 'Fixture command',
+        requirements: { default: { tier: 'free' } },
+        inputSchema: { type: 'object', properties: { action: { const: 'rebase' } } },
+      },
+    ]);
+    const { main } = await import('../../../src/cli/list-tools');
+    await main();
+    const output = mockConsoleLog.mock.calls.map((call) => String(call[0])).join('\n');
+    expect(output).toContain('| `rebase` | Free | Rebase a merge request |');
+    expect(output).toContain('"action": "rebase"');
+  });
+
   it('should handle simple format output', async () => {
     process.argv = ['node', 'list-tools.ts', '--simple'];
 

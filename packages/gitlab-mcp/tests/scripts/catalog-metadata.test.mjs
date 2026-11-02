@@ -25,7 +25,9 @@ test('shipped metadata matches the current unfiltered catalog', () => {
   for (const location of ['README.md', '../../README.md', '../gitlab-mcp-db/README.md']) {
     const readme = readFileSync(new URL(location, source), 'utf8');
     assert(
-      readme.includes(`${metrics.toolCount} tools across ${metrics.toolGroupCount} tool groups`),
+      readme.includes(
+        `${metrics.toolCount} tools across ${metrics.toolGroupCount} registry groups`,
+      ),
     );
     assert(
       readme.includes(
@@ -58,7 +60,7 @@ function fixture(t, count) {
     actionCount: count * 2,
     toolGroupCount: count,
     readonlyToolCount: count,
-    description: `${count} tools, ${count * 2} typed actions, ${count} tool groups`,
+    description: `${count} tools, ${count * 2} typed actions, ${count} registry groups`,
   };
   const catalog = { tools, metrics };
   for (const script of ['prepare-release.sh', 'update-mcp-manifest.js', 'build-mcpb.sh'])
@@ -144,7 +146,7 @@ for (const count of [2, 5])
       'packages/gitlab-mcp-db/README.md',
     ]) {
       const readme = readFileSync(join(f.root, location), 'utf8');
-      assert(readme.includes(`${count} tools across ${count} tool groups`));
+      assert(readme.includes(`${count} tools across ${count} registry groups`));
       assert(
         readme.includes(`${count} CQRS tools with ${count * 2} typed actions and 0 setup helpers`),
       );

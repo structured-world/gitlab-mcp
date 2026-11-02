@@ -15,5 +15,5 @@ test('the README distinguishes the full catalog from CQRS tools', () => {
   const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
   const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
   expect(readme).not.toContain(`${pkg.mcp.tools.length} CQRS tools`);
-  expect(readme).toContain('tool groups');
+  expect(readme).toContain('registry groups');
 });

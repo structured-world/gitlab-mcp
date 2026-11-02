@@ -427,6 +427,26 @@ describe('handlers', () => {
       }
     });
 
+    // Version-denied actions are rejected by dispatch without spending a billing lookup.
+    it('leaves unavailable actions to the existing action gate', async () => {
+      mockRegistryManager.getTool.mockReturnValue({
+        requirements: { default: { tier: 'premium' } },
+        unavailableActions: new Set(['list']),
+      });
+      mockRegistryManager.executeTool.mockRejectedValueOnce(new Error('Action unavailable'));
+      const result = await runWithTokenAccount({ instanceUrl: url, token: 'fixture' }, () =>
+        getRegisteredHandler(mockServer, CallToolRequestSchema)(
+          {
+            params: { name: 'browse_iterations', arguments: { action: 'list', group_id: 'team' } },
+          },
+          { sessionId: 'namespace-chat' },
+        ),
+      );
+      expect(result.isError).toBe(true);
+      expect(mockRegistryManager.executeTool).toHaveBeenCalledTimes(1);
+      expect(lookup).not.toHaveBeenCalled();
+    });
+
     // Invalid paid-tool input must fail validation before an optional metadata read.
     it('validates required arguments before namespace resolution', async () => {
       mockRegistryManager.getTool.mockReturnValue({

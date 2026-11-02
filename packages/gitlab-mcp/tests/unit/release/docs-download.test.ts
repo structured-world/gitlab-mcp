@@ -11,8 +11,8 @@ test('MCPB publication triggers docs before subsequent publishing steps', () => 
     readFileSync(join(__dirname, '../../../../../.github/workflows/release-please.yml'), 'utf8'),
   );
   const steps = release.jobs['post-release'].steps;
-  const upload = steps.findIndex((step: { name: string }) =>
-    step.name === 'Upload MCPB bundles to GitHub Release',
+  const upload = steps.findIndex(
+    (step: { name: string }) => step.name === 'Upload MCPB bundles to GitHub Release',
   );
   const notification = steps.findIndex((step: { run?: string }) =>
     step.run?.includes('event_type=mcpb-published'),

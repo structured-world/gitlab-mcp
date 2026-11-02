@@ -4,6 +4,7 @@ import {
   getWorkitemsToolDefinitions,
   getFilteredWorkitemsTools,
 } from '../../../../src/entities/workitems/registry';
+import { StructuredToolError } from '../../../../src/utils/error-handler';
 
 // Create mock client
 const mockClient = {
@@ -270,6 +271,40 @@ describe('Workitems Registry - CQRS Tools', () => {
       mockClient.request.mockReset();
       mockValidateWidgetParams.mockClear();
     });
+
+    // Version restrictions must remain useful when GitLab does not disclose the subscription.
+    test.each(['create', 'update'])(
+      'omits an unknown tier from %s widget errors',
+      async (action) => {
+        mockValidateWidgetParams.mockReturnValueOnce({
+          parameter: 'weight',
+          widget: 'WEIGHT',
+          requiredVersion: '19.0',
+          detectedVersion: '16.0.0',
+          requiredTier: 'premium',
+          currentTier: null,
+        });
+        const input =
+          action === 'create'
+            ? { action, namespace: 'test-group', workItemType: 'EPIC', title: 'Test', weight: 1 }
+            : { action, id: '123', weight: 1 };
+        const failure = await workitemsToolRegistry
+          .get('manage_work_item')!
+          .handler(input)
+          .catch((error: unknown) => error);
+        expect(failure).toBeInstanceOf(StructuredToolError);
+        expect((failure as StructuredToolError).structuredError).toMatchObject({
+          error_code: 'VERSION_RESTRICTED',
+          tool: 'manage_work_item',
+          action,
+        });
+        expect((failure as StructuredToolError).structuredError).toHaveProperty(
+          'current_tier',
+          undefined,
+        );
+        expect(mockClient.request).not.toHaveBeenCalled();
+      },
+    );
 
     // Helper function to create complete mock work items
     const createMockWorkItem = (overrides: Record<string, unknown> = {}) => ({

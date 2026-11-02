@@ -434,10 +434,10 @@ describe('RegistryManager', () => {
       const url = 'https://gitlab.com';
       try {
         registryManager.refreshCache(url);
-        const observe = (tier: 'free' | 'ultimate') =>
+        const observe = (tier: 'free' | 'ultimate' | null) =>
           runWithNamespaceTier(url, tier, async () => {
             await Promise.resolve();
-            const available = tier === 'ultimate';
+            const available = tier !== 'free';
             expect(registryManager.getAvailableToolNames(url).includes('paid_namespace_tool')).toBe(
               available,
             );
@@ -458,11 +458,12 @@ describe('RegistryManager', () => {
                 registryManager.executeTool('paid_namespace_tool', {}, url),
               ).rejects.toThrow('not found');
           });
-        await Promise.all([observe('free'), observe('ultimate')]);
-        registryManager.refreshCache(url);
-        await Promise.all([observe('ultimate'), observe('free')]);
+        await Promise.all([observe(null), observe('free'), observe('ultimate')]);
+        // Refreshing one known view must also rebuild the existing unknown and sibling views.
+        runWithNamespaceTier(url, 'free', () => registryManager.refreshCache(url));
+        await Promise.all([observe('ultimate'), observe(null), observe('free')]);
         expect(registryManager.hasToolHandler('paid_namespace_tool', url)).toBe(true);
-        expect(handler).toHaveBeenCalledTimes(2);
+        expect(handler).toHaveBeenCalledTimes(4);
       } finally {
         core.delete('paid_namespace_tool');
       }

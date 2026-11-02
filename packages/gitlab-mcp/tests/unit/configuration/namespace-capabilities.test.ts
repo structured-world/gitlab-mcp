@@ -36,6 +36,44 @@ describe('namespace capabilities', () => {
     expect(namespaceTargetsForScope(undefined)).toEqual([]);
   });
 
+  // Configured plural scopes and path arguments must retain all relevant roots and kinds.
+  it('extracts plural scopes and nonnumeric argument paths', () => {
+    expect(namespaceTargetsForScope({ projects: ['team/a'], namespace: 'group' })).toEqual([
+      { path: 'team/a', kind: 'project' },
+      { path: 'group', kind: 'group' },
+    ]);
+    expect(namespaceTargetsForArgs({ project_id: 'team/a', group_id: 'group' })).toEqual([
+      { path: 'team/a', kind: 'project' },
+      { path: 'group', kind: 'group' },
+    ]);
+  });
+
+  // Numeric projects and groups must not deduplicate just because their IDs coincide.
+  it('retains numeric target kinds and agrees on equal subscriptions', async () => {
+    const targets = [
+      { path: '7', kind: 'project' as const },
+      { path: '7', kind: 'group' as const },
+      { path: 'team', kind: 'group' as const },
+    ];
+    expect(await withNamespaceCapabilities(url, targets, false, observed)).toBe('free');
+    expect(lookup.mock.calls.map(([path, kind]) => ({ path, kind }))).toEqual(targets);
+  });
+
+  // Union selection cannot downgrade when a lower subscription appears later in the input.
+  it('retains the higher tier when a lower tier follows it', async () => {
+    expect(
+      await withNamespaceCapabilities(
+        url,
+        [
+          { path: 'paid/a', kind: 'project' },
+          { path: 'free/b', kind: 'project' },
+        ],
+        true,
+        observed,
+      ),
+    ).toBe('ultimate');
+  });
+
   // Free-only tools do not pay for optional billing observations.
   it('requests observations only for declared paid capabilities', () => {
     expect(needsNamespaceTier(undefined)).toBe(false);

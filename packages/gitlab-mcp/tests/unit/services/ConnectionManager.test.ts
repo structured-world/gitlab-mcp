@@ -111,6 +111,25 @@ describe('ConnectionManager Unit', () => {
     expect(manager.getInstanceInfo('https://gitlab.com').tier).toBeNull();
   });
 
+  // Knowing a subscription does not establish which version-dependent widgets exist.
+  it('keeps feature availability unknown until the SaaS version is known', async () => {
+    const { runWithNamespaceTier } = await import('../../../src/services/namespace-tier-context');
+    const manager = ConnectionManager.getInstance();
+    injectInstanceState(manager, 'https://gitlab.com', {
+      instanceInfo: {
+        version: 'unknown',
+        tier: 'free',
+        features: GitLabVersionDetector.determineFeatures('19.5.0', 'free'),
+        detectedAt: new Date(),
+      },
+    });
+    runWithNamespaceTier('https://gitlab.com', 'ultimate', () => {
+      expect(manager.getInstanceInfo('https://gitlab.com').features).toEqual({});
+      expect(manager.getTier('https://gitlab.com')).toBe('ultimate');
+      expect(manager.isFeatureAvailable('epics', 'https://gitlab.com')).toBeNull();
+    });
+  });
+
   describe('singleton pattern', () => {
     it('should return the same instance on multiple calls', () => {
       const instance1 = ConnectionManager.getInstance();

@@ -1,5 +1,5 @@
 > Advanced GitLab MCP server
-> Provides 66 tools across 27 entity types using CQRS pattern (browse_* for reads, manage_* for writes)
+> Provides 66 tools across 27 tool groups: 60 CQRS tools with 241 typed actions and 6 setup helpers
 
 # Quick Start
 

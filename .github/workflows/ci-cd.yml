@@ -123,6 +123,10 @@ jobs:
           fi
         working-directory: packages/gitlab-mcp
 
+      - name: Verify catalog metadata generation
+        run: node --test tests/scripts/catalog-metadata.test.mjs
+        working-directory: packages/gitlab-mcp
+
       # Installs that package into a real Codex CLI and runs install, disable, enable,
       # upgrade, reinstall and uninstall against the installed copy.
       - name: Build configurable Codex plugin archive

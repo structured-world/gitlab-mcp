@@ -2,7 +2,6 @@
 set -euo pipefail
 
 VERSION="${1:-$(node -p "require('./package.json').version")}"
-BUNDLE_DIR="$(mktemp -d)"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 REPO_ROOT="$(cd "$PROJECT_DIR/../.." && pwd)"
@@ -25,11 +24,16 @@ if [[ ! -d "$PROJECT_DIR/dist" ]]; then
   echo "Error: dist/ not found. Run 'yarn build' before building MCPB bundle." >&2
   exit 1
 fi
+# Resolve metadata before installing anything. Never publish substitute counts.
+CATALOG=$(node "$PROJECT_DIR/dist/src/cli/tool-catalog.js")
+DESCRIPTION=$(printf '%s' "$CATALOG" | jq -er '.metrics.description')
+BUNDLE_DIR="$(mktemp -d)"
 cp -r "$PROJECT_DIR/dist" "$BUNDLE_DIR/dist"
 
 # 2. Install production dependencies into bundle
 cp "$PROJECT_DIR/package.json" "$BUNDLE_DIR/"
 cd "$BUNDLE_DIR"
+printf '%s\n' "$CATALOG" | node "$PROJECT_DIR/scripts/update-mcp-manifest.js"
 # Use npm for production install (simpler for bundling, no yarn PnP).
 # Note: we need peer dependencies (zod is required by @modelcontextprotocol/sdk).
 # Core carries no Prisma — the PostgreSQL backend ships separately as
@@ -42,9 +46,7 @@ npm install --omit=dev --ignore-scripts
 rm -rf "$BUNDLE_DIR/node_modules/typescript" 2>/dev/null || true
 
 # 4. Generate manifest from template
-TOOL_COUNT=$(node -e "const r=require('$PROJECT_DIR/dist/src/registry-manager.js');console.log(r.RegistryManager.getInstance().getAllToolDefinitionsUnfiltered().length)" 2>/dev/null || echo 44)
-ENTITY_COUNT=$(node -e "const fs=require('fs'),p=require('path'),d='$PROJECT_DIR/src/entities';console.log(fs.readdirSync(d,{withFileTypes:true}).filter(e=>e.isDirectory()&&fs.existsSync(p.join(d,e.name,'registry.ts'))).length)" 2>/dev/null || echo 18)
-sed -e "s/{{VERSION}}/$VERSION/g" -e "s/{{TOOL_COUNT}}/$TOOL_COUNT/g" -e "s/{{ENTITY_COUNT}}/$ENTITY_COUNT/g" "$PROJECT_DIR/mcpb/manifest.json.template" > "$BUNDLE_DIR/manifest.json"
+sed -e "s/{{VERSION}}/$VERSION/g" -e "s/{{DESCRIPTION}}/$DESCRIPTION/g" "$PROJECT_DIR/mcpb/manifest.json.template" > "$BUNDLE_DIR/manifest.json"
 
 # 5. Copy icon (shared with the Codex plugin package)
 cp "$PROJECT_DIR/plugin/assets/logo.png" "$BUNDLE_DIR/icon.png"

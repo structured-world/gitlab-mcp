@@ -9,25 +9,33 @@ jest.mock('fs');
 
 // Mock RegistryManager with configurable return value
 const mockGetAllToolDefinitionsUnfiltered = jest.fn().mockReturnValue([]);
+let mockToolGroupCount = 2;
 jest.mock('../../../src/registry-manager', () => ({
   RegistryManager: {
     getInstance: () => ({
       getAllToolDefinitionsUnfiltered: mockGetAllToolDefinitionsUnfiltered,
+      getUnfilteredCatalog: () => ({
+        tools: mockGetAllToolDefinitionsUnfiltered(),
+        toolGroupCount: mockToolGroupCount,
+        readOnlyToolNames: ['browse_projects', 'browse_files', 'browse_wiki'],
+      }),
     }),
   },
 }));
 
 import {
-  extractActions,
   generateActionsTable,
   findMarkers,
   processFile,
   replacePlaceholders,
-  countEntities,
   getVersion,
   main,
 } from '../../../src/cli/inject-tool-refs';
-import type { JsonSchemaProperty, ActionInfo } from '../../../src/cli/inject-tool-refs';
+import {
+  extractActions,
+  type JsonSchemaProperty,
+  type ActionInfo,
+} from '../../../src/cli/tool-catalog';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -36,6 +44,7 @@ const mockedFs = fs as jest.Mocked<typeof fs>;
 describe('inject-tool-refs', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockToolGroupCount = 2;
   });
 
   describe('extractActions', () => {
@@ -797,13 +806,15 @@ describe('inject-tool-refs', () => {
     it('should replace all placeholders including version and return true', () => {
       const placeholders = {
         toolCount: 44,
-        entityCount: 18,
+        toolGroupCount: 18,
+        cqrsToolCount: 40,
+        helperToolCount: 4,
         readonlyToolCount: 24,
         actionCount: 193,
         version: '6.43.0',
       };
       mockedFs.readFileSync.mockReturnValue(
-        'We have __TOOL_COUNT__ tools (__ACTION_COUNT__ actions), __ENTITY_COUNT__ entities, __READONLY_TOOL_COUNT__ read-only. Version: __VERSION__',
+        'We have __TOOL_COUNT__ tools (__ACTION_COUNT__ actions), __TOOL_GROUP_COUNT__ groups, __CQRS_TOOL_COUNT__ CQRS, __HELPER_TOOL_COUNT__ helpers, __READONLY_TOOL_COUNT__ read-only. Version: __VERSION__',
       );
       mockedFs.writeFileSync.mockImplementation(() => undefined);
 
@@ -812,7 +823,7 @@ describe('inject-tool-refs', () => {
       expect(result).toBe(true);
       expect(mockedFs.writeFileSync).toHaveBeenCalledWith(
         '/some/file.md',
-        'We have 44 tools (193 actions), 18 entities, 24 read-only. Version: 6.43.0',
+        'We have 44 tools (193 actions), 18 groups, 40 CQRS, 4 helpers, 24 read-only. Version: 6.43.0',
         'utf8',
       );
     });
@@ -820,7 +831,9 @@ describe('inject-tool-refs', () => {
     it('should return false when no placeholders found', () => {
       const placeholders = {
         toolCount: 44,
-        entityCount: 18,
+        toolGroupCount: 18,
+        cqrsToolCount: 40,
+        helperToolCount: 4,
         readonlyToolCount: 24,
         actionCount: 193,
         version: '1.0.0',
@@ -836,7 +849,9 @@ describe('inject-tool-refs', () => {
     it('should replace version placeholder in download URLs', () => {
       const placeholders = {
         toolCount: 44,
-        entityCount: 18,
+        toolGroupCount: 18,
+        cqrsToolCount: 40,
+        helperToolCount: 4,
         readonlyToolCount: 24,
         actionCount: 193,
         version: '6.43.0',
@@ -905,45 +920,6 @@ describe('inject-tool-refs', () => {
       const result = getVersion('/project');
 
       expect(result).toBe('0.0.0');
-    });
-  });
-
-  describe('countEntities', () => {
-    it('should return 0 when entities directory does not exist', () => {
-      mockedFs.existsSync.mockReturnValue(false);
-
-      const result = countEntities('/project');
-
-      expect(result).toBe(0);
-    });
-
-    it('should count only directories with registry.ts files', () => {
-      mockedFs.existsSync.mockImplementation((p: fs.PathLike) => {
-        const pathStr = p.toString();
-        if (pathStr.endsWith('entities')) return true;
-        if (pathStr.endsWith(path.join('core', 'registry.ts'))) return true;
-        if (pathStr.endsWith(path.join('mrs', 'registry.ts'))) return true;
-        // "utils" dir has no registry.ts
-        if (pathStr.endsWith(path.join('utils', 'registry.ts'))) return false;
-        return true;
-      });
-
-      const mockDirent = (name: string, isDir: boolean) => ({
-        name,
-        isDirectory: () => isDir,
-        isFile: () => !isDir,
-      });
-
-      mockedFs.readdirSync.mockReturnValue([
-        mockDirent('core', true),
-        mockDirent('mrs', true),
-        mockDirent('utils', true),
-        mockDirent('README.md', false),
-      ] as never);
-
-      const result = countEntities('/project');
-
-      expect(result).toBe(2);
     });
   });
 
@@ -1214,7 +1190,7 @@ describe('inject-tool-refs', () => {
       });
 
       const templateContent =
-        '# Home\n\nWe have __TOOL_COUNT__ tools (__ACTION_COUNT__ operations) across __ENTITY_COUNT__ entities (__READONLY_TOOL_COUNT__ read-only). Version: __VERSION__';
+        '# Home\n\nWe have __TOOL_COUNT__ tools (__ACTION_COUNT__ operations) across __TOOL_GROUP_COUNT__ tool groups (__READONLY_TOOL_COUNT__ read-only). Version: __VERSION__';
 
       mockedFs.readFileSync.mockImplementation((filePath: fs.PathOrFileDescriptor) => {
         const pathStr = filePath.toString();
@@ -1241,17 +1217,18 @@ describe('inject-tool-refs', () => {
       const generatedContent = writeCall![1] as string;
       expect(generatedContent).toContain('2 tools');
       expect(generatedContent).toContain('2 operations');
-      expect(generatedContent).toContain('2 entities');
+      expect(generatedContent).toContain('2 tool groups');
       expect(generatedContent).toContain('1 read-only');
       expect(generatedContent).toContain('6.43.0');
       expect(generatedContent).not.toContain('__TOOL_COUNT__');
       expect(generatedContent).not.toContain('__ACTION_COUNT__');
-      expect(generatedContent).not.toContain('__ENTITY_COUNT__');
+      expect(generatedContent).not.toContain('__TOOL_GROUP_COUNT__');
       expect(generatedContent).not.toContain('__READONLY_TOOL_COUNT__');
       expect(generatedContent).not.toContain('__VERSION__');
     });
 
     it('should recursively process .in templates in subdirectories', () => {
+      mockToolGroupCount = 1;
       mockedFs.existsSync.mockImplementation((p: fs.PathLike) => {
         const pathStr = p.toString();
         if (pathStr === path.join('/project', 'package.json')) return true;
@@ -1296,7 +1273,7 @@ describe('inject-tool-refs', () => {
       });
 
       const mdTemplate =
-        '**__TOOL_COUNT__ tools** (__ACTION_COUNT__ operations) across __ENTITY_COUNT__ entity types. Version: __VERSION__';
+        '**__TOOL_COUNT__ tools** (__ACTION_COUNT__ operations) across __TOOL_GROUP_COUNT__ tool groups. Version: __VERSION__';
       const txtTemplate =
         '> Provides __TOOL_COUNT__ tools (__READONLY_TOOL_COUNT__ read-only). Version: __VERSION__';
 
@@ -1327,7 +1304,7 @@ describe('inject-tool-refs', () => {
       );
 
       expect(mdWrite).toBeDefined();
-      expect(mdWrite![1]).toBe('**3 tools** (3 operations) across 1 entity types. Version: 1.0.0');
+      expect(mdWrite![1]).toBe('**3 tools** (3 operations) across 1 tool groups. Version: 1.0.0');
 
       expect(txtWrite).toBeDefined();
       expect(txtWrite![1]).toBe('> Provides 3 tools (2 read-only). Version: 1.0.0');

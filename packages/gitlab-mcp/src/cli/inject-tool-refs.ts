@@ -13,86 +13,17 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { RegistryManager } from '../registry-manager.js';
-
-interface JsonSchemaProperty {
-  type?: string;
-  properties?: Record<string, JsonSchemaProperty>;
-  oneOf?: JsonSchemaProperty[];
-  enum?: unknown[];
-  const?: unknown;
-  description?: string;
-  [key: string]: unknown;
-}
-
-interface ActionInfo {
-  name: string;
-  description: string;
-}
+import {
+  extractActions,
+  loadToolCatalog,
+  type JsonSchemaProperty,
+  type ActionInfo,
+} from './tool-catalog.js';
 
 interface MarkerMatch {
   toolName: string;
   startIdx: number;
   endIdx: number;
-}
-
-// Fallback action descriptions when schema doesn't provide one
-const ACTION_DESCRIPTIONS: Record<string, string> = {
-  list: 'List items with filtering and pagination',
-  get: 'Get a single item by ID',
-  create: 'Create a new item',
-  update: 'Update an existing item',
-  delete: 'Delete an item',
-  search: 'Search for items',
-  diffs: 'Get file changes/diffs',
-  compare: 'Compare two branches or commits',
-  merge: 'Merge a merge request',
-  approve: 'Approve a merge request',
-  unapprove: 'Remove approval from a merge request',
-  cancel: 'Cancel a running operation',
-  retry: 'Retry a failed operation',
-  play: 'Run a manual job',
-  publish: 'Publish draft notes',
-  resolve: 'Resolve a discussion thread',
-  disable: 'Disable the integration',
-  test: 'Test a webhook',
-};
-
-/**
- * Extract actions from a tool's inputSchema (JSON Schema format).
- * Handles discriminated unions (oneOf with const) and flat enums.
- */
-function extractActions(schema: JsonSchemaProperty): ActionInfo[] {
-  const actions: ActionInfo[] = [];
-
-  // Discriminated union: oneOf with action.const
-  if (schema.oneOf && Array.isArray(schema.oneOf)) {
-    for (const branch of schema.oneOf) {
-      const actionProp = branch.properties?.action;
-      const actionName = actionProp?.const as string | undefined;
-      if (actionName) {
-        const description =
-          (actionProp?.description as string) ??
-          ACTION_DESCRIPTIONS[actionName] ??
-          `Perform ${actionName} operation`;
-        actions.push({ name: actionName, description });
-      }
-    }
-    return actions;
-  }
-
-  // Flat schema: action.enum
-  const actionProp = schema.properties?.action;
-  if (actionProp?.enum && Array.isArray(actionProp.enum)) {
-    for (const actionName of actionProp.enum) {
-      if (typeof actionName === 'string') {
-        const description = ACTION_DESCRIPTIONS[actionName] ?? `Perform ${actionName} operation`;
-        actions.push({ name: actionName, description });
-      }
-    }
-  }
-
-  return actions;
 }
 
 /**
@@ -188,14 +119,16 @@ function processFile(
 
 interface Placeholders {
   toolCount: number;
-  entityCount: number;
+  toolGroupCount: number;
+  cqrsToolCount: number;
+  helperToolCount: number;
   readonlyToolCount: number;
   actionCount: number;
   version: string;
 }
 
 /**
- * Replace __TOOL_COUNT__, __ENTITY_COUNT__, __READONLY_TOOL_COUNT__, __ACTION_COUNT__,
+ * Replace catalog counts, CQRS/helper counts, read-only counts, action counts,
  * and __VERSION__ placeholders. Returns true if file was modified.
  */
 function replacePlaceholders(filePath: string, placeholders: Placeholders): boolean {
@@ -203,7 +136,9 @@ function replacePlaceholders(filePath: string, placeholders: Placeholders): bool
   const result = content
     .replace(/__TOOL_COUNT__/g, String(placeholders.toolCount))
     .replace(/__ACTION_COUNT__/g, String(placeholders.actionCount))
-    .replace(/__ENTITY_COUNT__/g, String(placeholders.entityCount))
+    .replace(/__TOOL_GROUP_COUNT__/g, String(placeholders.toolGroupCount))
+    .replace(/__CQRS_TOOL_COUNT__/g, String(placeholders.cqrsToolCount))
+    .replace(/__HELPER_TOOL_COUNT__/g, String(placeholders.helperToolCount))
     .replace(/__READONLY_TOOL_COUNT__/g, String(placeholders.readonlyToolCount))
     .replace(/__VERSION__/g, placeholders.version);
 
@@ -212,21 +147,6 @@ function replacePlaceholders(filePath: string, placeholders: Placeholders): bool
     return true;
   }
   return false;
-}
-
-/**
- * Count entity types by scanning src/entities/ subdirectories with registry.ts files.
- * Note: fs.existsSync is safe (returns boolean, never throws) so no try/catch needed.
- */
-function countEntities(projectRoot: string): number {
-  const entitiesDir = path.join(projectRoot, 'src', 'entities');
-  if (!fs.existsSync(entitiesDir)) return 0;
-
-  // readdirSync may throw on permission errors, but that's a fatal misconfiguration
-  return fs
-    .readdirSync(entitiesDir, { withFileTypes: true })
-    .filter((d) => d.isDirectory() && fs.existsSync(path.join(entitiesDir, d.name, 'registry.ts')))
-    .length;
 }
 
 /**
@@ -253,7 +173,7 @@ function getVersion(projectRoot: string): string {
 
 /**
  * Main entry point. Scans docs/tools/*.md and injects action tables.
- * Also generates .md/.txt from .in templates with __TOOL_COUNT__, __ENTITY_COUNT__,
+ * Also generates .md/.txt from .in templates with tool, group, CQRS/helper,
  * __READONLY_TOOL_COUNT__, and __VERSION__ placeholders replaced by actual values.
  */
 export function main(): void {
@@ -272,33 +192,19 @@ export function main(): void {
   }
 
   // Load all tool schemas from registry
-  const registryManager = RegistryManager.getInstance();
-  const allTools = registryManager.getAllToolDefinitionsUnfiltered();
+  const { tools: allTools, metrics } = loadToolCatalog();
   const toolSchemas = new Map<string, JsonSchemaProperty>();
   for (const tool of allTools) {
     toolSchemas.set(tool.name, tool.inputSchema);
   }
 
-  const toolCount = allTools.length;
-  const entityCount = countEntities(projectRoot);
-  // Read-only tools: browse_* (queries) + manage_context (read-only despite manage_ prefix)
-  // Same pattern used in prepare-release.sh for consistency
-  const readonlyToolCount = allTools.filter(
-    (t) => t.name.startsWith('browse_') || t.name === 'manage_context',
-  ).length;
-  // Total typed actions across all CQRS tools — the real count of GitLab
-  // operations behind the compact tool list.
-  const actionCount = allTools.reduce((sum, t) => sum + extractActions(t.inputSchema).length, 0);
   const version = getVersion(projectRoot);
   console.log(
-    `  Tool count: ${toolCount}, Entity count: ${entityCount}, Read-only: ${readonlyToolCount}, Actions: ${actionCount}, Version: ${version}`,
+    `  ${metrics.description}, ${metrics.readonlyToolCount} available in read-only mode, Version: ${version}`,
   );
 
   const placeholders: Placeholders = {
-    toolCount,
-    entityCount,
-    readonlyToolCount,
-    actionCount,
+    ...metrics,
     version,
   };
 
@@ -361,16 +267,8 @@ export function main(): void {
 }
 
 // Exported for unit testing
-export {
-  extractActions,
-  generateActionsTable,
-  findMarkers,
-  processFile,
-  replacePlaceholders,
-  countEntities,
-  getVersion,
-};
-export type { JsonSchemaProperty, ActionInfo, MarkerMatch, Placeholders };
+export { generateActionsTable, findMarkers, processFile, replacePlaceholders, getVersion };
+export type { MarkerMatch, Placeholders };
 
 // Auto-execute when run directly
 if (process.env.NODE_ENV !== 'test') {

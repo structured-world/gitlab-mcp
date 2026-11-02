@@ -66,6 +66,13 @@ Run these from `packages/gitlab-mcp`:
 | `yarn test:integration` | Integration suites in lifecycle order | Protected `.env.test`, designated test namespace |
 | `yarn test:all` | Unit and integration suites | The same integration environment |
 
+The Linux publishing-workflow regression runs separately from the portable unit
+suite and requires Bash. The required Quality Checks job executes it with:
+
+```bash
+node --test tests/scripts/docs-download.test.mjs
+```
+
 ### Complete Unit and Integration Test Suite
 ```bash
 yarn test:all

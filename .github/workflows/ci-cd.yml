@@ -56,6 +56,10 @@ jobs:
         run: yarn lint
         working-directory: packages/gitlab-mcp
 
+      - name: Verify documentation release downloads
+        run: node --test tests/scripts/docs-download.test.mjs
+        working-directory: packages/gitlab-mcp
+
       - name: Run tests with coverage
         run: yarn test:cov
         working-directory: packages/gitlab-mcp

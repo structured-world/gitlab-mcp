@@ -194,8 +194,14 @@ export const CLIENT_METADATA: Record<InstallableClient, ClientMetadata> = {
         '~/Library/Application Support/Code/User/globalStorage/rooveterinaryinc.roo-cline/settings/mcp_settings.json',
       win32:
         '%APPDATA%/Code/User/globalStorage/rooveterinaryinc.roo-cline/settings/mcp_settings.json',
-      linux:
-        '~/.config/Code/User/globalStorage/rooveterinaryinc.roo-cline/settings/mcp_settings.json',
+      get linux(): string {
+        // VS Code uses XDG_CONFIG_HOME, with ~/.config as its standard Linux default.
+        // https://github.com/microsoft/vscode/blob/main/src/vs/platform/environment/node/userDataPath.ts
+        const root = process.env.XDG_CONFIG_HOME;
+        if (root)
+          return `${root}/Code/User/globalStorage/rooveterinaryinc.roo-cline/settings/mcp_settings.json`;
+        return '~/.config/Code/User/globalStorage/rooveterinaryinc.roo-cline/settings/mcp_settings.json';
+      },
     },
     supportsCliInstall: false,
     detectionMethod: 'config-file',

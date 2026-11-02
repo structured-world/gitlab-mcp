@@ -22,6 +22,9 @@ configuration for the same server name.
 For the standard VS Code profile, automatic setup writes the extension's global
 `settings/mcp_settings.json`:
 
+On Linux, the standard profile is under `XDG_CONFIG_HOME/Code` when the variable
+is nonempty, or `~/.config/Code` otherwise.
+
 ```bash
 npx @structured-world/gitlab-mcp install --roo-code
 ```

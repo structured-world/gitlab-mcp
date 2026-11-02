@@ -26,7 +26,7 @@ const ultimate17: CapabilityGate = { version: '17.0.0', tier: 'ultimate' };
 
 // Missing billing visibility cannot stand for Free, while version/admin checks still apply.
 test('an unknown namespace tier does not bypass version or admin requirements', () => {
-  const unknown = { version: '17.0.0', tier: null } as unknown as CapabilityGate;
+  const unknown: CapabilityGate = { version: '17.0.0', tier: null };
   expect(meetsRequirement({ tier: 'ultimate' }, unknown)).toBe(true);
   expect(meetsRequirement({ tier: 'ultimate', minVersion: '18.0' }, unknown)).toBe(false);
   expect(meetsRequirement({ requiresAdmin: true }, { ...unknown, adminModeActive: false })).toBe(

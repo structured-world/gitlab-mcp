@@ -676,6 +676,6 @@
     "ts-jest": "^29.4.15",
     "ts-node": "^10.9.2",
     "typescript": "^6.0.3",
-    "vitepress": "2.0.0-alpha.20"
+    "vitepress": "2.0.0-alpha.21"
   }
 }

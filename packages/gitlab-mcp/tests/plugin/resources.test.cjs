@@ -371,6 +371,48 @@ test('backend templates and binary resource contents pass through unchanged', as
   });
 });
 
+// A backend cannot relabel text or binary content as the plugin's local UI.
+test('backend read contents cannot claim the local resource namespace', async (t) => {
+  const f = await fixture(t);
+  for (const contents of [
+    [{ uri: CONNECTION_PANEL_URI, text: 'Provider HTML', mimeType: 'text/html;profile=mcp-app' }],
+    [{ uri: 'UI://GITLAB-MCP-LOCAL/other.html', blob: 'AAEC' }],
+    [
+      { uri: 'fixture://valid', text: 'Valid' },
+      { uri: CONNECTION_PANEL_URI, text: 'Collision' },
+    ],
+  ]) {
+    await f.select(async () => ({ contents }));
+    await assert.rejects(
+      f.frontend.readResource({ uri: 'fixture://document' }),
+      (error) => error.code === ErrorCode.InvalidRequest,
+    );
+  }
+});
+
+// URI inspection must preserve all nonlocal provider data rather than reshape the result.
+test('backend read URI checks preserve unrelated response fields', async (t) => {
+  const f = await fixture(t);
+  for (const response of [
+    {},
+    { contents: [] },
+    { contents: [null, 'opaque', { vendor: 'opaque' }, { uri: 42 }] },
+    {
+      contents: [{ uri: 'fixture://document', text: 'Text', vendorExtension: true }],
+      _meta: { provider: true },
+    },
+  ]) {
+    await f.select(async () => response);
+    assert.deepEqual(
+      await f.frontend.request(
+        { method: 'resources/read', params: { uri: 'fixture://document' } },
+        ResultSchema,
+      ),
+      response,
+    );
+  }
+});
+
 // Not-found and permission errors must keep their JSON-RPC code and structured data.
 for (const method of ['listResources', 'listResourceTemplates', 'readResource']) {
   test(`${method} preserves backend errors`, async (t) => {

@@ -101,6 +101,20 @@ function isLocalResourceUri(uri: string): boolean {
   );
 }
 
+function hasLocalResourceContent(response: Result): boolean {
+  return (
+    Array.isArray(response.contents) &&
+    response.contents.some(
+      (content: unknown) =>
+        typeof content === 'object' &&
+        content !== null &&
+        'uri' in content &&
+        typeof content.uri === 'string' &&
+        isLocalResourceUri(content.uri),
+    )
+  );
+}
+
 async function readResource(
   request: z.infer<typeof ReadResourceRequestSchema>,
   extra: RequestHandlerExtra<Request, Notification>,
@@ -125,8 +139,15 @@ async function readResource(
     };
   if (!local) {
     const backend = await connections.ready();
-    if (backend?.client.getServerCapabilities()?.resources)
-      return forward(backend, request, extra, connections, ResultSchema);
+    if (backend?.client.getServerCapabilities()?.resources) {
+      const response = await forward(backend, request, extra, connections, ResultSchema);
+      if (hasLocalResourceContent(response))
+        throw new McpError(
+          ErrorCode.InvalidRequest,
+          'Backend read result uses reserved plugin resource URIs.',
+        );
+      return response;
+    }
   }
   throw new McpError(RESOURCE_NOT_FOUND, 'Resource not found', { uri });
 }

@@ -257,6 +257,52 @@ test('an unsupported backend template method produces an empty template catalog'
   assert.deepEqual(await f.frontend.listResourceTemplates(), { resourceTemplates: [] });
 });
 
+// Template catalogs cannot advertise names owned by the local panel, on any page.
+for (const cursor of [undefined, '']) {
+  test(`reserved template collisions are rejected for cursor ${JSON.stringify(cursor)}`, async (t) => {
+    const f = await fixture(t);
+    await f.select(async () => ({
+      resourceTemplates: [{ uriTemplate: 'ui://gitlab-mcp-local/{name}.html', name: 'Collision' }],
+    }));
+    await assert.rejects(
+      f.frontend.listResourceTemplates({ cursor }),
+      (error) => error.code === ErrorCode.InvalidRequest,
+    );
+  });
+}
+
+// A malformed external catalog must fail at the bridge, even for a raw SDK caller.
+test('template catalogs require a valid template array', async (t) => {
+  const f = await fixture(t);
+  for (const response of [{}, { resourceTemplates: [{ name: 'Missing URI template' }] }]) {
+    await f.select(async () => response);
+    await assert.rejects(
+      f.frontend.request({ method: 'resources/templates/list' }, ResultSchema),
+      (error) => error.code === ErrorCode.InternalError,
+    );
+  }
+});
+
+// Validation must retain provider extensions inside templates and on the catalog itself.
+test('raw template catalogs preserve provider extension metadata', async (t) => {
+  const f = await fixture(t);
+  const response = {
+    resourceTemplates: [
+      {
+        uriTemplate: 'fixture://document/{id}',
+        name: 'Document',
+        vendorExtension: { nested: ['fixture'] },
+      },
+    ],
+    vendorCatalog: { revision: 'fixture' },
+  };
+  await f.select(async () => response);
+  assert.deepEqual(
+    await f.frontend.request({ method: 'resources/templates/list' }, ResultSchema),
+    response,
+  );
+});
+
 // Template pagination and annotations cross the same selected connection as resource reads.
 test('backend templates and binary resource contents pass through unchanged', async (t) => {
   const f = await fixture(t);

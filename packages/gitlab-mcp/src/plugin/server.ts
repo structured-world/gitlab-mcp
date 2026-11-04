@@ -9,7 +9,9 @@ import {
   ListResourceTemplatesRequestSchema,
   ReadResourceRequestSchema,
   ListResourcesResultSchema,
+  ListResourceTemplatesResultSchema,
   ResourceSchema,
+  ResourceTemplateSchema,
   type Request,
   type Notification,
   type Result,
@@ -31,6 +33,9 @@ const RESOURCE_NOT_FOUND = -32002;
 // Preserve provider extension fields while validating the resources merged into our catalog.
 const ResourceCatalogSchema = ListResourcesResultSchema.extend({
   resources: z.array(ResourceSchema.loose()),
+});
+const ResourceTemplateCatalogSchema = ListResourceTemplatesResultSchema.extend({
+  resourceTemplates: z.array(ResourceTemplateSchema.loose()),
 });
 const EMPTY_INPUT = { type: 'object' as const, properties: {}, additionalProperties: false };
 const OBJECT_OUTPUT = { type: 'object' as const, additionalProperties: true };
@@ -122,7 +127,23 @@ async function resourceTemplates(
   const backend = await connections.ready();
   if (!backend?.client.getServerCapabilities()?.resources) return { resourceTemplates: [] };
   try {
-    return await forward(backend, request, extra, connections, ResultSchema);
+    const response = await forward(
+      backend,
+      request,
+      extra,
+      connections,
+      ResourceTemplateCatalogSchema,
+    );
+    if (
+      (response.resourceTemplates as z.infer<typeof ResourceTemplateSchema>[]).some((template) =>
+        template.uriTemplate.startsWith(CONNECTION_PANEL_NAMESPACE),
+      )
+    )
+      throw new McpError(
+        ErrorCode.InvalidRequest,
+        'Backend uses reserved plugin resource templates.',
+      );
+    return response;
   } catch (error) {
     if (!(error instanceof McpError) || error.code !== ErrorCode.MethodNotFound) throw error;
     // Static-resource servers may omit templates; this is not an authorization failure.
@@ -276,7 +297,7 @@ async function forward(
   request: Request,
   extra: RequestHandlerExtra<Request, Notification>,
   connections: Connections,
-  schema: typeof ResultSchema | typeof ResourceCatalogSchema,
+  schema: typeof ResultSchema | typeof ResourceCatalogSchema | typeof ResourceTemplateCatalogSchema,
 ): Promise<Result> {
   const token = request.params?._meta?.progressToken;
   const response = await backend.client

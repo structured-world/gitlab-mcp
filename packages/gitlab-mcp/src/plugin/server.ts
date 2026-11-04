@@ -5,6 +5,13 @@ import {
   ErrorCode,
   McpError,
   SetLevelRequestSchema,
+  ListResourcesRequestSchema,
+  ListResourceTemplatesRequestSchema,
+  ReadResourceRequestSchema,
+  ListResourcesResultSchema,
+  ListResourceTemplatesResultSchema,
+  ResourceSchema,
+  ResourceTemplateSchema,
   type Request,
   type Notification,
   type Result,
@@ -12,10 +19,28 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import type { RequestHandlerExtra } from '@modelcontextprotocol/sdk/shared/protocol.js';
 import { Connections, type Backend } from './connections';
-import { connectionPanel, CONNECTION_PANEL_META, CONNECTION_PANEL_URI } from './panel';
+import {
+  connectionPanel,
+  CONNECTION_PANEL_META,
+  CONNECTION_PANEL_URI,
+  CONNECTION_PANEL_NAMESPACE,
+} from './panel';
 import { MCP_APPS_EXTENSION } from '../mcp-apps';
 
 const PREFIX = 'gitlab_plugin_';
+const { protocol: LOCAL_RESOURCE_PROTOCOL, host: LOCAL_RESOURCE_AUTHORITY } = new URL(
+  CONNECTION_PANEL_NAMESPACE,
+);
+const LOCAL_RESOURCE_SCHEME = LOCAL_RESOURCE_PROTOCOL + '//';
+// https://modelcontextprotocol.io/specification/2025-11-25/server/resources#error-handling
+const RESOURCE_NOT_FOUND = -32002;
+// Preserve provider extension fields while validating the resources merged into our catalog.
+const ResourceCatalogSchema = ListResourcesResultSchema.extend({
+  resources: z.array(ResourceSchema.loose()),
+});
+const ResourceTemplateCatalogSchema = ListResourceTemplatesResultSchema.extend({
+  resourceTemplates: z.array(ResourceTemplateSchema.loose()),
+});
 const EMPTY_INPUT = { type: 'object' as const, properties: {}, additionalProperties: false };
 const OBJECT_OUTPUT = { type: 'object' as const, additionalProperties: true };
 const ConnectionAction = z.object({
@@ -66,6 +91,119 @@ const result = (value: Record<string, unknown>): Result => ({
   structuredContent: value,
 });
 
+function resourceRequest<T extends Request>(schema: z.ZodType<T>, request: Request): T {
+  const parsed = schema.safeParse(request);
+  if (!parsed.success)
+    throw new McpError(ErrorCode.InvalidParams, 'Invalid resource request parameters.');
+  return parsed.data;
+}
+
+function localResourcePathOffset(uri: string): number | null {
+  // https://www.rfc-editor.org/rfc/rfc3986#section-6.2.2.2
+  // Normalize authority aliases without rewriting the path or reserved delimiters.
+  if (uri.slice(0, LOCAL_RESOURCE_SCHEME.length).toLowerCase() !== LOCAL_RESOURCE_SCHEME)
+    return null;
+  // Each ASCII authority character expands to at most three URI characters.
+  const prefix = uri.slice(
+    LOCAL_RESOURCE_SCHEME.length,
+    LOCAL_RESOURCE_SCHEME.length + LOCAL_RESOURCE_AUTHORITY.length * 3 + 1,
+  );
+  const end = prefix.indexOf('/');
+  if (end < 0) return null;
+  try {
+    const authority = decodeURI(prefix.slice(0, end)).toLowerCase();
+    return authority === LOCAL_RESOURCE_AUTHORITY ? LOCAL_RESOURCE_SCHEME.length + end + 1 : null;
+  } catch {
+    // Malformed percent encoding cannot identify the local authority.
+    return null;
+  }
+}
+
+function hasLocalResourceContent(response: Result): boolean {
+  return (
+    Array.isArray(response.contents) &&
+    response.contents.some(
+      (content: unknown) =>
+        typeof content === 'object' &&
+        content !== null &&
+        'uri' in content &&
+        typeof content.uri === 'string' &&
+        localResourcePathOffset(content.uri) !== null,
+    )
+  );
+}
+
+async function readResource(
+  request: z.infer<typeof ReadResourceRequestSchema>,
+  extra: RequestHandlerExtra<Request, Notification>,
+  connections: Connections,
+): Promise<Result> {
+  const uri = request.params.uri;
+  const localPathOffset = localResourcePathOffset(uri);
+  if (
+    localPathOffset !== null &&
+    uri.slice(localPathOffset) === CONNECTION_PANEL_URI.slice(CONNECTION_PANEL_NAMESPACE.length)
+  )
+    return {
+      contents: [
+        {
+          uri,
+          mimeType: 'text/html;profile=mcp-app',
+          text: connectionPanel(),
+          _meta: CONNECTION_PANEL_META,
+        },
+      ],
+    };
+  if (localPathOffset === null) {
+    const backend = await connections.ready();
+    if (backend?.client.getServerCapabilities()?.resources) {
+      const response = await forward(backend, request, extra, connections, ResultSchema);
+      if (hasLocalResourceContent(response))
+        throw new McpError(
+          ErrorCode.InvalidRequest,
+          'Backend read result uses reserved plugin resource URIs.',
+        );
+      return response;
+    }
+  }
+  throw new McpError(RESOURCE_NOT_FOUND, 'Resource not found', { uri });
+}
+
+async function resourceTemplates(
+  request: Request,
+  extra: RequestHandlerExtra<Request, Notification>,
+  connections: Connections,
+): Promise<Result> {
+  const backend = await connections.ready();
+  if (!backend?.client.getServerCapabilities()?.resources) return { resourceTemplates: [] };
+  try {
+    const response = await forward(
+      backend,
+      request,
+      extra,
+      connections,
+      ResourceTemplateCatalogSchema,
+    );
+    // Broad templates remain available; concrete local URI ownership is enforced on reads.
+    // Only an explicit local namespace declaration conflicts with this catalog.
+    if (
+      (response.resourceTemplates as z.infer<typeof ResourceTemplateSchema>[]).some(
+        (template) => localResourcePathOffset(template.uriTemplate) !== null,
+      )
+    )
+      throw new McpError(
+        ErrorCode.InvalidRequest,
+        'Backend uses reserved plugin resource templates.',
+      );
+    return response;
+  } catch (error) {
+    if (!(error instanceof McpError) || error.code !== ErrorCode.MethodNotFound) throw error;
+    // Static-resource servers may omit templates; this is not an authorization failure.
+    assertCurrentBackend(backend, connections);
+    return { resourceTemplates: [] };
+  }
+}
+
 /** Public MCP bridge; GitLab behavior and account authority stay at the selected backend. */
 export function createPluginServer(
   connections: Connections,
@@ -75,7 +213,7 @@ export function createPluginServer(
     {
       capabilities: {
         tools: { listChanged: true },
-        resources: { listChanged: true, subscribe: true },
+        resources: { listChanged: true },
         extensions: MCP_APPS_EXTENSION,
         prompts: { listChanged: true },
         logging: {},
@@ -111,7 +249,7 @@ export function createPluginServer(
   server.setRequestHandler(SetLevelRequestSchema, async (request, extra) => {
     const backend = await connections.ready();
     return backend?.client.getServerCapabilities()?.logging
-      ? forward(backend, request, extra, connections)
+      ? forward(backend, request, extra, connections, ResultSchema)
       : {};
   });
   server.fallbackNotificationHandler = async (notification) => {
@@ -119,6 +257,20 @@ export function createPluginServer(
     if (backend) await backend.client.notification(notification);
   };
   server.fallbackRequestHandler = async (request, extra) => {
+    if (request.method === 'resources/subscribe' || request.method === 'resources/unsubscribe')
+      throw new McpError(ErrorCode.MethodNotFound, 'Resource subscriptions are not supported.');
+    if (request.method === 'resources/read')
+      return readResource(resourceRequest(ReadResourceRequestSchema, request), extra, connections);
+    if (request.method === 'resources/list') {
+      const validated = resourceRequest(ListResourcesRequestSchema, request);
+      return resourceListing(await connections.ready(), validated, extra, connections);
+    }
+    if (request.method === 'resources/templates/list')
+      return resourceTemplates(
+        resourceRequest(ListResourceTemplatesRequestSchema, request),
+        extra,
+        connections,
+      );
     const params = request.params ?? {};
     if (
       request.method === 'tools/call' &&
@@ -127,22 +279,8 @@ export function createPluginServer(
     ) {
       return localTool(params.name, params.arguments, connections, extra);
     }
-    if (request.method === 'resources/read' && params.uri === CONNECTION_PANEL_URI) {
-      return {
-        contents: [
-          {
-            uri: CONNECTION_PANEL_URI,
-            mimeType: 'text/html;profile=mcp-app',
-            text: connectionPanel(),
-            _meta: CONNECTION_PANEL_META,
-          },
-        ],
-      };
-    }
     const backend = await connections.ready();
     if (request.method === 'tools/list') return toolListing(backend, request, extra, connections);
-    if (request.method === 'resources/list')
-      return resourceListing(backend, request, extra, connections);
     if (request.method === 'prompts/list' && !backend?.client.getServerCapabilities()?.prompts)
       return { prompts: [] };
     if (!backend)
@@ -150,7 +288,7 @@ export function createPluginServer(
         ErrorCode.InvalidRequest,
         'Open GitLab connection settings to connect or reconnect.',
       );
-    return forward(backend, request, extra, connections);
+    return forward(backend, request, extra, connections, ResultSchema);
   };
   return server;
 }
@@ -161,7 +299,9 @@ async function toolListing(
   extra: RequestHandlerExtra<Request, Notification>,
   connections: Connections,
 ): Promise<Result> {
-  const response = backend ? await forward(backend, request, extra, connections) : { tools: [] };
+  const response = backend
+    ? await forward(backend, request, extra, connections, ResultSchema)
+    : { tools: [] };
   const offered = response.tools as Tool[];
   if (offered.some((tool) => tool.name.startsWith(PREFIX)))
     throw new McpError(ErrorCode.InvalidRequest, 'Backend uses reserved plugin tool names.');
@@ -178,8 +318,15 @@ async function resourceListing(
   connections: Connections,
 ): Promise<Result> {
   const response = backend?.client.getServerCapabilities()?.resources
-    ? await forward(backend, request, extra, connections)
+    ? await forward(backend, request, extra, connections, ResourceCatalogSchema)
     : { resources: [] };
+  // The local UI authority belongs to this plugin, never to a connected provider.
+  if (
+    (response.resources as z.infer<typeof ResourceSchema>[]).some(
+      (resource) => localResourcePathOffset(resource.uri) !== null,
+    )
+  )
+    throw new McpError(ErrorCode.InvalidRequest, 'Backend uses reserved plugin resource URIs.');
   return {
     ...response,
     resources:
@@ -202,10 +349,11 @@ async function forward(
   request: Request,
   extra: RequestHandlerExtra<Request, Notification>,
   connections: Connections,
+  schema: typeof ResultSchema | typeof ResourceCatalogSchema | typeof ResourceTemplateCatalogSchema,
 ): Promise<Result> {
   const token = request.params?._meta?.progressToken;
   const response = await backend.client
-    .request(request, ResultSchema, {
+    .request(request, schema, {
       signal: extra.signal,
       ...(token !== undefined
         ? {
@@ -228,6 +376,11 @@ async function forward(
         'The connection request failed. Its outcome may be unknown. Check connection settings before retrying; do not repeat writes automatically.',
       );
     });
+  assertCurrentBackend(backend, connections);
+  return response;
+}
+
+function assertCurrentBackend(backend: Backend, connections: Connections): void {
   if (
     connections.active !== backend ||
     connections.store.revision() !== backend.snapshot.revision
@@ -237,7 +390,6 @@ async function forward(
       'Connection changed while this request was running. Its outcome may be unknown. Do not repeat writes automatically.',
     );
   }
-  return response;
 }
 
 async function connectionAction(raw: unknown, connections: Connections): Promise<Result> {
@@ -293,6 +445,7 @@ async function connectionSettings(
         { method: 'tools/call', params: { name: 'get_settings', arguments: {} } },
         extra,
         connections,
+        ResultSchema,
       );
       if (response.isError) unavailable = true;
       else if (response.structuredContent)
@@ -346,6 +499,7 @@ async function localTool(
       },
       extra,
       connections,
+      ResultSchema,
     );
   throw new McpError(ErrorCode.InvalidRequest, 'Connect GitLab before changing account settings.');
 }

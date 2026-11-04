@@ -92,6 +92,42 @@ test('local reads and missing-resource errors do not initialize a backend', asyn
   });
 });
 
+// Scheme and authority case cannot redirect local reads to a provider.
+test('local resource ownership ignores scheme and authority case but preserves path case', async (t) => {
+  const f = await fixture(t);
+  const ready = t.mock.method(f.connections, 'ready', async () => {
+    throw new Error('Backend must not be consulted');
+  });
+  const uri = 'UI://GITLAB-MCP-LOCAL/connection.html';
+  const panel = await f.frontend.readResource({ uri });
+  assert.equal(panel.contents[0].uri, uri);
+  assert.match(panel.contents[0].text, /Your GitLab connection/);
+  for (const path of ['missing.html', 'Connection.html']) {
+    await assert.rejects(
+      f.frontend.readResource({ uri: 'UI://GITLAB-MCP-LOCAL/' + path }),
+      (error) => error.code === -32002,
+    );
+  }
+  assert.equal(ready.mock.callCount(), 0);
+});
+
+// Case aliases cannot advertise local resources through either catalog, on any page.
+test('resource catalogs reject case aliases of the local namespace', async (t) => {
+  const f = await fixture(t);
+  await f.select(async () => ({
+    resources: [{ uri: 'UI://GITLAB-MCP-LOCAL/connection.html', name: 'Collision' }],
+    resourceTemplates: [{ uriTemplate: 'UI://GITLAB-MCP-LOCAL/{name}', name: 'Collision' }],
+  }));
+  for (const cursor of [undefined, '']) {
+    for (const method of ['listResources', 'listResourceTemplates']) {
+      await assert.rejects(
+        f.frontend[method]({ cursor }),
+        (error) => error.code === ErrorCode.InvalidRequest,
+      );
+    }
+  }
+});
+
 // A resource capability remains useful without a connected provider or resource templates.
 test('unconfigured template discovery is an empty list', async (t) => {
   const { frontend } = await fixture(t);

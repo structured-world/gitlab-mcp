@@ -94,13 +94,25 @@ function resourceRequest<T extends Request>(schema: z.ZodType<T>, request: Reque
   return parsed.data;
 }
 
+function isLocalResourceUri(uri: string): boolean {
+  // RFC 3986 section 6.2.2.1: scheme and host ignore case; the resource path does not.
+  return (
+    uri.slice(0, CONNECTION_PANEL_NAMESPACE.length).toLowerCase() === CONNECTION_PANEL_NAMESPACE
+  );
+}
+
 async function readResource(
   request: z.infer<typeof ReadResourceRequestSchema>,
   extra: RequestHandlerExtra<Request, Notification>,
   connections: Connections,
 ): Promise<Result> {
   const uri = request.params.uri;
-  if (uri === CONNECTION_PANEL_URI)
+  const local = isLocalResourceUri(uri);
+  if (
+    local &&
+    uri.slice(CONNECTION_PANEL_NAMESPACE.length) ===
+      CONNECTION_PANEL_URI.slice(CONNECTION_PANEL_NAMESPACE.length)
+  )
     return {
       contents: [
         {
@@ -111,7 +123,7 @@ async function readResource(
         },
       ],
     };
-  if (!uri.startsWith(CONNECTION_PANEL_NAMESPACE)) {
+  if (!local) {
     const backend = await connections.ready();
     if (backend?.client.getServerCapabilities()?.resources)
       return forward(backend, request, extra, connections, ResultSchema);
@@ -136,7 +148,7 @@ async function resourceTemplates(
     );
     if (
       (response.resourceTemplates as z.infer<typeof ResourceTemplateSchema>[]).some((template) =>
-        template.uriTemplate.startsWith(CONNECTION_PANEL_NAMESPACE),
+        isLocalResourceUri(template.uriTemplate),
       )
     )
       throw new McpError(
@@ -271,7 +283,7 @@ async function resourceListing(
   // The local UI authority belongs to this plugin, never to a connected provider.
   if (
     (response.resources as z.infer<typeof ResourceSchema>[]).some((resource) =>
-      resource.uri.startsWith(CONNECTION_PANEL_NAMESPACE),
+      isLocalResourceUri(resource.uri),
     )
   )
     throw new McpError(ErrorCode.InvalidRequest, 'Backend uses reserved plugin resource URIs.');

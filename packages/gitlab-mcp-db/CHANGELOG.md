@@ -1,5 +1,24 @@
 # Changelog
 
+## [13.2.0](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-db-v13.1.0...gitlab-mcp-db-v13.2.0) (2026-11-04)
+
+
+### Features
+
+* **duo:** add asynchronous session lifecycle ([#737](https://github.com/structured-world/gitlab-mcp/issues/737)) ([c2551c7](https://github.com/structured-world/gitlab-mcp/commit/c2551c715f5abc9088c85f894b14498a2b133f16))
+
+
+### Bug Fixes
+
+* **docs:** derive metrics from the tool catalog ([#742](https://github.com/structured-world/gitlab-mcp/issues/742)) ([d648a6a](https://github.com/structured-world/gitlab-mcp/commit/d648a6ac8027c37c8e1f69f59f9155cefd362485))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @structured-world/gitlab-mcp bumped to 13.2.0
+
 ## [13.1.0](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-db-v13.0.0...gitlab-mcp-db-v13.1.0) (2026-11-01)
 
 

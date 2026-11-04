@@ -4,6 +4,20 @@
 
 * exempt stdio session from idle timeout cleanup ([#363](https://github.com/structured-world/gitlab-mcp/issues/363)) ([ca563bd](https://github.com/structured-world/gitlab-mcp/commit/ca563bda9aa969d5d7680d3d89c2c72f32344838)), closes [#361](https://github.com/structured-world/gitlab-mcp/issues/361)
 
+## [13.2.0](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-v13.1.0...gitlab-mcp-v13.2.0) (2026-11-04)
+
+
+### Features
+
+* **duo:** add asynchronous session lifecycle ([#737](https://github.com/structured-world/gitlab-mcp/issues/737)) ([c2551c7](https://github.com/structured-world/gitlab-mcp/commit/c2551c715f5abc9088c85f894b14498a2b133f16))
+
+
+### Bug Fixes
+
+* **capabilities:** isolate GitLab.com tiers ([#740](https://github.com/structured-world/gitlab-mcp/issues/740)) ([d15f600](https://github.com/structured-world/gitlab-mcp/commit/d15f600a7afb914d52c6eea26d99865a0e88b237))
+* **docs:** derive metrics from the tool catalog ([#742](https://github.com/structured-world/gitlab-mcp/issues/742)) ([d648a6a](https://github.com/structured-world/gitlab-mcp/commit/d648a6ac8027c37c8e1f69f59f9155cefd362485))
+* **plugin:** align resource capabilities and routing ([#743](https://github.com/structured-world/gitlab-mcp/issues/743)) ([e354c25](https://github.com/structured-world/gitlab-mcp/commit/e354c259b4cbc0f768316bcd48197c2baa8a8ac9))
+
 ## [13.1.0](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-v13.0.0...gitlab-mcp-v13.1.0) (2026-11-01)
 
 

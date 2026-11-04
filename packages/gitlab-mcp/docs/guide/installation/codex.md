@@ -124,6 +124,8 @@ supported; subscriptions to individual resources are not. The
 General backend templates remain available even if some expansions reach that
 namespace. Local URIs are resolved by the plugin, and backend read responses
 cannot claim local URIs. Templates explicitly using the local prefix are rejected.
+Scheme and authority case, and percent-encoded unreserved authority characters,
+do not change local ownership. Resource paths are preserved.
 
 Codex [install links](https://learn.chatgpt.com/docs/app/commands#plugin-install)
 work only with known marketplaces. They do not register a repository or import a

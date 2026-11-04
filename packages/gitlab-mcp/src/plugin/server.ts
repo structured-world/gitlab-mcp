@@ -28,6 +28,10 @@ import {
 import { MCP_APPS_EXTENSION } from '../mcp-apps';
 
 const PREFIX = 'gitlab_plugin_';
+const { protocol: LOCAL_RESOURCE_PROTOCOL, host: LOCAL_RESOURCE_AUTHORITY } = new URL(
+  CONNECTION_PANEL_NAMESPACE,
+);
+const LOCAL_RESOURCE_SCHEME = LOCAL_RESOURCE_PROTOCOL + '//';
 // https://modelcontextprotocol.io/specification/2025-11-25/server/resources#error-handling
 const RESOURCE_NOT_FOUND = -32002;
 // Preserve provider extension fields while validating the resources merged into our catalog.
@@ -94,11 +98,25 @@ function resourceRequest<T extends Request>(schema: z.ZodType<T>, request: Reque
   return parsed.data;
 }
 
-function isLocalResourceUri(uri: string): boolean {
-  // RFC 3986 section 6.2.2.1: scheme and host ignore case; the resource path does not.
-  return (
-    uri.slice(0, CONNECTION_PANEL_NAMESPACE.length).toLowerCase() === CONNECTION_PANEL_NAMESPACE
+function localResourcePathOffset(uri: string): number | null {
+  // https://www.rfc-editor.org/rfc/rfc3986#section-6.2.2.2
+  // Normalize authority aliases without rewriting the path or reserved delimiters.
+  if (uri.slice(0, LOCAL_RESOURCE_SCHEME.length).toLowerCase() !== LOCAL_RESOURCE_SCHEME)
+    return null;
+  // Each ASCII authority character expands to at most three URI characters.
+  const prefix = uri.slice(
+    LOCAL_RESOURCE_SCHEME.length,
+    LOCAL_RESOURCE_SCHEME.length + LOCAL_RESOURCE_AUTHORITY.length * 3 + 1,
   );
+  const end = prefix.indexOf('/');
+  if (end < 0) return null;
+  try {
+    const authority = decodeURI(prefix.slice(0, end)).toLowerCase();
+    return authority === LOCAL_RESOURCE_AUTHORITY ? LOCAL_RESOURCE_SCHEME.length + end + 1 : null;
+  } catch {
+    // Malformed percent encoding cannot identify the local authority.
+    return null;
+  }
 }
 
 function hasLocalResourceContent(response: Result): boolean {
@@ -110,7 +128,7 @@ function hasLocalResourceContent(response: Result): boolean {
         content !== null &&
         'uri' in content &&
         typeof content.uri === 'string' &&
-        isLocalResourceUri(content.uri),
+        localResourcePathOffset(content.uri) !== null,
     )
   );
 }
@@ -121,11 +139,10 @@ async function readResource(
   connections: Connections,
 ): Promise<Result> {
   const uri = request.params.uri;
-  const local = isLocalResourceUri(uri);
+  const localPathOffset = localResourcePathOffset(uri);
   if (
-    local &&
-    uri.slice(CONNECTION_PANEL_NAMESPACE.length) ===
-      CONNECTION_PANEL_URI.slice(CONNECTION_PANEL_NAMESPACE.length)
+    localPathOffset !== null &&
+    uri.slice(localPathOffset) === CONNECTION_PANEL_URI.slice(CONNECTION_PANEL_NAMESPACE.length)
   )
     return {
       contents: [
@@ -137,7 +154,7 @@ async function readResource(
         },
       ],
     };
-  if (!local) {
+  if (localPathOffset === null) {
     const backend = await connections.ready();
     if (backend?.client.getServerCapabilities()?.resources) {
       const response = await forward(backend, request, extra, connections, ResultSchema);
@@ -170,8 +187,8 @@ async function resourceTemplates(
     // Broad templates remain available; concrete local URI ownership is enforced on reads.
     // Only an explicit local namespace declaration conflicts with this catalog.
     if (
-      (response.resourceTemplates as z.infer<typeof ResourceTemplateSchema>[]).some((template) =>
-        isLocalResourceUri(template.uriTemplate),
+      (response.resourceTemplates as z.infer<typeof ResourceTemplateSchema>[]).some(
+        (template) => localResourcePathOffset(template.uriTemplate) !== null,
       )
     )
       throw new McpError(
@@ -305,8 +322,8 @@ async function resourceListing(
     : { resources: [] };
   // The local UI authority belongs to this plugin, never to a connected provider.
   if (
-    (response.resources as z.infer<typeof ResourceSchema>[]).some((resource) =>
-      isLocalResourceUri(resource.uri),
+    (response.resources as z.infer<typeof ResourceSchema>[]).some(
+      (resource) => localResourcePathOffset(resource.uri) !== null,
     )
   )
     throw new McpError(ErrorCode.InvalidRequest, 'Backend uses reserved plugin resource URIs.');

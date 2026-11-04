@@ -128,6 +128,66 @@ test('resource catalogs reject case aliases of the local namespace', async (t) =
   }
 });
 
+// Encoded unreserved authority characters must not bypass ownership on any resource path.
+test('encoded local authorities stay local in reads, catalogs and backend contents', async (t) => {
+  const f = await fixture(t);
+  const prefixes = [
+    'ui://%67itlab-mcp-local/',
+    'UI://gitlab%2Dmcp-local/',
+    'ui://%67%69%74%6C%61%62%2D%6D%63%70%2D%6C%6F%63%61%6C/',
+  ];
+  for (const prefix of prefixes) {
+    const uri = prefix + 'connection.html';
+    const panel = await f.frontend.readResource({ uri });
+    assert.equal(panel.contents[0].uri, uri);
+    assert.match(panel.contents[0].text, /Your GitLab connection/);
+    await assert.rejects(
+      f.frontend.readResource({ uri: prefix + '%63onnection.html' }),
+      (error) => error.code === -32002,
+    );
+    await f.select(async () => ({
+      resources: [{ uri, name: 'Collision' }],
+      resourceTemplates: [{ uriTemplate: prefix + '{name}', name: 'Collision' }],
+      contents: [{ uri, text: 'Provider collision' }],
+    }));
+    for (const cursor of [undefined, '']) {
+      for (const method of ['listResources', 'listResourceTemplates']) {
+        await assert.rejects(
+          f.frontend[method]({ cursor }),
+          (error) => error.code === ErrorCode.InvalidRequest,
+        );
+      }
+    }
+    await assert.rejects(
+      f.frontend.readResource({ uri: 'fixture://document' }),
+      (error) => error.code === ErrorCode.InvalidRequest,
+    );
+    await f.connections.disconnect(f.connections.store.revision());
+  }
+});
+
+// Decoding an authority must neither change reserved delimiters nor consume path/query text.
+test('authority normalization does not claim unrelated provider URIs', async (t) => {
+  const f = await fixture(t);
+  await f.select(async (request) => ({
+    contents: [{ uri: request.params.uri, text: 'Provider data' }],
+  }));
+  for (const uri of [
+    'fixture://document',
+    'ui://gitlab-mcp-local.evil/document',
+    'ui://gitlab%2Fmcp-local/document',
+    'ui://%2567itlab-mcp-local/document',
+    'ui://gitlab-mcp-loc%FFal/document',
+    'ui://gitlab-mcp-local%ZZ/document',
+    'ui://gitlab-mcp-local?path=/document',
+    'ui://gitlab-mcp-local#fragment/document',
+    'ui://' + 'x'.repeat(1000) + '/document',
+    'ui://gitlab-mcp-local',
+  ]) {
+    assert.equal((await f.frontend.readResource({ uri })).contents[0].text, 'Provider data');
+  }
+});
+
 // A resource capability remains useful without a connected provider or resource templates.
 test('unconfigured template discovery is an empty list', async (t) => {
   const { frontend } = await fixture(t);

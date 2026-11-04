@@ -307,6 +307,37 @@ for (const cursor of [undefined, '']) {
   });
 }
 
+// Broad templates do not take ownership away from fixed local resources.
+test('general templates remain available while concrete local reads stay local', async (t) => {
+  const f = await fixture(t);
+  const templates = [
+    { uriTemplate: 'ui://{authority}/{path}', name: 'General UI' },
+    { uriTemplate: '{scheme}://fixture/{id}', name: 'General scheme' },
+  ];
+  const reads = [];
+  await f.select(async (request) => {
+    if (request.method === 'resources/templates/list')
+      return { resourceTemplates: templates, nextCursor: 'next' };
+    reads.push(request.params.uri);
+    return { contents: [{ uri: request.params.uri, text: 'Provider data' }] };
+  });
+  for (const cursor of [undefined, 'next']) {
+    assert.deepEqual(await f.frontend.listResourceTemplates({ cursor }), {
+      resourceTemplates: templates,
+      nextCursor: 'next',
+    });
+  }
+  const uri = 'ui://fixture/document';
+  assert.equal((await f.frontend.readResource({ uri })).contents[0].text, 'Provider data');
+  const panel = await f.frontend.readResource({ uri: CONNECTION_PANEL_URI });
+  assert.match(panel.contents[0].text, /Your GitLab connection/);
+  await assert.rejects(
+    f.frontend.readResource({ uri: 'ui://gitlab-mcp-local/document' }),
+    (error) => error.code === -32002,
+  );
+  assert.deepEqual(reads, [uri]);
+});
+
 // A malformed external catalog must fail at the bridge, even for a raw SDK caller.
 test('template catalogs require a valid template array', async (t) => {
   const f = await fixture(t);

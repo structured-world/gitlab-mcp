@@ -167,6 +167,8 @@ async function resourceTemplates(
       connections,
       ResourceTemplateCatalogSchema,
     );
+    // Broad templates remain available; concrete local URI ownership is enforced on reads.
+    // Only an explicit local namespace declaration conflicts with this catalog.
     if (
       (response.resourceTemplates as z.infer<typeof ResourceTemplateSchema>[]).some((template) =>
         isLocalResourceUri(template.uriTemplate),

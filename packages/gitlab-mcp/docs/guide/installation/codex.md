@@ -121,6 +121,9 @@ discovery combines that panel with the selected server's resources and templates
 preserving pagination and access errors. Resource-list change notifications are
 supported; subscriptions to individual resources are not. The
 `ui://gitlab-mcp-local/` URI namespace is reserved for the plugin's own UI.
+General backend templates remain available even if some expansions reach that
+namespace. Local URIs are resolved by the plugin, and backend read responses
+cannot claim local URIs. Templates explicitly using the local prefix are rejected.
 
 Codex [install links](https://learn.chatgpt.com/docs/app/commands#plugin-install)
 work only with known marketplaces. They do not register a repository or import a

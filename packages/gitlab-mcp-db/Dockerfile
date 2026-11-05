@@ -28,6 +28,7 @@ WORKDIR /app
 # Copy workspace manifests for a cache-friendly install
 COPY package.json yarn.lock .yarnrc.yml nx.json ./
 COPY .yarn/releases/ .yarn/releases/
+COPY .yarn/patches/ .yarn/patches/
 COPY packages/gitlab-mcp/package.json ./packages/gitlab-mcp/package.json
 COPY packages/gitlab-mcp-db/package.json ./packages/gitlab-mcp-db/package.json
 

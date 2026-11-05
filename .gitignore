@@ -15,6 +15,7 @@ coverage/
 # Yarn (this project uses Yarn 4, not npm)
 .yarn/*
 !.yarn/releases/
+!.yarn/patches/
 package-lock.json
 
 .dist/

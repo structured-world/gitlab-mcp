@@ -21,6 +21,7 @@ WORKDIR /app
 # each package's package.json, so the install layer is reused unless deps change.
 COPY package.json yarn.lock .yarnrc.yml ./
 COPY .yarn/releases/ .yarn/releases/
+COPY .yarn/patches/ .yarn/patches/
 COPY packages/gitlab-mcp/package.json ./packages/gitlab-mcp/package.json
 COPY packages/gitlab-mcp-db/package.json ./packages/gitlab-mcp-db/package.json
 

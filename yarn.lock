@@ -7092,7 +7092,7 @@ __metadata:
 
 "nx@patch:nx@npm%3A24.0.4#~/.yarn/patches/nx-minimatch11.patch":
   version: 24.0.4
-  resolution: "nx@patch:nx@npm%3A24.0.4#~/.yarn/patches/nx-minimatch11.patch::version=24.0.4&hash=a1d1f1"
+  resolution: "nx@patch:nx@npm%3A24.0.4#~/.yarn/patches/nx-minimatch11.patch::version=24.0.4&hash=1a73cc"
   dependencies:
     "@clack/core": "npm:1.4.3"
     "@clack/prompts": "npm:1.7.0"
@@ -7224,7 +7224,7 @@ __metadata:
   bin:
     nx: ./dist/bin/nx.js
     nx-cloud: ./dist/bin/nx-cloud.js
-  checksum: 10c0/57471f79e9d9479ef102dd54ed60162b7c1a27d5206c79ec12c32aa76f2e8a2d39fc47c322a4c156f5442a3bedfc27eceb512de74b2f594ac1081682422736a9
+  checksum: 10c0/c42e31cb70ff87c6c590db44b743e96b162fec8b9967aabc18e7de6bdf510d6afa4db89f11585c732dba29305e8f904ba73d46a4f2bc45c8187a4b4b401d890d
   languageName: node
   linkType: hard
 

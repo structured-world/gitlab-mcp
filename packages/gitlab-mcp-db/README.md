@@ -4,7 +4,7 @@
 
 Advanced GitLab MCP server: 66 tools across 27 registry groups, including 60 CQRS tools with 241 typed actions and 6 setup helpers. The tool catalog and parameters are filtered to each instance's GitLab version, tier, and token scopes, so the agent sees only what the connected instance actually supports.
 
-[![Install in Claude Desktop](https://img.shields.io/badge/Claude_Desktop-Install_Extension-F97316?style=for-the-badge)](https://gitlab-mcp.sw.foundation/downloads/gitlab-mcp-13.2.0.mcpb)
+[![Install in Claude Desktop](https://img.shields.io/badge/Claude_Desktop-Install_Extension-F97316?style=for-the-badge)](https://gitlab-mcp.sw.foundation/downloads/gitlab-mcp-13.2.1.mcpb)
 [![Set up in Codex](https://img.shields.io/badge/Codex-Setup_%26_Download-111827?style=for-the-badge)](https://gitlab-mcp.sw.foundation/guide/installation/codex#install-from-a-release)
 [![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_MCP_Server-007ACC?style=for-the-badge&logo=visualstudiocode&logoColor=white)](vscode:mcp/install?%7B%22name%22%3A%22gitlab-mcp%22%2C%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40structured-world%2Fgitlab-mcp%22%5D%7D)
 [![Install in VS Code Insiders](https://img.shields.io/badge/VS_Code_Insiders-Install_MCP_Server-24bfa5?style=for-the-badge&logo=visualstudiocode&logoColor=white)](vscode-insiders:mcp/install?%7B%22name%22%3A%22gitlab-mcp%22%2C%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40structured-world%2Fgitlab-mcp%22%5D%7D)

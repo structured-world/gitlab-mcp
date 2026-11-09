@@ -5,7 +5,7 @@
   "description": "Advanced GitLab MCP server",
   "mcp": {
     "name": "GitLab MCP Server",
-    "description": "66 tools, 241 typed actions, 27 registry groups",
+    "description": "66 tools, 242 typed actions, 27 registry groups",
     "repository": "https://github.com/structured-world/gitlab-mcp",
     "homepage": "https://gitlab-mcp.sw.foundation",
     "author": "Dmitry Prudnikov",

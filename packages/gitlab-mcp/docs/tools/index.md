@@ -265,7 +265,7 @@ See [role-based prompts](/prompts/by-role/developer) for workflows tailored to e
 | **Jobs** | — (via browse_pipelines) | `manage_pipeline` (play_job, retry_job, cancel_job) |
 | **Variables** | `browse_variables` (list, get) | `manage_variable` (create, update, delete) |
 | **Files** | `browse_files` (tree, content, download_attachment) | `manage_files` (single, batch, upload) |
-| **Work Items** | `browse_work_items` (list, get) | `manage_work_item` (create, update, delete, link, reorder) |
+| **Work Items** | `browse_work_items` (list, get, list_discussions) | `manage_work_item` (create, update, delete, link, reorder) |
 | **Milestones** | `browse_milestones` (list, get, issues, burndown) | `manage_milestone` (create, update, delete, promote) |
 | **Labels** | `browse_labels` (list, get) | `manage_label` (create, update, delete) |
 | **Iterations** | `browse_iterations` (list, get) | — |

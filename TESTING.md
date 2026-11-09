@@ -239,6 +239,14 @@ supported Node.js runtime (24 or later). The suite serves synthetic traces throu
 loopback HTTP and invokes the built pipeline handler in isolated processes. No real
 GitLab account or test namespace is needed.
 
+## Live work item discussions
+
+From `packages/gitlab-mcp`, run `yarn build` and then
+`node --test tests/integration/workitem-discussions.live.test.mjs`. This standalone
+MCP client check uses the protected `.env.test` configuration and creates one
+disposable project under `test`. It verifies user comments, system activity, and
+pagination through the built stdio server, then deletes the project.
+
 The fixture generates 200 MiB incrementally. Tests verify 200-line tail, first,
 middle and negative-offset pages, a 200 MiB single line, concurrent instance/token
 isolation, broken bodies, incorrect Content-Length, deadline expiration and abort.

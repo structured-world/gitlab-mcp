@@ -15,7 +15,7 @@ Work items, milestones, labels, and team collaboration tools.
 
 | Tool | Type | Purpose |
 |------|------|---------|
-| `browse_work_items` | Query | List and get issues, epics, tasks |
+| `browse_work_items` | Query | List and get issues, epics, tasks, and their discussions |
 | `manage_work_item` | Command | Create, update, delete work items |
 | `browse_milestones` | Query | Milestone tracking and burndown |
 | `manage_milestone` | Command | Create, update, delete milestones |
@@ -35,6 +35,7 @@ GitLab work items include Issues, Epics, Tasks, Incidents, and more.
 |--------|-------------|
 | `list` | List work items with filtering |
 | `get` | Get single work item details |
+| `list_discussions` | Read work item comments, replies, and system notes |
 <!-- @autogen:end -->
 
 ::: code-group
@@ -77,7 +78,27 @@ GitLab work items include Issues, Epics, Tasks, Incidents, and more.
 }
 ```
 
+```json [Read discussions]
+{
+  "action": "list_discussions",
+  "namespace": "my-org/api",
+  "iid": "95",
+  "first": 10
+}
+```
+
 :::
+
+`list_discussions` reads user comments and system activity from the GitLab notes widget.
+Use `namespace` and `iid`, or the global `id`. Each discussion contains a `notes`
+connection with the note body, author, timestamp and `system` flag. Use the
+response's `endCursor` as `after` while `hasMore` is true.
+
+Each thread also has its own `notes.pageInfo`. To continue a long thread, locate it
+with `first: 1`, then repeat that same one-discussion page using the same `after`
+(omit it for the first page). Supply the discussion's `id` as `discussion_id` and
+`notes.pageInfo.endCursor` as `notes_after`. Both page sizes default to 10 and accept
+1 to 20. Reduce `first` or `notes_first` if the response exceeds the 4 MiB limit.
 
 :::info
 Time tracking: when available, `browse_work_items` returns a `TIME_TRACKING` widget with fields like `timeEstimate` and `totalTimeSpent`. In `simple: true` mode, time tracking is included as a simplified widget.

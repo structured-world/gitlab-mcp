@@ -2,6 +2,7 @@ import * as z from 'zod';
 import { BrowseWorkItemsSchema } from './schema-readonly';
 import { ManageWorkItemSchema } from './schema';
 import { reorderWorkItem } from './reorder';
+import { listWorkItemDiscussions } from './discussions';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
 import { ConnectionManager } from '../../services/ConnectionManager';
 import { assertActionAllowed } from '../utils';
@@ -373,7 +374,7 @@ const simplifyWorkItem = (
 /**
  * Work items tools registry - 2 CQRS tools replacing 5 individual tools
  *
- * browse_work_items (Query): list, get
+ * browse_work_items (Query): list, get, list_discussions
  * manage_work_item (Command): create, update, delete, delete_timelog, add_link, remove_link
  */
 export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinition>([
@@ -386,7 +387,7 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
     {
       name: 'browse_work_items',
       description:
-        'Find and inspect issues, epics, tasks, and other work items. Actions: list (groups return epics, projects return issues/tasks, filter by type/state/labels), get (by numeric ID or namespace+iid from URL path). Related: manage_work_item to create/update/delete.',
+        'Find and inspect issues, epics, tasks, and other work items. Actions: list (filter by type/state), get (details by ID or namespace+iid), list_discussions (paginated comments, replies, and system notes). Related: manage_work_item to create/update/delete.',
       inputSchema: z.toJSONSchema(BrowseWorkItemsSchema),
       // Queries adapt to the instance schema (unknown widget fragments dropped,
       // project/group fallbacks for the namespace-level queries).
@@ -444,6 +445,11 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
               hasMore: pageInfo.hasNextPage ?? false,
               endCursor: pageInfo.endCursor ?? null,
             };
+          }
+
+          case 'list_discussions': {
+            const client = ConnectionManager.getInstance().getClient(getGitLabApiUrlFromContext());
+            return listWorkItemDiscussions(client, input);
           }
 
           case 'get': {

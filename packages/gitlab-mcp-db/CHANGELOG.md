@@ -1,5 +1,19 @@
 # Changelog
 
+## [13.3.0](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-db-v13.2.1...gitlab-mcp-db-v13.3.0) (2026-11-09)
+
+
+### Features
+
+* **workitems:** read discussion pages ([#751](https://github.com/structured-world/gitlab-mcp/issues/751)) ([e8d4978](https://github.com/structured-world/gitlab-mcp/commit/e8d49786bfbf4e983207b217b410761c099d0e1e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @structured-world/gitlab-mcp bumped to 13.3.0
+
 ## [13.2.1](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-db-v13.2.0...gitlab-mcp-db-v13.2.1) (2026-11-05)
 
 

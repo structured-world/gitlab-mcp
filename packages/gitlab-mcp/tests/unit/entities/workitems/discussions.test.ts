@@ -91,6 +91,37 @@ it.each(['project', 'group'])(
   },
 );
 
+// Keep a missing item distinct from a readable work item with no discussions.
+it.each([
+  {
+    description: 'project has no matching item',
+    project: { container: { items: { nodes: [] } } },
+    groupSupported: true,
+    requestCount: 1,
+  },
+  {
+    description: 'GitLab cannot query group work items',
+    project: { container: null },
+    groupSupported: false,
+    requestCount: 1,
+  },
+  {
+    description: 'neither project nor group is visible',
+    project: { container: null },
+    groupSupported: true,
+    requestCount: 2,
+  },
+])(
+  'reports an inaccessible target when $description',
+  async ({ project, groupSupported, requestCount }) => {
+    mockUnsupported.add('Namespace.workItem');
+    if (!groupSupported) mockUnsupported.add('Group.workItems');
+    mockRequest.mockResolvedValueOnce(project).mockResolvedValueOnce({ container: null });
+    await expect(browse(lookup)).rejects.toThrow('not found or not accessible');
+    expect(mockRequest).toHaveBeenCalledTimes(requestCount);
+  },
+);
+
 // GitLab can redact all results on a page while still advertising a continuation.
 it('preserves GitLab pagination for a page with no visible discussions', async () => {
   mockRequest.mockResolvedValueOnce({ container: { item: item({ ...page, nodes: [] }) } });

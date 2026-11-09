@@ -77,6 +77,7 @@ const BY_NAMESPACE: TypedDocumentNode<{ container: { item: Item | null } | null 
   }
 `;
 
+/** Build the IID lookup for schemas without Namespace.workItem. */
 function collectionQuery(
   kind: 'project' | 'group',
 ): TypedDocumentNode<CollectionResult, IidVariables> {
@@ -95,6 +96,7 @@ const BY_PROJECT = collectionQuery('project');
 const BY_GROUP = collectionQuery('group');
 const RESPONSE_BYTES = 4 * 1024 * 1024;
 
+/** Query only the discussion projection using the instance's supported lookup. */
 async function readItem(client: GraphQLClient, input: Input): Promise<Item | null> {
   const {
     namespace,
@@ -129,6 +131,7 @@ async function readItem(client: GraphQLClient, input: Input): Promise<Item | nul
   return result.item;
 }
 
+/** Return a bounded page and verify thread identity when resuming its notes. */
 export async function listWorkItemDiscussions(client: GraphQLClient, input: Input) {
   if (!graphqlSupports('WorkItemWidgetNotes', 'discussions')) {
     throw new Error('This GitLab instance does not expose work item discussions');

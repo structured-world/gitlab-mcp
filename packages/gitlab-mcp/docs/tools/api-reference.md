@@ -1891,7 +1891,7 @@ Create, update, or delete project/group milestones. Actions: create (title + opt
 
 ### browse_work_items [tier: Free]
 
-Find and inspect issues, epics, tasks, and other work items. Actions: list (groups return epics, projects return issues/tasks, filter by type/state/labels), get (by numeric ID or namespace+iid from URL path). Related: manage_work_item to create/update/delete.
+Find and inspect issues, epics, tasks, and other work items. Actions: list (filter by type/state), get (details by ID or namespace+iid), list_discussions (paginated comments, replies, and system notes). Related: manage_work_item to create/update/delete.
 
 #### Actions
 
@@ -1899,6 +1899,7 @@ Find and inspect issues, epics, tasks, and other work items. Actions: list (grou
 |--------|------|-------------|
 | `list` | Free | List work items with filtering |
 | `get` | Free | Get single work item details |
+| `list_discussions` | Free | Read work item comments, replies, and system notes |
 
 #### Parameters
 
@@ -1924,6 +1925,18 @@ Find and inspect issues, epics, tasks, and other work items. Actions: list (grou
 | `state` | string[] | Yes | Filter by work item state. Defaults to OPEN items only. Use ["OPEN", "CLOSED"] for all items. |
 | `after` | string | No | Cursor for pagination (use endCursor from previous response) |
 | `types` | string[] | No | Filter by work item types |
+
+**Action `list_discussions`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `first` | integer | Yes | Discussions per page (1-20) |
+| `notes_first` | integer | Yes | Notes per discussion (1-20) |
+| `after` | string | No | Discussion cursor from the previous page |
+| `discussion_id` | string | No | Expected discussion ID when continuing notes |
+| `id` | string | No | Work item ID to retrieve - use numeric ID from list results (e.g., '5953') |
+| `iid` | string | No | Internal ID from URL (e.g., '95' from /issues/95). Use with namespace parameter. |
+| `notes_after` | string | No | Notes cursor. Reuse the discussion page cursor with first: 1 and discussion_id. |
 
 #### Example
 

@@ -75,3 +75,72 @@ it('continues replies in one verified discussion by work item ID', async () => {
     notesAfter: 'reply-cursor',
   });
 });
+
+// The same discussion selection works on GitLab schemas before Namespace.workItem.
+it.each(['project', 'group'])(
+  'looks up discussions through the %s collection on older GitLab',
+  async (kind) => {
+    mockUnsupported.add('Namespace.workItem');
+    if (kind === 'group') mockRequest.mockResolvedValueOnce({ container: null });
+    mockRequest.mockResolvedValueOnce({ container: { items: { nodes: [item()] } } });
+    await expect(browse(lookup)).resolves.toMatchObject({ discussions: page.nodes });
+    const [document] = mockRequest.mock.calls.at(-1)!;
+    expect(print(document)).toContain(`container: ${kind}(fullPath: $namespacePath)`);
+    expect(print(document)).toContain('workItems(iid: $iid, first: 1)');
+    expect(mockRequest).toHaveBeenCalledTimes(kind === 'project' ? 1 : 2);
+  },
+);
+
+// GitLab can redact all results on a page while still advertising a continuation.
+it('preserves GitLab pagination for a page with no visible discussions', async () => {
+  mockRequest.mockResolvedValueOnce({ container: { item: item({ ...page, nodes: [] }) } });
+  await expect(browse(lookup)).resolves.toEqual({
+    workItemId: '19',
+    discussions: [],
+    hasMore: true,
+    endCursor: 'discussion-cursor',
+  });
+});
+
+// A missing item or unavailable widget is distinguishable from an empty page.
+it.each([
+  [null, 'not found or not accessible'],
+  [{ id: item().id, widgets: [] }, 'does not have a notes widget'],
+  [item(null), 'did not return discussions'],
+])('reports unavailable discussions instead of an empty page (%j)', async (result, error) => {
+  mockRequest.mockResolvedValueOnce({ container: { item: result } });
+  await expect(browse(lookup)).rejects.toThrow(error);
+});
+
+it('refuses the action when the schema lacks the discussions field', async () => {
+  mockUnsupported.add('WorkItemWidgetNotes.discussions');
+  await expect(browse(lookup)).rejects.toThrow('does not expose work item discussions');
+  expect(mockRequest).not.toHaveBeenCalled();
+});
+
+it('rejects a reply page whose discussion no longer matches the requested ID', async () => {
+  mockRequest.mockResolvedValueOnce({
+    container: { item: item({ ...page, nodes: [page.nodes[1]] }) },
+  });
+  await expect(
+    browse({
+      ...lookup,
+      first: 1,
+      notes_after: 'reply-cursor',
+      discussion_id: discussionId,
+    }),
+  ).rejects.toThrow('The discussion page changed');
+});
+
+// Refuse unbounded page sizes and cursors that would be applied to multiple threads.
+it.each([
+  { first: 0 },
+  { first: 21 },
+  { notes_first: 21 },
+  { notes_after: 'reply-cursor', discussion_id: discussionId, first: 2 },
+  { notes_after: 'reply-cursor', first: 1 },
+  { discussion_id: discussionId, first: 1 },
+])('rejects invalid pagination %j before GitLab I/O', async (invalid) => {
+  await expect(browse({ ...lookup, ...invalid })).rejects.toThrow();
+  expect(mockRequest).not.toHaveBeenCalled();
+});

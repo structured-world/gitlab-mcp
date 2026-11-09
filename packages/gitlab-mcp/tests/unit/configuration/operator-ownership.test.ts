@@ -168,6 +168,7 @@ describe('operator ownership', () => {
   // Global IDs cannot be authorized by an unrelated permitted project hint.
   it.each([
     ['browse_work_items', { action: 'get', id: '9', project_id: '71' }, 'workItem'],
+    ['browse_work_items', { action: 'list_discussions', id: '9' }, 'workItem'],
     ['browse_registry', { action: 'get_repository', repository_id: '9' }, 'containerRepository'],
     ['manage_vulnerability', { action: 'resolve', vulnerability_id: '9' }, 'vulnerability'],
     ['manage_todos', { action: 'mark_done', id: '9' }, 'todo'],

@@ -97,11 +97,12 @@ test(
       await call('manage_work_item', {
         action: 'update',
         id: String(issue.id),
-        stateEvent: 'CLOSE',
+        state: 'CLOSE',
       });
 
       // The old details projection exposes the widget without fetching its notes.
       const details = await call('browse_work_items', { action: 'get', namespace, iid });
+      assert.equal(details.state, 'CLOSED');
       assert.equal(details.widgets.find((widget) => widget.type === 'NOTES')?.type, 'NOTES');
 
       const lookup = { action: 'list_discussions', namespace, iid, first: 1 };

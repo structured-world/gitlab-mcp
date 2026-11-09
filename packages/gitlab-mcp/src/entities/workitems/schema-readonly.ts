@@ -43,7 +43,7 @@ export const WorkItemStateEventSchema = z
 
 // ============================================================================
 // browse_work_items - CQRS Query Tool (discriminated union schema)
-// Actions: list, get
+// Actions: list, get, list_discussions
 // Uses z.discriminatedUnion() for type-safe action handling.
 // Schema pipeline flattens to flat JSON Schema for AI clients that don't support oneOf.
 // ============================================================================
@@ -96,13 +96,34 @@ const ListWorkItemsSchema = z.object({
 // Supports two lookup methods:
 // 1. By namespace + iid (preferred for URL-based lookups)
 // 2. By global id (for items from list results)
-const GetWorkItemSchema = z.object({
-  action: z.literal('get').describe('Get single work item details'),
-  // Lookup by namespace + IID (preferred for URL-based requests)
+const workItemLookup = {
   namespace: namespaceField.optional(),
   iid: workItemIidField.optional(),
-  // Lookup by global ID (backward compatible)
   id: workItemIdField.optional(),
+};
+const GetWorkItemSchema = z.object({
+  action: z.literal('get').describe('Get single work item details'),
+  ...workItemLookup,
+});
+
+const ListDiscussionsSchema = z.object({
+  action: z
+    .literal('list_discussions')
+    .describe('Read work item comments, replies, and system notes'),
+  ...workItemLookup,
+  first: z.number().int().min(1).max(20).default(10).describe('Discussions per page (1-20)'),
+  after: z.string().min(1).optional().describe('Discussion cursor from the previous page'),
+  notes_first: z.number().int().min(1).max(20).default(10).describe('Notes per discussion (1-20)'),
+  notes_after: z
+    .string()
+    .min(1)
+    .optional()
+    .describe('Notes cursor. Reuse the discussion page cursor with first: 1 and discussion_id.'),
+  discussion_id: z
+    .string()
+    .min(1)
+    .optional()
+    .describe('Expected discussion ID when continuing notes'),
 });
 
 // --- Discriminated union combining all actions ---
@@ -110,11 +131,12 @@ const GetWorkItemSchema = z.object({
 const BrowseWorkItemsBaseSchema = z.discriminatedUnion('action', [
   ListWorkItemsSchema,
   GetWorkItemSchema,
+  ListDiscussionsSchema,
 ]);
 
-// Add validation for "get" action: must have either (namespace + iid) or (id)
+// A single work item is identified by (namespace + IID) or a global ID.
 export const BrowseWorkItemsSchema = BrowseWorkItemsBaseSchema.superRefine((data, ctx) => {
-  if (data.action === 'get') {
+  if (data.action !== 'list') {
     const hasNamespaceIid = data.namespace !== undefined && data.iid !== undefined;
     const hasId = data.id !== undefined;
 
@@ -124,6 +146,15 @@ export const BrowseWorkItemsSchema = BrowseWorkItemsBaseSchema.superRefine((data
         message:
           "Either 'id' (global ID) or both 'namespace' and 'iid' (from URL) must be provided",
         path: ['id'],
+      });
+    }
+  }
+  if (data.action === 'list_discussions' && (data.notes_after || data.discussion_id)) {
+    if (data.first !== 1 || !data.notes_after || !data.discussion_id) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'Continuing notes requires notes_after, discussion_id, and first: 1',
+        path: ['notes_after'],
       });
     }
   }

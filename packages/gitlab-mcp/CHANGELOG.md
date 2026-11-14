@@ -4,6 +4,13 @@
 
 * exempt stdio session from idle timeout cleanup ([#363](https://github.com/structured-world/gitlab-mcp/issues/363)) ([ca563bd](https://github.com/structured-world/gitlab-mcp/commit/ca563bda9aa969d5d7680d3d89c2c72f32344838)), closes [#361](https://github.com/structured-world/gitlab-mcp/issues/361)
 
+## [13.3.1](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-v13.3.0...gitlab-mcp-v13.3.1) (2026-11-14)
+
+
+### Bug Fixes
+
+* **docs:** point edit links at the docs package ([#759](https://github.com/structured-world/gitlab-mcp/issues/759)) ([0632354](https://github.com/structured-world/gitlab-mcp/commit/0632354b1f83ea25279e457eda861bda6e7e89d1)), closes [#758](https://github.com/structured-world/gitlab-mcp/issues/758)
+
 ## [13.3.0](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-v13.2.1...gitlab-mcp-v13.3.0) (2026-11-09)
 
 

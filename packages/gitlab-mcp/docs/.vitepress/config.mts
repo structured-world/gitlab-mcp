@@ -477,17 +477,17 @@ export default defineConfig({
         // Files fully generated at build time - no source to edit
         const generatedFiles = ["tools/api-reference.md"];
 
-        const relativePath = filePath.replace(/^docs\//, "");
-
         // Hide edit link for fully generated files
-        if (generatedFiles.includes(relativePath)) {
+        if (generatedFiles.includes(filePath)) {
           return "";
         }
 
-        const isTemplated = templatedFiles.includes(relativePath);
+        // `filePath` is relative to the docs directory the site is built
+        // from, which lives under `packages/gitlab-mcp/` in the repository.
+        const isTemplated = templatedFiles.includes(filePath);
         const targetPath = isTemplated ? `${filePath}.in` : filePath;
 
-        return `https://github.com/structured-world/gitlab-mcp/edit/main/${targetPath}`;
+        return `https://github.com/structured-world/gitlab-mcp/edit/main/packages/gitlab-mcp/docs/${targetPath}`;
       },
       text: "Edit this page on GitHub",
     },

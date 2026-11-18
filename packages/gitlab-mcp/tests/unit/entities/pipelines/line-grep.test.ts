@@ -206,12 +206,51 @@ describe('GitLab trace rendering before matching', () => {
     expect(result.hunks[0].matches).toEqual([{ line: 32, patterns: [0] }]);
   });
 
-  // A CR inside a later fragment clears the whole logical line, as in the GitLab view.
+  // Fragment groups follow the trace, not start_line: a resumed search inside a long
+  // logical line still searches every later group and reports each match once.
+  it('resumes inside a long logical line without losing later groups', () => {
+    const stamp = '2026-11-18T10:00:00.123456Z';
+    const source = Array.from({ length: 65 }, (_, index) => {
+      const text = index % 32 === 0 ? ` error ${index}` : ` part ${index}`;
+      return `${stamp} 00O${index === 0 ? ' ' : '+'}${text}`;
+    }).join('\n');
+    const seen: number[] = [];
+    let start: number | null = 0;
+    for (let page = 0; start !== null && page < 5; page++) {
+      const result = scan(source, { startLine: start, maxMatches: 1 }, 65536);
+      seen.push(...matched(result));
+      start = result.resume_from;
+    }
+    expect(start).toBeNull();
+    expect(seen).toEqual([0, 32, 64]);
+  });
+
+  // A CR inside a later fragment clears the whole logical line, as in the GitLab view,
+  // in the matched text and in the returned fragments alike.
   it('lets a carriage return in a fragment clear the earlier fragments', () => {
     const stamp = '2026-11-18T10:00:00.123456Z';
     const source = `${stamp} 00O progress 10%\n${stamp} 00O+ 50%\rERROR: x`;
     const result = scan(source, { patterns: ['^ERROR: x$', 'progress'] });
     expect(result.hunks[0].matches).toEqual([{ line: 0, patterns: [0] }]);
+    expect(texts(result)).toEqual([['', 'ERROR: x']]);
+  });
+
+  // GitLab joins fragments before CR handling: a CR ending a continued fragment clears it.
+  it('lets a carriage return ending a continued fragment clear it', () => {
+    const stamp = '2026-11-18T10:00:00.123456Z';
+    const source = `${stamp} 00O progress\r\n${stamp} 00O+ERROR\n${stamp} 00O done\r\n`;
+    const result = scan(source, { patterns: ['^ERROR$', '^done$'] });
+    expect(result.hunks).toEqual([
+      {
+        start_line: 0,
+        lines: ['', 'ERROR', 'done'],
+        matches: [
+          { line: 0, patterns: [0] },
+          { line: 2, patterns: [1] },
+        ],
+        timestamps: [stamp, stamp, stamp],
+      },
+    ]);
   });
 
   // A continuation whose first fragment lies before start_line is context, never a match.
@@ -439,6 +478,29 @@ describe('limits and continuation', () => {
     expect(seen).toEqual(Array.from({ length: 200 }, (_, index) => index));
   });
 
+  // The limit counts returned text: invalid bytes grow into U+FFFD when decoded.
+  it('applies the output limit to decoded text', () => {
+    const line = Buffer.concat([Buffer.from('error '), Buffer.alloc(1000, 0xff)]);
+    const source = Buffer.concat(
+      Array.from({ length: 40 }, (_, index) =>
+        Buffer.concat([index > 0 ? Buffer.from('\n') : Buffer.alloc(0), line]),
+      ),
+    );
+    const seen: number[] = [];
+    let start: number | null = 0;
+    for (let page = 0; start !== null && page < 40; page++) {
+      const result = scan(source, { startLine: start, outputBytes: 8192 }, 65536);
+      const bytes = result.hunks.reduce(
+        (sum, hunk) => sum + hunk.lines.reduce((total, text) => total + Buffer.byteLength(text), 0),
+        0,
+      );
+      expect(bytes).toBeLessThanOrEqual(8192);
+      seen.push(...matched(result));
+      start = result.resume_from;
+    }
+    expect(seen).toEqual(Array.from({ length: 40 }, (_, index) => index));
+  });
+
   // Line totals follow String.split: empty input and a final LF each count a line.
   it.each([
     ['', 1],
@@ -500,6 +562,8 @@ describe('pattern contract', () => {
     [['(?P<part>error)', '(?P<part>warning)'], 'a warning here', [1]],
     [['\\Q[error]'], 'got [error] now', [0]],
     [['ok', '\\Q[error]'], 'got [error] now', [1]],
+    // Joined, the open \Q would quote the next wrapper and still compile.
+    [['\\Qfoo', '\\Qbar\\E'], 'bar', [1]],
   ])('accepts %j together', (patterns, line, hits) => {
     expect(scan(line, { patterns }).hunks[0].matches).toEqual([{ line: 0, patterns: hits }]);
   });

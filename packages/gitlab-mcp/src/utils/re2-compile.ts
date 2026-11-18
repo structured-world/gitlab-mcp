@@ -34,10 +34,16 @@ function checkCallerPattern(pattern: string, index: number): RE2JS {
   return compiled;
 }
 
-/** The alternation of every source, or null when joined sources are no longer valid RE2. */
+/**
+ * The alternation of every source, or null when joining could change what a source
+ * matches. The set then matches every input unaided.
+ */
 function compileGate(sources: readonly string[]): RE2JS | null {
-  // Patterns valid alone can conflict once joined: a group name used twice, or a trailing
-  // \Q that quotes the wrapper's closing parenthesis. The set then matches unaided.
+  // \Q quotes up to \E or the end of the pattern, so joined it can quote the wrappers that
+  // follow and still compile into a gate that rejects lines the set would match. A false
+  // hit on an escaped backslash only costs the gate.
+  if (sources.some((source) => source.includes('\\Q'))) return null;
+  // A group name used in two sources fails to compile once joined.
   try {
     return RE2JS.compile(sources.map((source) => `(?:${source})`).join('|'));
   } catch {
@@ -52,8 +58,8 @@ function compileGate(sources: readonly string[]): RE2JS | null {
  * A single pattern is tested as compiled. Several share one alternation that gates each
  * input: re2js rejects most inputs by its literal prefilter without running an automaton,
  * and anything else costs one automaton pass; only inputs that do match pay for the set
- * pass that names the matching patterns. When the joined sources are not valid RE2, the
- * set matches every input itself. Compilation cost grows with the pattern, so callers run
+ * pass that names the matching patterns. When joining could change a pattern's meaning
+ * or fails to compile, the set matches every input itself. Compilation cost grows with the pattern, so callers run
  * this off the request thread.
  */
 export function compilePatterns(

@@ -82,7 +82,7 @@ describe('Audit Events Schema - GitLab Integration', () => {
 
       expect(Array.isArray(result)).toBe(true);
       console.log(`  ${testProjectPath} returned ${result.length} audit events`);
-    }, 15000);
+    });
 
     it('lists instance audit events or reports lack of admin access', async () => {
       try {
@@ -96,6 +96,6 @@ describe('Audit Events Schema - GitLab Integration', () => {
         // Non-admin tokens cannot read instance audit events; expected.
         console.log(`  list_instance not available for this token: ${(error as Error).message}`);
       }
-    }, 15000);
+    });
   });
 });

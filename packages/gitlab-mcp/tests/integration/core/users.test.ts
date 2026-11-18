@@ -102,7 +102,7 @@ describe('GitLab Users API - BrowseUsersSchema', () => {
         }
       }
     }
-  }, 30000); // 30 second timeout for multiple API calls
+  });
 
   it('should handle invalid parameters correctly', async () => {
     const invalidCases = [

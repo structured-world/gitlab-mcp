@@ -39,7 +39,7 @@ describe('Scoped composition - GitLab integration', () => {
     )) as { nodes: unknown[]; pageInfo: unknown };
     expect(Array.isArray(result.nodes)).toBe(true);
     expect(result.pageInfo).toBeDefined();
-  }, 60000);
+  });
 
   // Both valid forms must route to project endpoints, which reject the instance-only parameter.
   it('lists group deploy keys with explicit public=false', async () => {
@@ -54,7 +54,7 @@ describe('Scoped composition - GitLab integration', () => {
     expect(Array.isArray(result) || Array.isArray((result as { items?: unknown[] }).items)).toBe(
       true,
     );
-  }, 60000);
+  });
 
   describeIfTier('ultimate', 'vulnerability composition', () => {
     // Exercise real project/group queries, requested ordering, and the emitted scope provenance.
@@ -71,6 +71,6 @@ describe('Scoped composition - GitLab integration', () => {
       expect(new Set(result.nodes.map((node) => node.id)).size).toBe(result.nodes.length);
       for (const node of result.nodes)
         expect(restricted.scopeEnforcer.isAllowed(node.project.fullPath)).toBe(true);
-    }, 60000);
+    });
   });
 });

@@ -271,7 +271,7 @@ describe('Merge Requests Schema - GitLab Integration', () => {
       }
 
       console.log('✅ Comprehensive filtering tests completed');
-    }, 30000);
+    });
 
     it('should validate schema with different state combinations', async () => {
       const testCases = [

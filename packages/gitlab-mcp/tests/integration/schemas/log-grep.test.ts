@@ -19,6 +19,7 @@ const Grep = z.object({
   truncated: z.string().nullable(),
 });
 const Logs = z.object({ trace: z.string(), startLine: z.number() });
+const JOB_WAIT_MS = 8 * 60_000;
 
 // The lifecycle owns this test/ project; the suite creates and cancels only its own pipeline.
 describe('job log search - GitLab integration', () => {
@@ -57,7 +58,8 @@ describe('job log search - GitLab integration', () => {
         }),
       ).id;
       let jobId: string | undefined;
-      const deadline = Date.now() + 90_000;
+      // Below the 10-minute test limit, so a stuck job is still cancelled in finally.
+      const deadline = Date.now() + JOB_WAIT_MS;
       while (Date.now() < deadline && !jobId) {
         const jobs = Jobs.parse(
           await helper.executeTool('browse_pipelines', {
@@ -72,7 +74,8 @@ describe('job log search - GitLab integration', () => {
         if (job?.status === 'success') jobId = job.id;
         else await delay(1000);
       }
-      if (!jobId) throw new Error('Log search fixture job did not complete within 90 seconds');
+      if (!jobId)
+        throw new Error(`Log search fixture job did not complete within ${JOB_WAIT_MS / 1000} s`);
       jobComplete = true;
 
       // The echo output line, not the colored "$ echo ..." command line, matches the anchor.
@@ -122,5 +125,5 @@ describe('job log search - GitLab integration', () => {
         });
       }
     }
-  }, 120_000);
+  });
 });

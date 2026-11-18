@@ -62,5 +62,5 @@ describeIfTier('premium', 'Debug Widget Assignment', () => {
     console.log('🧹 Cleaning up debug epic...');
     await helper.executeTool('manage_work_item', { action: 'delete', id: epic.id });
     console.log('✅ Debug epic cleaned up');
-  }, 15000);
+  });
 });

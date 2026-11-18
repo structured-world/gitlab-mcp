@@ -62,8 +62,9 @@ module.exports = {
   ...(integrationTestsEnabled && {
     testSequencer: '<rootDir>/tests/setup/sequencer.js',
     maxWorkers: 1, // Serial execution for lifecycle tests
-    // A shared test instance can be slow; a test waits up to a minute for its API calls.
-    testTimeout: 60000,
+    // A shared test instance can take tens of seconds per write under load; a test may
+    // make several, so it gets ten minutes rather than failing on a slow instance.
+    testTimeout: 600000,
   }),
   ...(!integrationTestsEnabled && {
     testTimeout: 10000, // Standard timeout for unit tests

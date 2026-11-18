@@ -92,7 +92,7 @@ describe('Vulnerabilities Schema - GitLab Integration', () => {
         return;
       }
       await expectListNodes({ project_id: testProjectPath }, testProjectPath);
-    }, 20000);
+    });
 
     it('lists group vulnerabilities for the test group', async () => {
       if (!testProjectPath) {
@@ -101,7 +101,7 @@ describe('Vulnerabilities Schema - GitLab Integration', () => {
       }
       const groupPath = testProjectPath.split('/')[0];
       await expectListNodes({ group_id: groupPath }, `group ${groupPath}`);
-    }, 20000);
+    });
 
     it('lists instance vulnerabilities or reports lack of access', async () => {
       try {
@@ -109,6 +109,6 @@ describe('Vulnerabilities Schema - GitLab Integration', () => {
       } catch (error) {
         console.log(`  instance list not available: ${(error as Error).message}`);
       }
-    }, 20000);
+    });
   });
 });

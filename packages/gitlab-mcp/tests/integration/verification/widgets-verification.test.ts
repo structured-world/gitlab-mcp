@@ -116,7 +116,7 @@ describe('Work Item Widgets Verification - Real Data Tests', () => {
     }
 
     console.log('✅ All epic widget verification tests completed successfully');
-  }, 15000);
+  });
 
   it('should verify created issues actually have assigned assignees and labels', async () => {
     const testData = getTestData();
@@ -176,5 +176,5 @@ describe('Work Item Widgets Verification - Real Data Tests', () => {
     }
 
     console.log('✅ All issue widget verification tests completed successfully');
-  }, 15000);
+  });
 });

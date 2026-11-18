@@ -84,7 +84,7 @@ describe('Container Registry Schema - GitLab Integration', () => {
       expect(Array.isArray(result.nodes)).toBe(true);
       expect(result.pageInfo).toBeDefined();
       console.log(`  ${testProjectPath} has ${result.nodes.length} container repositories`);
-    }, 15000);
+    });
 
     it('drills into a repository and its tags when one exists', async () => {
       if (!testProjectPath) {
@@ -117,6 +117,6 @@ describe('Container Registry Schema - GitLab Integration', () => {
       })) as { nodes: unknown[] };
       expect(Array.isArray(tags.nodes)).toBe(true);
       console.log(`  repository ${repoId} has ${tags.nodes.length} tags`);
-    }, 20000);
+    });
   });
 });

@@ -13,6 +13,8 @@ const Window = z.object({
   next_byte_offset: z.number().nullable(),
   complete: z.boolean(),
 });
+// Below the 10-minute test limit, so a stuck job is still cancelled in finally.
+const JOB_WAIT_MS = 8 * 60_000;
 
 // The lifecycle owns this test/ project; the suite creates and cancels only its own pipeline.
 describe('individual artifact files - GitLab integration', () => {
@@ -53,7 +55,7 @@ describe('individual artifact files - GitLab integration', () => {
       pipelineId = pipeline.id;
       let jobId: string | undefined;
       let lastJobs: Array<{ name: string; status: string }> = [];
-      const deadline = Date.now() + 90_000;
+      const deadline = Date.now() + JOB_WAIT_MS;
       while (Date.now() < deadline) {
         const jobs = Jobs.parse(
           await helper.executeTool('browse_pipelines', {
@@ -76,7 +78,7 @@ describe('individual artifact files - GitLab integration', () => {
       }
       if (!jobId)
         throw new Error(
-          `Artifact fixture job did not complete within 90 seconds: ${JSON.stringify(lastJobs)}`,
+          `Artifact fixture job did not complete within ${JOB_WAIT_MS / 1000} s: ${JSON.stringify(lastJobs)}`,
         );
       const read = (path: string, extra = {}) =>
         helper.executeTool('browse_pipelines', {
@@ -123,5 +125,5 @@ describe('individual artifact files - GitLab integration', () => {
         });
       }
     }
-  }, 120_000);
+  });
 });

@@ -139,5 +139,5 @@ describe('Project Restore - GitLab Integration', () => {
         }
       }
     }
-  }, 60000);
+  });
 });

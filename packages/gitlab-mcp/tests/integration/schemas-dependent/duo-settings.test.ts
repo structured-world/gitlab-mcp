@@ -96,7 +96,7 @@ describe('GitLab Duo settings - GitLab Integration', () => {
       ),
     );
     projectId = String(project.id);
-  }, 60000);
+  });
 
   afterAll(async () => {
     // Best effort: the run's test group, which contains these, is deleted at the end.
@@ -110,7 +110,7 @@ describe('GitLab Duo settings - GitLab Integration', () => {
         console.warn(`Could not delete Duo settings fixture via ${tool}:`, error);
       }
     }
-  }, 60000);
+  });
 
   it('applies or reports every offered project Duo setting', async () => {
     const offered = offeredSettings('manage_project', PROJECT_DUO_SETTINGS);
@@ -139,7 +139,7 @@ describe('GitLab Duo settings - GitLab Integration', () => {
     );
 
     expectAppliedOrReported(requested, updated, await getProject());
-  }, 60000);
+  });
 
   it('applies or reports group automatic Duo code review', async () => {
     const offered = offeredSettings('manage_namespace', GROUP_DUO_SETTINGS);
@@ -171,5 +171,5 @@ describe('GitLab Duo settings - GitLab Integration', () => {
     );
 
     expectAppliedOrReported(requested, updated, await getGroup());
-  }, 60000);
+  });
 });

@@ -139,7 +139,7 @@ describe('issue card reorder integration', () => {
       id: child.id,
       parentId: issues[1].id,
     });
-  }, 60000);
+  });
 
   afterAll(async () => {
     if (child !== undefined) await helper.deleteWorkItem({ id: child.id });
@@ -212,5 +212,5 @@ describe('issue card reorder integration', () => {
     await move(b.id, { afterId: a.id, beforeId: c.id });
     await expectOrder([a, b, c]);
     expect((await state()).workItem).toEqual(before);
-  }, 60000);
+  });
 });

@@ -216,7 +216,7 @@ describe('Project Schema - GitLab 18.3 Integration', () => {
     expect(result.data.namespace.full_path).toBeDefined();
 
     console.log('✅ GitLabProjectSchema successfully validated against GitLab 18.3 API response');
-  }, 30000);
+  });
 
   it('should handle missing optional fields gracefully', async () => {
     // Get real project structure from API and test with minimal required fields

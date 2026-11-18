@@ -86,7 +86,7 @@ describe('Runners Schema - GitLab Integration', () => {
       expect(Array.isArray(result.nodes)).toBe(true);
       expect(result.pageInfo).toBeDefined();
       console.log(`  current user can see ${result.nodes.length} runners`);
-    }, 15000);
+    });
 
     it('drills into a runner and its jobs when one exists', async () => {
       const list = (await helper.executeTool('browse_runners', {
@@ -113,7 +113,7 @@ describe('Runners Schema - GitLab Integration', () => {
       })) as { nodes: unknown[] };
       expect(Array.isArray(jobs.nodes)).toBe(true);
       console.log(`  runner ${runnerId} has ${jobs.nodes.length} recent jobs`);
-    }, 20000);
+    });
   });
 
   describe('list_all (admin, tolerant)', () => {
@@ -129,6 +129,6 @@ describe('Runners Schema - GitLab Integration', () => {
         // Non-admin tokens cannot list every runner; that is an expected outcome.
         console.log(`  list_all not available for this token: ${(error as Error).message}`);
       }
-    }, 15000);
+    });
   });
 });

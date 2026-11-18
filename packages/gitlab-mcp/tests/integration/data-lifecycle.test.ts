@@ -906,7 +906,7 @@ describe('🔄 Data Lifecycle - Complete Infrastructure Setup', () => {
       }
 
       console.log('✅ Widget verification completed');
-    }, 30000);
+    });
   });
 
   describeIfTier('premium', '🏗️ Step 5.5: Subgroup and Parent Epic Infrastructure', () => {

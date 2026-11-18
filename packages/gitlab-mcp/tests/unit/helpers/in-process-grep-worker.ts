@@ -40,9 +40,9 @@ export function createFakeGrepWorker(): FakeGrepWorker {
     if (request.type === 'chunk' && ++worker.chunks > (worker.stallAfterChunks ?? Infinity)) return;
     setImmediate(() => deliver(copy));
   });
-  worker.terminate = jest.fn(async () => {
+  worker.terminate = jest.fn(() => {
     worker.emit('exit', 1);
-    return 1;
+    return Promise.resolve(1);
   });
   fakeGrepWorkers.push(worker);
   return worker;

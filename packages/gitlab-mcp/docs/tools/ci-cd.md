@@ -156,7 +156,11 @@ By default each line is matched as the GitLab job log view renders it: runner
 timestamps, ANSI color sequences, `section_start`/`section_end` markers and text
 overwritten by a carriage return are removed. Returned lines are rendered the same
 way. Timestamps, when the runner adds them, are reported per line in `timestamps`.
-`raw: true` matches and returns the stored bytes instead.
+The runner splits a long output line into fragments whose timestamp marks them as
+continuations; like the GitLab view, the search joins them, so a pattern can match
+across fragments. The match is reported at the first fragment, and every fragment
+of the matched line is returned. `raw: true` matches and returns each stored line
+as is, including a leading byte order mark.
 
 ```json
 {
@@ -182,15 +186,21 @@ is searched.
 early. When `truncated` is set, pass `resume_from` as `start_line` to continue:
 the next call reports each remaining match exactly once.
 
-| `truncated`      | Meaning                                                                |
-| ---------------- | ---------------------------------------------------------------------- |
-| `max_matches`    | More matches exist after the last one returned                         |
-| `budget`         | The search spent its processing time (2 s) before the end of the trace |
-| `worker_timeout` | One line took too long to match; returned hunks are complete           |
+| `truncated`      | Meaning                                                                      |
+| ---------------- | ---------------------------------------------------------------------------- |
+| `max_matches`    | More matches exist after the last one returned                               |
+| `budget`         | The search spent its processing time (2 s) before the end of the trace       |
+| `output_limit`   | The returned lines reached 1 MiB of text, the same bound as a page of `logs` |
+| `worker_timeout` | One line took too long to match; returned hunks are complete                 |
+
+When the budget runs out inside a hunk, the search first finishes that hunk's
+after-context. At the output limit, a hunk that does not fit is left for the next
+call, unless it is the first one, which is cut at the limit.
 
 Searches run on a small pool of worker threads, so a long trace never blocks other
 requests. When every worker is busy, the call fails at once with a retryable error.
-The trace is streamed with bounded memory, as with `logs`.
+The trace is streamed with bounded memory, as with `logs`, and the returned text is
+bounded too.
 
 ### Individual Artifact Files
 

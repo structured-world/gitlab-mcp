@@ -18,6 +18,7 @@ it('scans on a real worker thread when the pool runs from TypeScript sources', a
       startLine: 0,
       normalize: true,
       budgetMs: 2000,
+      outputBytes: 1 << 20,
     },
     async () => new Response('ok\nerror\n').body,
   );

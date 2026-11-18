@@ -9,7 +9,7 @@ import { getGitLabBaseUrl } from '../../utils/gitlab-base-url';
 import { logError } from '../../logger';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
 import { assertActionAllowed } from '../utils';
-import { readTracePage } from './trace';
+import { readTracePage, TRACE_PAGE_BYTES } from './trace';
 import { readArtifactFile } from './artifact';
 import { grepStream } from './line-grep-worker';
 
@@ -134,6 +134,8 @@ export const pipelinesToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
                 startLine: input.start_line ?? 0,
                 normalize: !input.raw,
                 budgetMs: LOG_GREP_BUDGET_MS,
+                // The same text bound as one page of `logs`.
+                outputBytes: TRACE_PAGE_BYTES,
               },
               () => openTrace(project_id, job_id),
             );

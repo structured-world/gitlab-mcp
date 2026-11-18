@@ -130,7 +130,11 @@ function discard(worker: GrepWorker): void {
 }
 
 function leaseWorker(): GrepWorker {
-  for (const worker of [...workers]) if (!worker.busy && worker.failure) discard(worker);
+  // Backwards, since discard() removes entries while the loop runs.
+  for (let index = workers.length - 1; index >= 0; index--) {
+    const worker = workers[index];
+    if (!worker.busy && worker.failure) discard(worker);
+  }
   let worker = workers.find((candidate) => !candidate.busy);
   if (!worker) {
     if (workers.length >= MAX_WORKERS) throw new Error('Log search is at capacity; retry shortly');
@@ -234,10 +238,9 @@ async function pump(
       ...(options.preset ? { preset_index: options.patterns.length } : {}),
     };
   } finally {
-    try {
-      if (!eof) await reader.cancel();
-    } finally {
-      reader.releaseLock();
-    }
+    // Cancelling only stops the transfer; a read failure already surfaced from read(),
+    // so a cancel failure must not replace a finished result or that original error.
+    if (!eof) await reader.cancel().catch(() => undefined);
+    reader.releaseLock();
   }
 }

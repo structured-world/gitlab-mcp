@@ -27,6 +27,7 @@ const options = (overrides: Partial<LineGrepOptions> = {}): LineGrepOptions => (
   startLine: 0,
   normalize: true,
   budgetMs: 60_000,
+  outputBytes: 1 << 20,
   ...overrides,
 });
 
@@ -100,7 +101,7 @@ describe('GitLab trace rendering before matching', () => {
   // Timestamped runner logs prefix every line; the prefix is reported, not matched.
   it('strips and reports runner timestamps', () => {
     const stamp = '2026-11-18T10:00:00.123456Z';
-    const result = scan(`${stamp} 00O plain\n${stamp} 01E+error here\n`, {
+    const result = scan(`${stamp} 00O plain\n${stamp} 01E error here\n`, {
       patterns: ['^error here$'],
       before: 1,
     });
@@ -127,6 +128,68 @@ describe('GitLab trace rendering before matching', () => {
       normalize: false,
     });
     expect(texts(result)).toEqual([[`${ESC}[31merror${ESC}[0m`]]);
+  });
+
+  // raw:true promises the stored bytes, the leading byte order mark included.
+  it('keeps the leading byte order mark in raw mode', () => {
+    const result = scan(`${BOM}error\nok`, { normalize: false, patterns: ['^\\x{FEFF}error'] });
+    expect(texts(result)).toEqual([[`${BOM}error`]]);
+  });
+
+  // The runner splits a long output line into timestamped fragments marked '+';
+  // GitLab shows them as one line, so a match may span the fragments.
+  it('matches across timestamped continuation fragments', () => {
+    const stamp = '2026-11-18T10:00:00.123456Z';
+    const source = `${stamp} 00O ER\n${stamp} 00O+ROR: failed\n${stamp} 00O done`;
+    const result = scan(source, { patterns: ['^ERROR: failed$'] });
+    expect(result.hunks).toEqual([
+      {
+        start_line: 0,
+        lines: ['ER', 'ROR: failed'],
+        matches: [{ line: 0, patterns: [0] }],
+        timestamps: [stamp, stamp],
+      },
+    ]);
+    expect(result.match_count).toBe(1);
+  });
+
+  // The context ring grows on the first continuation; earlier context must survive it.
+  it('keeps the before-context when the first continuation arrives late', () => {
+    const stamp = '2026-11-18T10:00:00.123456Z';
+    const plain = Array.from({ length: 6 }, (_, index) => `${stamp} 00O ok ${index}`);
+    const fragments = [
+      `${stamp} 00O E`,
+      `${stamp} 00O+RR`,
+      `${stamp} 00O+OR: x`,
+      `${stamp} 00O tail`,
+    ];
+    const result = scan(plain.concat(fragments).join('\n'), {
+      patterns: ['^ERROR: x$'],
+      before: 3,
+    });
+    expect(result.hunks).toEqual([
+      {
+        start_line: 3,
+        lines: ['ok 3', 'ok 4', 'ok 5', 'E', 'RR', 'OR: x'],
+        matches: [{ line: 6, patterns: [0] }],
+        timestamps: Array.from({ length: 6 }, () => stamp),
+      },
+    ]);
+  });
+
+  // A CR inside a later fragment clears the whole logical line, as in the GitLab view.
+  it('lets a carriage return in a fragment clear the earlier fragments', () => {
+    const stamp = '2026-11-18T10:00:00.123456Z';
+    const source = `${stamp} 00O progress 10%\n${stamp} 00O+ 50%\rERROR: x`;
+    const result = scan(source, { patterns: ['^ERROR: x$', 'progress'] });
+    expect(result.hunks[0].matches).toEqual([{ line: 0, patterns: [0] }]);
+  });
+
+  // A continuation whose first fragment lies before start_line is context, never a match.
+  it('does not match a continuation fragment without its head', () => {
+    const stamp = '2026-11-18T10:00:00.123456Z';
+    const source = `${stamp} 00O ER\n${stamp} 00O+ROR: failed`;
+    expect(scan(source, { patterns: ['ROR'], startLine: 1 }).match_count).toBe(0);
   });
 
   // Response.text() removes only the initial BOM; later BOMs are content.
@@ -223,6 +286,8 @@ describe('limits and continuation', () => {
     while (start !== null) {
       const page = scan(log, { maxMatches: 3, startLine: start, before: 2, after: 1 });
       seen.push(...matched(page));
+      // A cursor that does not advance would loop forever instead of failing.
+      if (page.resume_from !== null) expect(page.resume_from).toBeGreaterThan(start);
       start = page.resume_from;
     }
     expect(seen).toEqual([0, 4, 8, 12, 16, 20, 24, 28, 32, 36]);
@@ -258,12 +323,68 @@ describe('limits and continuation', () => {
       match_count_complete: false,
       total_lines: null,
     });
-    expect(first.resume_from).toBe(first.scanned_lines);
-    expect(matched(first)).toEqual(Array.from({ length: first.match_count }, (_, i) => i));
+    expect(first.resume_from).toBeGreaterThan(0);
+    expect(first.resume_from).toBeLessThanOrEqual(first.scanned_lines);
     const rest = scan(many, { startLine: first.resume_from!, maxMatches: 2000 }, 65536);
     expect(matched(first).concat(matched(rest))).toEqual(
       Array.from({ length: 2000 }, (_, index) => index),
     );
+  });
+
+  // Resuming far into a trace must make progress even when skipping the prefix is slow.
+  it('advances past start_line when the budget is spent before reaching it', () => {
+    const many = Array.from({ length: 4000 }, (_, index) => `error ${index}`).join('\n');
+    const page = scan(many, { budgetMs: 0, startLine: 3000, maxMatches: 500 }, 65536);
+    expect(page.truncated).toBe('budget');
+    expect(page.resume_from).toBeGreaterThan(3000);
+    expect(matched(page)[0]).toBe(3000);
+  });
+
+  // A budget stop finishes the after-context it promised instead of cutting the hunk.
+  it('completes the after-context of the open hunk when the budget stops the scan', () => {
+    const lines = Array.from({ length: 600 }, (_, index) =>
+      index === 250 ? 'error' : `ok ${index}`,
+    );
+    const page = scan(lines.join('\n'), { budgetMs: 0, after: 10 }, 65536);
+    expect(page.truncated).toBe('budget');
+    expect(page.hunks).toEqual([
+      { start_line: 250, lines: lines.slice(250, 261), matches: [{ line: 250, patterns: [0] }] },
+    ]);
+    expect(page.resume_from).toBe(261);
+  });
+
+  // Output is bounded: a page stops at the byte limit and resuming loses no match.
+  it('stops at the output limit and resumes every match exactly once', () => {
+    const log = Array.from(
+      { length: 200 },
+      (_, index) => `error ${String(index).padStart(200, '0')}`,
+    );
+    const seen: number[] = [];
+    let start: number | null = 0;
+    let pages = 0;
+    while (start !== null) {
+      const page = scan(log.join('\n'), {
+        startLine: start,
+        before: 2,
+        after: 20,
+        maxMatches: 500,
+        outputBytes: 4096,
+      });
+      const bytes = page.hunks.reduce(
+        (sum, hunk) => sum + hunk.lines.reduce((total, line) => total + Buffer.byteLength(line), 0),
+        0,
+      );
+      expect(bytes).toBeLessThanOrEqual(4096);
+      if (page.resume_from !== null) {
+        expect(page.truncated).toBe('output_limit');
+        expect(page.resume_from).toBeGreaterThan(start);
+      }
+      seen.push(...matched(page));
+      start = page.resume_from;
+      pages++;
+    }
+    expect(pages).toBeGreaterThan(1);
+    expect(seen).toEqual(Array.from({ length: 200 }, (_, index) => index));
   });
 
   // Line totals follow String.split: empty input and a final LF each count a line.
@@ -320,6 +441,15 @@ describe('pattern contract', () => {
     [Array.from({ length: 9 }, () => 'a'), 'at most 8 patterns'],
   ])('rejects %j', (patterns, message) => {
     expect(() => new LineGrepScanner(options({ patterns }))).toThrow(message);
+  });
+
+  // Patterns valid on their own stay valid together: shared group names, \Q to the end.
+  it.each([
+    [['(?P<part>error)', '(?P<part>warning)'], 'a warning here', [1]],
+    [['\\Q[error]'], 'got [error] now', [0]],
+    [['ok', '\\Q[error]'], 'got [error] now', [1]],
+  ])('accepts %j together', (patterns, line, hits) => {
+    expect(scan(line, { patterns }).hunks[0].matches).toEqual([{ line: 0, patterns: hits }]);
   });
 });
 

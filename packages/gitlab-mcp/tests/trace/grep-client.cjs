@@ -32,8 +32,9 @@ async function resume() {
   }, 5);
   const calls = [];
   try {
+    // Each page starts where the previous one stopped, so the calls are sequential.
     let start = 0;
-    while (start !== null && calls.length < 40) {
+    for (let page = 0; page < 40; page++) {
       const result = await grep({ job_id: '1', ...parameters, start_line: start });
       calls.push({
         truncated: result.truncated,
@@ -42,6 +43,7 @@ async function resume() {
         total_lines: result.total_lines,
         matches: result.hunks.flatMap((hunk) => hunk.matches.map((match) => match.line)),
       });
+      if (result.resume_from === null) break;
       start = result.resume_from;
     }
   } finally {
@@ -70,7 +72,7 @@ async function capacity() {
 (mode === 'resume' ? resume() : capacity())
   .then((report) => process.stdout.write(JSON.stringify(report)))
   .catch((error) => {
-    process.stderr.write(String(error && error.stack));
+    process.stderr.write(String(error?.stack));
     process.exitCode = 1;
   })
   .finally(() => closeLineGrepWorkers());

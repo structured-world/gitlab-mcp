@@ -16,7 +16,7 @@ export interface PatternMatcher {
 
 const NO_MATCH: readonly number[] = Object.freeze([]);
 
-function checkCallerPattern(pattern: string, index: number): void {
+function checkCallerPattern(pattern: string, index: number): RE2JS {
   if (pattern.length === 0) throw new PatternError(index, 'pattern is empty');
   if (pattern.length > MAX_PATTERN_LENGTH)
     throw new PatternError(index, `pattern exceeds ${MAX_PATTERN_LENGTH} characters`);
@@ -31,16 +31,30 @@ function checkCallerPattern(pattern: string, index: number): void {
       index,
       `pattern compiles to more than ${MAX_PATTERN_PROGRAM_SIZE} instructions; use smaller repetitions`,
     );
+  return compiled;
+}
+
+/** The alternation of every source, or null when joined sources are no longer valid RE2. */
+function compileGate(sources: readonly string[]): RE2JS | null {
+  // Patterns valid alone can conflict once joined: a group name used twice, or a trailing
+  // \Q that quotes the wrapper's closing parenthesis. The set then matches unaided.
+  try {
+    return RE2JS.compile(sources.map((source) => `(?:${source})`).join('|'));
+  } catch {
+    return null;
+  }
 }
 
 /**
  * Compile bounded caller patterns, then trusted server patterns. Match index i is
  * patterns[i], then trusted[i - patterns.length].
  *
- * One alternation of every pattern gates each input: re2js rejects most inputs by its
- * literal prefilter without running an automaton, and anything else costs one automaton
- * pass. Only inputs that do match pay for the set pass that names the matching patterns.
- * Compilation cost grows with the pattern, so callers run this off the request thread.
+ * A single pattern is tested as compiled. Several share one alternation that gates each
+ * input: re2js rejects most inputs by its literal prefilter without running an automaton,
+ * and anything else costs one automaton pass; only inputs that do match pay for the set
+ * pass that names the matching patterns. When the joined sources are not valid RE2, the
+ * set matches every input itself. Compilation cost grows with the pattern, so callers run
+ * this off the request thread.
  */
 export function compilePatterns(
   patterns: readonly string[],
@@ -48,19 +62,22 @@ export function compilePatterns(
 ): PatternMatcher {
   if (patterns.length > MAX_PATTERNS)
     throw new PatternError(MAX_PATTERNS, `at most ${MAX_PATTERNS} patterns are accepted`);
-  patterns.forEach(checkCallerPattern);
+  const compiled = patterns.map((pattern, index) => checkCallerPattern(pattern, index));
   const sources = patterns.concat(trusted);
   if (sources.length === 0) throw new Error('No patterns to compile');
-  // A flag group such as (?i) inside (?:...) ends with that group, so parts stay independent.
-  const gate = RE2JS.compile(sources.map((source) => `(?:${source})`).join('|'));
-  if (sources.length === 1) return { match: (input) => (gate.test(input) ? [0] : NO_MATCH) };
+  if (sources.length === 1) {
+    const only = compiled[0] ?? RE2JS.compile(sources[0]);
+    return { match: (input) => (only.test(input) ? [0] : NO_MATCH) };
+  }
   const set = new RE2Set();
   for (const source of sources) set.add(source);
   set.compile();
+  const gate = compileGate(sources);
   return {
     match(input) {
-      if (!gate.test(input)) return NO_MATCH;
-      return set.match(input).sort((a, b) => a - b);
+      if (gate !== null && !gate.test(input)) return NO_MATCH;
+      const found = set.match(input);
+      return found.length === 0 ? NO_MATCH : found.sort((a, b) => a - b);
     },
   };
 }

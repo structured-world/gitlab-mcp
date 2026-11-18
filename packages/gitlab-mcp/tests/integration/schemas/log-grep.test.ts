@@ -19,7 +19,10 @@ const Grep = z.object({
   truncated: z.string().nullable(),
 });
 const Logs = z.object({ trace: z.string(), startLine: z.number() });
-const JOB_WAIT_MS = 8 * 60_000;
+// Counted from the start of the test: with one more jobs request (up to the 120 s request
+// timeout of the test env) and the searches after it, the test ends within its 10-minute
+// limit, so a stuck job is still cancelled in finally.
+const JOB_WAIT_MS = 6 * 60_000;
 
 // The lifecycle owns this test/ project; the suite creates and cancels only its own pipeline.
 describe('job log search - GitLab integration', () => {
@@ -47,6 +50,7 @@ describe('job log search - GitLab integration', () => {
 
   // A real runner trace carries colors and section markers; matches use the rendered text.
   it('finds rendered script output and points logs at the same line', async () => {
+    const deadline = Date.now() + JOB_WAIT_MS;
     let pipelineId: string | undefined;
     let jobComplete = false;
     try {
@@ -58,8 +62,6 @@ describe('job log search - GitLab integration', () => {
         }),
       ).id;
       let jobId: string | undefined;
-      // Below the 10-minute test limit, so a stuck job is still cancelled in finally.
-      const deadline = Date.now() + JOB_WAIT_MS;
       while (Date.now() < deadline && !jobId) {
         const jobs = Jobs.parse(
           await helper.executeTool('browse_pipelines', {

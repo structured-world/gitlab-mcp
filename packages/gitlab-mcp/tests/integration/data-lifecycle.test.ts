@@ -26,7 +26,20 @@ import { ConnectionManager } from '../../src/services/ConnectionManager';
 import { getWorkItemTypes } from '../../src/utils/workItemTypes';
 import { itIfTier, describeIfTier } from '../setup/tierGate';
 import { gql } from 'graphql-tag';
+import { z } from 'zod';
 import { IntegrationTestHelper } from './helpers/registry-helper';
+
+// A merge request before GitLab has computed its diff has no or null diff_refs.
+const MergeRequestDiffRefsSchema = z.object({
+  diff_refs: z
+    .object({
+      base_sha: z.string().nullable(),
+      head_sha: z.string().nullable(),
+      start_sha: z.string().nullable(),
+    })
+    .nullish(),
+});
+type MergeRequestDiffRefs = z.infer<typeof MergeRequestDiffRefsSchema>['diff_refs'];
 const { findTestRoot } = require('../setup/testNamespace.js');
 
 describe('🔄 Data Lifecycle - Complete Infrastructure Setup', () => {
@@ -1307,7 +1320,7 @@ describe('🔄 Data Lifecycle - Complete Infrastructure Setup', () => {
 
       // Step 2: Get updated MR with diff_refs (retry if not ready yet)
       console.log('  🔍 Getting MR diff_refs...');
-      let mrDetails: any;
+      let diffRefs: MergeRequestDiffRefs;
       // diff_refs come from an asynchronous job; a loaded instance takes minutes, so wait by
       // time within the test limit instead of a fixed number of attempts.
       const waitMs = 5 * 60_000;
@@ -1315,13 +1328,15 @@ describe('🔄 Data Lifecycle - Complete Infrastructure Setup', () => {
       const deadline = Date.now() + waitMs;
 
       for (;;) {
-        mrDetails = (await helper.browseMergeRequests({
-          action: 'get',
-          project_id: projectId,
-          merge_request_iid: mr.iid.toString(),
-        })) as any;
+        diffRefs = MergeRequestDiffRefsSchema.parse(
+          await helper.browseMergeRequests({
+            action: 'get',
+            project_id: projectId,
+            merge_request_iid: mr.iid.toString(),
+          }),
+        ).diff_refs;
 
-        if (mrDetails.diff_refs?.base_sha) {
+        if (diffRefs?.base_sha) {
           console.log('    ✅ diff_refs ready');
           break;
         }
@@ -1330,13 +1345,13 @@ describe('🔄 Data Lifecycle - Complete Infrastructure Setup', () => {
         await new Promise((resolve) => setTimeout(resolve, retryDelay));
       }
 
-      if (!mrDetails?.diff_refs?.base_sha) {
+      if (!diffRefs?.base_sha) {
         throw new Error(
           `GitLab failed to generate diff_refs within ${waitMs / 1000} s. This indicates a serious problem with GitLab's diff generation.`,
         );
       }
 
-      const { base_sha, head_sha, start_sha } = mrDetails.diff_refs;
+      const { base_sha, head_sha, start_sha } = diffRefs;
       console.log(
         `    📋 diff_refs: base=${base_sha?.substring(0, 8)}, head=${head_sha?.substring(0, 8)}, start=${start_sha?.substring(0, 8)}`,
       );

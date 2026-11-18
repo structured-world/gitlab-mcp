@@ -33,8 +33,27 @@ const options = (overrides: Partial<LineGrepOptions> = {}): LineGrepOptions => (
   startLine: 0,
   normalize: true,
   budgetMs: 60_000,
+  outputBytes: 1 << 20,
   ...overrides,
 });
+
+/**
+ * Wait on real immediates for a condition, failing after a bounded number of turns or
+ * when the scan under test settles first, so a broken scan cannot hang the test.
+ */
+async function waitFor(condition: () => boolean, settled: Promise<unknown>): Promise<void> {
+  let done = false;
+  settled.then(
+    () => (done = true),
+    () => (done = true),
+  );
+  for (let turn = 0; turn < 10_000; turn++) {
+    if (condition()) return;
+    if (done) throw new Error('The scan settled before the awaited condition');
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  throw new Error('Condition not reached within 10000 turns');
+}
 
 function body(text: string, chunkSize = 5) {
   const bytes = new TextEncoder().encode(text);
@@ -111,8 +130,20 @@ describe('grepStream', () => {
     const { stream, cancel } = body(log, 65536);
     const result = await grepStream(options({ budgetMs: 0, maxMatches: 500 }), async () => stream);
     expect(result).toMatchObject({ truncated: 'budget', total_lines: null });
-    expect(result.resume_from).toBe(result.scanned_lines);
+    expect(result.resume_from).toBeGreaterThan(0);
+    expect(result.resume_from).toBeLessThanOrEqual(result.scanned_lines);
     expect(cancel).toHaveBeenCalled();
+    expect(stream.locked).toBe(false);
+  });
+
+  // A failing cancel of an already finished read must not replace the partial result.
+  it('keeps the partial result when cancelling the body fails', async () => {
+    const log = Array.from({ length: 5000 }, (_, i) => `error ${i}`).join('\n');
+    const { stream, cancel } = body(log, 65536);
+    cancel.mockRejectedValue(new Error('cancel failed'));
+    const result = await grepStream(options({ budgetMs: 0, maxMatches: 500 }), async () => stream);
+    expect(result.truncated).toBe('budget');
+    expect(result.hunks.length).toBeGreaterThan(0);
     expect(stream.locked).toBe(false);
   });
 
@@ -120,10 +151,11 @@ describe('grepStream', () => {
   it('returns a resumable partial result when a worker stops answering', async () => {
     jest.useFakeTimers({ doNotFake: ['setImmediate', 'queueMicrotask', 'nextTick'] });
     try {
-      // One line per chunk: the hunk of line 0 closes at line 3, then line 4 never returns.
+      // One line per chunk, each matched once the next arrives: the hunk of line 0 closes
+      // when line 3 is placed on chunk 5, then chunk 6 never returns.
       const lines = ['error 0', 'ok 1', 'ok 2', 'ok 3', 'error 4', 'ok 5'];
       const pending = grepStream(options({ budgetMs: 10 }), async () => {
-        mockWorkers[0].stallAfterChunks = 4;
+        mockWorkers[0].stallAfterChunks = 5;
         let index = 0;
         return new ReadableStream({
           type: 'bytes',
@@ -137,15 +169,16 @@ describe('grepStream', () => {
           },
         });
       });
-      while ((mockWorkers[0]?.chunks ?? 0) < 5) await new Promise((r) => setImmediate(r));
+      await waitFor(() => (mockWorkers[0]?.chunks ?? 0) >= 6, pending);
       await jest.advanceTimersByTimeAsync(2010);
       const result = await pending;
+      // Line 4 was read but not yet matched, so the continuation starts there.
       expect(result).toMatchObject({
         truncated: 'worker_timeout',
         match_count_complete: false,
         total_lines: null,
         resume_from: 4,
-        scanned_lines: 4,
+        scanned_lines: 5,
       });
       expect(result.hunks).toEqual([
         { start_line: 0, lines: ['error 0', 'ok 1'], matches: [{ line: 0, patterns: [0] }] },
@@ -173,7 +206,7 @@ describe('grepStream', () => {
     await expect(grepStream(options(), async () => body('error').stream)).rejects.toThrow(
       'at capacity',
     );
-    while (gates.length < 2) await new Promise((resolve) => setImmediate(resolve));
+    await waitFor(() => gates.length === 2, Promise.race([first, second]));
     gates.forEach((open) => open());
     await Promise.all([first, second]);
     await expect(grepStream(options(), async () => body('error').stream)).resolves.toMatchObject({

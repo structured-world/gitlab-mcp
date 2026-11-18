@@ -177,6 +177,20 @@ describe('GitLab trace rendering before matching', () => {
     ]);
   });
 
+  // Fragments below the per-line limit stay searchable however long their logical line is.
+  it('searches every fragment of a logical line longer than one line limit', () => {
+    const stamp = '2026-11-18T10:00:00.123456Z';
+    const filler = 'x'.repeat(4000);
+    const source = [
+      `${stamp} 00O ${filler}`,
+      ...Array.from({ length: 4 }, () => `${stamp} 00O+${filler}`),
+      `${stamp} 00O+ error`,
+    ].join('\n');
+    const result = scan(source, { patterns: ['error'] }, 65536);
+    expect(result.match_count).toBe(1);
+    expect(result.hunks[0].matches).toEqual([{ line: 0, patterns: [0] }]);
+  });
+
   // A CR inside a later fragment clears the whole logical line, as in the GitLab view.
   it('lets a carriage return in a fragment clear the earlier fragments', () => {
     const stamp = '2026-11-18T10:00:00.123456Z';
@@ -354,6 +368,29 @@ describe('limits and continuation', () => {
   });
 
   // Output is bounded: a page stops at the byte limit and resuming loses no match.
+  // Matches past max_matches shown only as after-context must not fall behind the cursor
+  // when the output limit then cuts the first hunk.
+  it('resumes at unreported matches when the output limit cuts after max_matches', () => {
+    const log = Array.from(
+      { length: 100 },
+      (_, index) => `error ${String(index).padStart(93, '0')}`,
+    );
+    const seen: number[] = [];
+    let start: number | null = 0;
+    for (let page = 0; start !== null && page < 20; page++) {
+      const result = scan(log.join('\n'), {
+        startLine: start,
+        after: 20,
+        maxMatches: 60,
+        outputBytes: 6400,
+      });
+      seen.push(...matched(result));
+      if (result.resume_from !== null) expect(result.resume_from).toBeGreaterThan(start);
+      start = result.resume_from;
+    }
+    expect(seen).toEqual(Array.from({ length: 100 }, (_, index) => index));
+  });
+
   it('stops at the output limit and resumes every match exactly once', () => {
     const log = Array.from(
       { length: 200 },

@@ -252,8 +252,9 @@ type StopReason = 'budget' | 'output';
 
 /**
  * Streaming line search with `grep -C` hunks. Memory is bounded by the context ring
- * (at most before + 2 + MAX_GROUP_LINES lines of 16 KiB) and by `outputBytes` of reported
- * text, whatever the source size.
+ * (at most before + 2 + MAX_GROUP_LINES lines of 16 KiB), a logical line buffer of
+ * MAX_GROUP_LINES lines allocated only for traces with continuations, and `outputBytes`
+ * of reported text, whatever the source size.
  *
  * A logical line is one physical line, or with runner timestamps, a line and the
  * fragments that continue it. Matching sees the logical text; every reported number is
@@ -548,7 +549,8 @@ export class LineGrepScanner {
 
   /** Joins a fragment to the logical line; a lone CR in it clears what came before. */
   private extendGroup(number: number, slot: number): void {
-    const logical = (this.logical ??= Buffer.allocUnsafe(TRACE_LINE_BYTES));
+    // Room for every fragment the group may hold, so no fragment text goes unsearched.
+    const logical = (this.logical ??= Buffer.allocUnsafe(MAX_GROUP_LINES * TRACE_LINE_BYTES));
     if (this.logicalLength === -1) {
       const head = this.groupFirst % this.ringSize;
       this.logicalLength = (this.ring[head] as Buffer).copy(logical, 0, 0, this.ringLength[head]);
@@ -668,7 +670,10 @@ export class LineGrepScanner {
       this.outputResume = hunk.matches.length > 0 ? hunk.matches[0].line : matchLine;
       this.pending = null;
     } else {
-      this.outputResume = this.lastEmitted + 1;
+      // Matches past max_matches may sit in the emitted after-context unreported; the
+      // next page starts at the first of them rather than after the emitted text.
+      this.outputResume =
+        this.matchCount > this.recorded ? this.lastRecorded + 1 : this.lastEmitted + 1;
       this.closePending();
     }
     this.groupOpen = false;

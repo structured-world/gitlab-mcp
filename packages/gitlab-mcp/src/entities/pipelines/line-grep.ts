@@ -491,6 +491,9 @@ export class LineGrepScanner {
     if (continued && this.groupOpen && number - this.groupFirst < MAX_GROUP_LINES) {
       this.extendGroup(number, slot);
     } else {
+      // A continuation past the fragment limit starts the next group of the same line and
+      // is searched; a match spanning that boundary is the only text not searched as one.
+      const rollover = continued && this.groupOpen;
       this.closeGroup();
       // Placing the previous logical line stopped the scan: this line was never placed.
       if (this.stop !== null) {
@@ -498,7 +501,7 @@ export class LineGrepScanner {
         return false;
       }
       // A fragment whose first part was never read is context, never a match.
-      this.openGroup(number, !continued);
+      this.openGroup(number, !continued || rollover);
     }
     // Raw lines stand alone, so each is placed as soon as it is read.
     if (!this.normalize) this.closeGroup();

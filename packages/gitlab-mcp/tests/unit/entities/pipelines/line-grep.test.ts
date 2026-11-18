@@ -191,6 +191,21 @@ describe('GitLab trace rendering before matching', () => {
     expect(result.hunks[0].matches).toEqual([{ line: 0, patterns: [0] }]);
   });
 
+  // A logical line longer than the fragment limit continues in a new group that is still
+  // searched; only a fragment whose head was never read is context.
+  it('keeps fragments searchable past the fragment limit of one logical line', () => {
+    const stamp = '2026-11-18T10:00:00.123456Z';
+    const source = [
+      `${stamp} 00O start`,
+      ...Array.from({ length: 31 }, (_, index) => `${stamp} 00O+ part ${index}`),
+      `${stamp} 00O+ error here`,
+      `${stamp} 00O+ more`,
+    ].join('\n');
+    const result = scan(source, { patterns: ['error'] }, 65536);
+    expect(result.match_count).toBe(1);
+    expect(result.hunks[0].matches).toEqual([{ line: 32, patterns: [0] }]);
+  });
+
   // A CR inside a later fragment clears the whole logical line, as in the GitLab view.
   it('lets a carriage return in a fragment clear the earlier fragments', () => {
     const stamp = '2026-11-18T10:00:00.123456Z';

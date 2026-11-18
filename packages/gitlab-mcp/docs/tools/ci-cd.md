@@ -158,8 +158,10 @@ overwritten by a carriage return are removed. Returned lines are rendered the sa
 way. Timestamps, when the runner adds them, are reported per line in `timestamps`.
 The runner splits a long output line into fragments whose timestamp marks them as
 continuations; like the GitLab view, the search joins them, so a pattern can match
-across fragments. The match is reported at the first fragment, and every fragment
-of the matched line is returned. `raw: true` matches and returns each stored line
+across fragments. A line of more than 32 fragments is joined 32 at a time; every
+fragment is searched, but a match cannot span two such groups. The match is
+reported at the first fragment of its group, and every fragment of that group is
+returned. `raw: true` matches and returns each stored line
 as is, including a leading byte order mark.
 
 ```json

@@ -1,4 +1,5 @@
 import { availableParallelism } from 'node:os';
+import { inspect } from 'node:util';
 import { Worker } from 'node:worker_threads';
 import type {
   GrepHunk,
@@ -18,10 +19,25 @@ const LINE_GRACE_MS = 2000;
 const CHUNK_BYTES = 64 * 1024;
 
 // Patterns and data arrive as messages and are never interpolated into this source.
+// From TypeScript sources (test runner, dev server) Node strips types itself but resolves
+// only explicit extensions, so the thread maps extensionless relative imports to `.ts`.
 const WORKER_SOURCE = `
 const { parentPort, workerData } = require('node:worker_threads');
+if (workerData.typescript) {
+  require('node:module').registerHooks({
+    resolve(specifier, context, nextResolve) {
+      try {
+        return nextResolve(specifier, context);
+      } catch (error) {
+        if (!specifier.startsWith('.')) throw error;
+        return nextResolve(specifier + '.ts', context);
+      }
+    },
+  });
+}
 require(workerData.module).serveLineGrep(parentPort);
 `;
+const SCANNER_MODULE = require.resolve('./line-grep');
 
 class WorkerTimeoutError extends Error {}
 
@@ -39,7 +55,7 @@ class GrepWorker {
   constructor() {
     this.worker = new Worker(WORKER_SOURCE, {
       eval: true,
-      workerData: { module: require.resolve('./line-grep') },
+      workerData: { module: SCANNER_MODULE, typescript: SCANNER_MODULE.endsWith('.ts') },
       resourceLimits: { maxOldGenerationSizeMb: 64, maxYoungGenerationSizeMb: 16, stackSizeMb: 4 },
     });
     this.worker.on('message', (reply: GrepReply) => {
@@ -81,8 +97,17 @@ class GrepWorker {
   }
 
   fail(error: unknown): void {
+    // Thread errors may come from another realm or without a prototype: describe any value.
+    const message =
+      typeof error === 'object' &&
+      error !== null &&
+      typeof Reflect.get(error, 'message') === 'string'
+        ? (Reflect.get(error, 'message') as string)
+        : inspect(error);
     this.failure ??=
-      error instanceof Error ? error : new Error('Log search worker failed', { cause: error });
+      error instanceof Error
+        ? error
+        : new Error(`Log search worker failed: ${message}`, { cause: error });
     const waiting = this.waiting;
     if (!waiting) return;
     this.waiting = undefined;

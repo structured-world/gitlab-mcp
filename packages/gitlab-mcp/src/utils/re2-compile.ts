@@ -59,8 +59,8 @@ function compileGate(sources: readonly string[]): RE2JS | null {
  * input: re2js rejects most inputs by its literal prefilter without running an automaton,
  * and anything else costs one automaton pass; only inputs that do match pay for the set
  * pass that names the matching patterns. When joining could change a pattern's meaning
- * or fails to compile, the set matches every input itself. Compilation cost grows with the pattern, so callers run
- * this off the request thread.
+ * or fails to compile, the set matches every input itself. Compilation cost grows with
+ * the pattern, so callers run this off the request thread.
  */
 export function compilePatterns(
   patterns: readonly string[],

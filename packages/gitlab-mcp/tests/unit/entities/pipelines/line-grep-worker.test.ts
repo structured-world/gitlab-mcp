@@ -228,6 +228,57 @@ describe('grepStream', () => {
     expect(mockWorkers).toHaveLength(2);
   });
 
+  // A reply no request awaits is ignored and does not reach the next call.
+  it('ignores a reply that no request awaits', async () => {
+    await grepStream(options(), async () => body('error').stream);
+    mockWorkers[0].emit('message', { type: 'ready' });
+    await expect(
+      grepStream(options(), async () => body('ok\nerror').stream),
+    ).resolves.toMatchObject({ match_count: 1 });
+    expect(mockWorkers).toHaveLength(1);
+  });
+
+  // A worker that fails while idle is discarded before the next lease.
+  it('replaces a worker that failed while idle', async () => {
+    await grepStream(options(), async () => body('error').stream);
+    mockWorkers[0].emit('error', new Error('thread crashed'));
+    await expect(grepStream(options(), async () => body('error').stream)).resolves.toMatchObject({
+      match_count: 1,
+    });
+    expect(mockWorkers).toHaveLength(2);
+    expect(mockWorkers[0].terminate).toHaveBeenCalled();
+  });
+
+  // A request that cannot be posted fails its call; the worker is not reused.
+  it('fails the call when a request cannot be posted', async () => {
+    await grepStream(options(), async () => body('error').stream);
+    mockWorkers[0].postMessage.mockImplementationOnce(() => {
+      throw new Error('could not clone');
+    });
+    await expect(grepStream(options(), async () => body('error').stream)).rejects.toThrow(
+      'could not clone',
+    );
+    await expect(grepStream(options(), async () => body('error').stream)).resolves.toMatchObject({
+      match_count: 1,
+    });
+    expect(mockWorkers).toHaveLength(2);
+  });
+
+  // A reply of the wrong kind is a protocol failure, never taken for the awaited one.
+  it.each([
+    [{ type: 'failed', message: 'scanner broke' }, 'scanner broke'],
+    [{ type: 'done', result: {} }, 'sent done instead of ready'],
+  ])('rejects the worker reply %j to start', async (reply, message) => {
+    await grepStream(options(), async () => body('error').stream);
+    const worker = mockWorkers[0];
+    worker.postMessage.mockImplementationOnce(() => {
+      setImmediate(() => worker.emit('message', reply));
+    });
+    const open = jest.fn();
+    await expect(grepStream(options(), open)).rejects.toThrow(message);
+    expect(open).not.toHaveBeenCalled();
+  });
+
   // A missing body is an error, never an empty successful search.
   it('rejects a trace without a body', async () => {
     await expect(grepStream(options(), async () => null)).rejects.toThrow('no readable body');

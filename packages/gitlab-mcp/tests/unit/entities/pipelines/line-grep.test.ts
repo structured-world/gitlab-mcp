@@ -91,11 +91,11 @@ describe('GitLab trace rendering before matching', () => {
     ]);
   });
 
-  // GitLab drops the rest of a line after an unterminated escape sequence.
-  it('drops the remainder after an unterminated escape like the GitLab view', () => {
-    expect(texts(scan(`visible${ESC}[31\x01hidden error`, { invert: true }))).toEqual([
-      ['visible'],
-    ]);
+  // GitLab ends a sequence at the first byte in @ through ~, whatever precedes it.
+  it('ends an escape at its first final byte like the GitLab view', () => {
+    expect(
+      texts(scan(`visible${ESC}[31\x01hidden error`, { patterns: ['zzz'], invert: true })),
+    ).toEqual([['visibleidden error']]);
   });
 
   // Timestamped runner logs prefix every line; the prefix is reported, not matched.
@@ -258,6 +258,39 @@ describe('GitLab trace rendering before matching', () => {
     const stamp = '2026-11-18T10:00:00.123456Z';
     const source = `${stamp} 00O ER\n${stamp} 00O+ROR: failed`;
     expect(scan(source, { patterns: ['ROR'], startLine: 1 }).match_count).toBe(0);
+  });
+
+  // Escapes end at the first byte in @ through ~, as in GitLab's ansi2json; an escape cut
+  // off by the line end drops the rest, and an ESC that starts no sequence is text.
+  it.each([
+    [`ok${ESC}`, 'ok'],
+    [`a${ESC}[31`, 'a'],
+    [`a${ESC}[!1mb`, 'ab'],
+    [`a${ESC}(Bb`, `a${ESC}(Bb`],
+  ])('renders the escape in %j like GitLab', (line, text) => {
+    expect(texts(scan(line, { patterns: ['zzz'], invert: true }))).toEqual([[text]]);
+  });
+
+  // Only complete section markers vanish; anything else that starts like one is text.
+  it.each([
+    [`section_start:1:a[x=1, y=2]\r${ESC}[0Kstep`, 'step'],
+    [`section_end:1:a.b-c\r${ESC}[0Kstep`, 'step'],
+    ['section_bogus:1:a x', 'section_bogus:1:a x'],
+    ['section_start1:a x', 'section_start1:a x'],
+    ['section_start::a x', 'section_start::a x'],
+    ['section_start:1: x', 'section_start:1: x'],
+    ['section_start:1:a[x] y', 'section_start:1:a[x] y'],
+    ['section_start:1:a[x=] y', 'section_start:1:a[x=] y'],
+    ['section_start:1:a[x=1;y=2] y', 'section_start:1:a[x=1;y=2] y'],
+    ['section_start:1:a x', 'section_start:1:a x'],
+  ])('renders the section marker in %j like GitLab', (line, text) => {
+    expect(texts(scan(line, { patterns: ['zzz'], invert: true }))).toEqual([[text]]);
+  });
+
+  // Only a real BOM is removed: a leading character that merely starts with 0xEF stays.
+  it('keeps a leading character whose encoding starts like a byte order mark', () => {
+    const fullwidth = String.fromCodePoint(0xff01);
+    expect(texts(scan(`${fullwidth}error`))).toEqual([[`${fullwidth}error`]]);
   });
 
   // Response.text() removes only the initial BOM; later BOMs are content.
@@ -501,6 +534,48 @@ describe('limits and continuation', () => {
     expect(seen).toEqual(Array.from({ length: 40 }, (_, index) => index));
   });
 
+  // A later hunk that would pass the output limit is dropped whole and found again on
+  // resume, whether the limit falls on its match or on its after-context.
+  it.each([
+    [['error a', 'ok', `error ${'x'.repeat(200)}`, 'ok'], 0, 2],
+    [['error a', 'ok', 'ok', 'error b', `ok ${'x'.repeat(200)}`], 1, 3],
+  ])('drops a later hunk at the output limit (%#)', (log, after, dropped) => {
+    const source = log.join('\n');
+    const first = scan(source, { after, outputBytes: 100 });
+    expect(matched(first)).toEqual([0]);
+    expect(first).toMatchObject({ truncated: 'output_limit', resume_from: dropped });
+    const second = scan(source, { after, startLine: dropped, outputBytes: 1000 });
+    expect(matched(second)).toEqual([dropped]);
+    expect(second.truncated).toBeNull();
+  });
+
+  // A stopped scan ignores later input, so its report and continuation stay fixed.
+  it('ignores input after the scan has stopped', () => {
+    const scanner = new LineGrepScanner(options({ outputBytes: 1 }));
+    scanner.push(new TextEncoder().encode('error one\nerror two\nerror three\n'));
+    expect(scanner.exhausted).toBe(true);
+    const scanned = scanner.progress().scanned_lines;
+    scanner.push(new TextEncoder().encode('error four\n'));
+    expect(scanner.progress().scanned_lines).toBe(scanned);
+    expect(scanner.finish()).toMatchObject({ truncated: 'output_limit', resume_from: 1 });
+  });
+
+  // EOF inside the after-context finished past the budget: matches seen there are
+  // counted, held back for the next page and reported as a budget stop.
+  it('reports matches held back by the budget when EOF ends the after-context', () => {
+    const log = Array.from({ length: 260 }, (_, index) => `error ${index}`).join('\n');
+    const first = scan(log, { budgetMs: -1, after: 20, maxMatches: 500 }, 65536);
+    expect(first).toMatchObject({
+      truncated: 'budget',
+      match_count: 260,
+      total_lines: 260,
+      resume_from: 255,
+    });
+    expect(matched(first)).toEqual(Array.from({ length: 255 }, (_, index) => index));
+    const rest = scan(log, { startLine: 255, after: 20 }, 65536);
+    expect(matched(rest)).toEqual([255, 256, 257, 258, 259]);
+  });
+
   // Line totals follow String.split: empty input and a final LF each count a line.
   it.each([
     ['', 1],
@@ -553,6 +628,8 @@ describe('pattern contract', () => {
     [['(?:a{1000}|b{1000}|c{1000})'], 'more than 2000 instructions'],
     [['(?<=a)b'], 'Invalid RE2 pattern 0'],
     [Array.from({ length: 9 }, () => 'a'), 'at most 8 patterns'],
+    [[''], 'pattern is empty'],
+    [[], 'No patterns to compile'],
   ])('rejects %j', (patterns, message) => {
     expect(() => new LineGrepScanner(options({ patterns }))).toThrow(message);
   });

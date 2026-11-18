@@ -148,17 +148,19 @@ function continuesLine(src: Uint8Array, begin: number, end: number): boolean {
   );
 }
 
-/** Mirrors GitLab's ansi2json escape scanner: an unterminated sequence drops the rest. */
+/**
+ * End of the escape sequence at `start`, mirroring GitLab's ansi2json tokens
+ * `\e([@-_])(.*?)([@-~])` and `\e(?:[@-_].*?)?$`: a sequence ends at the first byte in
+ * @ through ~, one cut off by the line end drops the rest, and an ESC followed by
+ * anything else starts no sequence, so `start` comes back and the ESC is text.
+ */
 function skipEscape(src: Uint8Array, start: number, end: number): number {
   let at = start + 1;
   if (at >= end) return end;
-  const indicator = src[at];
-  if (indicator < 0x40 || indicator > 0x5f) return at;
+  if (src[at] < 0x40 || src[at] > 0x5f) return start;
   at++;
-  while (at < end && src[at] >= 0x30 && src[at] <= 0x3f) at++;
-  while (at < end && src[at] >= 0x20 && src[at] <= 0x2f) at++;
-  if (at >= end || src[at] < 0x40 || src[at] > 0x7e) return end;
-  return at + 1;
+  while (at < end && (src[at] < 0x40 || src[at] > 0x7e)) at++;
+  return at >= end ? end : at + 1;
 }
 
 /** End of a section options block `[\w+=\w+(, ?\w+=\w+)*]` starting at `[`, or -1. */
@@ -180,10 +182,9 @@ function sectionOptionsEnd(src: Uint8Array, start: number, end: number): number 
 /**
  * End of a GitLab section marker at `start`, or -1. Grammar from Gitlab::Regex
  * build_trace_section_regex: section_(start|end):\d+:[A-Za-z0-9_.-]+
- * (\[\w+=\w+(, ?\w+=\w+)*\])?\r\e\[0K
+ * (\[\w+=\w+(, ?\w+=\w+)*\])?\r\e\[0K. Called only where SECTION_PREFIX starts.
  */
 function sectionMarkerEnd(src: Uint8Array, start: number, end: number): number {
-  if (!startsWith(src, start, end, SECTION_PREFIX)) return -1;
   let at = start + SECTION_PREFIX.length;
   if (startsWith(src, at, end, SECTION_START)) at += SECTION_START.length;
   else if (startsWith(src, at, end, SECTION_END)) at += SECTION_END.length;
@@ -235,7 +236,9 @@ function renderTraceLine(src: Buffer, begin: number, end: number, out: Buffer): 
     if (next === size) return length;
     at = next;
     if (at === esc) {
-      at = skipEscape(line, at, size);
+      const after = skipEscape(line, at, size);
+      if (after === at) out[length++] = line[at++];
+      else at = after;
     } else if (at === cr) {
       let after = at + 1;
       while (after < size && line[after] === CR) after++;

@@ -1,0 +1,209 @@
+import { setImmediate } from 'node:timers';
+import type { LineGrepOptions } from '../../../../src/entities/pipelines/line-grep';
+import { fakeGrepWorkers as mockWorkers } from '../../helpers/in-process-grep-worker';
+
+jest.mock('node:worker_threads', () => ({
+  ...jest.requireActual<typeof import('node:worker_threads')>('node:worker_threads'),
+  // A plain constructor: mock resets between tests must not erase the worker stand-in.
+  Worker: function Worker() {
+    return jest
+      .requireActual<typeof import('../../helpers/in-process-grep-worker')>(
+        '../../helpers/in-process-grep-worker',
+      )
+      .createFakeGrepWorker();
+  },
+}));
+// Three cores leave two workers: enough to show capacity without many processes.
+jest.mock('node:os', () => ({
+  ...jest.requireActual<typeof import('node:os')>('node:os'),
+  availableParallelism: () => 3,
+}));
+
+import {
+  closeLineGrepWorkers,
+  grepStream,
+} from '../../../../src/entities/pipelines/line-grep-worker';
+
+const options = (overrides: Partial<LineGrepOptions> = {}): LineGrepOptions => ({
+  patterns: ['error'],
+  before: 1,
+  after: 1,
+  maxMatches: 50,
+  invert: false,
+  startLine: 0,
+  normalize: true,
+  budgetMs: 60_000,
+  ...overrides,
+});
+
+function body(text: string, chunkSize = 5) {
+  const bytes = new TextEncoder().encode(text);
+  let offset = 0;
+  const cancel = jest.fn();
+  const stream = new ReadableStream({
+    type: 'bytes',
+    pull(controller) {
+      if (offset >= bytes.length) {
+        controller.close();
+        controller.byobRequest?.respond(0);
+        return;
+      }
+      controller.enqueue(bytes.slice(offset, offset + chunkSize));
+      offset += chunkSize;
+    },
+    cancel,
+  });
+  return { stream, cancel };
+}
+
+afterEach(async () => {
+  await closeLineGrepWorkers();
+  mockWorkers.length = 0;
+});
+
+describe('grepStream', () => {
+  // Hunks streamed with progress and those in the final report form one ordered result.
+  it('returns every hunk across chunk progress and completion', async () => {
+    const log = Array.from({ length: 30 }, (_, i) => (i % 7 === 0 ? `error ${i}` : `ok ${i}`));
+    const { stream } = body(log.join('\n'));
+    const result = await grepStream(options(), async () => stream);
+    expect(result.hunks.map((hunk) => hunk.matches.map((match) => match.line))).toEqual([
+      [0],
+      [7],
+      [14],
+      [21],
+      [28],
+    ]);
+    expect(result).toMatchObject({ total_lines: 30, match_count: 5, truncated: null });
+    expect(stream.locked).toBe(false);
+  });
+
+  // An invalid pattern is reported before GitLab is asked for the trace.
+  it('rejects an invalid pattern without opening the trace', async () => {
+    const open = jest.fn();
+    await expect(grepStream(options({ patterns: ['(unclosed'] }), open)).rejects.toThrow(
+      'Invalid RE2 pattern 0',
+    );
+    expect(open).not.toHaveBeenCalled();
+    expect(mockWorkers).toHaveLength(1);
+    expect(mockWorkers[0].terminate).not.toHaveBeenCalled();
+  });
+
+  // A failed GitLab request resets the worker, which then serves the next call.
+  it('reuses a worker after the trace request fails', async () => {
+    const failure = new Error('GitLab API error: 403 Forbidden');
+    await expect(
+      grepStream(options(), async () => {
+        throw failure;
+      }),
+    ).rejects.toBe(failure);
+    const sent = mockWorkers[0].postMessage.mock.calls.map(([request]) => request.type);
+    expect(sent).toEqual(['start', 'reset']);
+    await expect(grepStream(options(), async () => body('error').stream)).resolves.toMatchObject({
+      match_count: 1,
+    });
+    expect(mockWorkers).toHaveLength(1);
+  });
+
+  // Exhausting the budget stops reading and cancels the transfer.
+  it('cancels the body once the scan budget is spent', async () => {
+    const log = Array.from({ length: 5000 }, (_, i) => `error ${i}`).join('\n');
+    const { stream, cancel } = body(log, 65536);
+    const result = await grepStream(options({ budgetMs: 0, maxMatches: 500 }), async () => stream);
+    expect(result).toMatchObject({ truncated: 'budget', total_lines: null });
+    expect(result.resume_from).toBe(result.scanned_lines);
+    expect(cancel).toHaveBeenCalled();
+    expect(stream.locked).toBe(false);
+  });
+
+  // A stuck worker is killed; delivered hunks and a continuation that loses nothing remain.
+  it('returns a resumable partial result when a worker stops answering', async () => {
+    jest.useFakeTimers({ doNotFake: ['setImmediate', 'queueMicrotask', 'nextTick'] });
+    try {
+      // One line per chunk: the hunk of line 0 closes at line 3, then line 4 never returns.
+      const lines = ['error 0', 'ok 1', 'ok 2', 'ok 3', 'error 4', 'ok 5'];
+      const pending = grepStream(options({ budgetMs: 10 }), async () => {
+        mockWorkers[0].stallAfterChunks = 4;
+        let index = 0;
+        return new ReadableStream({
+          type: 'bytes',
+          pull(controller) {
+            if (index === lines.length) {
+              controller.close();
+              controller.byobRequest?.respond(0);
+              return;
+            }
+            controller.enqueue(new TextEncoder().encode(`${lines[index++]}\n`));
+          },
+        });
+      });
+      while ((mockWorkers[0]?.chunks ?? 0) < 5) await new Promise((r) => setImmediate(r));
+      await jest.advanceTimersByTimeAsync(2010);
+      const result = await pending;
+      expect(result).toMatchObject({
+        truncated: 'worker_timeout',
+        match_count_complete: false,
+        total_lines: null,
+        resume_from: 4,
+        scanned_lines: 4,
+      });
+      expect(result.hunks).toEqual([
+        { start_line: 0, lines: ['error 0', 'ok 1'], matches: [{ line: 0, patterns: [0] }] },
+      ]);
+      expect(mockWorkers[0].terminate).toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  // Capacity is fixed per process; the extra caller fails fast instead of queueing.
+  it('fails fast at capacity and recovers when a lease ends', async () => {
+    const gates: Array<() => void> = [];
+    const blocked = () =>
+      grepStream(
+        options(),
+        () =>
+          new Promise((resolve) => {
+            gates.push(() => resolve(body('error').stream));
+          }),
+      );
+    const first = blocked();
+    const second = blocked();
+    await new Promise((resolve) => setImmediate(resolve));
+    await expect(grepStream(options(), async () => body('error').stream)).rejects.toThrow(
+      'at capacity',
+    );
+    while (gates.length < 2) await new Promise((resolve) => setImmediate(resolve));
+    gates.forEach((open) => open());
+    await Promise.all([first, second]);
+    await expect(grepStream(options(), async () => body('error').stream)).resolves.toMatchObject({
+      match_count: 1,
+    });
+    expect(mockWorkers).toHaveLength(2);
+  });
+
+  // A crashed worker fails its call and is replaced for the next caller.
+  it('discards a worker that exits during a scan', async () => {
+    const pending = grepStream(options(), async () => {
+      mockWorkers[0].emit('exit', 9);
+      return body('error').stream;
+    });
+    await expect(pending).rejects.toThrow('exited (9)');
+    await expect(grepStream(options(), async () => body('error').stream)).resolves.toMatchObject({
+      match_count: 1,
+    });
+    expect(mockWorkers).toHaveLength(2);
+  });
+
+  // A missing body is an error, never an empty successful search.
+  it('rejects a trace without a body', async () => {
+    await expect(grepStream(options(), async () => null)).rejects.toThrow('no readable body');
+  });
+
+  // Shutdown terminates idle workers.
+  it('terminates workers on close', async () => {
+    await grepStream(options(), async () => body('error').stream);
+    await closeLineGrepWorkers();
+    expect(mockWorkers[0].terminate).toHaveBeenCalled();
+  });
+});

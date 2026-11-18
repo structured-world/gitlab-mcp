@@ -30,15 +30,16 @@ View pipeline status, job details, console output, and individual artifact files
 
 <!-- @autogen:tool browse_pipelines -->
 
-| Action          | Description                                                                           |
-| --------------- | ------------------------------------------------------------------------------------- |
-| `list`          | List pipelines with filtering                                                         |
-| `get`           | Get single pipeline details                                                           |
-| `jobs`          | List jobs in a pipeline                                                               |
-| `triggers`      | List bridge/trigger jobs in a pipeline                                                |
-| `job`           | Get single job details                                                                |
-| `logs`          | Read job logs with bounded memory and explicit byte truncation                        |
-| `artifact_file` | Read one artifact file as bounded UTF-8 text; inspect job metadata to choose its path |
+| Action          | Description                                                                                             |
+| --------------- | ------------------------------------------------------------------------------------------------------- |
+| `list`          | List pipelines with filtering                                                                           |
+| `get`           | Get single pipeline details                                                                             |
+| `jobs`          | List jobs in a pipeline                                                                                 |
+| `triggers`      | List bridge/trigger jobs in a pipeline                                                                  |
+| `job`           | Get single job details                                                                                  |
+| `logs`          | Read job logs with bounded memory and explicit byte truncation                                          |
+| `log_grep`      | Search a whole job log with RE2 patterns; returns matching lines with context and absolute line numbers |
+| `artifact_file` | Read one artifact file as bounded UTF-8 text; inspect job metadata to choose its path                   |
 
 <!-- @autogen:end -->
 
@@ -72,6 +73,15 @@ View pipeline status, job details, console output, and individual artifact files
   "job_id": "5678",
   "start": -100,
   "per_page": 100
+}
+```
+
+```json [Find failures in a log]
+{
+  "action": "log_grep",
+  "project_id": "my-org/api",
+  "job_id": "5678",
+  "preset": "failures"
 }
 ```
 
@@ -119,6 +129,68 @@ including clipped lines. Request fewer lines to reduce page clipping; **line
 pagination cannot recover bytes omitted from an oversized individual line**.
 Inspect the full trace in GitLab when those bytes are needed. A failed or cancelled
 read returns an error rather than a successful partial page.
+
+### Log Search
+
+`log_grep` scans the whole trace on the server and returns only matching lines,
+with context, instead of pages of the log. Use it before paging `logs` when you
+need to find something in a long job.
+
+| Parameter     | Description                                                                        |
+| ------------- | ---------------------------------------------------------------------------------- |
+| `patterns`    | Up to 8 RE2 patterns, 512 characters each; a line matches when any pattern does    |
+| `preset`      | `failures`: common compiler, test, interpreter and runner failure output           |
+| `before`      | Context lines before each match, default 2, maximum 20                             |
+| `after`       | Context lines after each match, default 2, maximum 20                              |
+| `max_matches` | Matches to return, default 50, maximum 500; `match_count` still counts all of them |
+| `invert`      | Select lines matching no pattern                                                   |
+| `start_line`  | First line to search; pass `resume_from` from a truncated result                   |
+| `raw`         | Match the stored bytes instead of the rendered text                                |
+
+At least one of `patterns` and `preset` is required. Patterns use
+[RE2 syntax](https://github.com/google/re2/wiki/Syntax), which runs in linear time;
+lookarounds and backreferences are not available. Flags are written inline, for
+example `(?i)timeout`. Invalid patterns are rejected before GitLab is contacted.
+
+By default each line is matched as the GitLab job log view renders it: runner
+timestamps, ANSI color sequences, `section_start`/`section_end` markers and text
+overwritten by a carriage return are removed. Returned lines are rendered the same
+way. Timestamps, when the runner adds them, are reported per line in `timestamps`.
+`raw: true` matches and returns the stored bytes instead.
+
+```json
+{
+  "action": "log_grep",
+  "project_id": "my-org/api",
+  "job_id": "5678",
+  "patterns": ["(?i)timed? ?out", "error TS[0-9]+"],
+  "before": 3,
+  "after": 1
+}
+```
+
+The result lists `hunks` like `grep -C`: overlapping and adjacent context windows
+are merged. Each hunk has `start_line`, its `lines`, and `matches` with the absolute
+zero-based `line` and the indexes of the `patterns` it matched; with a preset, the
+preset's index is `preset_index`, after the caller's patterns. Line numbers are the
+same as in `logs`, so `logs` with `start` set to a match reads more around it. Lines
+clipped by the 16 KiB per-line limit are listed in `clipped`; only their first 16 KiB
+is searched.
+
+`match_count` counts every match found, including those beyond `max_matches`.
+`total_lines` is the number of lines in the trace, or null when the scan stopped
+early. When `truncated` is set, pass `resume_from` as `start_line` to continue:
+the next call reports each remaining match exactly once.
+
+| `truncated`      | Meaning                                                                |
+| ---------------- | ---------------------------------------------------------------------- |
+| `max_matches`    | More matches exist after the last one returned                         |
+| `budget`         | The search spent its processing time (2 s) before the end of the trace |
+| `worker_timeout` | One line took too long to match; returned hunks are complete           |
+
+Searches run on a small pool of worker threads, so a long trace never blocks other
+requests. When every worker is busy, the call fails at once with a retryable error.
+The trace is streamed with bounded memory, as with `logs`.
 
 ### Individual Artifact Files
 

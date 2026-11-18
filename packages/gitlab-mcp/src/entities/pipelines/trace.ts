@@ -28,7 +28,7 @@ export interface TracePage {
 }
 
 /** Decode a source interval without inventing characters at clipped UTF-8 edges. */
-function decodeFragment(
+export function decodeFragment(
   bytes: Buffer,
   prefixClipped: boolean,
   suffixClipped: boolean,

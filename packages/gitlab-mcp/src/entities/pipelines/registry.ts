@@ -11,11 +11,34 @@ import { ToolRegistry, EnhancedToolDefinition } from '../../types';
 import { assertActionAllowed } from '../utils';
 import { readTracePage } from './trace';
 import { readArtifactFile } from './artifact';
+import { grepStream } from './line-grep-worker';
+
+/** Processing time one log search may spend before it returns a resumable partial result. */
+const LOG_GREP_BUDGET_MS = 2000;
+
+/** Request a job trace as a byte stream; a GitLab error never yields a partial body. */
+async function openTrace(
+  projectId: string,
+  jobId: string,
+): Promise<ReadableStream<Uint8Array> | null> {
+  const apiUrl = `${getGitLabBaseUrl()}/api/v4/projects/${normalizeProjectId(projectId)}/jobs/${encodeApiSegment(jobId)}/trace`;
+  const response = await enhancedFetch(apiUrl);
+  if (!response.ok) {
+    const error = new Error(`GitLab API error: ${response.status} ${response.statusText}`);
+    try {
+      await response.body?.cancel();
+    } catch (cause) {
+      error.cause = cause;
+    }
+    throw error;
+  }
+  return response.body;
+}
 
 /**
  * Pipelines tools registry - 2 CQRS tools replacing 12 individual tools
  *
- * browse_pipelines (Query): list, get, jobs, triggers, job, logs
+ * browse_pipelines (Query): list, get, jobs, triggers, job, logs, log_grep, artifact_file
  * manage_pipeline (Command): create, retry, cancel, play_job, retry_job, cancel_job
  */
 export const pipelinesToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinition>([
@@ -28,7 +51,7 @@ export const pipelinesToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
     {
       name: 'browse_pipelines',
       description:
-        'Monitor CI/CD pipelines and read job logs or individual artifact files. Actions: list (filter by status/ref/source/username), get (pipeline details), jobs (list pipeline jobs), triggers (bridge/trigger jobs), job (single job details), logs (job console output), artifact_file (bounded UTF-8 text with byte continuation). Related: manage_pipeline to trigger/retry/cancel pipelines and play/retry/cancel individual jobs.',
+        "Monitor CI/CD pipelines and read job logs or individual artifact files. Actions: list (filter by status/ref/source/username), get (pipeline details), jobs (list pipeline jobs), triggers (bridge/trigger jobs), job (single job details), logs (job console output), log_grep (RE2 search over a whole job log with context; preset 'failures' finds errors without a pattern), artifact_file (bounded UTF-8 text with byte continuation). Related: manage_pipeline to trigger/retry/cancel pipelines and play/retry/cancel individual jobs.",
       inputSchema: z.toJSONSchema(BrowsePipelinesSchema),
       requirements: { default: { tier: 'free' } },
       gate: { envVar: 'USE_PIPELINE', defaultValue: true },
@@ -96,29 +119,37 @@ export const pipelinesToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
           case 'artifact_file':
             return readArtifactFile(input);
 
+          case 'log_grep': {
+            const { project_id, job_id, patterns = [], preset } = input;
+            if (patterns.length === 0 && !preset)
+              throw new Error('log_grep needs patterns, a preset or both');
+            return grepStream(
+              {
+                patterns,
+                preset,
+                before: input.before,
+                after: input.after,
+                maxMatches: input.max_matches,
+                invert: input.invert ?? false,
+                startLine: input.start_line ?? 0,
+                normalize: !input.raw,
+                budgetMs: LOG_GREP_BUDGET_MS,
+              },
+              () => openTrace(project_id, job_id),
+            );
+          }
+
           case 'logs': {
             // TypeScript knows: input has job_id (required), per_page, start (optional)
             const { project_id, job_id, per_page, start } = input;
 
-            // Custom handling - trace endpoint returns text, needs line processing
-            const apiUrl = `${getGitLabBaseUrl()}/api/v4/projects/${normalizeProjectId(project_id)}/jobs/${encodeApiSegment(job_id)}/trace`;
-            const response = await enhancedFetch(apiUrl);
-
-            if (!response.ok) {
-              const error = new Error(
-                `GitLab API error: ${response.status} ${response.statusText}`,
-              );
-              try {
-                await response.body?.cancel();
-              } catch (cause) {
-                error.cause = cause;
-              }
-              throw error;
-            }
-
             const defaultMaxLines = 200;
             const maxLinesToShow = per_page ?? defaultMaxLines;
-            const page = await readTracePage(response.body, maxLinesToShow, start);
+            const page = await readTracePage(
+              await openTrace(project_id, job_id),
+              maxLinesToShow,
+              start,
+            );
             const { lines: processedLines, totalLines, startLine: effectiveStart } = page;
             let outOfBoundsMessage = '';
             if (start !== undefined && start >= 0) {

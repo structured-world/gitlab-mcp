@@ -1307,12 +1307,14 @@ describe('🔄 Data Lifecycle - Complete Infrastructure Setup', () => {
 
       // Step 2: Get updated MR with diff_refs (retry if not ready yet)
       console.log('  🔍 Getting MR diff_refs...');
-      let mrDetails: any = null;
-      let retries = 0;
-      const maxRetries = 3;
-      const retryDelay = 3000; // 3 seconds
+      let mrDetails: any;
+      // diff_refs come from an asynchronous job; a loaded instance takes minutes, so wait by
+      // time within the test limit instead of a fixed number of attempts.
+      const waitMs = 5 * 60_000;
+      const retryDelay = 3000;
+      const deadline = Date.now() + waitMs;
 
-      while (retries < maxRetries) {
+      for (;;) {
         mrDetails = (await helper.browseMergeRequests({
           action: 'get',
           project_id: projectId,
@@ -1320,22 +1322,17 @@ describe('🔄 Data Lifecycle - Complete Infrastructure Setup', () => {
         })) as any;
 
         if (mrDetails.diff_refs?.base_sha) {
-          console.log(`    ✅ diff_refs ready on attempt ${retries + 1}`);
+          console.log('    ✅ diff_refs ready');
           break;
         }
-
-        retries++;
-        if (retries < maxRetries) {
-          console.log(
-            `    ⏳ diff_refs not ready, retrying in ${retryDelay}ms (attempt ${retries}/${maxRetries})...`,
-          );
-          await new Promise((resolve) => setTimeout(resolve, retryDelay));
-        }
+        if (Date.now() >= deadline) break;
+        console.log(`    ⏳ diff_refs not ready, retrying in ${retryDelay}ms...`);
+        await new Promise((resolve) => setTimeout(resolve, retryDelay));
       }
 
       if (!mrDetails?.diff_refs?.base_sha) {
         throw new Error(
-          `GitLab failed to generate diff_refs after ${maxRetries} retries (${maxRetries * retryDelay}ms total). This indicates a serious problem with GitLab's diff generation.`,
+          `GitLab failed to generate diff_refs within ${waitMs / 1000} s. This indicates a serious problem with GitLab's diff generation.`,
         );
       }
 

@@ -215,6 +215,20 @@ const fragmentStarts = new Int32Array(MAX_GROUP_LINES);
 let startCount = 0;
 let startsMapped = 0;
 let clearedFragments = 0;
+// Whether the fragment before each start was clipped, so its kept bytes do not adjoin it.
+const gapBefore = new Uint8Array(MAX_GROUP_LINES);
+let gapCount = 0;
+
+/**
+ * End of the text an escape or marker at `next` may span: the next clipped gap, since the
+ * bytes the clip dropped lie between, or the line end. Starts past `next` are unmapped.
+ */
+function tokenEnd(next: number, size: number): number {
+  if (gapCount === 0) return size;
+  for (let index = startsMapped; index < startCount; index++)
+    if (gapBefore[index] && fragmentStarts[index] > next) return fragmentStarts[index];
+  return size;
+}
 
 /** Maps the fragment starts before `to` inside a run copied from `from` to `out`. */
 function mapCopied(from: number, to: number, out: number): void {
@@ -234,15 +248,26 @@ function mapRemoved(to: number, out: number): void {
 // fragment boundary moved into it.
 const SLOT_BYTES = TRACE_LINE_BYTES + 3;
 
+const isContinuationByte = (byte: number) => (byte & 0xc0) === 0x80;
+
 /**
  * Moves a fragment boundary back to the start of the UTF-8 character it splits, so the
- * character is returned whole in the later fragment. A run of continuation bytes with no
- * lead byte within reach is no character and keeps the boundary.
+ * character is returned whole in the later fragment. Only a complete character inside the
+ * rendered text `[floor, end)` counts; any other byte run keeps the boundary.
  */
-function characterBoundary(text: Buffer, at: number, floor: number): number {
-  let lead = at;
-  while (lead > floor && at - lead < 3 && (text[lead] & 0xc0) === 0x80) lead--;
-  return text[lead] >= 0xc0 && lead < at ? lead : at;
+function characterBoundary(text: Buffer, at: number, floor: number, end: number): number {
+  if (at <= floor || at >= end || !isContinuationByte(text[at])) return at;
+  let lead = at - 1;
+  while (lead > floor && at - lead < 3 && isContinuationByte(text[lead])) lead--;
+  const byte = text[lead];
+  let width = 0;
+  if (byte >= 0xf0) width = 4;
+  else if (byte >= 0xe0) width = 3;
+  else if (byte >= 0xc0) width = 2;
+  const close = lead + width;
+  if (close <= at || close > end) return at;
+  for (let next = at + 1; next < close; next++) if (!isContinuationByte(text[next])) return at;
+  return lead;
 }
 
 /** End of the CR run starting at `at`. */
@@ -268,14 +293,16 @@ function applyToken(
   if (isCr) {
     const at = crRunEnd(line, next, size);
     if (at === size) return -1;
-    // A lone CR clears everything before it, earlier fragments included.
+    // A lone CR clears everything before it: a fragment ending at or before the end of the
+    // CR run is cleared whole, even one that ends exactly where the CR starts.
     renderLength = 0;
-    clearedFragments = startsMapped;
     fragmentStarts.fill(0, 0, startsMapped);
-    mapRemoved(at, 0);
+    mapRemoved(at + 1, 0);
+    clearedFragments = startsMapped;
     return at;
   }
-  const at = isEscape ? skipEscape(line, next, size) : sectionMarkerEnd(line, next, size);
+  const end = tokenEnd(next, size);
+  const at = isEscape ? skipEscape(line, next, end) : sectionMarkerEnd(line, next, end);
   if (at > next) {
     mapRemoved(at, renderLength);
     return at;
@@ -361,6 +388,10 @@ export class LineGrepScanner {
   private readonly invert: boolean;
   private readonly startLine: number;
   private readonly firstKept: number;
+  // First line stored: a group reaching firstKept may start up to MAX_GROUP_LINES - 1 lines
+  // earlier and is rendered whole. Lines before firstKept are never reported, since no hunk
+  // opens before start_line.
+  private readonly firstStored: number;
   private readonly normalize: boolean;
   private readonly budgetMs: number;
   private readonly outputLimit: number;
@@ -415,6 +446,9 @@ export class LineGrepScanner {
     this.invert = options.invert;
     this.startLine = options.startLine;
     this.firstKept = Math.max(0, options.startLine - options.before);
+    this.firstStored = options.normalize
+      ? Math.max(0, this.firstKept - (MAX_GROUP_LINES - 1))
+      : this.firstKept;
     this.normalize = options.normalize;
     this.budgetMs = options.budgetMs;
     this.outputLimit = options.outputBytes;
@@ -435,7 +469,7 @@ export class LineGrepScanner {
     const omitted = new Float64Array(size);
     const stamp = Buffer.allocUnsafe(size * TIMESTAMP_BYTES);
     const hasStamp = new Uint8Array(size);
-    for (let line = Math.max(this.firstKept, number - this.ringSize + 1); line < number; line++) {
+    for (let line = Math.max(this.firstStored, number - this.ringSize + 1); line < number; line++) {
       const from = line % this.ringSize;
       const to = line % size;
       ring[to] = this.ring[from];
@@ -481,11 +515,11 @@ export class LineGrepScanner {
 
   /**
    * Keeps what the line in progress needs from a piece of it: up to the per-line limit of
-   * a kept line, and of a skipped line only enough to tell whether it continues the last.
+   * a stored line, and of a skipped line only enough to tell whether it continues the last.
    */
   private collect(bytes: Buffer, offset: number, length: number): void {
     let limit = 0;
-    if (this.line >= this.firstKept) limit = TRACE_LINE_BYTES;
+    if (this.line >= this.firstStored) limit = TRACE_LINE_BYTES;
     else if (this.normalize) limit = TIMESTAMP_HEADER_BYTES;
     const keep = Math.min(length, limit - this.carryLength);
     if (keep > 0) {
@@ -497,7 +531,7 @@ export class LineGrepScanner {
 
   /** Finishes the line whose last piece ends at `offset + length`; false once stopped. */
   private endLine(bytes: Buffer, offset: number, length: number): boolean {
-    if (this.lineBytes === 0 && this.line >= this.firstKept) {
+    if (this.lineBytes === 0 && this.line >= this.firstStored) {
       // The whole line is inside this chunk: render it without the carry copy.
       return this.finishLine(bytes, offset, offset + Math.min(length, TRACE_LINE_BYTES), length);
     }
@@ -607,7 +641,7 @@ export class LineGrepScanner {
     this.carryLength = 0;
     this.lineBytes = 0;
     const chained = this.chain(src, begin, end);
-    if (number < this.firstKept) return true;
+    if (number < this.firstStored) return true;
     // Grow before storing, so the new fragment cannot overwrite a line still to be placed.
     if (chained && this.groupOpen && this.ringSize < this.before + 2 + MAX_GROUP_LINES)
       this.growRing(number);
@@ -622,7 +656,7 @@ export class LineGrepScanner {
         this.stopLine = number;
         return false;
       }
-      // The first kept line may continue a group headed before it: context, never a match.
+      // The first stored line may continue a group headed before it: never a match.
       this.openGroup(number, !chained);
     }
     // Raw lines stand alone, so each is placed as soon as it is read.
@@ -675,6 +709,7 @@ export class LineGrepScanner {
     const head = first % this.ringSize;
     if (this.groupEnd === first) {
       startCount = 0;
+      gapCount = 0;
       const line = this.ring[head] as Buffer;
       this.ringLength[head] = renderTraceLine(line, this.ringLength[head]);
       return line.subarray(0, this.ringLength[head]);
@@ -683,9 +718,15 @@ export class LineGrepScanner {
     const logical = (this.logical ??= Buffer.allocUnsafe(MAX_GROUP_LINES * TRACE_LINE_BYTES));
     let size = 0;
     startCount = this.groupEnd - first;
+    gapCount = 0;
     for (let line = first; line <= this.groupEnd; line++) {
-      if (line > first) fragmentStarts[line - first - 1] = size;
       const slot = line % this.ringSize;
+      if (line < this.groupEnd) {
+        const gap = this.ringOmitted[slot] > 0 ? 1 : 0;
+        gapBefore[line - first] = gap;
+        gapCount += gap;
+      }
+      if (line > first) fragmentStarts[line - first - 1] = size;
       size += (this.ring[slot] as Buffer).copy(logical, size, 0, this.ringLength[slot]);
     }
     const length = renderTraceLine(logical, size);
@@ -696,7 +737,7 @@ export class LineGrepScanner {
       if (index < startCount) {
         // A clipped fragment's tail is not next to the following one: nothing to rejoin.
         to = fragmentStarts[index];
-        if (this.ringOmitted[slot] === 0) to = characterBoundary(logical, to, from);
+        if (this.ringOmitted[slot] === 0) to = characterBoundary(logical, to, from, length);
       }
       this.ringLength[slot] = logical.copy(this.ring[slot] as Buffer, 0, from, to);
       if (index < clearedFragments) this.ringOmitted[slot] = 0;

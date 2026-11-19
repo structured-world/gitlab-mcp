@@ -272,6 +272,29 @@ describe('GitLab trace rendering before matching', () => {
     expect(result.hunks[0].clipped).toBeUndefined();
   });
 
+  // Only a complete character moves: a four-byte one does, while a character cut off at the
+  // end of the line or broken by a non-continuation byte leaves each fragment as it is.
+  it.each([
+    ['a four-byte character', [0xf0], [0x9f, 0x98, 0x80], true],
+    ['a character cut off at the line end', [0xf0, 0x9f], [0x98], false],
+    ['a broken sequence', [0xe2], [0x82, 0x41], false],
+  ])('moves the fragment boundary only for %s', (_name, tail, rest, moved) => {
+    const stamp = '2026-11-18T10:00:00.123456Z';
+    const head = Buffer.from([...Buffer.from('error '), ...tail]);
+    const next = Buffer.from(rest);
+    const source = Buffer.concat([
+      Buffer.from(`${stamp} 00O `),
+      head,
+      Buffer.from(`\n${stamp} 00O+`),
+      next,
+    ]);
+    const decode = (bytes: Buffer) => new TextDecoder().decode(bytes);
+    const expected = moved
+      ? ['error ', decode(Buffer.concat([Buffer.from(tail), next]))]
+      : [decode(head), decode(next)];
+    expect(texts(scan(source, {}, 65536))).toEqual([expected]);
+  });
+
   // GitLab joins fragments before CR handling: a CR ending a continued fragment clears it.
   it('lets a carriage return ending a continued fragment clear it', () => {
     const stamp = '2026-11-18T10:00:00.123456Z';
@@ -295,6 +318,53 @@ describe('GitLab trace rendering before matching', () => {
     const stamp = '2026-11-18T10:00:00.123456Z';
     const source = `${stamp} 00O ER\n${stamp} 00O+ROR: failed`;
     expect(scan(source, { patterns: ['ROR'], startLine: 1 }).match_count).toBe(0);
+  });
+
+  // Context kept from a group headed before the page is rendered with that head, so a
+  // resumed page returns the same text as a full scan.
+  it('renders context fragments with a head that lies before the kept lines', () => {
+    const stamp = '2026-11-18T10:00:00.123456Z';
+    const source = `${stamp} 00O ${ESC}[3\n${stamp} 00O+1mnearby\n${stamp} 00O ERROR`;
+    const expected = {
+      start_line: 1,
+      lines: ['nearby', 'ERROR'],
+      matches: [{ line: 2, patterns: [0] }],
+      timestamps: [stamp, stamp],
+    };
+    expect(scan(source, { patterns: ['ERROR'], before: 1, startLine: 2 }).hunks).toEqual([
+      expected,
+    ]);
+    expect(scan(source, { patterns: ['ERROR'], before: 1 }).hunks).toEqual([expected]);
+  });
+
+  // A boundary is moved only for a character the rendered text splits; bytes left past the
+  // rendered end by a CR do not count.
+  it('keeps a character in its fragment when the next fragment renders empty', () => {
+    const stamp = '2026-11-18T10:00:00.123456Z';
+    const source = `${stamp} 00O ${EURO}\r${E_ACUTE}\n${stamp} 00O+${ESC}[31m`;
+    expect(texts(scan(source, { patterns: ['zzz'], invert: true }))).toEqual([[E_ACUTE, '']]);
+  });
+
+  // A CR at the very start of a fragment clears the clipped fragment before it, tail and all.
+  it('drops the clipped tail of a fragment cleared by a CR starting the next one', () => {
+    const stamp = '2026-11-18T10:00:00.123456Z';
+    const source = `${stamp} 00O ${'x'.repeat(20_000)}\n${stamp} 00O+\rERROR`;
+    const result = scan(source, { patterns: ['^ERROR$'] }, 65536);
+    expect(texts(result)).toEqual([['', 'ERROR']]);
+    expect(result.hunks[0].clipped).toBeUndefined();
+  });
+
+  // The bytes a clipped fragment lost are not next to the following fragment, so an escape
+  // cut at the clip ends there and cannot swallow the next fragment's text; an escape after
+  // the gap still renders normally.
+  it('ends an escape at the clipped end of a fragment', () => {
+    const stamp = '2026-11-18T10:00:00.123456Z';
+    const kept = TRACE_LINE_BYTES - 33;
+    const source = `${stamp} 00O ${'x'.repeat(kept)}${ESC}[31mtail\n${stamp} 00O+ERROR${ESC}[0m here`;
+    const result = scan(source, { patterns: ['ERROR here'] }, 65536);
+    expect(result.match_count).toBe(1);
+    expect(texts(result)).toEqual([['x'.repeat(kept), 'ERROR here']]);
+    expect(result.hunks[0].clipped).toEqual([{ line: 0, omitted_bytes: 8 }]);
   });
 
   // Escapes end at the first byte in @ through ~, as in GitLab's ansi2json; an escape cut

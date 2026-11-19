@@ -160,7 +160,8 @@ The runner splits a long output line into fragments whose timestamp marks them a
 continuations; like the GitLab view, the search joins them before rendering, so a
 pattern can match across fragments, an escape sequence split between fragments is
 removed whole, and a carriage return clears the fragments before it, which are then
-returned empty. A line of more than 32 fragments is joined 32 at a time; every
+returned empty. A fragment cut at the per-line limit no longer adjoins the next one,
+so an escape sequence reaching its cut ends there. A line of more than 32 fragments is joined 32 at a time; every
 fragment is searched, but a match, an escape sequence or a carriage return does not
 reach across two such groups. The match is reported at the first fragment of its
 group, and every fragment of that group is returned, except when the output limit

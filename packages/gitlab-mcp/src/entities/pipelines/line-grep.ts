@@ -236,6 +236,42 @@ function crRunEnd(line: Buffer, at: number, size: number): number {
   return at;
 }
 
+// Rendered length of the line renderTraceLine is working on.
+let renderLength = 0;
+
+/**
+ * Applies the CR, escape or section marker at `next` and returns where rendering goes on,
+ * or -1 when a CR run ends the line.
+ */
+function applyToken(
+  line: Buffer,
+  next: number,
+  size: number,
+  isCr: boolean,
+  isEscape: boolean,
+): number {
+  if (isCr) {
+    const at = crRunEnd(line, next, size);
+    if (at === size) return -1;
+    // A lone CR clears everything before it, earlier fragments included.
+    renderLength = 0;
+    clearedFragments = startsMapped;
+    fragmentStarts.fill(0, 0, startsMapped);
+    mapRemoved(at, 0);
+    return at;
+  }
+  const at = isEscape ? skipEscape(line, next, size) : sectionMarkerEnd(line, next, size);
+  if (at > next) {
+    mapRemoved(at, renderLength);
+    return at;
+  }
+  // An escape or marker that is not one stays text: its first byte is kept.
+  line[renderLength] = line[next];
+  mapCopied(next, next + 1, renderLength);
+  renderLength++;
+  return next + 1;
+}
+
 /**
  * Next position of `needle` at or after `at`. A known position still ahead is reused, and
  * -1 means none remain, so each needle is searched once per occurrence, not per token.
@@ -262,10 +298,10 @@ function renderTraceLine(buffer: Buffer, size: number): number {
   const line = buffer.subarray(0, size);
   startsMapped = 0;
   clearedFragments = 0;
+  renderLength = 0;
   let esc = line.indexOf(ESC);
   let cr = line.indexOf(CR);
   let section = line.indexOf(SECTION_PREFIX);
-  let length = 0;
   let at = 0;
   for (;;) {
     esc = nextOf(line, ESC, esc, at);
@@ -273,34 +309,16 @@ function renderTraceLine(buffer: Buffer, size: number): number {
     section = nextOf(line, SECTION_PREFIX, section, at);
     const next = earliest(earliest(earliest(size, esc), cr), section);
     if (next > at) {
-      if (length !== at) line.copy(line, length, at, next);
-      mapCopied(at, next, length);
-      length += next - at;
+      if (renderLength !== at) line.copy(line, renderLength, at, next);
+      mapCopied(at, next, renderLength);
+      renderLength += next - at;
     }
     if (next === size) break;
-    if (next === cr) {
-      at = crRunEnd(line, next, size);
-      if (at === size) break;
-      // A lone CR clears everything before it, earlier fragments included.
-      length = 0;
-      clearedFragments = startsMapped;
-      fragmentStarts.fill(0, 0, startsMapped);
-      mapRemoved(at, 0);
-      continue;
-    }
-    // An escape or marker that is not one stays text: its first byte is kept.
-    at = next === esc ? skipEscape(line, next, size) : sectionMarkerEnd(line, next, size);
-    if (at > next) {
-      mapRemoved(at, length);
-    } else {
-      line[length] = line[next];
-      mapCopied(next, next + 1, length);
-      length++;
-      at = next + 1;
-    }
+    at = applyToken(line, next, size, next === cr, next === esc);
+    if (at === -1) break;
   }
-  mapRemoved(Infinity, length);
-  return length;
+  mapRemoved(Infinity, renderLength);
+  return renderLength;
 }
 
 type StopReason = 'budget' | 'output';

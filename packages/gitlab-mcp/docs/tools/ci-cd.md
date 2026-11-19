@@ -157,13 +157,17 @@ timestamps, ANSI color sequences, `section_start`/`section_end` markers and text
 overwritten by a carriage return are removed. Returned lines are rendered the same
 way. Timestamps, when the runner adds them, are reported per line in `timestamps`.
 The runner splits a long output line into fragments whose timestamp marks them as
-continuations; like the GitLab view, the search joins them, so a pattern can match
-across fragments, and a carriage return clears the fragments before it, which are
-then returned empty. A line of more than 32 fragments is joined 32 at a time; every
-fragment is searched, but a match cannot span two such groups and a carriage return
-clears only within its group. The match is reported at the first fragment of its
-group, and every fragment of that group is returned. `raw: true` matches and
-returns each stored line as is, including a leading byte order mark.
+continuations; like the GitLab view, the search joins them before rendering, so a
+pattern can match across fragments, an escape sequence split between fragments is
+removed whole, and a carriage return clears the fragments before it, which are then
+returned empty. A line of more than 32 fragments is joined 32 at a time; every
+fragment is searched, but a match, an escape sequence or a carriage return does not
+reach across two such groups. The match is reported at the first fragment of its
+group, and every fragment of that group is returned, except when the output limit
+falls inside it on the first hunk of a call: the result then ends at the last
+fragment that fit, and the continuation starts after it, so read the rest of that
+line with `logs`. `raw: true` matches and returns each stored line as is, including
+a leading byte order mark.
 
 ```json
 {

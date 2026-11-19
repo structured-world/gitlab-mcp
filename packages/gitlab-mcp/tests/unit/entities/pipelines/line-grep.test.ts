@@ -235,6 +235,29 @@ describe('GitLab trace rendering before matching', () => {
     expect(texts(result)).toEqual([['', 'ERROR: x']]);
   });
 
+  // GitLab renders the joined fragments, so an escape or a section marker split by the
+  // runner vanishes whole and the text around it joins up.
+  it.each([
+    [
+      ['ERR\x1b[3', '1mOR: x'],
+      ['ERR', 'OR: x'],
+    ],
+    [
+      ['ERR\x1b', '[31mOR: x'],
+      ['ERR', 'OR: x'],
+    ],
+    [
+      ['section_sta', `rt:1:a\r\x1b[0KERROR: x`],
+      ['', 'ERROR: x'],
+    ],
+  ])('renders text split across fragments as one line (%j)', (parts, lines) => {
+    const stamp = '2026-11-18T10:00:00.123456Z';
+    const source = `${stamp} 00O ${parts[0]}\n${stamp} 00O+${parts[1]}`;
+    const result = scan(source, { patterns: ['^ERROR: x$'] });
+    expect(result.hunks[0].matches).toEqual([{ line: 0, patterns: [0] }]);
+    expect(texts(result)).toEqual([lines]);
+  });
+
   // GitLab joins fragments before CR handling: a CR ending a continued fragment clears it.
   it('lets a carriage return ending a continued fragment clear it', () => {
     const stamp = '2026-11-18T10:00:00.123456Z';

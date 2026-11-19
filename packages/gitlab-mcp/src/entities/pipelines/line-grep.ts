@@ -207,11 +207,34 @@ function sectionMarkerEnd(src: Uint8Array, start: number, end: number): number {
   return startsWith(src, at, end, SECTION_SUFFIX) ? at + SECTION_SUFFIX.length : -1;
 }
 
-// What the last renderTraceLine call met: a lone CR, which clears the whole logical line,
-// or a CR run ending the line, which clears it only if a continuation follows.
-const RENDER_CLEARED = 1;
-const RENDER_TRAILING_CR = 2;
-let renderFlags = 0;
+// Source offsets where each later fragment of a joined logical line starts. Rendering
+// rewrites the first `startCount` in place to the same points in the rendered text, so
+// each fragment's rendered text is a slice; `clearedFragments` counts the fragments a CR
+// cleared whole.
+const fragmentStarts = new Int32Array(MAX_GROUP_LINES);
+let startCount = 0;
+let startsMapped = 0;
+let clearedFragments = 0;
+
+/** Maps the fragment starts before `to` inside a run copied from `from` to `out`. */
+function mapCopied(from: number, to: number, out: number): void {
+  while (startsMapped < startCount && fragmentStarts[startsMapped] < to) {
+    fragmentStarts[startsMapped] = out + fragmentStarts[startsMapped] - from;
+    startsMapped++;
+  }
+}
+
+/** Maps the fragment starts before `to` inside removed text to `out`. */
+function mapRemoved(to: number, out: number): void {
+  while (startsMapped < startCount && fragmentStarts[startsMapped] < to)
+    fragmentStarts[startsMapped++] = out;
+}
+
+/** End of the CR run starting at `at`. */
+function crRunEnd(line: Buffer, at: number, size: number): number {
+  while (at < size && line[at] === CR) at++;
+  return at;
+}
 
 /**
  * Next position of `needle` at or after `at`. A known position still ahead is reused, and
@@ -227,14 +250,18 @@ function earliest(limit: number, position: number): number {
 }
 
 /**
- * Render one source line as GitLab's job log view shows it: a trailing `\r*` ends the
- * line, any other CR clears the text before it, escapes and section markers vanish.
- * Plain runs between those are found and copied natively rather than byte by byte.
+ * Render a logical line in place as GitLab's job log view shows it: a trailing `\r*` ends
+ * the line, any other CR clears the text before it, escapes and section markers vanish.
+ * Rendering only removes bytes, so the text moves left within `line`; plain runs between
+ * those tokens are found natively and not moved at all while nothing was removed yet.
+ * Fragments are joined before rendering, as GitLab does, so a token split by the runner
+ * is still one token.
  */
-function renderTraceLine(src: Buffer, begin: number, end: number, out: Buffer): number {
-  renderFlags = 0;
-  const line = src.subarray(begin, end);
-  const size = line.length;
+function renderTraceLine(buffer: Buffer, size: number): number {
+  // Searches must stop at the line's end, not run on through the rest of its slot.
+  const line = buffer.subarray(0, size);
+  startsMapped = 0;
+  clearedFragments = 0;
   let esc = line.indexOf(ESC);
   let cr = line.indexOf(CR);
   let section = line.indexOf(SECTION_PREFIX);
@@ -245,26 +272,35 @@ function renderTraceLine(src: Buffer, begin: number, end: number, out: Buffer): 
     cr = nextOf(line, CR, cr, at);
     section = nextOf(line, SECTION_PREFIX, section, at);
     const next = earliest(earliest(earliest(size, esc), cr), section);
-    if (next > at) length += line.copy(out, length, at, next);
-    if (next === size) return length;
+    if (next > at) {
+      if (length !== at) line.copy(line, length, at, next);
+      mapCopied(at, next, length);
+      length += next - at;
+    }
+    if (next === size) break;
     if (next === cr) {
-      at = next + 1;
-      while (at < size && line[at] === CR) at++;
-      if (at === size) {
-        renderFlags |= RENDER_TRAILING_CR;
-        return length;
-      }
+      at = crRunEnd(line, next, size);
+      if (at === size) break;
+      // A lone CR clears everything before it, earlier fragments included.
       length = 0;
-      renderFlags |= RENDER_CLEARED;
+      clearedFragments = startsMapped;
+      fragmentStarts.fill(0, 0, startsMapped);
+      mapRemoved(at, 0);
       continue;
     }
-    // An escape or marker that is not one stays text: its first byte is copied.
+    // An escape or marker that is not one stays text: its first byte is kept.
     at = next === esc ? skipEscape(line, next, size) : sectionMarkerEnd(line, next, size);
-    if (at <= next) {
-      out[length++] = line[next];
+    if (at > next) {
+      mapRemoved(at, length);
+    } else {
+      line[length] = line[next];
+      mapCopied(next, next + 1, length);
+      length++;
       at = next + 1;
     }
   }
+  mapRemoved(Infinity, length);
+  return length;
 }
 
 type StopReason = 'budget' | 'output';
@@ -295,7 +331,8 @@ export class LineGrepScanner {
   private readonly normalize: boolean;
   private readonly budgetMs: number;
   private readonly outputLimit: number;
-  // Holds the before-context, the open logical line and the line just read. It starts at
+  // Holds the before-context, the open logical line and the line just read: lines of the
+  // open group as source bytes, placed lines as rendered text. It starts at
   // one fragment per logical line and grows once if the trace has continuations, so a
   // trace without them keeps a small, cache-friendly working set.
   private ringSize: number;
@@ -304,7 +341,6 @@ export class LineGrepScanner {
   private ringOmitted: Float64Array;
   private ringStamp: Buffer;
   private ringHasStamp: Uint8Array;
-  private ringFlags: Uint8Array;
   private readonly carry = Buffer.allocUnsafe(TRACE_LINE_BYTES);
   private readonly decoder = new TextDecoder('utf-8', { ignoreBOM: true });
   private carryLength = 0;
@@ -317,8 +353,8 @@ export class LineGrepScanner {
   private groupFirst = 0;
   private groupEnd = 0;
   private groupMatchable = false;
+  // Joined source fragments of a multi-fragment group, rendered in place.
   private logical: Buffer | undefined;
-  private logicalLength = -1;
   private outbox: GrepHunk[] = [];
   private pending: GrepHunk | null = null;
   private closedHunks = 0;
@@ -356,7 +392,6 @@ export class LineGrepScanner {
     this.ringOmitted = new Float64Array(this.ringSize);
     this.ringStamp = Buffer.allocUnsafe(this.ringSize * TIMESTAMP_BYTES);
     this.ringHasStamp = new Uint8Array(this.ringSize);
-    this.ringFlags = new Uint8Array(this.ringSize);
   }
 
   /** Re-index the held lines into a ring with room for the longest logical line. */
@@ -367,7 +402,6 @@ export class LineGrepScanner {
     const omitted = new Float64Array(size);
     const stamp = Buffer.allocUnsafe(size * TIMESTAMP_BYTES);
     const hasStamp = new Uint8Array(size);
-    const flags = new Uint8Array(size);
     for (let line = Math.max(this.firstKept, number - this.ringSize + 1); line < number; line++) {
       const from = line % this.ringSize;
       const to = line % size;
@@ -381,7 +415,6 @@ export class LineGrepScanner {
         (from + 1) * TIMESTAMP_BYTES,
       );
       hasStamp[to] = this.ringHasStamp[from];
-      flags[to] = this.ringFlags[from];
     }
     this.ringSize = size;
     this.ring = ring;
@@ -389,7 +422,6 @@ export class LineGrepScanner {
     this.ringOmitted = omitted;
     this.ringStamp = stamp;
     this.ringHasStamp = hasStamp;
-    this.ringFlags = flags;
   }
 
   get exhausted(): boolean {
@@ -549,7 +581,7 @@ export class LineGrepScanner {
     const slot = number % this.ringSize;
     this.store(slot, number, src, begin, end, sourceBytes - (end - begin));
     if (chained && this.groupOpen) {
-      this.extendGroup(number, slot);
+      this.groupEnd = number;
     } else {
       this.closeGroup();
       // Placing the previous logical line stopped the scan: this line was never placed.
@@ -565,7 +597,7 @@ export class LineGrepScanner {
     return this.stop === null;
   }
 
-  /** Stores the rendered line with its timestamp and render flags. */
+  /** Stores the line's source bytes after its BOM and timestamp, which is kept apart. */
   private store(
     slot: number,
     number: number,
@@ -577,7 +609,6 @@ export class LineGrepScanner {
     const out = (this.ring[slot] ??= Buffer.allocUnsafe(TRACE_LINE_BYTES));
     let from = begin;
     this.ringHasStamp[slot] = 0;
-    this.ringFlags[slot] = 0;
     if (this.normalize) {
       // Response.text() drops only the initial UTF-8 BOM; `logs` shows the same text.
       if (number === 0 && end - from >= 3 && src[from] === 0xef) {
@@ -588,12 +619,8 @@ export class LineGrepScanner {
         this.ringHasStamp[slot] = 1;
         from += TIMESTAMP_HEADER_BYTES;
       }
-      this.ringLength[slot] = renderTraceLine(src, from, end, out);
-      // A CR at the clip boundary is not the end of the line.
-      this.ringFlags[slot] = omitted > 0 ? renderFlags & RENDER_CLEARED : renderFlags;
-    } else {
-      this.ringLength[slot] = src.copy(out, 0, from, end);
     }
+    this.ringLength[slot] = src.copy(out, 0, from, end);
     this.ringOmitted[slot] = omitted;
   }
 
@@ -602,40 +629,42 @@ export class LineGrepScanner {
     this.groupFirst = number;
     this.groupEnd = number;
     this.groupMatchable = matchable && number >= this.startLine;
-    this.logicalLength = -1;
   }
 
   /**
-   * Joins a fragment to the logical line. GitLab joins fragments before CR handling, so a
-   * lone CR in this fragment, or a CR ending the previous one, clears every earlier
-   * fragment, in the matched text and in the returned lines.
+   * Renders the finished group and returns its logical text. A single line renders in its
+   * slot. Several fragments are joined before rendering, as GitLab joins them, and each
+   * slot then gets its own fragment's part; a fragment a CR cleared whole is empty and
+   * loses its clipped tail with the rest of its text.
    */
-  private extendGroup(number: number, slot: number): void {
-    const previous = (number - 1) % this.ringSize;
-    if (
-      (this.ringFlags[slot] & RENDER_CLEARED) !== 0 ||
-      (this.ringFlags[previous] & RENDER_TRAILING_CR) !== 0
-    ) {
-      for (let line = this.groupFirst; line < number; line++) {
-        this.ringLength[line % this.ringSize] = 0;
-        this.ringOmitted[line % this.ringSize] = 0;
-      }
-      this.logicalLength = 0;
+  private renderGroup(): Buffer {
+    const first = this.groupFirst;
+    const head = first % this.ringSize;
+    if (this.groupEnd === first) {
+      startCount = 0;
+      const line = this.ring[head] as Buffer;
+      this.ringLength[head] = renderTraceLine(line, this.ringLength[head]);
+      return line.subarray(0, this.ringLength[head]);
     }
-    this.groupEnd = number;
-    if (!this.groupMatchable) return;
     // Room for every fragment the group may hold, so no fragment text goes unsearched.
     const logical = (this.logical ??= Buffer.allocUnsafe(MAX_GROUP_LINES * TRACE_LINE_BYTES));
-    if (this.logicalLength === -1) {
-      const head = this.groupFirst % this.ringSize;
-      this.logicalLength = (this.ring[head] as Buffer).copy(logical, 0, 0, this.ringLength[head]);
+    let size = 0;
+    startCount = this.groupEnd - first;
+    for (let line = first; line <= this.groupEnd; line++) {
+      if (line > first) fragmentStarts[line - first - 1] = size;
+      const slot = line % this.ringSize;
+      size += (this.ring[slot] as Buffer).copy(logical, size, 0, this.ringLength[slot]);
     }
-    this.logicalLength += (this.ring[slot] as Buffer).copy(
-      logical,
-      this.logicalLength,
-      0,
-      this.ringLength[slot],
-    );
+    const length = renderTraceLine(logical, size);
+    let from = 0;
+    for (let index = 0; index <= startCount; index++) {
+      const to = index < startCount ? fragmentStarts[index] : length;
+      const slot = (first + index) % this.ringSize;
+      this.ringLength[slot] = logical.copy(this.ring[slot] as Buffer, 0, from, to);
+      if (index < clearedFragments) this.ringOmitted[slot] = 0;
+      from = to;
+    }
+    return logical.subarray(0, length);
   }
 
   /** Matches the finished logical line and places its physical lines. */
@@ -645,12 +674,14 @@ export class LineGrepScanner {
     const first = this.groupFirst;
     let isMatch = false;
     let hits = NO_PATTERNS;
+    // Raw lines are matched as stored; every rendered line is kept for the returned text.
+    const text = this.normalize
+      ? this.renderGroup()
+      : (this.ring[first % this.ringSize] as Buffer).subarray(
+          0,
+          this.ringLength[first % this.ringSize],
+        );
     if (this.groupMatchable) {
-      const head = first % this.ringSize;
-      const text =
-        this.logicalLength === -1
-          ? (this.ring[head] as Buffer).subarray(0, this.ringLength[head])
-          : (this.logical as Buffer).subarray(0, this.logicalLength);
       const found = this.matcher.match(text);
       isMatch = this.invert ? found.length === 0 : found.length > 0;
       if (!this.invert) hits = found;

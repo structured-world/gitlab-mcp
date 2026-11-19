@@ -716,6 +716,16 @@ export class LineGrepScanner {
     }
     // Room for every fragment the group may hold, so no fragment text goes unsearched.
     const logical = (this.logical ??= Buffer.allocUnsafe(MAX_GROUP_LINES * TRACE_LINE_BYTES));
+    const length = renderTraceLine(logical, this.joinGroup(logical, first));
+    this.splitGroup(logical, first, length);
+    return logical.subarray(0, length);
+  }
+
+  /**
+   * Joins the group's fragments into `logical` and returns its size, recording where each
+   * fragment starts and which of them follow a clipped gap.
+   */
+  private joinGroup(logical: Buffer, first: number): number {
     let size = 0;
     startCount = this.groupEnd - first;
     gapCount = 0;
@@ -729,7 +739,11 @@ export class LineGrepScanner {
       if (line > first) fragmentStarts[line - first - 1] = size;
       size += (this.ring[slot] as Buffer).copy(logical, size, 0, this.ringLength[slot]);
     }
-    const length = renderTraceLine(logical, size);
+    return size;
+  }
+
+  /** Gives each slot of the group its own fragment's part of the rendered text. */
+  private splitGroup(logical: Buffer, first: number, length: number): void {
     let from = 0;
     for (let index = 0; index <= startCount; index++) {
       const slot = (first + index) % this.ringSize;
@@ -743,7 +757,6 @@ export class LineGrepScanner {
       if (index < clearedFragments) this.ringOmitted[slot] = 0;
       from = to;
     }
-    return logical.subarray(0, length);
   }
 
   /** Matches the finished logical line and places its physical lines. */

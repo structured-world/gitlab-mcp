@@ -258,6 +258,20 @@ describe('GitLab trace rendering before matching', () => {
     expect(texts(result)).toEqual([lines]);
   });
 
+  // A character split between fragments is returned whole, in the later fragment.
+  it('keeps a UTF-8 character split between fragments whole', () => {
+    const stamp = '2026-11-18T10:00:00.123456Z';
+    const source = Buffer.concat([
+      Buffer.from(`${stamp} 00O error caf`),
+      Buffer.from([0xc3]),
+      Buffer.from(`\n${stamp} 00O+`),
+      Buffer.from([0xa9]),
+    ]);
+    const result = scan(source, {}, 65536);
+    expect(texts(result)).toEqual([['error caf', E_ACUTE]]);
+    expect(result.hunks[0].clipped).toBeUndefined();
+  });
+
   // GitLab joins fragments before CR handling: a CR ending a continued fragment clears it.
   it('lets a carriage return ending a continued fragment clear it', () => {
     const stamp = '2026-11-18T10:00:00.123456Z';

@@ -230,6 +230,21 @@ function mapRemoved(to: number, out: number): void {
     fragmentStarts[startsMapped++] = out;
 }
 
+// A ring slot holds a line's first 16 KiB plus the rest of a UTF-8 character that a
+// fragment boundary moved into it.
+const SLOT_BYTES = TRACE_LINE_BYTES + 3;
+
+/**
+ * Moves a fragment boundary back to the start of the UTF-8 character it splits, so the
+ * character is returned whole in the later fragment. A run of continuation bytes with no
+ * lead byte within reach is no character and keeps the boundary.
+ */
+function characterBoundary(text: Buffer, at: number, floor: number): number {
+  let lead = at;
+  while (lead > floor && at - lead < 3 && (text[lead] & 0xc0) === 0x80) lead--;
+  return text[lead] >= 0xc0 && lead < at ? lead : at;
+}
+
 /** End of the CR run starting at `at`. */
 function crRunEnd(line: Buffer, at: number, size: number): number {
   while (at < size && line[at] === CR) at++;
@@ -624,7 +639,7 @@ export class LineGrepScanner {
     end: number,
     omitted: number,
   ): void {
-    const out = (this.ring[slot] ??= Buffer.allocUnsafe(TRACE_LINE_BYTES));
+    const out = (this.ring[slot] ??= Buffer.allocUnsafe(SLOT_BYTES));
     let from = begin;
     this.ringHasStamp[slot] = 0;
     if (this.normalize) {
@@ -676,8 +691,13 @@ export class LineGrepScanner {
     const length = renderTraceLine(logical, size);
     let from = 0;
     for (let index = 0; index <= startCount; index++) {
-      const to = index < startCount ? fragmentStarts[index] : length;
       const slot = (first + index) % this.ringSize;
+      let to = length;
+      if (index < startCount) {
+        // A clipped fragment's tail is not next to the following one: nothing to rejoin.
+        to = fragmentStarts[index];
+        if (this.ringOmitted[slot] === 0) to = characterBoundary(logical, to, from);
+      }
       this.ringLength[slot] = logical.copy(this.ring[slot] as Buffer, 0, from, to);
       if (index < clearedFragments) this.ringOmitted[slot] = 0;
       from = to;

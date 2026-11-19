@@ -163,19 +163,23 @@ function skipEscape(src: Uint8Array, start: number, end: number): number {
   return at >= end ? end : at + 1;
 }
 
+/** End of the run of `\w` bytes at `at`. */
+function wordEnd(src: Uint8Array, at: number, end: number): number {
+  while (at < end && isWord(src[at])) at++;
+  return at;
+}
+
 /** End of a section options block `[\w+=\w+(, ?\w+=\w+)*]` starting at `[`, or -1. */
 function sectionOptionsEnd(src: Uint8Array, start: number, end: number): number {
   let at = start + 1;
   for (;;) {
-    const key = at;
-    while (at < end && isWord(src[at])) at++;
-    if (at === key || src[at++] !== 0x3d) return -1;
-    const value = at;
-    while (at < end && isWord(src[at])) at++;
-    if (at === value) return -1;
+    const keyEnd = wordEnd(src, at, end);
+    if (keyEnd === at || src[keyEnd] !== 0x3d) return -1;
+    at = wordEnd(src, keyEnd + 1, end);
+    if (at === keyEnd + 1) return -1;
     if (src[at] === 0x5d) return at + 1;
-    if (src[at++] !== 0x2c) return -1;
-    if (src[at] === 0x20) at++;
+    if (src[at] !== 0x2c) return -1;
+    at += src[at + 1] === 0x20 ? 2 : 1;
   }
 }
 
@@ -210,6 +214,19 @@ const RENDER_TRAILING_CR = 2;
 let renderFlags = 0;
 
 /**
+ * Next position of `needle` at or after `at`. A known position still ahead is reused, and
+ * -1 means none remain, so each needle is searched once per occurrence, not per token.
+ */
+function nextOf(line: Buffer, needle: number | Buffer, known: number, at: number): number {
+  return known !== -1 && known < at ? line.indexOf(needle, at) : known;
+}
+
+/** The smaller of `limit` and a found position (`-1` is not found). */
+function earliest(limit: number, position: number): number {
+  return position !== -1 && position < limit ? position : limit;
+}
+
+/**
  * Render one source line as GitLab's job log view shows it: a trailing `\r*` ends the
  * line, any other CR clears the text before it, escapes and section markers vanish.
  * Plain runs between those are found and copied natively rather than byte by byte.
@@ -224,35 +241,28 @@ function renderTraceLine(src: Buffer, begin: number, end: number, out: Buffer): 
   let length = 0;
   let at = 0;
   for (;;) {
-    // A position behind the cursor is stale; -1 means none remain and needs no search.
-    if (esc !== -1 && esc < at) esc = line.indexOf(ESC, at);
-    if (cr !== -1 && cr < at) cr = line.indexOf(CR, at);
-    if (section !== -1 && section < at) section = line.indexOf(SECTION_PREFIX, at);
-    let next = size;
-    if (esc !== -1 && esc < next) next = esc;
-    if (cr !== -1 && cr < next) next = cr;
-    if (section !== -1 && section < next) next = section;
+    esc = nextOf(line, ESC, esc, at);
+    cr = nextOf(line, CR, cr, at);
+    section = nextOf(line, SECTION_PREFIX, section, at);
+    const next = earliest(earliest(earliest(size, esc), cr), section);
     if (next > at) length += line.copy(out, length, at, next);
     if (next === size) return length;
-    at = next;
-    if (at === esc) {
-      const after = skipEscape(line, at, size);
-      if (after === at) out[length++] = line[at++];
-      else at = after;
-    } else if (at === cr) {
-      let after = at + 1;
-      while (after < size && line[after] === CR) after++;
-      if (after === size) {
+    if (next === cr) {
+      at = next + 1;
+      while (at < size && line[at] === CR) at++;
+      if (at === size) {
         renderFlags |= RENDER_TRAILING_CR;
         return length;
       }
       length = 0;
       renderFlags |= RENDER_CLEARED;
-      at = after;
-    } else {
-      const marker = sectionMarkerEnd(line, at, size);
-      if (marker === -1) out[length++] = line[at++];
-      else at = marker;
+      continue;
+    }
+    // An escape or marker that is not one stays text: its first byte is copied.
+    at = next === esc ? skipEscape(line, next, size) : sectionMarkerEnd(line, next, size);
+    if (at <= next) {
+      out[length++] = line[next];
+      at = next + 1;
     }
   }
 }
@@ -394,33 +404,40 @@ export class LineGrepScanner {
     let offset = 0;
     while (offset < bytes.length) {
       const newline = bytes.indexOf(10, offset);
-      const end = newline === -1 ? bytes.length : newline;
-      const length = end - offset;
-      if (this.line >= this.firstKept) {
-        if (newline !== -1 && this.lineBytes === 0) {
-          // The whole line is inside this chunk: render it without the carry copy.
-          if (!this.finishLine(bytes, offset, offset + Math.min(length, TRACE_LINE_BYTES), length))
-            break;
-          offset = newline + 1;
-          continue;
-        }
-        const keep = Math.min(length, TRACE_LINE_BYTES - this.carryLength);
-        if (keep > 0) {
-          bytes.copy(this.carry, this.carryLength, offset, offset + keep);
-          this.carryLength += keep;
-        }
-      } else if (this.normalize && this.carryLength < TIMESTAMP_HEADER_BYTES) {
-        // A skipped line is read only far enough to tell whether it continues the last one.
-        const keep = Math.min(length, TIMESTAMP_HEADER_BYTES - this.carryLength);
-        bytes.copy(this.carry, this.carryLength, offset, offset + keep);
-        this.carryLength += keep;
+      if (newline === -1) {
+        this.collect(bytes, offset, bytes.length - offset);
+        break;
       }
-      this.lineBytes += length;
-      if (newline === -1) break;
-      if (!this.finishLine(this.carry, 0, this.carryLength, this.lineBytes)) break;
+      if (!this.endLine(bytes, offset, newline - offset)) break;
       offset = newline + 1;
     }
     this.elapsedMs += performance.now() - this.sliceStart;
+  }
+
+  /**
+   * Keeps what the line in progress needs from a piece of it: up to the per-line limit of
+   * a kept line, and of a skipped line only enough to tell whether it continues the last.
+   */
+  private collect(bytes: Buffer, offset: number, length: number): void {
+    let limit = 0;
+    if (this.line >= this.firstKept) limit = TRACE_LINE_BYTES;
+    else if (this.normalize) limit = TIMESTAMP_HEADER_BYTES;
+    const keep = Math.min(length, limit - this.carryLength);
+    if (keep > 0) {
+      bytes.copy(this.carry, this.carryLength, offset, offset + keep);
+      this.carryLength += keep;
+    }
+    this.lineBytes += length;
+  }
+
+  /** Finishes the line whose last piece ends at `offset + length`; false once stopped. */
+  private endLine(bytes: Buffer, offset: number, length: number): boolean {
+    if (this.lineBytes === 0 && this.line >= this.firstKept) {
+      // The whole line is inside this chunk: render it without the carry copy.
+      return this.finishLine(bytes, offset, offset + Math.min(length, TRACE_LINE_BYTES), length);
+    }
+    this.collect(bytes, offset, length);
+    return this.finishLine(this.carry, 0, this.carryLength, this.lineBytes);
   }
 
   /** Hunks closed since the previous call, with a continuation that loses none of them. */
@@ -484,31 +501,47 @@ export class LineGrepScanner {
     this.stopLine = this.line;
   }
 
-  /** Returns false once the scan has stopped; the stopping line is left unprocessed. */
-  private finishLine(src: Buffer, begin: number, end: number, sourceBytes: number): boolean {
-    // Lines up to start_line are skipped or kept as context; only searching spends the
-    // budget, so every continuation advances past the line it started from.
-    if (!this.draining && this.line > this.startLine && ++this.sinceCheck >= BUDGET_CHECK_LINES) {
-      this.sinceCheck = 0;
-      if (this.elapsedMs + performance.now() - this.sliceStart > this.budgetMs) {
-        if (this.pending === null || this.afterRemaining === 0) {
-          this.halt('budget');
-          return false;
-        }
-        this.draining = true;
-      }
+  /**
+   * Checks the budget every BUDGET_CHECK_LINES searched lines; true when the scan stops.
+   * Lines up to start_line are skipped or kept as context and spend none of it, so every
+   * continuation advances past the line it started from. Past the budget, an open hunk
+   * first finishes its after-context.
+   */
+  private overBudget(): boolean {
+    if (this.draining || this.line <= this.startLine || ++this.sinceCheck < BUDGET_CHECK_LINES)
+      return false;
+    this.sinceCheck = 0;
+    if (this.elapsedMs + performance.now() - this.sliceStart <= this.budgetMs) return false;
+    if (this.pending !== null && this.afterRemaining > 0) {
+      this.draining = true;
+      return false;
     }
-    const number = this.line++;
-    this.carryLength = 0;
-    this.lineBytes = 0;
-    // GitLab joins continuations without limit; past MAX_GROUP_LINES fragments the scanner
-    // starts a new group of the same line, so a match spanning that boundary is not found.
+    this.halt('budget');
+    return true;
+  }
+
+  /**
+   * Whether the line continues the trace's current group, counting it either way. GitLab
+   * joins continuations without limit; past MAX_GROUP_LINES fragments the scanner starts a
+   * new group of the same line, so a match spanning that boundary is not found.
+   */
+  private chain(src: Buffer, begin: number, end: number): boolean {
     const chained =
       this.normalize &&
       this.chainLength > 0 &&
       this.chainLength < MAX_GROUP_LINES &&
       continuesLine(src, begin, end);
     this.chainLength = chained ? this.chainLength + 1 : 1;
+    return chained;
+  }
+
+  /** Returns false once the scan has stopped; the stopping line is left unprocessed. */
+  private finishLine(src: Buffer, begin: number, end: number, sourceBytes: number): boolean {
+    if (this.overBudget()) return false;
+    const number = this.line++;
+    this.carryLength = 0;
+    this.lineBytes = 0;
+    const chained = this.chain(src, begin, end);
     if (number < this.firstKept) return true;
     // Grow before storing, so the new fragment cannot overwrite a line still to be placed.
     if (chained && this.groupOpen && this.ringSize < this.before + 2 + MAX_GROUP_LINES)

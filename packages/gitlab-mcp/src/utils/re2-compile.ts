@@ -42,7 +42,7 @@ function compileGate(sources: readonly string[]): RE2JS | null {
   // \Q quotes up to \E or the end of the pattern, so joined it can quote the wrappers that
   // follow and still compile into a gate that rejects lines the set would match. A false
   // hit on an escaped backslash only costs the gate.
-  if (sources.some((source) => source.includes('\\Q'))) return null;
+  if (sources.some((source) => source.includes(String.raw`\Q`))) return null;
   // A group name used in two sources fails to compile once joined.
   try {
     return RE2JS.compile(sources.map((source) => `(?:${source})`).join('|'));

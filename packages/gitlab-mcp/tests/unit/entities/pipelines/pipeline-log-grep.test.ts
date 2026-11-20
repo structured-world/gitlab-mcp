@@ -248,6 +248,48 @@ describe('browse_pipelines log_grep with pipeline_id', () => {
     expect(result.listing_complete).toBe(false);
   });
 
+  // Caller patterns are checked once before the listing and then used for every job.
+  it('searches with valid caller patterns', async () => {
+    serve({ [`${PIPELINE}/jobs`]: [job(1)] }, { 1: 'ok\ntimed out after 30s\n' });
+    const result = await grep({ patterns: ['(?i)timed? ?out'] });
+    expect(result.jobs).toEqual([
+      expect.objectContaining({
+        hunks: [
+          { start_line: 1, lines: ['timed out after 30s'], matches: [{ line: 1, patterns: [0] }] },
+        ],
+      }),
+    ]);
+    expect(result).not.toHaveProperty('preset_index');
+  });
+
+  // A failed trigger marked allow_failure leads to failures the pipeline tolerates: skipped
+  // by default, followed when allowed failures are asked for.
+  it.each([
+    [false, [], [{ reason: 'allowed_failure' }]],
+    [true, ['20'], []],
+  ])(
+    'follows an allowed-failure trigger only on request (include: %s)',
+    async (include, searched, skipped) => {
+      const toChild = bridge(10, { id: 200, project_id: 55 });
+      toChild.allow_failure = true;
+      serve(
+        {
+          [`${PIPELINE}/jobs`]: [],
+          [`${PIPELINE}/bridges`]: [toChild],
+          '/api/v4/projects/55/pipelines/200/jobs': [job(20)],
+        },
+        { 20: 'error: child\n' },
+      );
+      const result = await grep({ include_allowed_failures: include });
+      expect((result.jobs as Array<{ job_id: string }>).map((entry) => entry.job_id)).toEqual(
+        searched,
+      );
+      expect(result.jobs_skipped).toEqual(
+        skipped.map((entry) => ({ ...identity(toChild), ...entry })),
+      );
+    },
+  );
+
   // include_downstream: false keeps the search to the pipeline itself.
   it('stays in the pipeline without include_downstream', async () => {
     serve({ [`${PIPELINE}/jobs`]: [job(1)] }, { 1: 'error: x\n' });

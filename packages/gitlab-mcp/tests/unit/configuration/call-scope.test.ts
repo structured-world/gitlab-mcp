@@ -12,6 +12,8 @@ const allow = (...entries: string[]) =>
   GITLAB_ALLOWED_PROJECT_IDS.splice(0, GITLAB_ALLOWED_PROJECT_IDS.length, ...entries);
 let read: jest.SpyInstance;
 beforeEach(() => {
+  // Each test starts unrestricted, whatever operator list the process was started with.
+  allow();
   read = jest.spyOn(gitlab, 'get').mockImplementation(async (path: string) => {
     const found = paths[path];
     if (found === undefined) throw new Error('GitLab API error: 404 Not Found');

@@ -1,6 +1,6 @@
 ---
 title: Client Issues
-description: "Troubleshoot MCP client integration with GitLab MCP Server. Fix issues with Claude Desktop, VS Code, Cursor, Windsurf, and Cline including config loading, detection, and permissions."
+description: "Troubleshoot MCP client integration with GitLab MCP Server. Fix issues with Claude Desktop, VS Code, Cursor, Windsurf, Cline and the Codex plugin including config loading, detection, sign-in and permissions."
 head:
   - - meta
     - name: keywords
@@ -43,6 +43,11 @@ Problems with MCP client detection, configuration, and connectivity.
 | Windsurf | `~/.codeium/windsurf/` exists | Opened once |
 | Cline | Extension storage exists | Extension installed |
 | Roo Code | `~/.roo/` exists | Opened once |
+| Codex | `codex` in PATH | Codex CLI installed |
+
+The ChatGPT desktop app does not put its bundled Codex CLI on `PATH`, so the
+wizard does not detect it. The desktop plugin needs neither the wizard nor the CLI;
+see [Codex plugin](#codex-plugin).
 
 ## Config Not Loaded {#config-not-loaded}
 
@@ -165,6 +170,29 @@ Find your npx path: `which npx`
 - **Extension required**: Must have `saoudrizwan.claude-dev` extension installed
 - **Settings location**: Inside VS Code extension storage
 - **Update path**: If extension ID changes, config path changes too
+
+### Codex plugin {#codex-plugin}
+
+The configurable plugin keeps its connection in a private panel. Open the plugin's
+settings and choose **Set up, change or reconnect GitLab**, or ask Codex to open the
+GitLab connection panel. Enter tokens only in the panel's password field, never in
+the chat. A failed change keeps the previously saved connection. The panel reports
+the failure and the stage it happened in.
+
+| Symptom | Cause | Fix and how to verify |
+| --- | --- | --- |
+| The plugin is installed but its tools or panel never appear | Node.js 24 or later is missing: the plugin runs on the Node.js of this computer, which is not bundled | Install Node.js 24+, restart the app, open a new chat with the plugin enabled |
+| GitLab tools are listed twice, or the plugin's settings never take effect | A standalone entry also registers GitLab MCP. An entry named `gitlab-sw` in `config.toml` hides the plugin's server; one under another name runs beside it | `codex mcp list`, then `codex mcp remove <name>`. Start a new chat and check that each GitLab tool appears once |
+| "Authentication was rejected" | The token is wrong, revoked or expired, or browser sign-in expired | Create a new token, enter it in the panel and connect. For browser sign-in choose **Reconnect saved connection** or **Continue browser sign-in** |
+| "The account lacks permission" | The token lacks the `api` or `read_user` scope, or the account cannot reach the project | Replace the token with one that has both scopes. Ask Codex to check the GitLab connection: `check_connection` reports the account, restrictions and recommendations |
+| Browser sign-in was denied or abandoned | Consent was not given at GitLab | The saved connection is unchanged. **Cancel setup** ends the attempt; **Continue browser sign-in** starts again |
+| "The TLS certificate could not be verified" | The GitLab or MCP server certificate is issued by a CA your computer does not trust | Node.js does not read the system trust store by default. Provide the CA chain as a PEM file through `NODE_EXTRA_CA_CERTS` (or `GITLAB_CA_CERT_PATH` for GitLab) in the environment Codex starts the plugin with; local mode passes both to its runtime. Do not disable certificate verification |
+| "The address could not be resolved" or "The server is unreachable" | Hostname, VPN or proxy problem | Check the address in a browser on the same computer. Local mode passes `HTTPS_PROXY` and `NO_PROXY` from Codex's environment to its runtime |
+| A feature is missing or refused | The GitLab version or tier does not offer it, or settings turn it off | Ask Codex to check the GitLab connection; it reports the version, tier and active restrictions. See [Settings](/configuration/settings) |
+
+**Disconnect** deletes the saved credentials on this computer but does not revoke
+the token or OAuth grant at GitLab; revoke it in GitLab when it is no longer needed.
+See the [Codex installation guide](/guide/installation/codex) for upgrade and removal.
 
 ## Startup Log Spam {#jsonrpc-parse-errors}
 

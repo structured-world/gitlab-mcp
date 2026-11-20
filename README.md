@@ -63,8 +63,9 @@ HTTP MCP server. The local plugin requires Node.js 24+; credentials are entered 
 its private panel. See the installation guide for marketplace setup and authentication.
 
 The [shared sw.foundation marketplace](https://repo.sw.foundation/plugins/) lists
-verified releases. Add it once with `codex plugin marketplace add structured-world/repo --sparse .agents/plugins`,
-then install GitLab MCP from that catalog after its first configurable plugin release.
+verified releases, including GitLab MCP. Add it once with
+`codex plugin marketplace add structured-world/repo --sparse .agents/plugins`, then
+install GitLab MCP from that catalog in the Codex Plugins Directory.
 
 Download the ready-made [Codex marketplace ZIP](https://github.com/structured-world/gitlab-mcp/releases/latest/download/gitlab-mcp-codex.zip)
 and its [SHA-256 checksum](https://github.com/structured-world/gitlab-mcp/releases/latest/download/gitlab-mcp-codex.zip.sha256)

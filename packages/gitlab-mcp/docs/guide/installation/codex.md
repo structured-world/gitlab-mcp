@@ -1,6 +1,6 @@
 ---
 title: Codex Installation Guide
-description: 'Install the local GitLab MCP plugin in Codex desktop, then configure a GitLab instance or an existing HTTP MCP server. Standalone registration is also supported.'
+description: 'Quick start and reference for the GitLab MCP plugin in Codex desktop: install from a marketplace, connect a GitLab instance or an existing HTTP MCP server, and start working. Standalone registration is also supported.'
 head:
   - - meta
     - name: keywords
@@ -18,6 +18,31 @@ GitLab MCP reaches Codex and the ChatGPT desktop app in two ways:
 
 Both can be installed side by side with Claude Code; neither touches Claude configuration.
 
+## Quick start in the ChatGPT desktop app
+
+1. **Prepare.** Install [Node.js](https://nodejs.org/) 24 or later. Have the GitLab
+   address ready, and either a personal access token with the `api` and `read_user`
+   scopes or the endpoint of an existing GitLab MCP server from its operator.
+2. **Add the marketplace once.** With the Codex CLI, run
+   `codex plugin marketplace add structured-world/repo --sparse .agents/plugins`.
+   To install a downloaded release instead, register it as described in
+   [Install from a release](#install-from-a-release). Neither needs GitLab credentials.
+3. **Install.** Open Codex, then the Plugins Directory, choose **GitLab by Structured
+   World** from the sw.foundation marketplace and confirm installation.
+4. **Connect.** Open the plugin's settings and choose **Set up, change or reconnect
+   GitLab**. Pick **GitLab instance, run MCP locally** and enter the address and token
+   in the panel, or **Existing GitLab MCP server** and sign in through the browser.
+   The panel shows the verified account when the connection works.
+5. **Work.** Start a new chat with the plugin enabled and ask, for example, "Show my
+   open merge requests and which ones wait for my review". To keep the chat to one
+   project or read-only, ask Codex to open the GitLab settings panel or see
+   [Settings](/configuration/settings).
+
+If a step fails, see [Codex plugin troubleshooting](/troubleshooting/clients#codex-plugin).
+The sections below describe each installation path and option in detail.
+
+## Connection sharing
+
 Plugin chats share the selected connection. Updating OAuth credentials keeps that
 selection and existing transports; choosing another account or disconnecting
 invalidates older callbacks. Refresh operations are coordinated across local
@@ -33,7 +58,7 @@ Node.js 24 or later. The Node executable itself is not bundled.
 ### Shared sw.foundation marketplace
 
 The shared [sw.foundation catalog](https://repo.sw.foundation/plugins/) lists
-verified released plugins. After the marketplace is published, add it once:
+verified released plugins, GitLab MCP among them. Add it once:
 
 ```bash
 codex plugin marketplace add structured-world/repo --sparse .agents/plugins
@@ -41,9 +66,8 @@ codex plugin marketplace add structured-world/repo --sparse .agents/plugins
 
 [Open shared marketplace installation in Codex](codex://plugins/install/gitlab-mcp?marketplace=sw-foundation)
 
-The GitLab entry appears after the configurable plugin's first successful release.
-It references the exact verified source commit and published npm runtime. Install
-Node.js 24+ and npm; the runtime downloads on first use. Refresh the catalog with
+The GitLab entry references the exact verified source commit and published npm
+runtime. Install Node.js 24+ and npm; the runtime downloads on first use. Refresh the catalog with
 `codex plugin marketplace upgrade sw-foundation` and review plugin updates in Codex.
 For a standalone download with its dependencies already included, use the ZIP below.
 

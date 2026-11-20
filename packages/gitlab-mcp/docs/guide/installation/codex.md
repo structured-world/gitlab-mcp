@@ -27,11 +27,14 @@ Both can be installed side by side with Claude Code; neither touches Claude conf
    `codex plugin marketplace add structured-world/repo --sparse .agents/plugins`.
    To install a downloaded release instead, register it as described in
    [Install from a release](#install-from-a-release). Neither needs GitLab credentials.
-3. **Install.** Open Codex, then the Plugins Directory, choose **GitLab by Structured
-   World** from the sw.foundation marketplace and confirm installation.
+3. **Install.** Open Codex, then the Plugins Directory, and choose **GitLab by
+   Structured World** from the marketplace you registered: `sw-foundation` (shown as
+   sw.foundation) for the shared catalog, or `gitlab-mcp` for a release ZIP. Confirm
+   installation.
 4. **Connect.** Open the plugin's settings and choose **Set up, change or reconnect
    GitLab**. Pick **GitLab instance, run MCP locally** and enter the address and token
-   in the panel, or **Existing GitLab MCP server** and sign in through the browser.
+   in the panel, or **Existing GitLab MCP server**, enter its endpoint and use the
+   authentication its operator configured: browser sign-in, a bearer token, or none.
    The panel shows the verified account when the connection works.
 5. **Work.** Start a new chat with the plugin enabled and ask, for example, "Show my
    open merge requests and which ones wait for my review". To keep the chat to one

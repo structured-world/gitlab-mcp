@@ -38,7 +38,7 @@ never changes the other's configuration.
 | --- | --- | --- | --- | --- |
 | [Codex desktop plugin, local mode](/guide/installation/codex#plugin) | Plugins Directory, from a marketplace | Personal access token in the plugin panel | Native settings page and connection panel | Node.js 24+, network access to GitLab |
 | [Codex desktop plugin, existing server](/guide/installation/codex#configure-the-installed-plugin) | Same plugin | Browser sign-in, bearer token or none, as the operator configures | Same | Node.js 24+, an operator's HTTP MCP endpoint |
-| [Codex CLI, standalone server](/guide/installation/codex#local-server) | `gitlab-mcp install --codex` | Token from the environment, or browser sign-in to an HTTP server | Settings tools | Codex CLI, Node.js 24+ |
+| [Codex CLI, standalone server](/guide/installation/codex#local-server) | `npx @structured-world/gitlab-mcp install --codex` | Token from the environment, or browser sign-in to an HTTP server | Settings tools | Codex CLI, Node.js 24+ |
 | [Claude Code](/clients/claude-code) | `claude mcp add` | Token, or OAuth to an HTTP server | Settings tools | Claude Code, Node.js 24+ for stdio |
 | [Claude Desktop](/clients/claude-desktop) | MCPB extension | Token in the extension settings | Settings tools | Claude Desktop |
 

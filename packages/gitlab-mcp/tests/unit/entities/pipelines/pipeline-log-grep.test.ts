@@ -470,7 +470,7 @@ describe('browse_pipelines log_grep with pipeline_id', () => {
       resume_from: number;
       hunks: Array<{ start_line: number }>;
     }>;
-    expect(scanned.length).toBe(first.jobs_scanned);
+    expect(scanned).toHaveLength(first.jobs_scanned as number);
     expect(scanned.length).toBeGreaterThan(0);
     expect(scanned.length).toBeLessThan(rows.length);
     for (const entry of scanned) {

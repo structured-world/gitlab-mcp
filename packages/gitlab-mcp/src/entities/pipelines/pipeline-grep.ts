@@ -35,6 +35,7 @@ const BridgeRowSchema = JobRowSchema.extend({
   downstream_pipeline: z.object({ id: z.number(), project_id: z.number() }).nullish(),
 });
 type JobRow = z.infer<typeof JobRowSchema>;
+type BridgeRow = z.infer<typeof BridgeRowSchema>;
 
 /** Who a reported job is; enough to read or retry it with job tools. */
 export interface JobIdentity {
@@ -147,142 +148,208 @@ async function* pages<T>(
   }
 }
 
+/** A trigger that is followed once its project is in scope; `quiet` drops it unreported. */
+type TriggerVerdict = SkipReason | 'quiet' | null;
+
 /**
- * Collect the jobs to search, the pipeline's own first, then each followed trigger's
+ * Collects the jobs to search, the pipeline's own first, then each followed trigger's
  * pipeline breadth first. Listing stops once the job limit is passed.
  */
-async function discover(
-  input: PipelineGrepInput,
-  scope: readonly string[],
-  wanted: ReadonlyMap<string, number> | null,
-): Promise<Discovery> {
-  // A resume names its jobs already; the job limit applied when it was produced.
-  const maxJobs = wanted?.size ?? input.max_jobs ?? LOG_GREP_DEFAULT_JOBS;
-  const downstream = input.include_downstream ?? true;
-  const allowFailures = input.include_allowed_failures ?? false;
-  // A resumed job is found by id, whatever its status became since the previous call.
-  const jobScope = wanted === null ? scope : null;
-  const queue: PipelineRef[] = [
-    { projectId: input.project_id, pipelineId: input.pipeline_id, depth: 0 },
-  ];
-  const jobs: JobIdentity[] = [];
-  const skipped: SkippedJob[] = [];
-  const listingErrors: ListingError[] = [];
-  // Set once a further eligible job is seen; the listing then stops after its page.
-  let full = false;
-  // Set when a listing failed, so jobs it would have shown are unknown, not absent.
-  let gaps = false;
-  // A resume repeats only read failures; the first call already reported the rest.
-  const skip = (job: JobIdentity, reason: SkipReason, error?: string): void => {
-    if (wanted === null || reason === 'downstream_unreadable')
-      skipped.push({ ...job, reason, ...(error ? { error } : {}) });
-  };
-  const take = (job: JobIdentity, row: JobRow): void => {
-    if (wanted !== null) {
-      if (wanted.has(job.job_id)) jobs.push(job);
-    } else if (row.status === 'failed' && row.allow_failure && !allowFailures) {
-      skip(job, 'allowed_failure');
-    } else if (jobs.length < maxJobs) {
-      jobs.push(job);
-    } else {
-      full = true;
-      skip(job, 'max_jobs');
-    }
-  };
-  const done = (): boolean => full || (wanted !== null && jobs.length === wanted.size);
-  // A triggered pipeline may sit in a project the call may not read; each project is checked once.
-  const scopeChecks = new Map<string, Promise<boolean>>();
-  const inScope = (projectId: string): Promise<boolean> => {
-    let check = scopeChecks.get(projectId);
-    if (!check) {
-      check = projectInCallScope(projectId);
-      scopeChecks.set(projectId, check);
-    }
-    return check;
-  };
+class PipelineDiscovery {
+  private readonly jobs: JobIdentity[] = [];
+  private readonly skipped: SkippedJob[] = [];
+  private readonly listingErrors: ListingError[] = [];
+  private readonly queue: PipelineRef[];
+  private readonly maxJobs: number;
+  private readonly downstream: boolean;
+  private readonly allowFailures: boolean;
+  /** Status filter of the job listing; null on a resume, which finds its jobs by id. */
+  private readonly jobScope: readonly string[] | null;
+  /** Each project a trigger leads to is checked against the call's scope once. */
+  private readonly scopeChecks = new Map<string, Promise<boolean>>();
+  /** Set once a further eligible job is seen; the listing then stops after its page. */
+  private full = false;
+  /** Set when a listing failed, so jobs it would have shown are unknown, not absent. */
+  private gaps = false;
+  /** Set when the job limit stopped a listing with more pages or triggers left. */
+  private unlisted = false;
+  private index = 0;
 
-  let index = 0;
-  let unlisted = false;
-  for (; index < queue.length && !done(); index++) {
-    const ref = queue[index];
-    const base = `projects/${normalizeProjectId(ref.projectId)}/pipelines/${encodeApiSegment(ref.pipelineId)}`;
+  constructor(
+    input: PipelineGrepInput,
+    scope: readonly string[],
+    private readonly wanted: ReadonlyMap<string, number> | null,
+  ) {
+    // A resume names its jobs already; the job limit applied when it was produced.
+    this.maxJobs = wanted?.size ?? input.max_jobs ?? LOG_GREP_DEFAULT_JOBS;
+    this.downstream = input.include_downstream ?? true;
+    this.allowFailures = input.include_allowed_failures ?? false;
+    this.jobScope = wanted === null ? scope : null;
+    this.queue = [{ projectId: input.project_id, pipelineId: input.pipeline_id, depth: 0 }];
+  }
+
+  async run(): Promise<Discovery> {
+    for (; this.index < this.queue.length && !this.done(); this.index++) {
+      const ref = this.queue[this.index];
+      const base = `projects/${normalizeProjectId(ref.projectId)}/pipelines/${encodeApiSegment(ref.pipelineId)}`;
+      const listed = await this.listJobs(ref, base);
+      if (listed && this.downstream && !this.done()) await this.listTriggers(ref, base);
+    }
+    return this.result();
+  }
+
+  private done(): boolean {
+    return this.full || (this.wanted !== null && this.jobs.length === this.wanted.size);
+  }
+
+  /** A resume repeats only read failures; the first call already reported the rest. */
+  private skip(job: JobIdentity, reason: SkipReason, error?: string): void {
+    if (this.wanted === null || reason === 'downstream_unreadable')
+      this.skipped.push({ ...job, reason, ...(error ? { error } : {}) });
+  }
+
+  private take(job: JobIdentity, row: JobRow): void {
+    if (this.wanted !== null) {
+      if (this.wanted.has(job.job_id)) this.jobs.push(job);
+    } else if (row.status === 'failed' && row.allow_failure && !this.allowFailures) {
+      this.skip(job, 'allowed_failure');
+    } else if (this.jobs.length < this.maxJobs) {
+      this.jobs.push(job);
+    } else {
+      this.full = true;
+      this.skip(job, 'max_jobs');
+    }
+  }
+
+  private listingFailed(ref: PipelineRef, error: unknown): void {
+    this.gaps = true;
+    this.listingErrors.push({
+      project_id: ref.projectId,
+      pipeline_id: ref.pipelineId,
+      error: message(error),
+    });
+  }
+
+  /** Lists a pipeline's jobs; false when not one page of them could be read. */
+  private async listJobs(ref: PipelineRef, base: string): Promise<boolean> {
     let read = false;
     try {
       // A resumed job may have been retried since; its id stays on the superseded attempt.
-      const listing = pages(`${base}/jobs`, JobRowSchema, jobScope, wanted !== null);
+      const listing = pages(`${base}/jobs`, JobRowSchema, this.jobScope, this.wanted !== null);
       for await (const { rows, more } of listing) {
         read = true;
-        for (const row of rows) take(identity(row, ref), row);
-        if (done()) {
-          unlisted = more || downstream;
+        for (const row of rows) this.take(identity(row, ref), row);
+        if (this.done()) {
+          this.unlisted = more || this.downstream;
           break;
         }
       }
     } catch (error) {
-      gaps = true;
-      if (read) {
-        // A later page failed: the jobs already listed stay, and the triggers are still read.
-        listingErrors.push({
-          project_id: ref.projectId,
-          pipeline_id: ref.pipelineId,
-          error: message(error),
-        });
-      } else {
-        // The searched pipeline must be readable; a triggered one in another project may not be.
-        if (!ref.bridge) throw error;
-        skip(ref.bridge, 'downstream_unreadable', message(error));
-        continue;
+      // A later page failed: the jobs already listed stay, and the triggers are still read.
+      if (read) this.listingFailed(ref, error);
+      // The searched pipeline must be readable; a triggered one in another project may not be.
+      else if (!ref.bridge) throw error;
+      else {
+        this.gaps = true;
+        this.skip(ref.bridge, 'downstream_unreadable', message(error));
+        return false;
       }
     }
-    if (!downstream || done()) continue;
+    return true;
+  }
+
+  /**
+   * Follows a pipeline's trigger jobs of every status: with the default strategy one
+   * succeeds as soon as its pipeline is created, however that pipeline ends.
+   */
+  private async listTriggers(ref: PipelineRef, base: string): Promise<void> {
     try {
-      // Trigger jobs of every status: with the default strategy one succeeds as soon as its
-      // pipeline is created, however that pipeline ends.
       for await (const { rows } of pages(`${base}/bridges`, BridgeRowSchema, null)) {
-        for (const row of rows) {
-          const bridge = identity(row, ref);
-          const child = row.downstream_pipeline;
-          // A resume follows every trigger: a job it names may sit behind one that has
-          // since failed as an allowed failure.
-          if (wanted === null && row.status === 'failed' && row.allow_failure && !allowFailures)
-            skip(bridge, 'allowed_failure');
-          else if (!child) {
-            // A manual or skipped trigger has no pipeline yet; only a searched status is news.
-            if (jobScope?.includes(row.status)) skip(bridge, 'no_downstream_pipeline');
-          } else if (ref.depth >= LOG_GREP_MAX_DOWNSTREAM_DEPTH) skip(bridge, 'downstream_depth');
-          else if (!(await inScope(String(child.project_id))))
-            skip(bridge, 'downstream_out_of_scope');
-          else
-            queue.push({
-              projectId: String(child.project_id),
-              pipelineId: String(child.id),
-              depth: ref.depth + 1,
-              bridge,
-            });
-        }
+        const verdicts = rows.map((row) => this.triggerVerdict(ref, row));
+        // The projects of a page are checked together; its triggers are then taken in order.
+        const allowed = await Promise.all(
+          rows.map((row, i) =>
+            verdicts[i] === null && row.downstream_pipeline
+              ? this.inScope(String(row.downstream_pipeline.project_id))
+              : Promise.resolve(false),
+          ),
+        );
+        rows.forEach((row, i) => this.follow(ref, row, verdicts[i], allowed[i]));
       }
     } catch (error) {
       // The jobs already listed stay searchable; only what the triggers lead to is unknown.
-      gaps = true;
-      listingErrors.push({
-        project_id: ref.projectId,
-        pipeline_id: ref.pipelineId,
-        error: message(error),
+      this.listingFailed(ref, error);
+    }
+  }
+
+  /** Why a trigger is not followed, before its project is checked. */
+  private triggerVerdict(ref: PipelineRef, row: BridgeRow): TriggerVerdict {
+    // A resume follows every trigger: a job it names may sit behind one that has since
+    // failed as an allowed failure.
+    if (this.wanted === null && row.status === 'failed' && row.allow_failure && !this.allowFailures)
+      return 'allowed_failure';
+    // A manual or skipped trigger has no pipeline yet; only a searched status is news.
+    if (!row.downstream_pipeline)
+      return this.jobScope?.includes(row.status) ? 'no_downstream_pipeline' : 'quiet';
+    return ref.depth >= LOG_GREP_MAX_DOWNSTREAM_DEPTH ? 'downstream_depth' : null;
+  }
+
+  private inScope(projectId: string): Promise<boolean> {
+    let check = this.scopeChecks.get(projectId);
+    if (!check) {
+      check = projectInCallScope(projectId);
+      this.scopeChecks.set(projectId, check);
+    }
+    return check;
+  }
+
+  private follow(
+    ref: PipelineRef,
+    row: BridgeRow,
+    verdict: TriggerVerdict,
+    allowed: boolean,
+  ): void {
+    const bridge = identity(row, ref);
+    const child = row.downstream_pipeline;
+    if (verdict === 'quiet') return;
+    if (verdict !== null) this.skip(bridge, verdict);
+    else if (!allowed || !child) this.skip(bridge, 'downstream_out_of_scope');
+    else
+      this.queue.push({
+        projectId: String(child.project_id),
+        pipelineId: String(child.id),
+        depth: ref.depth + 1,
+        bridge,
       });
-    }
   }
-  // The job limit or a failed listing leaves jobs unseen; a finished resume needs nothing more.
-  const complete = !gaps && (!full || (!unlisted && index >= queue.length));
-  const unresolved: Array<{ job_id: string; start_line: number }> = [];
-  if (wanted !== null) {
-    const seen = new Set(jobs.map((job) => job.job_id));
-    for (const [jobId, startLine] of wanted) {
+
+  private result(): Discovery {
+    // The job limit or a failed listing leaves jobs unseen; a finished resume needs nothing more.
+    const complete =
+      !this.gaps && (!this.full || (!this.unlisted && this.index >= this.queue.length));
+    const unresolved: Array<{ job_id: string; start_line: number }> = [];
+    const seen = new Set(this.jobs.map((job) => job.job_id));
+    for (const [jobId, startLine] of this.wanted ?? []) {
       if (seen.has(jobId)) continue;
-      if (gaps) unresolved.push({ job_id: jobId, start_line: startLine });
-      else skipped.push({ job_id: jobId, reason: 'not_found' });
+      if (this.gaps) unresolved.push({ job_id: jobId, start_line: startLine });
+      else this.skipped.push({ job_id: jobId, reason: 'not_found' });
     }
+    return {
+      jobs: this.jobs,
+      skipped: this.skipped,
+      listingErrors: this.listingErrors,
+      unresolved,
+      complete,
+    };
   }
-  return { jobs, skipped, listingErrors, unresolved, complete };
+}
+
+function discover(
+  input: PipelineGrepInput,
+  scope: readonly string[],
+  wanted: ReadonlyMap<string, number> | null,
+): Promise<Discovery> {
+  return new PipelineDiscovery(input, scope, wanted).run();
 }
 
 /**

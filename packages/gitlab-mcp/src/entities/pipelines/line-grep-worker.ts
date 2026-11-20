@@ -129,7 +129,8 @@ function discard(worker: GrepWorker): void {
   void worker.terminate();
 }
 
-function leaseWorker(): GrepWorker {
+/** An idle or new worker, or null when the pool is at capacity. */
+function tryLeaseWorker(): GrepWorker | null {
   // Backwards, since discard() removes entries while the loop runs.
   for (let index = workers.length - 1; index >= 0; index--) {
     const worker = workers[index];
@@ -137,12 +138,23 @@ function leaseWorker(): GrepWorker {
   }
   let worker = workers.find((candidate) => !candidate.busy);
   if (!worker) {
-    if (workers.length >= MAX_WORKERS) throw new Error('Log search is at capacity; retry shortly');
+    if (workers.length >= MAX_WORKERS) return null;
     worker = new GrepWorker();
     workers.push(worker);
   }
   worker.lease();
   return worker;
+}
+
+function leaseWorker(): GrepWorker {
+  const worker = tryLeaseWorker();
+  if (!worker) throw new Error('Log search is at capacity; retry shortly');
+  return worker;
+}
+
+function giveBack(worker: GrepWorker): void {
+  if (worker.failure) discard(worker);
+  else worker.release();
 }
 
 /** Terminate every log search worker, idle or active, during server shutdown. */
@@ -169,12 +181,89 @@ export async function grepStream(
   open: () => Promise<ReadableStream<Uint8Array> | null>,
 ): Promise<LineGrepResult> {
   const worker = leaseWorker();
+  try {
+    return await scanOn(worker, options, open);
+  } finally {
+    giveBack(worker);
+  }
+}
+
+/** Patterns the worker refused to compile; every other stream would be refused as well. */
+class InvalidPatternsError extends Error {}
+
+/** One stream of `grepAll`. */
+export interface GrepTask {
+  options: LineGrepOptions;
+  open: () => Promise<ReadableStream<Uint8Array> | null>;
+}
+
+export type GrepOutcome =
+  | { status: 'done'; result: LineGrepResult }
+  | { status: 'failed'; error: unknown }
+  | { status: 'not_started' };
+
+/**
+ * Search streams on up to `concurrency` workers, starting each only while `admit()` holds.
+ * A stream that fails is reported alone; invalid patterns fail the whole call. Without a
+ * free worker the call fails at once; streams left when every worker is lost stay
+ * `not_started`.
+ */
+export async function grepAll(
+  tasks: readonly GrepTask[],
+  concurrency: number,
+  admit: () => boolean,
+): Promise<GrepOutcome[]> {
+  const outcomes: GrepOutcome[] = tasks.map(() => ({ status: 'not_started' }));
+  if (tasks.length === 0) return outcomes;
+  const leased = [leaseWorker()];
+  for (let slot = 1; slot < Math.min(concurrency, tasks.length); slot++) {
+    const worker = tryLeaseWorker();
+    if (!worker) break;
+    leased.push(worker);
+  }
+  let next = 0;
+  let invalid: InvalidPatternsError | undefined;
+  const drain = async (first: GrepWorker): Promise<void> => {
+    let worker: GrepWorker | null = first;
+    try {
+      while (worker && next < tasks.length && !invalid && admit()) {
+        const index = next++;
+        const task = tasks[index];
+        try {
+          outcomes[index] = {
+            status: 'done',
+            result: await scanOn(worker, task.options, task.open),
+          };
+        } catch (error) {
+          if (error instanceof InvalidPatternsError) invalid = error;
+          outcomes[index] = { status: 'failed', error };
+        }
+        if (worker.failure) {
+          discard(worker);
+          worker = tryLeaseWorker();
+        }
+      }
+    } finally {
+      if (worker) giveBack(worker);
+    }
+  };
+  await Promise.all(leased.map(drain));
+  if (invalid) throw invalid;
+  return outcomes;
+}
+
+/** Scan one stream on a leased worker, leaving the worker idle unless it failed. */
+async function scanOn(
+  worker: GrepWorker,
+  options: LineGrepOptions,
+  open: () => Promise<ReadableStream<Uint8Array> | null>,
+): Promise<LineGrepResult> {
   let idle = false;
   try {
     const started = await worker.request({ type: 'start', options }, START_TIMEOUT_MS);
     if (started.type === 'invalid') {
       idle = true;
-      throw new Error(started.message);
+      throw new InvalidPatternsError(started.message);
     }
     expectReply(started, 'ready');
     const body = await open();
@@ -186,10 +275,8 @@ export async function grepStream(
     try {
       if (!idle && !worker.failure) await worker.request({ type: 'reset' }, LINE_GRACE_MS);
     } catch {
-      // The failure is recorded on the worker, which is discarded below.
+      // The failure is recorded on the worker, which its owner discards.
     }
-    if (worker.failure) discard(worker);
-    else worker.release();
   }
 }
 

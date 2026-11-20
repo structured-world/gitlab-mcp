@@ -42,6 +42,11 @@ export interface LineGrepOptions {
   normalize: boolean;
   /** Processing time after which the scan stops at a line boundary. */
   budgetMs: number;
+  /**
+   * Processing time already spent against `budgetMs`, in microseconds (cell 0). Scans of
+   * one call share it through a SharedArrayBuffer, so the budget spans all of them.
+   */
+  spent?: Int32Array;
   /** Text bytes the reported lines may hold; the scan stops before exceeding it. */
   outputBytes: number;
 }
@@ -440,7 +445,7 @@ export class LineGrepScanner {
   private stop: StopReason | null = null;
   private stopLine = 0;
   private outputResume = 0;
-  private elapsedMs = 0;
+  private readonly spent: Int32Array;
   private sliceStart = 0;
   private sinceCheck = 0;
 
@@ -458,6 +463,7 @@ export class LineGrepScanner {
       : this.firstKept;
     this.normalize = options.normalize;
     this.budgetMs = options.budgetMs;
+    this.spent = options.spent ?? new Int32Array(1);
     this.outputLimit = options.outputBytes;
     // A logical line is placed with its before-context once the next line has arrived.
     this.ringSize = options.before + 2;
@@ -517,7 +523,7 @@ export class LineGrepScanner {
       if (!this.endLine(bytes, offset, newline - offset)) break;
       offset = newline + 1;
     }
-    this.elapsedMs += performance.now() - this.sliceStart;
+    Atomics.add(this.spent, 0, Math.round((performance.now() - this.sliceStart) * 1000));
   }
 
   /**
@@ -617,7 +623,8 @@ export class LineGrepScanner {
     if (this.draining || this.line <= this.startLine || ++this.sinceCheck < BUDGET_CHECK_LINES)
       return false;
     this.sinceCheck = 0;
-    if (this.elapsedMs + performance.now() - this.sliceStart <= this.budgetMs) return false;
+    const spentMs = Atomics.load(this.spent, 0) / 1000;
+    if (spentMs + performance.now() - this.sliceStart <= this.budgetMs) return false;
     if (this.pending !== null && this.afterRemaining > 0) {
       this.draining = true;
       return false;

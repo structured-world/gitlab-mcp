@@ -10,6 +10,10 @@ import { MAX_PATTERN_LENGTH, MAX_PATTERNS } from '../../utils/re2-pattern';
 
 export const LOG_GREP_MAX_CONTEXT = 20;
 export const LOG_GREP_MAX_MATCHES = 500;
+export const LOG_GREP_MAX_JOBS = 20;
+export const LOG_GREP_DEFAULT_JOBS = 10;
+/** Trigger levels followed below the searched pipeline: child, then grandchild. */
+export const LOG_GREP_MAX_DOWNSTREAM_DEPTH = 2;
 
 // Pipeline related schemas
 export const GitLabPipelineSchema = z.object({
@@ -205,7 +209,7 @@ const PipelineSourceSchema = z
   ])
   .describe('The source of pipelines');
 
-const JobScopeSchema = z
+export const JobScopeSchema = z
   .enum(['created', 'pending', 'running', 'failed', 'success', 'canceled', 'skipped', 'manual'])
   .describe('Scope of jobs to show');
 
@@ -328,54 +332,124 @@ const contextLines = (side: string) =>
     .default(2)
     .describe(`Context lines ${side} each match (default: 2, max: ${LOG_GREP_MAX_CONTEXT})`);
 
-const GrepJobLogsSchema = z.object({
-  action: z
-    .literal('log_grep')
-    .describe(
-      'Search a whole job log with RE2 patterns; returns matching lines with context and absolute line numbers',
-    ),
-  project_id: projectIdField,
-  job_id: numericId.describe('The ID of the job'),
-  patterns: z
-    .array(z.string().min(1).max(MAX_PATTERN_LENGTH))
-    .min(1)
-    .max(MAX_PATTERNS)
-    .optional()
-    .describe(
-      `RE2 patterns (up to ${MAX_PATTERNS}, ${MAX_PATTERN_LENGTH} chars each); inline flags such as (?i). A line matches when any pattern does`,
-    ),
-  preset: z
-    .enum(['failures'])
-    .optional()
-    .describe(
-      'failures: common compiler, test, interpreter and runner failure output. Usable alone or with patterns',
-    ),
-  before: contextLines('before'),
-  after: contextLines('after'),
-  max_matches: z
-    .number()
-    .int()
-    .min(1)
-    .max(LOG_GREP_MAX_MATCHES)
-    .default(50)
-    .describe(
-      `Matches to return (default: 50, max: ${LOG_GREP_MAX_MATCHES}); match_count still counts all`,
-    ),
-  invert: flexibleBoolean
-    .optional()
-    .describe('Select lines that match no pattern instead of lines that match one'),
-  start_line: z
-    .number()
-    .int()
-    .min(0)
-    .optional()
-    .describe('First line to search (0-based); pass resume_from from a truncated result'),
-  raw: flexibleBoolean
-    .optional()
-    .describe(
-      'Match source bytes as stored. By default timestamps, ANSI escapes, CR rewrites and section markers are removed, as the GitLab log view shows them',
-    ),
-});
+const PIPELINE_ONLY_FIELDS = [
+  'job_scope',
+  'include_downstream',
+  'include_allowed_failures',
+  'max_jobs',
+  'resume',
+] as const;
+
+const GrepJobLogsSchema = z
+  .object({
+    action: z
+      .literal('log_grep')
+      .describe(
+        "Search a whole job log, or the logs of a pipeline's failed jobs, with RE2 patterns; returns matching lines with context and absolute line numbers",
+      ),
+    project_id: projectIdField,
+    job_id: numericId.optional().describe('The job to search; omit when pipeline_id is given'),
+    pipeline_id: numericId
+      .optional()
+      .describe(
+        "Search the logs of this pipeline's jobs instead of one job, grouped per job; omit when job_id is given. Without patterns the failures preset is used",
+      ),
+    job_scope: z
+      .array(JobScopeSchema)
+      .min(1)
+      .optional()
+      .describe('With pipeline_id: statuses of the jobs to search (default: failed)'),
+    include_downstream: flexibleBoolean
+      .optional()
+      .describe(
+        `With pipeline_id: also search jobs of child and multi-project pipelines started by its trigger jobs, up to ${LOG_GREP_MAX_DOWNSTREAM_DEPTH} levels down (default: true)`,
+      ),
+    include_allowed_failures: flexibleBoolean
+      .optional()
+      .describe('With pipeline_id: also search failed jobs marked allow_failure (default: false)'),
+    max_jobs: z
+      .number()
+      .int()
+      .min(1)
+      .max(LOG_GREP_MAX_JOBS)
+      .optional()
+      .describe(
+        `With pipeline_id: most jobs to search (default: 10, max: ${LOG_GREP_MAX_JOBS}); further jobs are listed as skipped`,
+      ),
+    resume: z
+      .array(
+        z.object({
+          job_id: numericId.describe('Job from a previous resume list'),
+          start_line: z.number().int().min(0).describe('Line to continue from'),
+        }),
+      )
+      .min(1)
+      .max(LOG_GREP_MAX_JOBS)
+      .optional()
+      .describe(
+        'With pipeline_id: pass the resume list of a previous result to search only the jobs and lines it left',
+      ),
+    patterns: z
+      .array(z.string().min(1).max(MAX_PATTERN_LENGTH))
+      .min(1)
+      .max(MAX_PATTERNS)
+      .optional()
+      .describe(
+        `RE2 patterns (up to ${MAX_PATTERNS}, ${MAX_PATTERN_LENGTH} chars each); inline flags such as (?i). A line matches when any pattern does`,
+      ),
+    preset: z
+      .enum(['failures'])
+      .optional()
+      .describe(
+        'failures: common compiler, test, interpreter and runner failure output. Usable alone or with patterns',
+      ),
+    before: contextLines('before'),
+    after: contextLines('after'),
+    max_matches: z
+      .number()
+      .int()
+      .min(1)
+      .max(LOG_GREP_MAX_MATCHES)
+      .default(50)
+      .describe(
+        `Matches to return (default: 50, max: ${LOG_GREP_MAX_MATCHES}); match_count still counts all`,
+      ),
+    invert: flexibleBoolean
+      .optional()
+      .describe('Select lines that match no pattern instead of lines that match one'),
+    start_line: z
+      .number()
+      .int()
+      .min(0)
+      .optional()
+      .describe(
+        'With job_id: first line to search (0-based); pass resume_from from a truncated result',
+      ),
+    raw: flexibleBoolean
+      .optional()
+      .describe(
+        'Match source bytes as stored. By default timestamps, ANSI escapes, CR rewrites and section markers are removed, as the GitLab log view shows them',
+      ),
+  })
+  .superRefine((input, context) => {
+    if ((input.job_id === undefined) === (input.pipeline_id === undefined))
+      context.addIssue({ code: 'custom', message: 'Give exactly one of job_id or pipeline_id' });
+    if (input.job_id !== undefined) {
+      for (const field of PIPELINE_ONLY_FIELDS)
+        if (input[field] !== undefined)
+          context.addIssue({
+            code: 'custom',
+            path: [field],
+            message: `'${field}' applies only with pipeline_id`,
+          });
+    } else if (input.start_line !== undefined) {
+      context.addIssue({
+        code: 'custom',
+        path: ['start_line'],
+        message: "With pipeline_id, continue through 'resume' instead of 'start_line'",
+      });
+    }
+  });
 
 const GetArtifactFileSchema = z.object({
   action: z

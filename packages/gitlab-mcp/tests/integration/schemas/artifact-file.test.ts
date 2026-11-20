@@ -13,6 +13,10 @@ const Window = z.object({
   next_byte_offset: z.number().nullable(),
   complete: z.boolean(),
 });
+// Counted from the start of the test: with one more jobs request (up to the 120 s request
+// timeout of the test env) and the reads after it, the test ends within its 10-minute
+// limit, so a stuck job is still cancelled in finally.
+const JOB_WAIT_MS = 6 * 60_000;
 
 // The lifecycle owns this test/ project; the suite creates and cancels only its own pipeline.
 describe('individual artifact files - GitLab integration', () => {
@@ -40,6 +44,7 @@ describe('individual artifact files - GitLab integration', () => {
 
   // A real runner uploads nested paths; byte continuations must reconstruct UTF-8 without loss.
   it('reads uploaded text, empty files, literal delimiters and binary refusals', async () => {
+    const deadline = Date.now() + JOB_WAIT_MS;
     let pipelineId: string | undefined;
     let jobComplete = false;
     try {
@@ -53,7 +58,6 @@ describe('individual artifact files - GitLab integration', () => {
       pipelineId = pipeline.id;
       let jobId: string | undefined;
       let lastJobs: Array<{ name: string; status: string }> = [];
-      const deadline = Date.now() + 90_000;
       while (Date.now() < deadline) {
         const jobs = Jobs.parse(
           await helper.executeTool('browse_pipelines', {
@@ -76,7 +80,7 @@ describe('individual artifact files - GitLab integration', () => {
       }
       if (!jobId)
         throw new Error(
-          `Artifact fixture job did not complete within 90 seconds: ${JSON.stringify(lastJobs)}`,
+          `Artifact fixture job did not complete within ${JOB_WAIT_MS / 1000} s: ${JSON.stringify(lastJobs)}`,
         );
       const read = (path: string, extra = {}) =>
         helper.executeTool('browse_pipelines', {
@@ -123,5 +127,5 @@ describe('individual artifact files - GitLab integration', () => {
         });
       }
     }
-  }, 120_000);
+  });
 });

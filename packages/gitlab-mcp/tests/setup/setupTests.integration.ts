@@ -37,6 +37,3 @@ if (fs.existsSync(envTestPath)) {
   console.log('   Create .env.test with GitLab credentials to enable integration tests');
   process.env.INTEGRATION_TESTS_ENABLED = 'false';
 }
-
-// Global test timeout for integration tests
-jest.setTimeout(30000);

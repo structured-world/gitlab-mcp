@@ -96,7 +96,7 @@ describe('BrowseProjectsSchema - GitLab 18.3 Integration', () => {
           `✅ BrowseProjectsSchema list action successful, validated ${projects.length} projects`,
         );
       }
-    }, 15000);
+    });
 
     it('should accept include_deleted and return pending-delete projects (admin)', async () => {
       // include_pending_delete is admin-mode gated and 403s without active elevation,
@@ -121,7 +121,7 @@ describe('BrowseProjectsSchema - GitLab 18.3 Integration', () => {
         const projects = await listAndAssertProjectShapes(paramResult.data);
         console.log(`  include_deleted returned ${projects.length} projects`);
       }
-    }, 15000);
+    });
 
     it('should accept marked_for_deletion_on on Premium/Ultimate instances', async () => {
       // marked_for_deletion_on is a Premium/Ultimate-gated filter (17.1+). Skip on
@@ -148,7 +148,7 @@ describe('BrowseProjectsSchema - GitLab 18.3 Integration', () => {
         const projects = await listAndAssertProjectShapes(paramResult.data);
         console.log(`  marked_for_deletion_on returned ${projects.length} projects`);
       }
-    }, 15000);
+    });
 
     it('should validate full project schema with simple=false', async () => {
       console.log('🔍 BrowseProjectsSchema - Testing full project schema validation');
@@ -182,7 +182,7 @@ describe('BrowseProjectsSchema - GitLab 18.3 Integration', () => {
 
         console.log(`✅ BrowseProjectsSchema full validation successful`);
       }
-    }, 15000);
+    });
 
     it('should validate advanced filtering parameters', async () => {
       const advancedParams = {
@@ -224,7 +224,7 @@ describe('BrowseProjectsSchema - GitLab 18.3 Integration', () => {
         per_page: 5,
       });
       console.log(`  active=true returned ${projects.length} projects`);
-    }, 15000);
+    });
 
     it('should accept active=false for archived/pending-delete projects', async () => {
       // Whether any archived/pending-delete project exists is environment-specific,
@@ -235,7 +235,7 @@ describe('BrowseProjectsSchema - GitLab 18.3 Integration', () => {
         per_page: 5,
       });
       console.log(`  active=false returned ${projects.length} projects`);
-    }, 15000);
+    });
 
     it('should handle optional parameters correctly', async () => {
       // Test with minimal required parameters (only action)
@@ -280,7 +280,7 @@ describe('BrowseProjectsSchema - GitLab 18.3 Integration', () => {
           `✅ Search via handler works, found ${projects.length} projects matching 'test'`,
         );
       }
-    }, 15000);
+    });
   });
 
   describe('action: search', () => {
@@ -319,7 +319,7 @@ describe('BrowseProjectsSchema - GitLab 18.3 Integration', () => {
 
         console.log(`✅ Search action works, found ${projects.length} projects`);
       }
-    }, 15000);
+    });
   });
 
   describe('action: get', () => {
@@ -392,7 +392,7 @@ describe('BrowseProjectsSchema - GitLab 18.3 Integration', () => {
 
         console.log(`✅ Get action works, retrieved project: ${project.name}`);
       }
-    }, 15000);
+    });
   });
 
   describe('discriminated union validation', () => {

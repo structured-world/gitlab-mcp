@@ -5,7 +5,7 @@
   "description": "Advanced GitLab MCP server",
   "mcp": {
     "name": "GitLab MCP Server",
-    "description": "66 tools, 242 typed actions, 27 registry groups",
+    "description": "66 tools, 243 typed actions, 27 registry groups",
     "repository": "https://github.com/structured-world/gitlab-mcp",
     "homepage": "https://gitlab-mcp.sw.foundation",
     "author": "Dmitry Prudnikov",
@@ -603,7 +603,7 @@
     "test": "cross-env JEST_UNIT_ONLY=true yarn test:jest",
     "test:cov": "cross-env JEST_UNIT_ONLY=true yarn test:jest --coverage",
     "test:integration": "yarn test:jest --testPathPatterns=tests/integration --runInBand",
-    "test:trace": "node --test --test-concurrency=1 tests/trace/streaming.test.cjs",
+    "test:trace": "node --test --test-concurrency=1 tests/trace/streaming.test.cjs tests/trace/log-grep.test.cjs",
     "test:project-responses": "yarn build && yarn test:project-responses:compiled",
     "test:project-responses:compiled": "node --test tests/project-response/http.test.cjs",
     "bench:registry-regex": "yarn build && node scripts/bench-registry-regex.cjs",

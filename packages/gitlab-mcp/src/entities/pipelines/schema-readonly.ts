@@ -6,6 +6,10 @@ import {
   ARTIFACT_MAX_OFFSET,
   encodeArtifactPath,
 } from './artifact-path';
+import { MAX_PATTERN_LENGTH, MAX_PATTERNS } from '../../utils/re2-pattern';
+
+export const LOG_GREP_MAX_CONTEXT = 20;
+export const LOG_GREP_MAX_MATCHES = 500;
 
 // Pipeline related schemas
 export const GitLabPipelineSchema = z.object({
@@ -222,7 +226,7 @@ const TriggerJobScopeSchema = z
 
 // ============================================================================
 // browse_pipelines - CQRS Query Tool (discriminated union schema)
-// Actions: list, get, jobs, triggers, job, logs, artifact_file
+// Actions: list, get, jobs, triggers, job, logs, log_grep, artifact_file
 // Uses z.discriminatedUnion() for type-safe action handling.
 // Schema pipeline flattens to flat JSON Schema for AI clients that don't support oneOf.
 // ============================================================================
@@ -314,6 +318,65 @@ const GetJobLogsSchema = z.object({
     ),
 });
 
+// --- Action: log_grep ---
+const contextLines = (side: string) =>
+  z
+    .number()
+    .int()
+    .min(0)
+    .max(LOG_GREP_MAX_CONTEXT)
+    .default(2)
+    .describe(`Context lines ${side} each match (default: 2, max: ${LOG_GREP_MAX_CONTEXT})`);
+
+const GrepJobLogsSchema = z.object({
+  action: z
+    .literal('log_grep')
+    .describe(
+      'Search a whole job log with RE2 patterns; returns matching lines with context and absolute line numbers',
+    ),
+  project_id: projectIdField,
+  job_id: numericId.describe('The ID of the job'),
+  patterns: z
+    .array(z.string().min(1).max(MAX_PATTERN_LENGTH))
+    .min(1)
+    .max(MAX_PATTERNS)
+    .optional()
+    .describe(
+      `RE2 patterns (up to ${MAX_PATTERNS}, ${MAX_PATTERN_LENGTH} chars each); inline flags such as (?i). A line matches when any pattern does`,
+    ),
+  preset: z
+    .enum(['failures'])
+    .optional()
+    .describe(
+      'failures: common compiler, test, interpreter and runner failure output. Usable alone or with patterns',
+    ),
+  before: contextLines('before'),
+  after: contextLines('after'),
+  max_matches: z
+    .number()
+    .int()
+    .min(1)
+    .max(LOG_GREP_MAX_MATCHES)
+    .default(50)
+    .describe(
+      `Matches to return (default: 50, max: ${LOG_GREP_MAX_MATCHES}); match_count still counts all`,
+    ),
+  invert: flexibleBoolean
+    .optional()
+    .describe('Select lines that match no pattern instead of lines that match one'),
+  start_line: z
+    .number()
+    .int()
+    .min(0)
+    .optional()
+    .describe('First line to search (0-based); pass resume_from from a truncated result'),
+  raw: flexibleBoolean
+    .optional()
+    .describe(
+      'Match source bytes as stored. By default timestamps, ANSI escapes, CR rewrites and section markers are removed, as the GitLab log view shows them',
+    ),
+});
+
 const GetArtifactFileSchema = z.object({
   action: z
     .literal('artifact_file')
@@ -365,6 +428,7 @@ export const BrowsePipelinesSchema = z.discriminatedUnion('action', [
   ListPipelineTriggersSchema,
   GetJobSchema,
   GetJobLogsSchema,
+  GrepJobLogsSchema,
   GetArtifactFileSchema,
 ]);
 

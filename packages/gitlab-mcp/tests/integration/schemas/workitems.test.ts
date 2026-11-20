@@ -80,7 +80,7 @@ describe('Work Items Schema - GitLab 18.3 Integration', () => {
       console.log(
         `✅ BrowseWorkItemsSchema API request successful via handler, found ${result.items.length} work items`,
       );
-    }, 15000);
+    });
   });
 
   describe('BrowseWorkItemsSchema - get action by ID', () => {
@@ -134,7 +134,7 @@ describe('Work Items Schema - GitLab 18.3 Integration', () => {
       console.log(
         `✅ BrowseWorkItemsSchema API request successful via handler: ${workItem.title} (IID: ${workItem.iid})`,
       );
-    }, 15000);
+    });
   });
 
   // === IID LOOKUP TESTS (Issue #99) ===
@@ -197,7 +197,7 @@ describe('Work Items Schema - GitLab 18.3 Integration', () => {
       console.log(
         `✅ BrowseWorkItemsSchema IID lookup successful: ${workItem.title} (IID: ${workItem.iid})`,
       );
-    }, 15000);
+    });
 
     it('should return same work item whether looked up by ID or by namespace + IID', async () => {
       const testData = getTestData();
@@ -241,7 +241,7 @@ describe('Work Items Schema - GitLab 18.3 Integration', () => {
       console.log(
         `✅ Both lookup methods return same work item: ${workItemById.title} (ID: ${workItemById.id}, IID: ${workItemById.iid})`,
       );
-    }, 30000);
+    });
 
     it('should reject get action without id or namespace+iid', async () => {
       // Missing both id and namespace+iid
@@ -310,7 +310,7 @@ describe('Work Items Schema - GitLab 18.3 Integration', () => {
       console.log(
         `✅ ManageWorkItemSchema successful via handler: ${workItem.title} (ID: ${workItem.id}, IID: ${workItem.iid})`,
       );
-    }, 15000);
+    });
 
     it('should read the created work item via GraphQL API', async () => {
       expect(crudTestWorkItemId).toBeDefined();
@@ -337,7 +337,7 @@ describe('Work Items Schema - GitLab 18.3 Integration', () => {
       console.log(
         `✅ BrowseWorkItemsSchema read successful via handler: ${workItem.title} (ID: ${workItem.id})`,
       );
-    }, 15000);
+    });
 
     it('should update the work item via GraphQL API', async () => {
       expect(crudTestWorkItemId).toBeDefined();
@@ -367,7 +367,7 @@ describe('Work Items Schema - GitLab 18.3 Integration', () => {
       expect(updatedWorkItem.title).toBe(updateParams.title);
 
       console.log(`✅ ManageWorkItemSchema successful via handler: ${updatedWorkItem.title}`);
-    }, 15000);
+    });
 
     it('should delete the created work item via GraphQL API', async () => {
       expect(crudTestWorkItemId).toBeDefined();
@@ -391,7 +391,7 @@ describe('Work Items Schema - GitLab 18.3 Integration', () => {
 
       // Clear the test work item ID since it's been deleted
       crudTestWorkItemId = null;
-    }, 15000);
+    });
   });
 
   describe('Linked Items Integration Tests (Issue #232)', () => {
@@ -431,7 +431,7 @@ describe('Work Items Schema - GitLab 18.3 Integration', () => {
       expect(targetWorkItem.id).toBeDefined();
       targetWorkItemId = targetWorkItem.id;
       console.log(`  ✅ Created target: ${targetWorkItem.iid}`);
-    }, 30000);
+    });
 
     it('should link work items using update action with linkType/targetId (Issue #232 fix)', async () => {
       expect(sourceWorkItemId).toBeDefined();
@@ -503,7 +503,7 @@ describe('Work Items Schema - GitLab 18.3 Integration', () => {
       }
 
       console.log('✅ Update action with linkType/targetId test completed (Issue #232)');
-    }, 30000);
+    });
 
     it('should validate that linkType and targetId must be provided together', async () => {
       // Test with only linkType - schema passes but handler should reject
@@ -539,7 +539,7 @@ describe('Work Items Schema - GitLab 18.3 Integration', () => {
       console.log('  ✅ Handler correctly rejected update with only targetId');
 
       console.log('✅ Schema validation for linkType/targetId params verified');
-    }, 30000);
+    });
 
     it('should cleanup test work items', async () => {
       // Delete source work item
@@ -563,7 +563,7 @@ describe('Work Items Schema - GitLab 18.3 Integration', () => {
         targetWorkItemId = null;
         console.log('  ✅ Target work item deleted');
       }
-    }, 30000);
+    });
   });
 
   describe('Labels Widget Integration Tests', () => {
@@ -605,7 +605,7 @@ describe('Work Items Schema - GitLab 18.3 Integration', () => {
       expect(workItem.id).toBeDefined();
       testWorkItemId = workItem.id;
       console.log(`  ✅ Created work item: ${workItem.iid}`);
-    }, 30000);
+    });
 
     it('should create work item with labels in single call', async () => {
       const testData = getTestData();
@@ -645,7 +645,7 @@ describe('Work Items Schema - GitLab 18.3 Integration', () => {
         id: workItem.id,
       });
       console.log('  ✅ Cleaned up test work item');
-    }, 30000);
+    });
 
     it('should replace all labels using labelIds (replace mode)', async () => {
       if (!testWorkItemId || !label1Id || !label2Id) {
@@ -684,7 +684,7 @@ describe('Work Items Schema - GitLab 18.3 Integration', () => {
       }
 
       console.log('✅ labelIds replace mode test completed');
-    }, 30000);
+    });
 
     it('should add labels incrementally using addLabelIds', async () => {
       if (!testWorkItemId || !label1Id || !label2Id) {
@@ -719,7 +719,7 @@ describe('Work Items Schema - GitLab 18.3 Integration', () => {
       }
 
       console.log('✅ addLabelIds incremental add test completed');
-    }, 30000);
+    });
 
     it('should remove labels using removeLabelIds', async () => {
       if (!testWorkItemId || !label1Id) {
@@ -760,7 +760,7 @@ describe('Work Items Schema - GitLab 18.3 Integration', () => {
       expect(labelIdsOf(removeUpdate)).toHaveLength(labelIdsOf(beforeRemove).length - 1);
 
       console.log('✅ removeLabelIds incremental remove test completed');
-    }, 30000);
+    });
 
     it('should add and remove labels simultaneously', async () => {
       if (!testWorkItemId || !label1Id || !label2Id || !label3Id) {
@@ -805,7 +805,7 @@ describe('Work Items Schema - GitLab 18.3 Integration', () => {
       }
 
       console.log('✅ Simultaneous add and remove test completed');
-    }, 30000);
+    });
 
     it('should reject labelIds with addLabelIds (mutually exclusive)', async () => {
       if (!testWorkItemId || !label1Id || !label2Id) {
@@ -826,7 +826,7 @@ describe('Work Items Schema - GitLab 18.3 Integration', () => {
       ).rejects.toThrow(/labelIds.*cannot be used together/);
 
       console.log('✅ Mutual exclusion validation working correctly');
-    }, 15000);
+    });
 
     it('should cleanup test work item', async () => {
       if (testWorkItemId) {
@@ -838,7 +838,7 @@ describe('Work Items Schema - GitLab 18.3 Integration', () => {
         testWorkItemId = null;
         console.log('  ✅ Work item deleted');
       }
-    }, 30000);
+    });
   });
 
   describe('Timelog Deletion Integration Tests (Issue #311)', () => {
@@ -885,7 +885,7 @@ describe('Work Items Schema - GitLab 18.3 Integration', () => {
       console.log(
         `  ✅ Timelog created: ${testTimelogId} (${timeWidget.timelogs.nodes[0].timeSpent}s)`,
       );
-    }, 30000);
+    });
 
     it('should validate delete_timelog schema', async () => {
       expect(testTimelogId).toBeDefined();
@@ -937,7 +937,7 @@ describe('Work Items Schema - GitLab 18.3 Integration', () => {
       );
 
       testTimelogId = null;
-    }, 30000);
+    });
 
     it('should handle deletion of non-existent timelog', async () => {
       console.log('🔧 Testing deletion of non-existent timelog...');
@@ -950,7 +950,7 @@ describe('Work Items Schema - GitLab 18.3 Integration', () => {
       ).rejects.toThrow();
 
       console.log('  ✅ Non-existent timelog correctly rejected');
-    }, 15000);
+    });
 
     it('should cleanup test work item', async () => {
       if (testWorkItemId) {
@@ -962,7 +962,7 @@ describe('Work Items Schema - GitLab 18.3 Integration', () => {
         testWorkItemId = null;
         console.log('  ✅ Work item deleted');
       }
-    }, 30000);
+    });
   });
 
   describe('Multiple Widgets in Single Create/Update', () => {
@@ -1034,7 +1034,7 @@ describe('Work Items Schema - GitLab 18.3 Integration', () => {
       }
 
       console.log('✅ Multiple widgets in create test completed');
-    }, 30000);
+    });
 
     it('should update work item with multiple widgets in single call', async () => {
       if (!complexWorkItemId) {
@@ -1074,7 +1074,7 @@ describe('Work Items Schema - GitLab 18.3 Integration', () => {
       expect(datesWidget?.dueDate).toBe(updateParams.dueDate);
 
       console.log('✅ Multiple widgets in update test completed');
-    }, 30000);
+    });
 
     it('should cleanup complex work item', async () => {
       if (complexWorkItemId) {
@@ -1086,6 +1086,6 @@ describe('Work Items Schema - GitLab 18.3 Integration', () => {
         complexWorkItemId = null;
         console.log('  ✅ Work item deleted');
       }
-    }, 30000);
+    });
   });
 });

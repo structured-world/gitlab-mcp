@@ -32,6 +32,7 @@ import {
   closeTagMatchers,
   resetTagMatchers,
 } from './entities/container_registry/regex';
+import { closeLineGrepWorkers } from './entities/pipelines/line-grep-worker';
 import { TransportMode } from './types';
 import { logInfo, logError, logDebug, logWarn } from './logger';
 import { getSessionManager, STDIO_SESSION_ID } from './session-manager';
@@ -977,6 +978,11 @@ export async function gracefulShutdown(signal: string): Promise<void> {
     await closeTagMatchers();
   } catch (error) {
     logError('Error closing registry regex workers', { err: error as Error });
+  }
+  try {
+    await closeLineGrepWorkers();
+  } catch (error) {
+    logError('Error closing log search workers', { err: error as Error });
   }
 
   // Close all tracked connections with server_shutdown reason

@@ -36,7 +36,7 @@ describe('Operator projects - GitLab integration', () => {
       policy,
     )) as Array<{ id: number }>;
     expect(rows.map((row) => String(row.id))).toEqual([String(project.id)]);
-  }, 60000);
+  });
 
   // The minimal ownership query must work against GitLab and deny an unpermitted owner.
   it('verifies the project of a real global work item ID', async () => {
@@ -61,5 +61,5 @@ describe('Operator projects - GitLab integration', () => {
         () => false,
       ),
     ).rejects.toThrow('not owned');
-  }, 60000);
+  });
 });

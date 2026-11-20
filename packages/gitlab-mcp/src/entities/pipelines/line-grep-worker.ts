@@ -1,0 +1,246 @@
+import { availableParallelism } from 'node:os';
+import { inspect } from 'node:util';
+import { Worker } from 'node:worker_threads';
+import type {
+  GrepHunk,
+  GrepReply,
+  GrepRequest,
+  LineGrepOptions,
+  LineGrepProgress,
+  LineGrepResult,
+} from './line-grep';
+
+// Per-process compute admission only; no caller data survives a lease.
+const MAX_WORKERS = Math.max(1, Math.min(4, availableParallelism() - 1));
+// Covers a cold worker start (module load) as well as bounded pattern compilation.
+const START_TIMEOUT_MS = 5000;
+// Beyond the scan budget, the time a single line may take before the worker is killed.
+const LINE_GRACE_MS = 2000;
+const CHUNK_BYTES = 64 * 1024;
+
+// Patterns and data arrive as messages and are never interpolated into this source.
+// From TypeScript sources (test runner, dev server) Node strips types itself but resolves
+// only explicit extensions, so the thread maps extensionless relative imports to `.ts`.
+const WORKER_SOURCE = `
+const { parentPort, workerData } = require('node:worker_threads');
+if (workerData.typescript) {
+  require('node:module').registerHooks({
+    resolve(specifier, context, nextResolve) {
+      try {
+        return nextResolve(specifier, context);
+      } catch (error) {
+        if (!specifier.startsWith('.')) throw error;
+        return nextResolve(specifier + '.ts', context);
+      }
+    },
+  });
+}
+require(workerData.module).serveLineGrep(parentPort);
+`;
+const SCANNER_MODULE = require.resolve('./line-grep');
+
+class WorkerTimeoutError extends Error {}
+
+/** A worker leased to one call at a time; the pool owns its lifetime. */
+class GrepWorker {
+  private readonly worker: Worker;
+  failure?: Error;
+  busy = false;
+  private waiting?: {
+    resolve: (reply: GrepReply) => void;
+    reject: (error: Error) => void;
+    timer: ReturnType<typeof setTimeout>;
+  };
+
+  constructor() {
+    this.worker = new Worker(WORKER_SOURCE, {
+      eval: true,
+      workerData: { module: SCANNER_MODULE, typescript: SCANNER_MODULE.endsWith('.ts') },
+      resourceLimits: { maxOldGenerationSizeMb: 64, maxYoungGenerationSizeMb: 16, stackSizeMb: 4 },
+    });
+    this.worker.on('message', (reply: GrepReply) => {
+      const waiting = this.waiting;
+      if (!waiting) return;
+      this.waiting = undefined;
+      clearTimeout(waiting.timer);
+      waiting.resolve(reply);
+    });
+    this.worker.on('error', (error) => this.fail(error));
+    this.worker.on('exit', (code) => this.fail(new Error(`Log search worker exited (${code})`)));
+    this.worker.unref();
+  }
+
+  request(message: GrepRequest, timeoutMs: number, transfer?: ArrayBuffer[]): Promise<GrepReply> {
+    if (this.failure) return Promise.reject(this.failure);
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(
+        () => this.fail(new WorkerTimeoutError('Log search worker exceeded its time limit')),
+        timeoutMs,
+      );
+      this.waiting = { resolve, reject, timer };
+      try {
+        this.worker.postMessage(message, transfer);
+      } catch (error) {
+        this.fail(error);
+      }
+    });
+  }
+
+  lease(): void {
+    this.busy = true;
+    this.worker.ref();
+  }
+
+  release(): void {
+    this.busy = false;
+    this.worker.unref();
+  }
+
+  fail(error: unknown): void {
+    // Thread errors may come from another realm or without a prototype: describe any value.
+    const message =
+      typeof error === 'object' &&
+      error !== null &&
+      typeof Reflect.get(error, 'message') === 'string'
+        ? (Reflect.get(error, 'message') as string)
+        : inspect(error);
+    this.failure ??=
+      error instanceof Error
+        ? error
+        : new Error(`Log search worker failed: ${message}`, { cause: error });
+    const waiting = this.waiting;
+    if (!waiting) return;
+    this.waiting = undefined;
+    clearTimeout(waiting.timer);
+    waiting.reject(this.failure);
+  }
+
+  async terminate(): Promise<void> {
+    this.fail(new Error('Log search worker closed'));
+    await this.worker.terminate();
+  }
+}
+
+const workers: GrepWorker[] = [];
+
+function discard(worker: GrepWorker): void {
+  const index = workers.indexOf(worker);
+  if (index !== -1) workers.splice(index, 1);
+  void worker.terminate();
+}
+
+function leaseWorker(): GrepWorker {
+  // Backwards, since discard() removes entries while the loop runs.
+  for (let index = workers.length - 1; index >= 0; index--) {
+    const worker = workers[index];
+    if (!worker.busy && worker.failure) discard(worker);
+  }
+  let worker = workers.find((candidate) => !candidate.busy);
+  if (!worker) {
+    if (workers.length >= MAX_WORKERS) throw new Error('Log search is at capacity; retry shortly');
+    worker = new GrepWorker();
+    workers.push(worker);
+  }
+  worker.lease();
+  return worker;
+}
+
+/** Terminate every log search worker, idle or active, during server shutdown. */
+export async function closeLineGrepWorkers(): Promise<void> {
+  await Promise.all(workers.splice(0).map((worker) => worker.terminate()));
+}
+
+function expectReply<T extends GrepReply['type']>(
+  reply: GrepReply,
+  type: T,
+): Extract<GrepReply, { type: T }> {
+  if (reply.type === type) return reply as Extract<GrepReply, { type: T }>;
+  if (reply.type === 'invalid' || reply.type === 'failed') throw new Error(reply.message);
+  throw new Error(`Log search worker sent ${reply.type} instead of ${type}`);
+}
+
+/**
+ * Search a byte stream on a leased worker. Patterns are compiled before `open` runs, so an
+ * invalid pattern costs no GitLab request. The main thread only moves bytes: one transport
+ * buffer travels to the worker and back for each read.
+ */
+export async function grepStream(
+  options: LineGrepOptions,
+  open: () => Promise<ReadableStream<Uint8Array> | null>,
+): Promise<LineGrepResult> {
+  const worker = leaseWorker();
+  let idle = false;
+  try {
+    const started = await worker.request({ type: 'start', options }, START_TIMEOUT_MS);
+    if (started.type === 'invalid') {
+      idle = true;
+      throw new Error(started.message);
+    }
+    expectReply(started, 'ready');
+    const body = await open();
+    if (!body) throw new Error('GitLab trace response has no readable body');
+    const result = await pump(worker, options, body);
+    idle = result.truncated !== 'worker_timeout';
+    return result;
+  } finally {
+    try {
+      if (!idle && !worker.failure) await worker.request({ type: 'reset' }, LINE_GRACE_MS);
+    } catch {
+      // The failure is recorded on the worker, which is discarded below.
+    }
+    if (worker.failure) discard(worker);
+    else worker.release();
+  }
+}
+
+async function pump(
+  worker: GrepWorker,
+  options: LineGrepOptions,
+  body: ReadableStream<Uint8Array>,
+): Promise<LineGrepResult> {
+  const reader = body.getReader({ mode: 'byob' });
+  const timeout = options.budgetMs + LINE_GRACE_MS;
+  const hunks: GrepHunk[] = [];
+  let last: LineGrepProgress | undefined;
+  let buffer = new ArrayBuffer(CHUNK_BYTES);
+  let eof = false;
+  try {
+    for (;;) {
+      const { value, done } = await reader.read(new Uint8Array(buffer));
+      if (done) {
+        eof = true;
+        break;
+      }
+      const reply = await worker.request(
+        { type: 'chunk', buffer: value.buffer, offset: value.byteOffset, length: value.byteLength },
+        timeout,
+        [value.buffer],
+      );
+      const progress = expectReply(reply, 'progress');
+      hunks.push(...progress.progress.hunks);
+      last = progress.progress;
+      buffer = progress.buffer;
+      if (last.exhausted) break;
+    }
+    const done = expectReply(await worker.request({ type: 'end' }, timeout), 'done').result;
+    return { ...done, hunks: hunks.concat(done.hunks) };
+  } catch (error) {
+    if (!(error instanceof WorkerTimeoutError)) throw error;
+    // One line outran the budget: report what was delivered and where to continue.
+    return {
+      hunks,
+      match_count: last?.match_count ?? 0,
+      match_count_complete: false,
+      scanned_lines: last?.scanned_lines ?? 0,
+      total_lines: null,
+      truncated: 'worker_timeout',
+      resume_from: last?.safe_resume ?? options.startLine,
+      ...(options.preset ? { preset_index: options.patterns.length } : {}),
+    };
+  } finally {
+    // Cancelling only stops the transfer; a read failure already surfaced from read(),
+    // so a cancel failure must not replace a finished result or that original error.
+    if (!eof) await reader.cancel().catch(() => undefined);
+    reader.releaseLock();
+  }
+}

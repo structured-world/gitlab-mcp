@@ -67,7 +67,7 @@ describe('Work Items Integration - Using Handler Functions', () => {
           );
         }
       }
-    }, 30000);
+    });
 
     it('should list PROJECT-level work items (Issues/Tasks/Bugs) using list_work_items handler', async () => {
       // 🚨 CRITICAL: This uses the ACTUAL list_work_items handler with projectPath
@@ -111,7 +111,7 @@ describe('Work Items Integration - Using Handler Functions', () => {
           );
         }
       }
-    }, 30000);
+    });
 
     it('should get single work item using get_work_item handler', async () => {
       // First get a list using handler to find a work item ID
@@ -150,7 +150,7 @@ describe('Work Items Integration - Using Handler Functions', () => {
           console.log(`- Widget: ${widget.type}`);
         });
       }
-    }, 30000);
+    });
 
     it('should return time tracking widget in browse_work_items list and get responses', async () => {
       const testData = requireTestData();
@@ -179,7 +179,7 @@ describe('Work Items Integration - Using Handler Functions', () => {
       const getResponse = (await helper.getWorkItem({ id: candidate.id })) as any;
       expect(getResponse.widgets).toBeDefined();
       expect(getResponse.widgets.some((w: any) => w.type === 'TIME_TRACKING')).toBe(true);
-    }, 30000);
+    });
   });
 
   describe('Work item state filter', () => {
@@ -226,7 +226,7 @@ describe('Work Items Integration - Using Handler Functions', () => {
           });
         }
       }
-    }, 60000);
+    });
   });
 
   describe('Work Items Widget Validation through Handlers', () => {
@@ -270,7 +270,7 @@ describe('Work Items Integration - Using Handler Functions', () => {
 
       // At least some core widgets should be available
       expect(availableExpected.length).toBeGreaterThan(0); // More realistic expectation
-    }, 30000);
+    });
   });
 
   describe('Work Item Creation through Handlers', () => {
@@ -309,7 +309,7 @@ describe('Work Items Integration - Using Handler Functions', () => {
         console.warn('Epic creation through handler not supported or failed:', error);
         // Don't fail the test - creation permissions might not be available
       }
-    }, 30000);
+    });
 
     it('should validate work items follow data lifecycle pattern', async () => {
       // 🚨 CRITICAL: Uses existing test data created by data-lifecycle.test.ts
@@ -352,6 +352,6 @@ describe('Work Items Integration - Using Handler Functions', () => {
 
       // At least project-level work items should exist from data lifecycle
       expect(testData.workItems?.length || 0).toBeGreaterThan(0);
-    }, 30000);
+    });
   });
 });

@@ -61,7 +61,7 @@ describeIfTier('ultimate', 'Requirements Verification - Integration Tests', () =
 
     createdRequirementId = result.id;
     console.log(`Created requirement: id=${result.id}, iid=${result.iid}`);
-  }, 30000);
+  });
 
   it('should verify requirement with PASSED status', async () => {
     if (!createdRequirementId) {
@@ -87,7 +87,7 @@ describeIfTier('ultimate', 'Requirements Verification - Integration Tests', () =
         console.log(`Verification status after PASSED: ${verificationWidget.verificationStatus}`);
       }
     }
-  }, 30000);
+  });
 
   it('should list requirements with verification status in browse response', async () => {
     if (!createdRequirementId) {
@@ -130,7 +130,7 @@ describeIfTier('ultimate', 'Requirements Verification - Integration Tests', () =
         `Requirement ${createdRequirementId} not found in list of ${result.items.length} items`,
       );
     }
-  }, 30000);
+  });
 
   it('should get requirement by ID with verification widgets', async () => {
     if (!createdRequirementId) {
@@ -156,7 +156,7 @@ describeIfTier('ultimate', 'Requirements Verification - Integration Tests', () =
         expect(verificationWidget.verificationStatus).toBe('satisfied');
       }
     }
-  }, 30000);
+  });
 
   it('should verify requirement with FAILED status', async () => {
     if (!createdRequirementId) {
@@ -180,7 +180,7 @@ describeIfTier('ultimate', 'Requirements Verification - Integration Tests', () =
         console.log(`Verification status after FAILED: ${verificationWidget.verificationStatus}`);
       }
     }
-  }, 30000);
+  });
 
   it('should show test reports after multiple verifications', async () => {
     if (!createdRequirementId) {
@@ -218,7 +218,7 @@ describeIfTier('ultimate', 'Requirements Verification - Integration Tests', () =
         console.log('TEST_REPORTS widget not found or empty in response');
       }
     }
-  }, 30000);
+  });
 
   it('should include verification status in simplified browse response', async () => {
     if (!createdRequirementId) {
@@ -245,5 +245,5 @@ describeIfTier('ultimate', 'Requirements Verification - Integration Tests', () =
         expect(['satisfied', 'failed']).toContain(verificationWidget.verificationStatus);
       }
     }
-  }, 30000);
+  });
 });

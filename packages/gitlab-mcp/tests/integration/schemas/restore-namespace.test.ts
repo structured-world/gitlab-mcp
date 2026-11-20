@@ -116,5 +116,5 @@ describe('Group Restore - GitLab Integration', () => {
           .catch(() => {});
       }
     }
-  }, 60000);
+  });
 });

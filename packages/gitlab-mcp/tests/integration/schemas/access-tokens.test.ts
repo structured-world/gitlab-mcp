@@ -91,7 +91,7 @@ describe('Access Tokens Schema - GitLab Integration', () => {
 
       expect(Array.isArray(result)).toBe(true);
       console.log(`  current user has ${result.length} personal access tokens (page 1)`);
-    }, 15000);
+    });
   });
 
   describe('project token lifecycle (create -> rotate -> revoke)', () => {
@@ -139,6 +139,6 @@ describe('Access Tokens Schema - GitLab Integration', () => {
             .catch(() => undefined);
         }
       }
-    }, 30000);
+    });
   });
 });

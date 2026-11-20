@@ -446,7 +446,8 @@ export class LineGrepScanner {
   private stopLine = 0;
   private outputResume = 0;
   private readonly spent: Int32Array;
-  private sliceStart = 0;
+  // When this scan last added its processing time to `spent`.
+  private charged = 0;
   private sinceCheck = 0;
 
   constructor(options: LineGrepOptions) {
@@ -511,7 +512,7 @@ export class LineGrepScanner {
   /** Consume source bytes; the view is not retained after the call returns. */
   push(chunk: Uint8Array): void {
     if (this.stop !== null) return;
-    this.sliceStart = performance.now();
+    this.charged = performance.now();
     const bytes = Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength);
     let offset = 0;
     while (offset < bytes.length) {
@@ -523,7 +524,17 @@ export class LineGrepScanner {
       if (!this.endLine(bytes, offset, newline - offset)) break;
       offset = newline + 1;
     }
-    Atomics.add(this.spent, 0, Math.round((performance.now() - this.sliceStart) * 1000));
+    this.charge();
+  }
+
+  /**
+   * Adds the processing time since the last charge to the counter the call's scans share,
+   * so scans on other threads see it at their next budget check.
+   */
+  private charge(): void {
+    const now = performance.now();
+    Atomics.add(this.spent, 0, Math.round((now - this.charged) * 1000));
+    this.charged = now;
   }
 
   /**
@@ -567,12 +578,11 @@ export class LineGrepScanner {
 
   /** Close the final line (String.split semantics) and report the hunks not yet taken. */
   finish(): LineGrepResult {
-    if (this.stop === null) {
-      this.sliceStart = performance.now();
-      this.finishLine(this.carry, 0, this.carryLength, this.lineBytes);
-    }
+    this.charged = performance.now();
+    if (this.stop === null) this.finishLine(this.carry, 0, this.carryLength, this.lineBytes);
     if (this.stop === null) this.closeGroup();
     this.closePending();
+    this.charge();
     const stopped = this.stop !== null;
     let truncated: GrepTruncation | null = null;
     if (this.stop === 'output') truncated = 'output_limit';
@@ -623,8 +633,8 @@ export class LineGrepScanner {
     if (this.draining || this.line <= this.startLine || ++this.sinceCheck < BUDGET_CHECK_LINES)
       return false;
     this.sinceCheck = 0;
-    const spentMs = Atomics.load(this.spent, 0) / 1000;
-    if (spentMs + performance.now() - this.sliceStart <= this.budgetMs) return false;
+    this.charge();
+    if (Atomics.load(this.spent, 0) <= this.budgetMs * 1000) return false;
     if (this.pending !== null && this.afterRemaining > 0) {
       this.draining = true;
       return false;

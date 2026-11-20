@@ -237,6 +237,11 @@ fail" in one call: it lists the pipeline's jobs and searches their logs. Without
 The other search parameters apply to every job; `max_matches` counts per job.
 `start_line` is not accepted: continue with `resume` instead.
 
+`job_scope` selects the jobs to search, not the trigger jobs to follow: every trigger
+job that started a pipeline is followed, whatever its status. A trigger with the
+default strategy succeeds as soon as its pipeline is created, so the failed jobs of
+a child pipeline are found even when its trigger job is green.
+
 ```json
 {
   "action": "log_grep",
@@ -260,13 +265,15 @@ pipeline carry that pipeline's `pipeline_id` and `project_id`.
 | ------------------------ | ------------------------------------------------------------------------------------------------------ |
 | `allowed_failure`        | A failed job or trigger marked `allow_failure`                                                         |
 | `max_jobs`               | The job came after the `max_jobs` limit                                                                |
-| `no_downstream_pipeline` | A trigger job that started no pipeline; its `failure_reason` tells why                                 |
+| `no_downstream_pipeline` | A trigger job in a searched status that started no pipeline; its `failure_reason` tells why            |
 | `downstream_depth`       | A trigger job more than two levels below the searched pipeline                                         |
 | `downstream_unreadable`  | The triggered pipeline could not be listed, for example in another project; `error` gives the response |
 | `not_found`              | A `resume` entry whose job the pipeline no longer lists                                                |
 
-`listing_complete` is false when the `max_jobs` limit stopped the listing before
-every reachable job was seen.
+`listing_complete` is false when the `max_jobs` limit stopped the listing, or a
+listing failed, before every reachable job was seen. When the trigger jobs of a
+pipeline cannot be listed, its own jobs are still searched and `listing_errors`
+names it (`project_id`, `pipeline_id`, `error`); the field is present only then.
 
 The 2 s processing budget and the 1 MiB output bound belong to the call and are
 shared by its jobs: each job may return an equal part of the output, and up to
@@ -274,8 +281,10 @@ three traces are read at a time. When the budget runs out, `resume` lists every 
 left, with the line to continue from: jobs not started yet from line 0, and jobs
 cut by the budget or a limit from their `resume_from`. Pass the list unchanged as
 `resume` with the same `pipeline_id` and search parameters; the next call searches
-only those jobs and reports each remaining match exactly once. `resume` is null
-when nothing is left.
+only those jobs and reports each remaining match exactly once. A resumed job is
+found by its ID even if its status changed since, and an entry whose pipeline
+cannot be listed this time stays in `resume` instead of being reported as
+`not_found`. `resume` is null when nothing is left.
 
 ### Individual Artifact Files
 

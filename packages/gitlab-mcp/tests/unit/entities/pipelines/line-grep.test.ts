@@ -1,3 +1,4 @@
+import { performance } from 'node:perf_hooks';
 import {
   LineGrepScanner,
   serveLineGrep,
@@ -549,6 +550,44 @@ describe('limits and continuation', () => {
     expect(matched(first).concat(matched(rest))).toEqual(
       Array.from({ length: 2000 }, (_, index) => index),
     );
+  });
+
+  describe('shared processing budget', () => {
+    afterEach(() => jest.restoreAllMocks());
+
+    // Each reading of the clock advances it by 1 ms and records what other scans of the
+    // call would see in the shared counter at that moment.
+    const tickingClock = (spent: Int32Array) => {
+      const seen: number[] = [];
+      let now = 0;
+      jest.spyOn(performance, 'now').mockImplementation(() => {
+        seen.push(Atomics.load(spent, 0));
+        return ++now;
+      });
+      return seen;
+    };
+
+    // Scans of one call run on several threads: time spent inside a long chunk becomes
+    // visible to the others at each budget check, not only when the chunk is done.
+    it('publishes spent time at budget checks within a chunk', () => {
+      const spent = new Int32Array(new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT));
+      const scanner = new LineGrepScanner(options({ spent }));
+      const seen = tickingClock(spent);
+      scanner.push(new TextEncoder().encode('ok\n'.repeat(2000)));
+      expect(seen.some((value, index) => index < seen.length - 1 && value > 0)).toBe(true);
+    });
+
+    // Matching the last line at EOF is processing time too, and is charged before the next
+    // job of the call is admitted.
+    it('charges the work of finish to the shared counter', () => {
+      const spent = new Int32Array(new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT));
+      const scanner = new LineGrepScanner(options({ spent }));
+      scanner.push(new TextEncoder().encode('ok\nerror at the end'));
+      const before = Atomics.load(spent, 0);
+      tickingClock(spent);
+      expect(scanner.finish().match_count).toBe(1);
+      expect(Atomics.load(spent, 0)).toBeGreaterThan(before);
+    });
   });
 
   // Resuming far into a trace must make progress even when skipping the prefix is slow.

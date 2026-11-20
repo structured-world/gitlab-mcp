@@ -25,8 +25,9 @@ const PipelineGrep = z.object({
 // the 10-minute test limit.
 const PIPELINE_WAIT_MS = 6 * 60_000;
 
-// Parent jobs run only for API pipelines, so creating the branch starts nothing; the
-// trigger waits for its child, so the parent pipeline ends after the child's failure.
+// Parent jobs run only for API pipelines, so creating the branch starts nothing. The
+// depend trigger waits for its child, so the parent pipeline ends after that failure; the
+// default-strategy trigger succeeds once its child exists, however the child ends.
 const PARENT_CI = `parent-fails:
   script:
     - echo "grep fixture parent failed"
@@ -39,12 +40,23 @@ child:
     strategy: depend
   rules:
     - if: '$CI_PIPELINE_SOURCE == "api"'
+default-child:
+  trigger:
+    include: default-child.yml
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "api"'
 `;
 const CHILD_CI = `child-fails:
   script:
     - echo "grep fixture child failed"
     - exit 4
 `;
+const DEFAULT_CHILD_CI = `default-child-fails:
+  script:
+    - echo "grep fixture default child failed"
+    - exit 5
+`;
+const FIXTURE_JOBS = ['child-fails', 'default-child-fails', 'parent-fails'];
 
 // The suite works on its own branch of the test/ project and deletes it afterwards, so
 // the main branch CI configuration other suites rely on stays untouched.
@@ -76,6 +88,7 @@ describe('pipeline log search - GitLab integration', () => {
       files: [
         { file_path: '.gitlab-ci.yml', content: PARENT_CI },
         { file_path: 'child.yml', content: CHILD_CI },
+        { file_path: 'default-child.yml', content: DEFAULT_CHILD_CI },
       ],
     });
   });
@@ -88,8 +101,9 @@ describe('pipeline log search - GitLab integration', () => {
     });
   });
 
-  // One call finds the failure of the pipeline's own job and of its child pipeline's job.
-  it('returns failed jobs of the pipeline and of its child pipeline', async () => {
+  // One call finds the failure of the pipeline's own job and of its child pipelines' jobs,
+  // including the child of a trigger job that succeeded.
+  it('returns failed jobs of the pipeline and of its child pipelines', async () => {
     const deadline = Date.now() + PIPELINE_WAIT_MS;
     let pipelineId: string | undefined;
     let finished = false;
@@ -117,19 +131,29 @@ describe('pipeline log search - GitLab integration', () => {
       if (!finished)
         throw new Error(`Pipeline fixture did not finish within ${PIPELINE_WAIT_MS / 1000} s`);
 
-      const result = PipelineGrep.parse(
-        await helper.executeTool('browse_pipelines', {
-          action: 'log_grep',
-          project_id: projectId,
-          pipeline_id: pipelineId,
-          patterns: ['^grep fixture (parent|child) failed$'],
-          before: 0,
-          after: 0,
-        }),
-      );
+      // The default-strategy child may still be running when the parent pipeline ends.
+      const search = async () =>
+        PipelineGrep.parse(
+          await helper.executeTool('browse_pipelines', {
+            action: 'log_grep',
+            project_id: projectId,
+            pipeline_id: pipelineId,
+            patterns: ['^grep fixture (parent|child|default child) failed$'],
+            before: 0,
+            after: 0,
+          }),
+        );
+      let result = await search();
+      while (result.jobs.length < FIXTURE_JOBS.length && Date.now() < deadline) {
+        await delay(2000);
+        result = await search();
+      }
 
       const byName = new Map(result.jobs.map((job) => [job.name, job]));
-      expect([...byName.keys()].sort()).toEqual(['child-fails', 'parent-fails']);
+      expect([...byName.keys()].sort()).toEqual(FIXTURE_JOBS);
+      const defaultChild = byName.get('default-child-fails')!;
+      expect(defaultChild).toMatchObject({ status: 'failed', match_count: 1 });
+      expect(defaultChild.pipeline_id).not.toBe(pipelineId);
       expect(byName.get('parent-fails')).toMatchObject({
         status: 'failed',
         failure_reason: 'script_failure',

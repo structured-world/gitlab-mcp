@@ -362,7 +362,7 @@ const GrepJobLogsSchema = z
     include_downstream: flexibleBoolean
       .optional()
       .describe(
-        `With pipeline_id: also search jobs of child and multi-project pipelines started by its trigger jobs, up to ${LOG_GREP_MAX_DOWNSTREAM_DEPTH} levels down (default: true)`,
+        `With pipeline_id: also search jobs of child and multi-project pipelines started by its trigger jobs of any status, up to ${LOG_GREP_MAX_DOWNSTREAM_DEPTH} levels down (default: true)`,
       ),
     include_allowed_failures: flexibleBoolean
       .optional()
@@ -431,6 +431,9 @@ const GrepJobLogsSchema = z
         'Match source bytes as stored. By default timestamps, ANSI escapes, CR rewrites and section markers are removed, as the GitLab log view shows them',
       ),
   })
+  // Cross-field rules stay out of the JSON Schema: the default flat mode merges action
+  // branches into one object for clients without oneOf support, so a per-branch oneOf would
+  // be lost or rejected. The parameter descriptions state them instead.
   .superRefine((input, context) => {
     if ((input.job_id === undefined) === (input.pipeline_id === undefined))
       context.addIssue({ code: 'custom', message: 'Give exactly one of job_id or pipeline_id' });

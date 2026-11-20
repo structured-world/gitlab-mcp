@@ -2,7 +2,7 @@ import * as z from 'zod';
 import { gitlab, type ApiPage } from '../../utils/gitlab-api';
 import { normalizeProjectId } from '../../utils/projectIdentifier';
 import { encodeApiSegment } from '../../utils/api-path';
-import { grepAll, type GrepOutcome } from './line-grep-worker';
+import { checkPatterns, grepAll, type GrepOutcome } from './line-grep-worker';
 import type { LineGrepOptions, LineGrepResult } from './line-grep';
 import { TRACE_PAGE_BYTES } from './trace';
 import { openTrace } from './trace-open';
@@ -64,13 +64,21 @@ export type SkippedJob = Partial<JobIdentity> & {
 export type JobGrepResult = JobIdentity &
   (Omit<LineGrepResult, 'preset_index'> | { error: string });
 
+/** A pipeline whose trigger jobs could not be listed, so its downstream pipelines are unknown. */
+export interface ListingError {
+  project_id: string;
+  pipeline_id: string;
+  error: string;
+}
+
 export interface PipelineGrepResult {
   pipeline_id: string;
   jobs: JobGrepResult[];
   jobs_scanned: number;
   jobs_skipped: SkippedJob[];
-  /** False when the job limit stopped the listing before every reachable job was seen. */
+  /** False when the job limit or a failed listing left reachable jobs unseen. */
   listing_complete: boolean;
+  listing_errors?: ListingError[];
   /** Jobs and lines a next call continues from, through `resume`; null when nothing is left. */
   resume: Array<{ job_id: string; start_line: number }> | null;
   preset_index?: number;
@@ -88,8 +96,14 @@ interface PipelineRef {
 interface Discovery {
   jobs: JobIdentity[];
   skipped: SkippedJob[];
+  listingErrors: ListingError[];
+  /** Resume entries not found in pipelines that could not all be listed; still owed. */
+  unresolved: Array<{ job_id: string; start_line: number }>;
   complete: boolean;
 }
+
+const message = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error);
 
 function identity(row: JobRow, ref: PipelineRef): JobIdentity {
   return {
@@ -104,15 +118,16 @@ function identity(row: JobRow, ref: PipelineRef): JobIdentity {
   };
 }
 
+/** Listing pages of `path`; `scope` filters by job status, null lists every status. */
 async function* pages<T>(
   path: string,
   schema: z.ZodType<T>,
-  scope: readonly string[],
+  scope: readonly string[] | null,
 ): AsyncGenerator<{ rows: T[]; more: boolean }> {
   let page: number | null = 1;
   while (page !== null) {
     const result: ApiPage<unknown> = await gitlab.getPage<unknown>(path, {
-      query: { scope: [...scope], per_page: PAGE_SIZE, page },
+      query: { ...(scope ? { scope: [...scope] } : {}), per_page: PAGE_SIZE, page },
     });
     const rows = z.array(schema).safeParse(result.items);
     if (!rows.success) throw new Error(`GitLab returned an unexpected listing for ${path}`);
@@ -134,15 +149,22 @@ async function discover(
   const maxJobs = wanted?.size ?? input.max_jobs ?? LOG_GREP_DEFAULT_JOBS;
   const downstream = input.include_downstream ?? true;
   const allowFailures = input.include_allowed_failures ?? false;
+  // A resumed job is found by id, whatever its status became since the previous call.
+  const jobScope = wanted === null ? scope : null;
   const queue: PipelineRef[] = [
     { projectId: input.project_id, pipelineId: input.pipeline_id, depth: 0 },
   ];
   const jobs: JobIdentity[] = [];
   const skipped: SkippedJob[] = [];
+  const listingErrors: ListingError[] = [];
   // Set once a further eligible job is seen; the listing then stops after its page.
   let full = false;
+  // Set when a listing failed, so jobs it would have shown are unknown, not absent.
+  let gaps = false;
+  // A resume repeats only read failures; the first call already reported the rest.
   const skip = (job: JobIdentity, reason: SkipReason, error?: string): void => {
-    if (wanted === null) skipped.push({ ...job, reason, ...(error ? { error } : {}) });
+    if (wanted === null || reason === 'downstream_unreadable')
+      skipped.push({ ...job, reason, ...(error ? { error } : {}) });
   };
   const take = (job: JobIdentity, row: JobRow): void => {
     if (wanted !== null) {
@@ -164,22 +186,34 @@ async function discover(
     const ref = queue[index];
     const base = `projects/${normalizeProjectId(ref.projectId)}/pipelines/${encodeApiSegment(ref.pipelineId)}`;
     try {
-      for await (const { rows, more } of pages(`${base}/jobs`, JobRowSchema, scope)) {
+      for await (const { rows, more } of pages(`${base}/jobs`, JobRowSchema, jobScope)) {
         for (const row of rows) take(identity(row, ref), row);
         if (done()) {
           unlisted = more || downstream;
           break;
         }
       }
-      if (!downstream || done()) continue;
-      for await (const { rows } of pages(`${base}/bridges`, BridgeRowSchema, scope)) {
+    } catch (error) {
+      // The searched pipeline must be readable; a triggered one in another project may not be.
+      if (!ref.bridge) throw error;
+      gaps = true;
+      skip(ref.bridge, 'downstream_unreadable', message(error));
+      continue;
+    }
+    if (!downstream || done()) continue;
+    try {
+      // Trigger jobs of every status: with the default strategy one succeeds as soon as its
+      // pipeline is created, however that pipeline ends.
+      for await (const { rows } of pages(`${base}/bridges`, BridgeRowSchema, null)) {
         for (const row of rows) {
           const bridge = identity(row, ref);
           const child = row.downstream_pipeline;
           if (row.status === 'failed' && row.allow_failure && !allowFailures)
             skip(bridge, 'allowed_failure');
-          else if (!child) skip(bridge, 'no_downstream_pipeline');
-          else if (ref.depth >= LOG_GREP_MAX_DOWNSTREAM_DEPTH) skip(bridge, 'downstream_depth');
+          else if (!child) {
+            // A manual or skipped trigger has no pipeline yet; only a searched status is news.
+            if (jobScope?.includes(row.status)) skip(bridge, 'no_downstream_pipeline');
+          } else if (ref.depth >= LOG_GREP_MAX_DOWNSTREAM_DEPTH) skip(bridge, 'downstream_depth');
           else
             queue.push({
               projectId: String(child.project_id),
@@ -190,23 +224,27 @@ async function discover(
         }
       }
     } catch (error) {
-      // The searched pipeline must be readable; a triggered one in another project may not be.
-      if (!ref.bridge) throw error;
-      skip(
-        ref.bridge,
-        'downstream_unreadable',
-        error instanceof Error ? error.message : String(error),
-      );
+      // The jobs already listed stay searchable; only what the triggers lead to is unknown.
+      gaps = true;
+      listingErrors.push({
+        project_id: ref.projectId,
+        pipeline_id: ref.pipelineId,
+        error: message(error),
+      });
     }
   }
-  // Only the job limit stops a listing early; a finished resume needs nothing more.
-  const complete = !full || (!unlisted && index >= queue.length);
+  // The job limit or a failed listing leaves jobs unseen; a finished resume needs nothing more.
+  const complete = !gaps && (!full || (!unlisted && index >= queue.length));
+  const unresolved: Array<{ job_id: string; start_line: number }> = [];
   if (wanted !== null) {
     const seen = new Set(jobs.map((job) => job.job_id));
-    for (const jobId of wanted.keys())
-      if (!seen.has(jobId)) skipped.push({ job_id: jobId, reason: 'not_found' });
+    for (const [jobId, startLine] of wanted) {
+      if (seen.has(jobId)) continue;
+      if (gaps) unresolved.push({ job_id: jobId, start_line: startLine });
+      else skipped.push({ job_id: jobId, reason: 'not_found' });
+    }
   }
-  return { jobs, skipped, complete };
+  return { jobs, skipped, listingErrors, unresolved, complete };
 }
 
 /**
@@ -223,8 +261,6 @@ export async function grepPipelineLogs(input: LogGrepInput): Promise<PipelineGre
   const wanted = input.resume
     ? new Map(input.resume.map((entry) => [entry.job_id, entry.start_line]))
     : null;
-
-  const discovery = await discover(pipelineInput, scope, wanted);
   const spent = new Int32Array(new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT));
   const shared: Omit<LineGrepOptions, 'startLine'> = {
     patterns,
@@ -236,9 +272,14 @@ export async function grepPipelineLogs(input: LogGrepInput): Promise<PipelineGre
     normalize: !input.raw,
     budgetMs: LOG_GREP_BUDGET_MS,
     spent,
-    // One page of `logs` in total, divided between the jobs.
-    outputBytes: Math.floor(TRACE_PAGE_BYTES / Math.max(1, discovery.jobs.length)),
+    // One page of `logs` in total, divided between the jobs below.
+    outputBytes: TRACE_PAGE_BYTES,
   };
+  // Invalid RE2 fails the call before GitLab is asked anything, with or without jobs.
+  if (patterns.length > 0) await checkPatterns({ ...shared, startLine: 0 });
+
+  const discovery = await discover(pipelineInput, scope, wanted);
+  shared.outputBytes = Math.floor(TRACE_PAGE_BYTES / Math.max(1, discovery.jobs.length));
   const startLines = discovery.jobs.map((job) => wanted?.get(job.job_id) ?? 0);
   const outcomes = await grepAll(
     discovery.jobs.map((job, index) => ({
@@ -250,7 +291,7 @@ export async function grepPipelineLogs(input: LogGrepInput): Promise<PipelineGre
   );
 
   const jobs: JobGrepResult[] = [];
-  const resume: Array<{ job_id: string; start_line: number }> = [];
+  const resume = [...discovery.unresolved];
   discovery.jobs.forEach((job, index) => {
     const outcome: GrepOutcome = outcomes[index];
     if (outcome.status === 'not_started') {
@@ -272,6 +313,7 @@ export async function grepPipelineLogs(input: LogGrepInput): Promise<PipelineGre
     jobs_scanned: outcomes.filter((outcome) => outcome.status === 'done').length,
     jobs_skipped: discovery.skipped,
     listing_complete: discovery.complete,
+    ...(discovery.listingErrors.length > 0 ? { listing_errors: discovery.listingErrors } : {}),
     resume: resume.length > 0 ? resume : null,
     ...(preset ? { preset_index: patterns.length } : {}),
   };

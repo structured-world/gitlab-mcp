@@ -129,8 +129,8 @@ function discard(worker: GrepWorker): void {
   void worker.terminate();
 }
 
-/** An idle or new worker, or null when the pool is at capacity. */
-function tryLeaseWorker(): GrepWorker | null {
+/** An idle or new worker, or null when the pool is at capacity; throws if a thread cannot start. */
+function acquireWorker(): GrepWorker | null {
   // Backwards, since discard() removes entries while the loop runs.
   for (let index = workers.length - 1; index >= 0; index--) {
     const worker = workers[index];
@@ -146,8 +146,17 @@ function tryLeaseWorker(): GrepWorker | null {
   return worker;
 }
 
+/** A further worker for a call that already holds one; a thread that cannot start is only missing capacity. */
+function tryLeaseWorker(): GrepWorker | null {
+  try {
+    return acquireWorker();
+  } catch {
+    return null;
+  }
+}
+
 function leaseWorker(): GrepWorker {
-  const worker = tryLeaseWorker();
+  const worker = acquireWorker();
   if (!worker) throw new Error('Log search is at capacity; retry shortly');
   return worker;
 }
@@ -190,6 +199,19 @@ export async function grepStream(
 
 /** Patterns the worker refused to compile; every other stream would be refused as well. */
 class InvalidPatternsError extends Error {}
+
+/** Compile the patterns as a scan would, without reading anything; rejects invalid RE2. */
+export async function checkPatterns(options: LineGrepOptions): Promise<void> {
+  const worker = leaseWorker();
+  try {
+    const started = await worker.request({ type: 'start', options }, START_TIMEOUT_MS);
+    if (started.type === 'invalid') throw new InvalidPatternsError(started.message);
+    expectReply(started, 'ready');
+    await worker.request({ type: 'reset' }, LINE_GRACE_MS);
+  } finally {
+    giveBack(worker);
+  }
+}
 
 /** One stream of `grepAll`. */
 export interface GrepTask {
@@ -313,6 +335,9 @@ async function pump(
     return { ...done, hunks: hunks.concat(done.hunks) };
   } catch (error) {
     if (!(error instanceof WorkerTimeoutError)) throw error;
+    // The killed worker never charged the stuck line; the wait alone exceeds the budget, so
+    // no further scan of the call starts.
+    if (options.spent) Atomics.add(options.spent, 0, timeout * 1000);
     // One line outran the budget: report what was delivered and where to continue.
     return {
       hunks,

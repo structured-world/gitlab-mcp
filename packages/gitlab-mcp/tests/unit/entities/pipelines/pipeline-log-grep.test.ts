@@ -65,10 +65,11 @@ const identity = (row: Row, projectId = 'test/project', pipelineId = '100') => (
 
 /**
  * Answer GitLab requests by path: listings from `listings` (one page each, unless a path
- * maps to several pages), traces from `traces`; anything else fails the test.
+ * maps to several pages, or an HTTP error status), filtered by `scope[]` as GitLab does;
+ * traces from `traces`; anything else fails the test.
  */
 function serve(
-  listings: Record<string, Row[] | Row[][]>,
+  listings: Record<string, Row[] | Row[][] | number>,
   traces: Record<string, string | number>,
 ): void {
   mockEnhancedFetch.mockImplementation(async (input) => {
@@ -87,9 +88,15 @@ function serve(
         return new Response('[]', { headers: { 'x-next-page': '' } });
       return new Response('{"message":"404 Not found"}', { status: 404, statusText: 'Not Found' });
     }
+    if (typeof listing === 'number')
+      return new Response('{"message":"unavailable"}', { status: listing, statusText: 'Error' });
     const pages = Array.isArray(listing[0]) ? (listing as Row[][]) : [listing as Row[]];
     const page = Number(url.searchParams.get('page') ?? '1');
-    return new Response(JSON.stringify(pages[page - 1] ?? []), {
+    const scope = url.searchParams.getAll('scope[]');
+    const rows = (pages[page - 1] ?? []).filter(
+      (row) => scope.length === 0 || scope.includes(String(row.status)),
+    );
+    return new Response(JSON.stringify(rows), {
       headers: { 'x-next-page': page < pages.length ? String(page + 1) : '' },
     });
   });
@@ -198,6 +205,47 @@ describe('browse_pipelines log_grep with pipeline_id', () => {
       { ...identity(tooDeep, '55', '300'), reason: 'downstream_depth' },
     ]);
     expect(result.listing_complete).toBe(true);
+  });
+
+  // A trigger with the default strategy succeeds once its pipeline is created, however that
+  // pipeline ends; the failed jobs inside it are still found. Only the jobs are filtered by
+  // job_scope, and a trigger job outside it without a pipeline is not worth reporting.
+  it('follows a successful trigger job into its failed downstream pipeline', async () => {
+    const child = job(20);
+    const toChild = bridge(10, { id: 200, project_id: 55 });
+    toChild.status = 'success';
+    const manual = bridge(11, null);
+    manual.status = 'manual';
+    serve(
+      {
+        [`${PIPELINE}/jobs`]: [],
+        [`${PIPELINE}/bridges`]: [toChild, manual],
+        '/api/v4/projects/55/pipelines/200/jobs': [child, job(21, { status: 'success' })],
+      },
+      { 20: 'error: child\n' },
+    );
+
+    const result = await grep({});
+
+    expect(result.jobs).toEqual([
+      expect.objectContaining({ ...identity(child, '55', '200'), match_count: 1 }),
+    ]);
+    expect(result.jobs_skipped).toEqual([]);
+    expect(result.listing_complete).toBe(true);
+  });
+
+  // A failed trigger job listing does not discard the failed jobs already listed; the gap
+  // in discovery is reported instead.
+  it('keeps the listed jobs when trigger jobs cannot be listed', async () => {
+    serve({ [`${PIPELINE}/jobs`]: [job(1)], [`${PIPELINE}/bridges`]: 503 }, { 1: 'error: a\n' });
+
+    const result = await grep({});
+
+    expect(result.jobs).toEqual([expect.objectContaining({ ...identity(job(1)), match_count: 1 })]);
+    expect(result.listing_errors).toEqual([
+      { project_id: 'test/project', pipeline_id: '100', error: expect.stringContaining('503') },
+    ]);
+    expect(result.listing_complete).toBe(false);
   });
 
   // include_downstream: false keeps the search to the pipeline itself.
@@ -318,12 +366,60 @@ describe('browse_pipelines log_grep with pipeline_id', () => {
     expect(result.jobs_skipped).toEqual([{ job_id: '9', reason: 'not_found' }]);
   });
 
-  // Invalid RE2 fails the call before any trace is requested.
-  it('rejects an invalid pattern without reading traces', async () => {
-    serve({ [`${PIPELINE}/jobs`]: [job(1), job(2)] }, {});
-    await expect(grep({ patterns: ['a**'] })).rejects.toThrow('Invalid RE2 pattern 0');
-    expect(requested(/\/trace$/)).toEqual([]);
+  // A job that left the searched status keeps its cursor: the resume finds it by id.
+  it('resumes a job whose status changed since the previous call', async () => {
+    serve({ [`${PIPELINE}/jobs`]: [job(1, { status: 'success' })] }, { 1: 'a\nerror: b\n' });
+
+    const result = await grep({ job_scope: ['running'], resume: [{ job_id: '1', start_line: 1 }] });
+
+    expect(result.jobs).toEqual([
+      expect.objectContaining({ job_id: '1', status: 'success', match_count: 1 }),
+    ]);
+    expect(result.jobs_skipped).toEqual([]);
   });
+
+  // A resumed job inside a pipeline that cannot be listed this time is not lost: it stays
+  // in resume with its line, and the unreadable pipeline is reported.
+  it('keeps resume entries whose pipeline cannot be listed', async () => {
+    const toChild = bridge(10, { id: 200, project_id: 55 });
+    serve(
+      {
+        [`${PIPELINE}/jobs`]: [job(1)],
+        [`${PIPELINE}/bridges`]: [toChild],
+        '/api/v4/projects/55/pipelines/200/jobs': 503,
+      },
+      { 1: 'error: a\n' },
+    );
+
+    const result = await grep({
+      resume: [
+        { job_id: '1', start_line: 0 },
+        { job_id: '20', start_line: 7 },
+      ],
+    });
+
+    expect(result.jobs_scanned).toBe(1);
+    expect(result.resume).toEqual([{ job_id: '20', start_line: 7 }]);
+    expect(result.jobs_skipped).toEqual([
+      {
+        ...identity(toChild),
+        reason: 'downstream_unreadable',
+        error: expect.stringContaining('503'),
+      },
+    ]);
+    expect(result.listing_complete).toBe(false);
+  });
+
+  // Invalid RE2 fails the call before GitLab is asked anything, even when the pipeline has
+  // no job to search.
+  it.each([[[job(1), job(2)]], [[]]])(
+    'rejects an invalid pattern before any request (jobs: %j)',
+    async (rows) => {
+      serve({ [`${PIPELINE}/jobs`]: rows }, {});
+      await expect(grep({ patterns: ['a**'] })).rejects.toThrow('Invalid RE2 pattern 0');
+      expect(mockEnhancedFetch).not.toHaveBeenCalled();
+    },
+  );
 
   // Job and pipeline modes are exclusive, and each refuses the other's parameters.
   it.each([

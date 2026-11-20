@@ -120,16 +120,25 @@ function identity(row: JobRow, ref: PipelineRef): JobIdentity {
   };
 }
 
-/** Listing pages of `path`; `scope` filters by job status, null lists every status. */
+/**
+ * Listing pages of `path`; `scope` filters by job status, null lists every status, and
+ * `retried` adds the attempts a retry superseded.
+ */
 async function* pages<T>(
   path: string,
   schema: z.ZodType<T>,
   scope: readonly string[] | null,
+  retried = false,
 ): AsyncGenerator<{ rows: T[]; more: boolean }> {
   let page: number | null = 1;
   while (page !== null) {
     const result: ApiPage<unknown> = await gitlab.getPage<unknown>(path, {
-      query: { ...(scope ? { scope: [...scope] } : {}), per_page: PAGE_SIZE, page },
+      query: {
+        ...(scope ? { scope: [...scope] } : {}),
+        ...(retried ? { include_retried: true } : {}),
+        per_page: PAGE_SIZE,
+        page,
+      },
     });
     const rows = z.array(schema).safeParse(result.items);
     if (!rows.success) throw new Error(`GitLab returned an unexpected listing for ${path}`);
@@ -199,7 +208,9 @@ async function discover(
     const base = `projects/${normalizeProjectId(ref.projectId)}/pipelines/${encodeApiSegment(ref.pipelineId)}`;
     let read = false;
     try {
-      for await (const { rows, more } of pages(`${base}/jobs`, JobRowSchema, jobScope)) {
+      // A resumed job may have been retried since; its id stays on the superseded attempt.
+      const listing = pages(`${base}/jobs`, JobRowSchema, jobScope, wanted !== null);
+      for await (const { rows, more } of listing) {
         read = true;
         for (const row of rows) take(identity(row, ref), row);
         if (done()) {

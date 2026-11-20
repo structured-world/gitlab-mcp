@@ -272,11 +272,12 @@ pipeline carry that pipeline's `pipeline_id` and `project_id`.
 | `not_found`               | A `resume` entry whose job the pipeline no longer lists                                                          |
 
 `listing_complete` is false when the `max_jobs` limit stopped the listing, or a
-listing failed, before every reachable job was seen. When the trigger jobs of a
-pipeline cannot be listed, or a later page of its job listing fails, the jobs
-already listed are still searched, its triggers are still followed, and
-`listing_errors` names the pipeline (`project_id`, `pipeline_id`, `error`); the
-field is present only then. A searched pipeline whose job listing fails on the
+listing failed, before every reachable job was seen. When a later page of a
+pipeline's job listing fails, the jobs already listed are still searched and its
+triggers are still followed. When a page of its trigger listing fails, only the
+triggers listed before that page are followed, none if the first page fails. In
+each case `listing_errors` names the pipeline (`project_id`, `pipeline_id`,
+`error`); the field is present only then. A searched pipeline whose job listing fails on the
 first page fails the call.
 
 The 2 s processing budget and the 1 MiB output bound belong to the call and are
@@ -286,7 +287,7 @@ left, with the line to continue from: jobs not started yet from line 0, and jobs
 cut by the budget or a limit from their `resume_from`. Pass the list unchanged as
 `resume` with the same `pipeline_id` and search parameters; the next call searches
 only those jobs and reports each remaining match exactly once. A resumed job is
-found by its ID even if its status changed since, including behind a trigger that
+found by its ID even if its status changed or it was retried since, including behind a trigger that
 has since failed as an allowed failure, and an entry whose pipeline
 cannot be listed this time stays in `resume` instead of being reported as
 `not_found`. `resume` is null when nothing is left.

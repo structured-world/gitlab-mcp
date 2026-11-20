@@ -101,7 +101,13 @@ function serve(
     const scope = url.searchParams.getAll('scope[]');
     const served = pages[page - 1] ?? [];
     if (typeof served === 'number') return failure(served);
-    const rows = served.filter((row) => scope.length === 0 || scope.includes(String(row.status)));
+    // GitLab hides superseded attempts (marked `retried` here) unless include_retried is set.
+    const retried = url.searchParams.get('include_retried') === 'true';
+    const rows = served.filter(
+      (row) =>
+        (retried || row.retried !== true) &&
+        (scope.length === 0 || scope.includes(String(row.status))),
+    );
     return new Response(JSON.stringify(rows), {
       headers: { 'x-next-page': page < pages.length ? String(page + 1) : '' },
     });
@@ -509,6 +515,23 @@ describe('browse_pipelines log_grep with pipeline_id', () => {
       expect.objectContaining({ job_id: '1', status: 'success', match_count: 1 }),
     ]);
     expect(result.jobs_skipped).toEqual([]);
+  });
+
+  // A job retried after the previous call keeps its id on the superseded attempt, which
+  // GitLab lists only on request: the resume still finds it and finishes its log, while
+  // a first call searches only the latest attempts.
+  it('resumes a job that was retried since the previous call', async () => {
+    serve(
+      { [`${PIPELINE}/jobs`]: [job(1, { retried: true }), job(2)] },
+      { 1: 'a\nerror: b\n', 2: 'error: c\n' },
+    );
+
+    const resumed = await grep({ resume: [{ job_id: '1', start_line: 1 }] });
+    expect(resumed.jobs).toEqual([expect.objectContaining({ job_id: '1', match_count: 1 })]);
+    expect(resumed.jobs_skipped).toEqual([]);
+
+    const first = await grep({});
+    expect(first.jobs).toEqual([expect.objectContaining({ job_id: '2' })]);
   });
 
   // A resumed job inside a pipeline that cannot be listed this time is not lost: it stays

@@ -367,6 +367,18 @@ describe('GitLab trace rendering before matching', () => {
     expect(result.hunks[0].clipped).toEqual([{ line: 0, omitted_bytes: 8 }]);
   });
 
+  // The bytes a clip dropped lie between a clipped fragment and the next one, so no match
+  // spans that gap; a match wholly on either side of it is still found, and the patterns
+  // each side matched are reported together.
+  it('does not match across the clipped end of a fragment', () => {
+    const stamp = '2026-11-18T10:00:00.123456Z';
+    const source = `${stamp} 00O ${'x'.repeat(TRACE_LINE_BYTES - 34)}ERgap\n${stamp} 00O+ROR`;
+    expect(scan(source, { patterns: ['ERROR'] }, 65536).match_count).toBe(0);
+    const result = scan(source, { patterns: ['ERROR', 'xER', 'ROR$'] }, 65536);
+    expect(result.hunks.map((hunk) => hunk.matches)).toEqual([[{ line: 0, patterns: [1, 2] }]]);
+    expect(result.hunks[0].clipped).toEqual([{ line: 0, omitted_bytes: 3 }]);
+  });
+
   // Escapes end at the first byte in @ through ~, as in GitLab's ansi2json; an escape cut
   // off by the line end drops the rest, and an ESC that starts no sequence is text.
   it.each([
@@ -640,6 +652,24 @@ describe('limits and continuation', () => {
     }
     expect(seen).toEqual(Array.from({ length: 40 }, (_, index) => index));
   });
+
+  // A page whose first match does not fit after its before-context would resume at that
+  // match and rebuild the same context forever; the match is returned without the context,
+  // whether the limit falls on a context line or on the match itself.
+  it.each([
+    ['aaaaaaaa\nbbbbbbbb\nerror\n', 10],
+    ['aaaa\nbbbb\nerror here\n', 12],
+  ])(
+    'returns the first match without a before-context that leaves it no room (%#)',
+    (source, limit) => {
+      const result = scan(source, { before: 2, outputBytes: limit });
+      const line = source.split('\n')[2];
+      expect(result.hunks).toEqual([
+        { start_line: 2, lines: [line], matches: [{ line: 2, patterns: [0] }] },
+      ]);
+      expect(result.truncated).toBeNull();
+    },
+  );
 
   // A later hunk that would pass the output limit is dropped whole and found again on
   // resume, whether the limit falls on its match or on its after-context.

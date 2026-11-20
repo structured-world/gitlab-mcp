@@ -160,8 +160,9 @@ The runner splits a long output line into fragments whose timestamp marks them a
 continuations; like the GitLab view, the search joins them before rendering, so a
 pattern can match across fragments, an escape sequence split between fragments is
 removed whole, and a carriage return clears the fragments before it, which are then
-returned empty. A fragment cut at the per-line limit no longer adjoins the next one,
-so an escape sequence reaching its cut ends there. A line of more than 32 fragments is joined 32 at a time; every
+returned empty. A fragment cut at the per-line limit no longer adjoins the next one:
+the text on each side of the cut is searched on its own, so neither a match nor an
+escape sequence reaches across it. A line of more than 32 fragments is joined 32 at a time; every
 fragment is searched, but a match, an escape sequence or a carriage return does not
 reach across two such groups. The match is reported at the first fragment of its
 group, and every fragment of that group is returned, except when the output limit
@@ -203,7 +204,8 @@ the next call reports each remaining match exactly once.
 
 When the budget runs out inside a hunk, the search first finishes that hunk's
 after-context. At the output limit, a hunk that does not fit is left for the next
-call, unless it is the first one, which is cut at the limit.
+call, unless it is the first one, which is cut at the limit; when its before-context
+leaves no room for its match, it starts at the match instead.
 
 Searches run on a small pool of worker threads, so a long trace never blocks other
 requests. When every worker is busy, the call fails at once with a retryable error.

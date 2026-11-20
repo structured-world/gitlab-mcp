@@ -230,6 +230,13 @@ function tokenEnd(next: number, size: number): number {
   return size;
 }
 
+/** Ascending union of two ascending index lists; either is returned as is when the other is empty. */
+function unionSorted(left: readonly number[], right: readonly number[]): readonly number[] {
+  if (right.length === 0) return left;
+  if (left.length === 0) return right;
+  return [...new Set([...left, ...right])].sort((a, b) => a - b);
+}
+
 /** Maps the fragment starts before `to` inside a run copied from `from` to `out`. */
 function mapCopied(from: number, to: number, out: number): void {
   while (startsMapped < startCount && fragmentStarts[startsMapped] < to) {
@@ -759,6 +766,25 @@ export class LineGrepScanner {
     }
   }
 
+  /**
+   * Matches each part of the rendered group between clipped gaps on its own, since the bytes
+   * a clip dropped lie between them, and returns the patterns any part matched. A part a CR
+   * cleared is empty and skipped; the last part always holds the visible end of the line.
+   */
+  private matchBetweenGaps(text: Buffer): readonly number[] {
+    let found = NO_PATTERNS;
+    let from = 0;
+    for (let index = 0; index <= startCount; index++) {
+      const last = index === startCount;
+      if (!last && gapBefore[index] === 0) continue;
+      const to = last ? text.length : fragmentStarts[index];
+      if (last || to > from)
+        found = unionSorted(found, this.matcher.match(text.subarray(from, to)));
+      from = to;
+    }
+    return found;
+  }
+
   /** Matches the finished logical line and places its physical lines. */
   private closeGroup(): void {
     if (!this.groupOpen) return;
@@ -774,7 +800,8 @@ export class LineGrepScanner {
           this.ringLength[first % this.ringSize],
         );
     if (this.groupMatchable) {
-      const found = this.matcher.match(text);
+      const found =
+        this.normalize && gapCount > 0 ? this.matchBetweenGaps(text) : this.matcher.match(text);
       isMatch = this.invert ? found.length === 0 : found.length > 0;
       if (!this.invert) hits = found;
     }
@@ -814,8 +841,12 @@ export class LineGrepScanner {
       matches: [],
     });
     // Lines skipped since the hunk's tail are at most `before` back, so still in the ring.
-    for (let line = Math.max(this.lastEmitted + 1, hunk.start_line); line <= number; line++)
+    // The hunk's lines are contiguous, so the next one follows them even after a restart.
+    let line = Math.max(this.lastEmitted + 1, hunk.start_line);
+    while (line <= number) {
       if (!this.emit(hunk, line, number)) return false;
+      line = hunk.start_line + hunk.lines.length;
+    }
     this.recorded++;
     this.lastRecorded = number;
     hunk.matches.push({ line: number, patterns: hits });
@@ -836,6 +867,12 @@ export class LineGrepScanner {
     // Counted after decoding: each invalid source byte becomes a three-byte U+FFFD.
     const size = Buffer.byteLength(decoded.text);
     if (this.outputBytes > 0 && this.outputBytes + size > this.outputLimit) {
+      // Only the first hunk's before-context is out, and it leaves its match no room: the hunk
+      // starts at the match instead, or a resumed page would rebuild the same context forever.
+      if (this.closedHunks === 0 && hunk.matches.length === 0) {
+        this.restartAtMatch(hunk, matchLine);
+        return this.emit(hunk, matchLine, matchLine);
+      }
       this.stopForOutput(matchLine);
       return false;
     }
@@ -855,6 +892,16 @@ export class LineGrepScanner {
     }
     this.lastEmitted = number;
     return true;
+  }
+
+  /** Drops the emitted before-context of the only hunk so far; nothing else is out yet. */
+  private restartAtMatch(hunk: GrepHunk, matchLine: number): void {
+    this.outputBytes = 0;
+    hunk.start_line = matchLine;
+    hunk.lines.length = 0;
+    delete hunk.timestamps;
+    delete hunk.clipped;
+    this.lastEmitted = matchLine - 1;
   }
 
   /**

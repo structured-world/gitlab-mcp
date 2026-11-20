@@ -1,5 +1,7 @@
 import { pipelinesToolRegistry } from '../../../../src/entities/pipelines/registry';
 import { closeLineGrepWorkers } from '../../../../src/entities/pipelines/line-grep-worker';
+import { runInCallScope } from '../../../../src/configuration/call-scope';
+import { ScopeEnforcer } from '../../../../src/profiles/scope-enforcer';
 import { installFetchMock, mockEnhancedFetch } from '../../helpers/fetch-mock';
 
 jest.mock('../../../../src/utils/fetch', () => ({ enhancedFetch: jest.fn() }));
@@ -66,10 +68,11 @@ const identity = (row: Row, projectId = 'test/project', pipelineId = '100') => (
 /**
  * Answer GitLab requests by path: listings from `listings` (one page each, unless a path
  * maps to several pages, or an HTTP error status for the listing or for one of its pages),
- * filtered by `scope[]` as GitLab does; traces from `traces`; anything else fails the test.
+ * filtered by `scope[]` as GitLab does; single resources given as `{ resource }`; traces
+ * from `traces`; anything else fails the test.
  */
 function serve(
-  listings: Record<string, Row[] | Array<Row[] | number> | number>,
+  listings: Record<string, Row[] | Array<Row[] | number> | number | { resource: object }>,
   traces: Record<string, string | number>,
 ): void {
   mockEnhancedFetch.mockImplementation(async (input) => {
@@ -91,6 +94,7 @@ function serve(
     const failure = (status: number) =>
       new Response('{"message":"unavailable"}', { status, statusText: 'Error' });
     if (typeof listing === 'number') return failure(listing);
+    if (!Array.isArray(listing)) return new Response(JSON.stringify(listing.resource));
     const paged = listing.some((entry) => Array.isArray(entry) || typeof entry === 'number');
     const pages = paged ? (listing as Array<Row[] | number>) : [listing as Row[]];
     const page = Number(url.searchParams.get('page') ?? '1');
@@ -306,6 +310,33 @@ describe('browse_pipelines log_grep with pipeline_id', () => {
 
     expect(result.jobs).toEqual([expect.objectContaining({ job_id: '20', match_count: 1 })]);
     expect(result.jobs_skipped).toEqual([]);
+  });
+
+  // A triggered pipeline in a project outside the call's scope is not read: its trigger job
+  // is reported instead, and a pipeline in a project inside the scope is still searched.
+  it('does not follow a trigger into a project outside the scope', async () => {
+    const toOther = bridge(10, { id: 200, project_id: 55 });
+    const toTeam = bridge(11, { id: 300, project_id: 56 });
+    serve(
+      {
+        [`${PIPELINE}/jobs`]: [],
+        [`${PIPELINE}/bridges`]: [toOther, toTeam],
+        '/api/v4/projects/55': { resource: { path_with_namespace: 'other/secret' } },
+        '/api/v4/projects/56': { resource: { path_with_namespace: 'team/child' } },
+        '/api/v4/projects/55/pipelines/200/jobs': [job(20)],
+        '/api/v4/projects/56/pipelines/300/jobs': [job(30)],
+      },
+      { 20: 'error: secret\n', 30: 'error: child\n' },
+    );
+
+    const scope = new ScopeEnforcer({ projects: ['test/project'], groups: ['team'] });
+    const result = await runInCallScope(scope, () => grep({}));
+
+    expect((result.jobs as Array<{ job_id: string }>).map((entry) => entry.job_id)).toEqual(['30']);
+    expect(result.jobs_skipped).toEqual([
+      { ...identity(toOther), reason: 'downstream_out_of_scope' },
+    ]);
+    expect(requested(/\/projects\/55\/(pipelines|jobs)\//)).toEqual([]);
   });
 
   // Caller patterns are checked once before the listing and then used for every job.

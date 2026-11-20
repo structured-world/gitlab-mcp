@@ -142,5 +142,6 @@ export async function withOperatorProjects(
       projects: selected.flatMap((project) => [project.id, project.path]),
     }),
     operatorProjectIds: new Set(selected.map((project) => project.id)),
+    workingScope: policy.scopeEnforcer,
   };
 }

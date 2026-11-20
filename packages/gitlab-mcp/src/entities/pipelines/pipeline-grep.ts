@@ -2,6 +2,7 @@ import * as z from 'zod';
 import { gitlab, type ApiPage } from '../../utils/gitlab-api';
 import { normalizeProjectId } from '../../utils/projectIdentifier';
 import { encodeApiSegment } from '../../utils/api-path';
+import { projectInCallScope } from '../../configuration/call-scope';
 import { checkPatterns, grepAll, type GrepOutcome } from './line-grep-worker';
 import type { LineGrepOptions, LineGrepResult } from './line-grep';
 import { TRACE_PAGE_BYTES } from './trace';
@@ -53,6 +54,7 @@ export type SkipReason =
   | 'no_downstream_pipeline'
   | 'downstream_depth'
   | 'downstream_unreadable'
+  | 'downstream_out_of_scope'
   | 'not_found';
 
 export type SkippedJob = Partial<JobIdentity> & {
@@ -179,6 +181,16 @@ async function discover(
     }
   };
   const done = (): boolean => full || (wanted !== null && jobs.length === wanted.size);
+  // A triggered pipeline may sit in a project the call may not read; each project is checked once.
+  const scopeChecks = new Map<string, Promise<boolean>>();
+  const inScope = (projectId: string): Promise<boolean> => {
+    let check = scopeChecks.get(projectId);
+    if (!check) {
+      check = projectInCallScope(projectId);
+      scopeChecks.set(projectId, check);
+    }
+    return check;
+  };
 
   let index = 0;
   let unlisted = false;
@@ -227,6 +239,8 @@ async function discover(
             // A manual or skipped trigger has no pipeline yet; only a searched status is news.
             if (jobScope?.includes(row.status)) skip(bridge, 'no_downstream_pipeline');
           } else if (ref.depth >= LOG_GREP_MAX_DOWNSTREAM_DEPTH) skip(bridge, 'downstream_depth');
+          else if (!(await inScope(String(child.project_id))))
+            skip(bridge, 'downstream_out_of_scope');
           else
             queue.push({
               projectId: String(child.project_id),

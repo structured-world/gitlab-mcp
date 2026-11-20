@@ -261,14 +261,15 @@ pipeline carry that pipeline's `pipeline_id` and `project_id`.
 
 `jobs_skipped` lists jobs that were seen but not searched, each with a `reason`:
 
-| `reason`                 | Meaning                                                                                                |
-| ------------------------ | ------------------------------------------------------------------------------------------------------ |
-| `allowed_failure`        | A failed job or trigger marked `allow_failure`                                                         |
-| `max_jobs`               | The job came after the `max_jobs` limit                                                                |
-| `no_downstream_pipeline` | A trigger job in a searched status that started no pipeline; its `failure_reason` tells why            |
-| `downstream_depth`       | A trigger job more than two levels below the searched pipeline                                         |
-| `downstream_unreadable`  | The triggered pipeline could not be listed, for example in another project; `error` gives the response |
-| `not_found`              | A `resume` entry whose job the pipeline no longer lists                                                |
+| `reason`                  | Meaning                                                                                                          |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `allowed_failure`         | A failed job or trigger marked `allow_failure`                                                                   |
+| `max_jobs`                | The job came after the `max_jobs` limit                                                                          |
+| `no_downstream_pipeline`  | A trigger job in a searched status that started no pipeline; its `failure_reason` tells why                      |
+| `downstream_depth`        | A trigger job more than two levels below the searched pipeline                                                   |
+| `downstream_unreadable`   | The triggered pipeline could not be listed, for example in another project; `error` gives the response           |
+| `downstream_out_of_scope` | The triggered pipeline is in a project outside `GITLAB_ALLOWED_PROJECT_IDS` or the working scope; it is not read |
+| `not_found`               | A `resume` entry whose job the pipeline no longer lists                                                          |
 
 `listing_complete` is false when the `max_jobs` limit stopped the listing, or a
 listing failed, before every reachable job was seen. When the trigger jobs of a

@@ -226,21 +226,23 @@ With `pipeline_id` instead of `job_id`, `log_grep` answers "why did this pipelin
 fail" in one call: it lists the pipeline's jobs and searches their logs. Without
 `patterns`, the `failures` preset is used. The two IDs are mutually exclusive.
 
-| Parameter                  | Description                                                                               |
-| -------------------------- | ----------------------------------------------------------------------------------------- |
-| `job_scope`                | Statuses of the jobs to search, default `["failed"]`                                      |
-| `include_downstream`       | Follow trigger jobs into child and multi-project pipelines, two levels down; default true |
-| `include_allowed_failures` | Also search failed jobs marked `allow_failure`; default false                             |
-| `max_jobs`                 | Jobs to search, default 10, maximum 20                                                    |
-| `resume`                   | The `resume` list of a previous result, to continue where it stopped                      |
+| Parameter                  | Description                                                                                  |
+| -------------------------- | -------------------------------------------------------------------------------------------- |
+| `job_scope`                | Statuses of the jobs to search, default `["failed"]`                                         |
+| `include_downstream`       | Follow trigger jobs into child and multi-project pipelines, two levels down; default true    |
+| `include_allowed_failures` | Also search failed jobs and follow failed trigger jobs marked `allow_failure`; default false |
+| `max_jobs`                 | Jobs to search, default 10, maximum 20                                                       |
+| `resume`                   | The `resume` list of a previous result, to continue where it stopped                         |
 
 The other search parameters apply to every job; `max_matches` counts per job.
 `start_line` is not accepted: continue with `resume` instead.
 
 `job_scope` selects the jobs to search, not the trigger jobs to follow: every trigger
-job that started a pipeline is followed, whatever its status. A trigger with the
-default strategy succeeds as soon as its pipeline is created, so the failed jobs of
-a child pipeline are found even when its trigger job is green.
+job that started a pipeline is followed, whatever its status, except a failed trigger
+marked `allow_failure`, which is followed only with `include_allowed_failures` and
+otherwise listed in `jobs_skipped`. A trigger with the default strategy succeeds as
+soon as its pipeline is created, so the failed jobs of a child pipeline are found even
+when its trigger job is green.
 
 ```json
 {

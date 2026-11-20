@@ -366,7 +366,9 @@ const GrepJobLogsSchema = z
       ),
     include_allowed_failures: flexibleBoolean
       .optional()
-      .describe('With pipeline_id: also search failed jobs marked allow_failure (default: false)'),
+      .describe(
+        'With pipeline_id: also search failed jobs and follow failed trigger jobs marked allow_failure (default: false)',
+      ),
     max_jobs: z
       .number()
       .int()

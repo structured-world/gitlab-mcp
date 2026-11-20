@@ -185,8 +185,10 @@ async function discover(
   for (; index < queue.length && !done(); index++) {
     const ref = queue[index];
     const base = `projects/${normalizeProjectId(ref.projectId)}/pipelines/${encodeApiSegment(ref.pipelineId)}`;
+    let read = false;
     try {
       for await (const { rows, more } of pages(`${base}/jobs`, JobRowSchema, jobScope)) {
+        read = true;
         for (const row of rows) take(identity(row, ref), row);
         if (done()) {
           unlisted = more || downstream;
@@ -194,11 +196,20 @@ async function discover(
         }
       }
     } catch (error) {
-      // The searched pipeline must be readable; a triggered one in another project may not be.
-      if (!ref.bridge) throw error;
       gaps = true;
-      skip(ref.bridge, 'downstream_unreadable', message(error));
-      continue;
+      if (read) {
+        // A later page failed: the jobs already listed stay, and the triggers are still read.
+        listingErrors.push({
+          project_id: ref.projectId,
+          pipeline_id: ref.pipelineId,
+          error: message(error),
+        });
+      } else {
+        // The searched pipeline must be readable; a triggered one in another project may not be.
+        if (!ref.bridge) throw error;
+        skip(ref.bridge, 'downstream_unreadable', message(error));
+        continue;
+      }
     }
     if (!downstream || done()) continue;
     try {
@@ -208,7 +219,9 @@ async function discover(
         for (const row of rows) {
           const bridge = identity(row, ref);
           const child = row.downstream_pipeline;
-          if (row.status === 'failed' && row.allow_failure && !allowFailures)
+          // A resume follows every trigger: a job it names may sit behind one that has
+          // since failed as an allowed failure.
+          if (wanted === null && row.status === 'failed' && row.allow_failure && !allowFailures)
             skip(bridge, 'allowed_failure');
           else if (!child) {
             // A manual or skipped trigger has no pipeline yet; only a searched status is news.

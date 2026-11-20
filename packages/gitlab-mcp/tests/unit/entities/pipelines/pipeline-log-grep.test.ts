@@ -65,11 +65,11 @@ const identity = (row: Row, projectId = 'test/project', pipelineId = '100') => (
 
 /**
  * Answer GitLab requests by path: listings from `listings` (one page each, unless a path
- * maps to several pages, or an HTTP error status), filtered by `scope[]` as GitLab does;
- * traces from `traces`; anything else fails the test.
+ * maps to several pages, or an HTTP error status for the listing or for one of its pages),
+ * filtered by `scope[]` as GitLab does; traces from `traces`; anything else fails the test.
  */
 function serve(
-  listings: Record<string, Row[] | Row[][] | number>,
+  listings: Record<string, Row[] | Array<Row[] | number> | number>,
   traces: Record<string, string | number>,
 ): void {
   mockEnhancedFetch.mockImplementation(async (input) => {
@@ -88,14 +88,16 @@ function serve(
         return new Response('[]', { headers: { 'x-next-page': '' } });
       return new Response('{"message":"404 Not found"}', { status: 404, statusText: 'Not Found' });
     }
-    if (typeof listing === 'number')
-      return new Response('{"message":"unavailable"}', { status: listing, statusText: 'Error' });
-    const pages = Array.isArray(listing[0]) ? (listing as Row[][]) : [listing as Row[]];
+    const failure = (status: number) =>
+      new Response('{"message":"unavailable"}', { status, statusText: 'Error' });
+    if (typeof listing === 'number') return failure(listing);
+    const paged = listing.some((entry) => Array.isArray(entry) || typeof entry === 'number');
+    const pages = paged ? (listing as Array<Row[] | number>) : [listing as Row[]];
     const page = Number(url.searchParams.get('page') ?? '1');
     const scope = url.searchParams.getAll('scope[]');
-    const rows = (pages[page - 1] ?? []).filter(
-      (row) => scope.length === 0 || scope.includes(String(row.status)),
-    );
+    const served = pages[page - 1] ?? [];
+    if (typeof served === 'number') return failure(served);
+    const rows = served.filter((row) => scope.length === 0 || scope.includes(String(row.status)));
     return new Response(JSON.stringify(rows), {
       headers: { 'x-next-page': page < pages.length ? String(page + 1) : '' },
     });
@@ -246,6 +248,64 @@ describe('browse_pipelines log_grep with pipeline_id', () => {
       { project_id: 'test/project', pipeline_id: '100', error: expect.stringContaining('503') },
     ]);
     expect(result.listing_complete).toBe(false);
+  });
+
+  // A job listing page failing after earlier pages were read keeps the jobs already listed,
+  // still follows the pipeline's triggers and reports the gap, for the searched pipeline
+  // and a triggered one alike.
+  it('keeps the jobs of pages read before a later listing page fails', async () => {
+    const toChild = bridge(10, { id: 200, project_id: 55 });
+    const toGrandchild = bridge(21, { id: 300, project_id: 55 });
+    serve(
+      {
+        [`${PIPELINE}/jobs`]: [[job(1)], 503],
+        [`${PIPELINE}/bridges`]: [toChild],
+        '/api/v4/projects/55/pipelines/200/jobs': [[job(20)], 502],
+        '/api/v4/projects/55/pipelines/200/bridges': [toGrandchild],
+        '/api/v4/projects/55/pipelines/300/jobs': [job(30)],
+      },
+      { 1: 'error: a\n', 20: 'error: b\n', 30: 'error: c\n' },
+    );
+
+    const result = await grep({});
+
+    expect((result.jobs as Array<{ job_id: string }>).map((entry) => entry.job_id)).toEqual([
+      '1',
+      '20',
+      '30',
+    ]);
+    expect(result.listing_errors).toEqual([
+      { project_id: 'test/project', pipeline_id: '100', error: expect.stringContaining('503') },
+      { project_id: '55', pipeline_id: '200', error: expect.stringContaining('502') },
+    ]);
+    expect(result.jobs_skipped).toEqual([]);
+    expect(result.listing_complete).toBe(false);
+  });
+
+  // The searched pipeline itself must be listable: nothing read means the call fails.
+  it('fails when the first job listing page of the pipeline fails', async () => {
+    serve({ [`${PIPELINE}/jobs`]: [503, [job(1)]] }, {});
+    await expect(grep({})).rejects.toThrow('503');
+  });
+
+  // A trigger marked allow_failure that failed after the first call still leads to the
+  // resumed job inside its pipeline; the cursor is kept, not reported as not found.
+  it('resumes a job behind a trigger that became an allowed failure', async () => {
+    const toChild = bridge(10, { id: 200, project_id: 55 });
+    toChild.allow_failure = true;
+    serve(
+      {
+        [`${PIPELINE}/jobs`]: [],
+        [`${PIPELINE}/bridges`]: [toChild],
+        '/api/v4/projects/55/pipelines/200/jobs': [job(20)],
+      },
+      { 20: 'a\nerror: b\n' },
+    );
+
+    const result = await grep({ resume: [{ job_id: '20', start_line: 1 }] });
+
+    expect(result.jobs).toEqual([expect.objectContaining({ job_id: '20', match_count: 1 })]);
+    expect(result.jobs_skipped).toEqual([]);
   });
 
   // Caller patterns are checked once before the listing and then used for every job.

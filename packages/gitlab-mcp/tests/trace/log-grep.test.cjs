@@ -8,7 +8,9 @@ const { test } = require('node:test');
 
 const client = require.resolve('./grep-client.cjs');
 const MIB = 1024 * 1024;
-const TRACE_MIB = 256;
+// A CI runner scans about 256 MiB of this fixture per 2 s budget, so four times that
+// keeps several budget stops even on a much faster machine.
+const TRACE_MIB = 1024;
 const LINE = 1024;
 const MARKER_EVERY = 4096;
 const MARKER_AT = 7;
@@ -80,7 +82,7 @@ async function runClient(url, mode, options = {}) {
 }
 
 test(
-  'built log_grep: budgeted scans of a 256 MiB trace resume to every match exactly once',
+  'built log_grep: budgeted scans of a 1 GiB trace resume to every match exactly once',
   { timeout: 300000 },
   async (t) => {
     // More source than one 2 s budget can scan; the cursor must lose and repeat nothing.

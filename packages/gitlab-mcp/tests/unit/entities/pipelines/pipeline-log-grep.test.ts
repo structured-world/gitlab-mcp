@@ -345,6 +345,32 @@ describe('browse_pipelines log_grep with pipeline_id', () => {
     expect(requested(/\/projects\/55\/(pipelines|jobs)\//)).toEqual([]);
   });
 
+  // A project lookup that fails on one trigger leaves that trigger unfollowed and the
+  // listing incomplete; the other triggers of the page are still followed.
+  it('follows the other triggers when one project check fails', async () => {
+    const toBroken = bridge(10, { id: 200, project_id: 55 });
+    const toTeam = bridge(11, { id: 300, project_id: 56 });
+    serve(
+      {
+        [`${PIPELINE}/jobs`]: [],
+        [`${PIPELINE}/bridges`]: [toBroken, toTeam],
+        '/api/v4/projects/55': 500,
+        '/api/v4/projects/56': { resource: { path_with_namespace: 'team/child' } },
+        '/api/v4/projects/56/pipelines/300/jobs': [job(30)],
+      },
+      { 30: 'error: child\n' },
+    );
+
+    const scope = new ScopeEnforcer({ projects: ['test/project'], groups: ['team'] });
+    const result = await runInCallScope(scope, () => grep({}));
+
+    expect((result.jobs as Array<{ job_id: string }>).map((entry) => entry.job_id)).toEqual(['30']);
+    expect(result.jobs_skipped).toEqual([
+      { ...identity(toBroken), reason: 'downstream_unreadable', error: expect.any(String) },
+    ]);
+    expect(result.listing_complete).toBe(false);
+  });
+
   // Caller patterns are checked once before the listing and then used for every job.
   it('searches with valid caller patterns', async () => {
     serve({ [`${PIPELINE}/jobs`]: [job(1)] }, { 1: 'ok\ntimed out after 30s\n' });
@@ -532,6 +558,27 @@ describe('browse_pipelines log_grep with pipeline_id', () => {
 
     const first = await grep({});
     expect(first.jobs).toEqual([expect.objectContaining({ job_id: '2' })]);
+  });
+
+  // A trigger retried after the previous call started a new pipeline; the resumed job
+  // still sits in the one the superseded attempt started, which the resume follows too.
+  it('resumes a job behind a trigger that was retried since', async () => {
+    const superseded = { ...bridge(10, { id: 200, project_id: 55 }), retried: true };
+    const latest = bridge(11, { id: 201, project_id: 55 });
+    serve(
+      {
+        [`${PIPELINE}/jobs`]: [],
+        [`${PIPELINE}/bridges`]: [superseded, latest],
+        '/api/v4/projects/55/pipelines/200/jobs': [job(20)],
+        '/api/v4/projects/55/pipelines/201/jobs': [job(21)],
+      },
+      { 20: 'a\nerror: b\n' },
+    );
+
+    const result = await grep({ resume: [{ job_id: '20', start_line: 1 }] });
+
+    expect(result.jobs).toEqual([expect.objectContaining({ job_id: '20', match_count: 1 })]);
+    expect(result.jobs_skipped).toEqual([]);
   });
 
   // A resumed job inside a pipeline that cannot be listed this time is not lost: it stays

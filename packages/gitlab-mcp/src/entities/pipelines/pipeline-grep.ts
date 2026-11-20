@@ -264,10 +264,15 @@ class PipelineDiscovery {
    */
   private async listTriggers(ref: PipelineRef, base: string): Promise<void> {
     try {
-      for await (const { rows } of pages(`${base}/bridges`, BridgeRowSchema, null)) {
+      // A resumed job may sit in a pipeline a since-retried trigger started. The bridges
+      // endpoint does not declare include_retried, but its job finder honours it; an
+      // instance that ignores it lists the latest attempts only, as without it.
+      const listing = pages(`${base}/bridges`, BridgeRowSchema, null, this.wanted !== null);
+      for await (const { rows } of listing) {
         const verdicts = rows.map((row) => this.triggerVerdict(ref, row));
-        // The projects of a page are checked together; its triggers are then taken in order.
-        const allowed = await Promise.all(
+        // The projects of a page are checked together; its triggers are then taken in order,
+        // and a failed check costs only its own trigger.
+        const allowed = await Promise.allSettled(
           rows.map((row, i) =>
             verdicts[i] === null && row.downstream_pipeline
               ? this.inScope(String(row.downstream_pipeline.project_id))
@@ -307,13 +312,17 @@ class PipelineDiscovery {
     ref: PipelineRef,
     row: BridgeRow,
     verdict: TriggerVerdict,
-    allowed: boolean,
+    allowed: PromiseSettledResult<boolean>,
   ): void {
     const bridge = identity(row, ref);
     const child = row.downstream_pipeline;
     if (verdict === 'quiet') return;
     if (verdict !== null) this.skip(bridge, verdict);
-    else if (!allowed || !child) this.skip(bridge, 'downstream_out_of_scope');
+    else if (allowed.status === 'rejected') {
+      // The project could not be checked, so what the trigger leads to is unknown.
+      this.gaps = true;
+      this.skip(bridge, 'downstream_unreadable', message(allowed.reason));
+    } else if (!allowed.value || !child) this.skip(bridge, 'downstream_out_of_scope');
     else
       this.queue.push({
         projectId: String(child.project_id),

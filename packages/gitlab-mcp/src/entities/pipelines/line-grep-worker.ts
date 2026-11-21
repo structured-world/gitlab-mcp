@@ -379,6 +379,9 @@ function timedOut(
     ...(options.section ? { section: last?.section ?? null } : {}),
     ...(options.byteOffsets ? { scanned_bytes: last?.scanned_bytes ?? 0 } : {}),
     ...(options.maxBytes !== undefined ? { scan_limit_reached: false } : {}),
+    ...(last?.partially_searched_lines
+      ? { partially_searched_lines: last.partially_searched_lines }
+      : {}),
   };
 }
 

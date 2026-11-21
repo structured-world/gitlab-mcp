@@ -119,6 +119,8 @@ export interface LineGrepResult {
   scanned_bytes?: number;
   /** With `maxBytes`: the source continues past the searched bytes. */
   scan_limit_reached?: boolean;
+  /** Matched lines longer than 16 KiB, of which only the first 16 KiB was searched. */
+  partially_searched_lines?: number;
 }
 
 /** State after one chunk: hunks closed since the previous report and a safe continuation. */
@@ -131,6 +133,7 @@ export interface LineGrepProgress {
   /** The searched section as far as it is known, so a cut-off scan can still report it. */
   section?: SectionBounds | null;
   scanned_bytes?: number;
+  partially_searched_lines?: number;
 }
 
 // Fragments one logical line may span before the scanner starts a new one.
@@ -412,6 +415,8 @@ export class LineGrepScanner {
   private recorded = 0;
   private lastRecorded = -1;
   private matchCount = 0;
+  // Matched lines that lost bytes to the per-line limit before matching.
+  private partial = 0;
   // After the budget, the open hunk finishes its after-context without new matches.
   private draining = false;
   private stop: StopReason | null = null;
@@ -581,6 +586,7 @@ export class LineGrepScanner {
       exhausted: this.stop !== null,
       ...(this.searchesSection ? { section: (this.sections as SectionTracker).bounds() } : {}),
       ...(this.byteOffsets ? { scanned_bytes: this.scannedBytes } : {}),
+      ...(this.partial > 0 ? { partially_searched_lines: this.partial } : {}),
     };
   }
 
@@ -614,6 +620,7 @@ export class LineGrepScanner {
       ...(this.listsSections ? { sections: (this.sections as SectionTracker).listing() } : {}),
       ...(this.byteOffsets ? { scanned_bytes: this.scannedBytes } : {}),
       ...(this.maxBytes !== Infinity ? { scan_limit_reached: this.stop === 'scan_limit' } : {}),
+      ...(this.partial > 0 ? { partially_searched_lines: this.partial } : {}),
     };
   }
 
@@ -943,6 +950,8 @@ export class LineGrepScanner {
         : (this.matcher as PatternMatcher).match(text);
       isMatch = this.invert ? found.length === 0 : found.length > 0;
       if (!this.invert) hits = found;
+      for (let line = from; line <= last; line++)
+        if (this.ringOmitted[line % this.ringSize] > 0) this.partial++;
     }
     const recorded = this.place(from, isMatch, hits);
     for (let line = from + 1; line <= last && this.stop === null; line++) {

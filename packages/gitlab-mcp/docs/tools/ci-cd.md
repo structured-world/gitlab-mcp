@@ -276,7 +276,9 @@ zero-based `line` and the indexes of the `patterns` it matched; with a preset, t
 preset's index is `preset_index`, after the caller's patterns. Line numbers are the
 same as in `logs`, so `logs` with `start` set to a match reads more around it. Lines
 clipped by the 16 KiB per-line limit are listed in `clipped`; only their first 16 KiB
-is searched.
+is searched. `partially_searched_lines` counts every searched line clipped that way,
+including those in no hunk, so a match past the first 16 KiB of a line may be missing;
+read such a line with `logs`. It is absent when every line was searched whole.
 
 With `section`, matches and their context lines all come from that section, with
 absolute line numbers, and the result reports the section's range in `section`. The
@@ -461,7 +463,10 @@ and searches it on the log search workers.
 `patterns` is required; `before`, `after`, `max_matches`, `invert` and
 `start_line` work as in [Log Search](#log-search). Each stored line is matched and
 returned as is: there is no log rendering, so carriage returns, escape sequences
-and a leading byte order mark stay in the text.
+and a leading byte order mark stay in the text. As in a log search, only the first
+16 KiB of a line is matched and returned; `partially_searched_lines` counts the
+searched lines that are longer, so a file of very long lines (minified JSON, for
+example) is read with `artifact_file` instead.
 
 The result has the fields of a log search (`hunks`, `match_count`, `total_lines`,
 `truncated`, `resume_from`) plus:

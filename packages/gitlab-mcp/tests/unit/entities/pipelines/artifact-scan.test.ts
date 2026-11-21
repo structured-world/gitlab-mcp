@@ -205,6 +205,34 @@ describe('TextValidator', () => {
   });
 });
 
+describe('lines longer than the per-line limit', () => {
+  const LIMIT = 16 * 1024;
+
+  // Only a line's first 16 KiB is matched. A match past it is missed, so the result must say
+  // that lines were searched in part; otherwise an empty result reads as a complete search.
+  it('reports a long line whose match lies past the searched prefix', () => {
+    const source = `ok\n${'x'.repeat(LIMIT)}FAIL\nok\n`;
+    const result = scan(source, {}, 4096);
+    expect(result.match_count).toBe(0);
+    expect(result.truncated).toBeNull();
+    expect(result.partially_searched_lines).toBe(1);
+  });
+
+  // Lines before start_line are context only, never matched, so they are not counted.
+  it('counts only the lines it matched', () => {
+    const long = 'x'.repeat(LIMIT + 1);
+    const result = scan(`${long}\n${long}\nok\n`, { startLine: 1, before: 1 }, 4096);
+    expect(result.partially_searched_lines).toBe(1);
+  });
+
+  // A search with no long line keeps its result unchanged.
+  it('omits the count when every line was searched whole', () => {
+    const result = scan(`${'x'.repeat(LIMIT)}\nFAIL\n`, {}, 4096);
+    expect(result).not.toHaveProperty('partially_searched_lines');
+    expect(result.match_count).toBe(1);
+  });
+});
+
 // The worker must report a refusal by type, so the caller can answer with not_text.
 it('replies refused for content that is not text', () => {
   const replies: GrepReply[] = [];

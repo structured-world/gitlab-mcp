@@ -324,8 +324,74 @@ describe('log section listing', () => {
 
     // The markers queued for one logical line are bounded; the overflow is reported.
     it('reports a line with more markers than one line may queue', () => {
-      const many = Array.from({ length: MAX_LINE_MARKERS + 1 }, (_, i) => end(i, `m${i}`));
+      const many = Array.from({ length: MAX_LINE_MARKERS + 3 }, (_, i) => end(i, `m${i}`));
       expect(list(`x\n${LONG}${many.join('')}`, 65_536)?.unread_from_line).toBe(1);
+    });
+
+    // An escape running through more continuation lines than are followed has no placeable
+    // end: reported, and the lines after it are read normally.
+    it('reports an escape spanning too many joined lines', () => {
+      const lines = [`${stamp} 00O ${ESC}[1`];
+      for (let i = 0; i < 1100; i++) lines.push(`${stamp} 00O+2`);
+      lines.push(`${start(1, 'after')}x`);
+      expect(list(lines.join('\n'), 65_536)).toMatchObject({
+        unread_from_line: 0,
+        sections: [{ name: 'after', start_line: 1101 }],
+      });
+    });
+
+    // An escape cut by a real line end ends there; the next line is read on its own.
+    it('ends an escape cut by a line end at that line', () => {
+      const log = [`${start(1, 's')}x${ESC}[12`, `${end(2, 's')}`, 'later'].join('\n');
+      expect(list(log)?.sections).toEqual([
+        expect.objectContaining({ end_line: 1, terminated: true }),
+      ]);
+    });
+
+    // Options split right after a comma by a chunk boundary are still one marker.
+    it('reads options cut after a comma', () => {
+      const log = `${start(1, 't', '[a=b, collapsed=true]')}x\n${end(2, 't')}`;
+      expect(list(log, 1)?.sections).toEqual([
+        expect.objectContaining({ name: 't', collapsed: true, end_line: 1 }),
+      ]);
+    });
+
+    // A whole candidate in one piece that is no marker is text; markers after it still count.
+    it('skips a candidate that is no marker within one piece', () => {
+      const log = [`${start(1, 's')}section_bogus x`, end(2, 's')].join('\n');
+      expect(list(log, 4096)?.sections).toEqual([
+        expect.objectContaining({ end_line: 1, terminated: true }),
+      ]);
+    });
+
+    // Line 0's byte order mark is dropped before its timestamp header; a byte that only starts
+    // like one stays text. Either way the marker after it is read.
+    it.each([
+      ['a byte order mark', '﻿'],
+      ['a byte that only starts like one', ''],
+    ])('reads line 0 after %s', (_label, lead) => {
+      const log = `${lead}${stamp} 00O ${start(1, 's')}x\n${end(2, 's')}`;
+      expect(list(log, 4096)?.sections).toEqual([
+        expect.objectContaining({ name: 's', end_line: 1, terminated: true }),
+      ]);
+    });
+
+    // One line can hold a range a token from the line before consumes and one its own token
+    // crossing the clip consumes; both are hidden, in order.
+    it('hides both ranges a line can lose to tokens across clips', () => {
+      const log = [
+        `${stamp} 00O ${start(1, 's')}x`,
+        `${stamp} 00O ${LONG}section_e`,
+        `${stamp} 00O+nd:2:s\r${ESC}[0Kvisible ${'b'.repeat(16_384 - 32 - 22)}${start(3, 't')}y`,
+        `${stamp} 00O later`,
+      ].join('\n');
+      expect(list(log, 4096)?.sections.map((s) => [s.name, s.start_line, s.end_line])).toEqual([
+        ['s', 0, 1],
+        ['t', 2, 3],
+      ]);
+      // 'bsec' would match the kept start of the marker cut by the clip if it were shown.
+      const result = scan(log, { patterns: ['visible', 'bsec'], listSections: true }, 4096);
+      expect(result.hunks.flatMap((hunk) => hunk.matches)).toEqual([{ line: 1, patterns: [0] }]);
     });
 
     // The bound counts each logical line on its own: the markers of the line before do not
@@ -397,6 +463,32 @@ describe('log section listing', () => {
         sections: [{ name: 's', end_line: 1, terminated: true }],
       });
     });
+  });
+
+  // A logical line with a clipped first fragment and short later ones: only the clipped gap
+  // splits the matched text, the joins between short fragments do not.
+  it('matches across unclipped joins in a group with a clipped fragment', () => {
+    const stamp = '2026-11-18T10:00:00.123456Z';
+    const log = [
+      `${stamp} 00O ${'a'.repeat(17_000)}`,
+      `${stamp} 00O+err`,
+      `${stamp} 00O+or here`,
+      `${stamp} 00O done`,
+    ].join('\n');
+    const result = scan(log, { patterns: ['error here'] }, 4096);
+    expect(result.hunks.flatMap((hunk) => hunk.matches)).toEqual([{ line: 0, patterns: [0] }]);
+  });
+
+  // An unknown name lists repeated names with their counts and says when the listing stopped.
+  it('names repeated and uncounted sections when the requested one is missing', () => {
+    const log = Array.from({ length: MAX_LOG_SECTIONS + 2 }, (_, i) =>
+      start(i, i < 2 ? 'twice' : `s${i}`),
+    ).join('\n');
+    expect(() =>
+      scan(log, { patterns: ['x'], section: { name: 'missing', index: 0 } }, 65_536),
+    ).toThrow(
+      /^Section 'missing' not found; sections: twice \(2\), s2, .*, and sections past the first 500$/,
+    );
   });
 
   it('reads collapsed only from its own option', () => {

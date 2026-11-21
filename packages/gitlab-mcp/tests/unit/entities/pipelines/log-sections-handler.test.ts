@@ -165,6 +165,20 @@ describe('browse_pipelines logs with section', () => {
     expect(read.pulled()).toBeLessThan(LOG.length);
   });
 
+  // A section line past the per-line limit is clipped on the page, and the page says so.
+  it('reports clipped lines on a section page', async () => {
+    const log = [start(1, 'long'), 'x'.repeat(17_000), end(2, 'long')].join('\n');
+    serve(log, log);
+    const page = (await browse({ action: 'logs', section: 'long', start: 0 })) as {
+      trace: string;
+      truncation?: { lines: Array<{ line: number }> };
+    };
+    expect(page.trace.split('\n')[0]).toBe(
+      '[LOG CONTENT TRUNCATED: 1 source lines are incomplete due to byte limits. See truncation.lines; line pagination cannot recover omitted bytes.]',
+    );
+    expect(page.truncation?.lines.map((line) => line.line)).toEqual([1]);
+  });
+
   it('names the available sections for an unknown section', async () => {
     serve(LOG);
     await expect(browse({ action: 'logs', section: 'build' })).rejects.toThrow(

@@ -159,10 +159,11 @@ sections are listed; `sections_truncated` is true when the log has more.
 `complete` is false, and `total_lines` null, when the processing budget stopped the
 scan; sections still open then have no `end_line`. Markers are read from every byte
 of the log, also past the 16 KiB of a line that `logs` returns, and across timestamped
-fragments the runner split. A marker the scan cannot read (one longer than 16 KiB, or
-more than 4096 in one line) sets `sections_unread_from_line`; ranges from that line on
-may be wrong, and a `section` whose bounds it affects returns an error instead of a
-guess.
+fragments the runner split. A marker the scan cannot read sets
+`sections_unread_from_line`: one longer than 16 KiB, more than 4096 markers in one
+logical line (a line together with its timestamped continuations), or a color sequence
+left open across more than 1024 joined lines. Ranges from that line on may be wrong,
+and a `section` whose bounds it affects returns an error instead of a guess.
 
 Pass `section` to `logs` or `log_grep` to work inside one section, by its exact name;
 `section_index` picks a repeated one. An unknown name, or an index past the last

@@ -322,6 +322,21 @@ describe('log section listing', () => {
       ]);
     });
 
+    // A marker longer than the stream can hold is unread however the trace is chunked, and
+    // one that fits is read however it is chunked.
+    it.each([4096, 65_536])('applies one marker length limit in chunks of %i', (size) => {
+      // Past a line's first bytes, which are read apart to find its timestamp header.
+      const marker = (name: string) => `x\n${'p'.repeat(40)}${start(1, name)}y\nz`;
+      expect(list(marker('n'.repeat(16_385)), size)).toEqual({
+        truncated: false,
+        unread_from_line: 1,
+        sections: [],
+      });
+      expect(list(marker('n'.repeat(16_000)), size)?.sections).toEqual([
+        expect.objectContaining({ start_line: 1 }),
+      ]);
+    });
+
     // The markers queued for one logical line are bounded; the overflow is reported.
     it('reports a line with more markers than one line may queue', () => {
       const many = Array.from({ length: MAX_LINE_MARKERS + 3 }, (_, i) => end(i, `m${i}`));
@@ -624,6 +639,19 @@ describe('log search within a section', () => {
       });
       expect(result.hunks.map((hunk) => hunk.matches.map((match) => match.line))).toEqual([[1]]);
       expect(result.match_count_complete).toBe(true);
+    });
+
+    // The safe continuation of an unfinished logical line never goes back past start_line,
+    // though its head lies before it: a resumed page must not report excluded lines.
+    it('keeps the safe continuation at or after start_line', () => {
+      const lines = [`${start(1, 's')}x`, ...Array.from({ length: 19 }, () => 'plain')];
+      lines.push(`${stamp} 00O head`);
+      for (let i = 0; i < 25; i++) lines.push(`${stamp} 00O+part`);
+      const scanner = new LineGrepScanner(
+        options({ patterns: ['part'], startLine: 30, section: { name: 's', index: 0 } }),
+      );
+      scanner.push(new TextEncoder().encode(`${lines.join('\n')}\n${stamp} 00O+more`));
+      expect(scanner.progress().safe_resume).toBe(30);
     });
 
     it('does not match the fragment before the section start', () => {

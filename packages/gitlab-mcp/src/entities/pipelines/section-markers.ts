@@ -429,7 +429,11 @@ export class MarkerStream {
       this.hold(src, at, to, base, line);
       return -1;
     }
-    this.accept(src, line, base + at, line, base + end);
+    // A marker split across reads is held up to HELD_BYTES; one longer is unread in one read too.
+    if (end - at > HELD_BYTES) {
+      this.markUnread(line);
+      this.finishToken(line, base + at, line, base + end);
+    } else this.accept(src, line, base + at, line, base + end);
     return end;
   }
 

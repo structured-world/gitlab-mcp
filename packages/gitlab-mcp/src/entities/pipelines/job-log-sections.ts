@@ -1,6 +1,6 @@
 import { grepStream } from './line-grep-worker';
 import type { LineGrepOptions } from './line-grep';
-import type { LogSection, SectionBounds, SectionListing, SectionTarget } from './log-sections';
+import type { LogSection, SectionBounds, SectionTarget } from './log-sections';
 import { LOG_GREP_BUDGET_MS } from './pipeline-grep';
 import { readTracePage, TRACE_PAGE_BYTES, type TracePage } from './trace';
 import { openTrace } from './trace-open';
@@ -41,8 +41,12 @@ export async function listLogSections(input: SectionsInput): Promise<LogSections
   const result = await grepStream(markerScan({ listSections: true }), () =>
     openTrace(input.project_id, input.job_id),
   );
-  // A listing scan always reports its sections.
-  const listing = result.sections as SectionListing;
+  // A scan killed for outrunning its time keeps no section state; any other reports them.
+  const listing = result.sections;
+  if (!listing)
+    throw new Error(
+      'The log sections could not be read within the processing time limit; read the log with logs instead',
+    );
   return {
     sections: listing.sections,
     sections_truncated: listing.truncated,

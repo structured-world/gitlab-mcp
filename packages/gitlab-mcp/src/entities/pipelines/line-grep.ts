@@ -114,6 +114,8 @@ export interface LineGrepProgress {
   scanned_lines: number;
   safe_resume: number;
   exhausted: boolean;
+  /** The searched section as far as it is known, so a cut-off scan can still report it. */
+  section?: SectionBounds | null;
 }
 
 // Fragments one logical line may span before the scanner starts a new one.
@@ -535,6 +537,7 @@ export class LineGrepScanner {
       scanned_lines: this.line,
       safe_resume: this.resumePoint(true),
       exhausted: this.stop !== null,
+      ...(this.searchesSection ? { section: (this.sections as SectionTracker).bounds() } : {}),
     };
   }
 
@@ -623,9 +626,11 @@ export class LineGrepScanner {
     else if (undelivered && this.pending !== null) resume = this.pending.matches[0].line;
     else if (this.matchCount > this.recorded) resume = this.lastRecorded + 1;
     else resume = this.stop === null ? this.line : this.stopLine;
-    // An unfinished logical line has not been matched yet; one headed before start_line
-    // belongs to an earlier page and is never matched here.
-    return this.groupOpen && this.groupMatchable ? Math.min(resume, this.groupFirst) : resume;
+    // An unfinished logical line has not been matched yet. Its match is reported on its head,
+    // or in a searched section on its first line inside the section, and never before
+    // start_line, so a continuation never goes back past start_line.
+    if (!this.groupOpen || !this.groupMatchable) return resume;
+    return Math.min(resume, Math.max(this.groupFirst, this.startLine));
   }
 
   private halt(reason: StopReason): void {

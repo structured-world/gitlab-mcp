@@ -194,6 +194,48 @@ describe('grepStream', () => {
     }
   });
 
+  // A section search cut off by a stuck worker still reports the section as far as it is known.
+  it('keeps the searched section in a partial result when a worker stops answering', async () => {
+    jest.useFakeTimers({ doNotFake: ['setImmediate', 'queueMicrotask', 'nextTick'] });
+    try {
+      const lines = [
+        'section_start:1:s\r\x1b[0Kopen',
+        'error 1',
+        'ok 2',
+        'ok 3',
+        'error 4',
+        'ok 5',
+      ];
+      const pending = grepStream(
+        options({ budgetMs: 10, section: { name: 's', index: 0 } }),
+        async () => {
+          mockWorkers[0].stallAfterChunks = 5;
+          let index = 0;
+          return new ReadableStream({
+            type: 'bytes',
+            pull(controller) {
+              if (index === lines.length) {
+                controller.close();
+                controller.byobRequest?.respond(0);
+                return;
+              }
+              controller.enqueue(new TextEncoder().encode(`${lines[index++]}\n`));
+            },
+          });
+        },
+      );
+      await waitFor(() => (mockWorkers[0]?.chunks ?? 0) >= 6, pending);
+      await jest.advanceTimersByTimeAsync(2010);
+      const result = await pending;
+      expect(result).toMatchObject({
+        truncated: 'worker_timeout',
+        section: { name: 's', index: 0, start_line: 0, end_line: null },
+      });
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   // Capacity is fixed per process; the extra caller fails fast instead of queueing.
   it('fails fast at capacity and recovers when a lease ends', async () => {
     const gates: Array<() => void> = [];

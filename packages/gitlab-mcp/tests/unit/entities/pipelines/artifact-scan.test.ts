@@ -73,6 +73,22 @@ describe('byte offsets of hunks', () => {
     expect(result.hunks).toMatchObject([{ start_line: 1, byte_offset: 41, lines: ['FAIL'] }]);
   });
 
+  // A final unterminated line the budget leaves unread is not counted as scanned. The budget
+  // is checked every 256 lines, so it falls due exactly on the 257th, unterminated line.
+  it('leaves an unterminated last line out of scanned bytes when the budget stops it', () => {
+    const spent = new Int32Array(1);
+    const scanner = new LineGrepScanner(options({ spent }));
+    scanner.push(Buffer.from(`${'ok\n'.repeat(256)}FAIL`));
+    // Far past the 60 s budget, with room left for the charge finish adds.
+    Atomics.store(spent, 0, 2 ** 30);
+    expect(scanner.finish()).toMatchObject({
+      truncated: 'budget',
+      scanned_lines: 256,
+      scanned_bytes: 3 * 256,
+      match_count: 0,
+    });
+  });
+
   // Without byteOffsets (log_grep), neither field appears.
   it('adds no byte fields unless asked', () => {
     const result = scan('FAIL\n', { byteOffsets: false });
@@ -178,6 +194,14 @@ describe('TextValidator', () => {
     validator.push(Buffer.from([0xf0, 0x9f]));
     validator.push(Buffer.from([0x98]));
     expect(() => validator.end()).toThrow('not valid UTF-8');
+  });
+
+  // A two-byte character split by a chunk boundary is held back and accepted once complete.
+  it('accepts a two-byte character split across chunks', () => {
+    const validator = new TextValidator();
+    validator.push(Buffer.from([0x41, 0xc3]));
+    validator.push(Buffer.from([0xa9, 0x0a]));
+    expect(() => validator.end()).not.toThrow();
   });
 });
 

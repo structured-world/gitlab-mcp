@@ -194,6 +194,44 @@ describe('grepStream', () => {
     }
   });
 
+  // An artifact search cut off by a stuck worker reports the bytes it scanned, and that the
+  // scan limit was not what stopped it.
+  it('reports scanned bytes in a partial result when a worker stops answering', async () => {
+    jest.useFakeTimers({ doNotFake: ['setImmediate', 'queueMicrotask', 'nextTick'] });
+    try {
+      const lines = ['error 0', 'ok 1', 'ok 2', 'ok 3', 'error 4', 'ok 5'];
+      const pending = grepStream(
+        options({ budgetMs: 10, normalize: false, byteOffsets: true, maxBytes: 1000 }),
+        async () => {
+          mockWorkers[0].stallAfterChunks = 5;
+          let index = 0;
+          return new ReadableStream({
+            type: 'bytes',
+            pull(controller) {
+              if (index === lines.length) {
+                controller.close();
+                controller.byobRequest?.respond(0);
+                return;
+              }
+              controller.enqueue(new TextEncoder().encode(`${lines[index++]}\n`));
+            },
+          });
+        },
+      );
+      await waitFor(() => (mockWorkers[0]?.chunks ?? 0) >= 6, pending);
+      await jest.advanceTimersByTimeAsync(2010);
+      expect(await pending).toMatchObject({
+        truncated: 'worker_timeout',
+        scanned_lines: 5,
+        // The five scanned lines with their newlines.
+        scanned_bytes: 31,
+        scan_limit_reached: false,
+      });
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   // A section search cut off by a stuck worker still reports the section as far as it is known.
   it('keeps the searched section in a partial result when a worker stops answering', async () => {
     jest.useFakeTimers({ doNotFake: ['setImmediate', 'queueMicrotask', 'nextTick'] });

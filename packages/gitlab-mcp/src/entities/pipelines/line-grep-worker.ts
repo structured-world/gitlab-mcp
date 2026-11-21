@@ -343,6 +343,7 @@ function chunkReader(body: ReadableStream<Uint8Array>): ChunkReader {
       let size = 0;
       while (size < buffer.byteLength && !ended) {
         if (!rest?.length) {
+          // A stream yields its chunks one after another; reads cannot run concurrently.
           const { value, done } = await reader.read();
           if (done) ended = true;
           else rest = value;
@@ -357,6 +358,27 @@ function chunkReader(body: ReadableStream<Uint8Array>): ChunkReader {
     },
     cancel: () => reader.cancel(),
     release: () => reader.releaseLock(),
+  };
+}
+
+/** One line outran the budget: report what was delivered and where to continue. */
+function timedOut(
+  options: LineGrepOptions,
+  hunks: GrepHunk[],
+  last: LineGrepProgress | undefined,
+): LineGrepResult {
+  return {
+    hunks,
+    match_count: last?.match_count ?? 0,
+    match_count_complete: false,
+    scanned_lines: last?.scanned_lines ?? 0,
+    total_lines: null,
+    truncated: 'worker_timeout',
+    resume_from: last?.safe_resume ?? options.startLine,
+    ...(options.preset ? { preset_index: options.patterns.length } : {}),
+    ...(options.section ? { section: last?.section ?? null } : {}),
+    ...(options.byteOffsets ? { scanned_bytes: last?.scanned_bytes ?? 0 } : {}),
+    ...(options.maxBytes !== undefined ? { scan_limit_reached: false } : {}),
   };
 }
 
@@ -396,20 +418,7 @@ async function pump(
     // The killed worker never charged the stuck line; the wait alone exceeds the budget, so
     // no further scan of the call starts.
     if (options.spent) Atomics.add(options.spent, 0, timeout * 1000);
-    // One line outran the budget: report what was delivered and where to continue.
-    return {
-      hunks,
-      match_count: last?.match_count ?? 0,
-      match_count_complete: false,
-      scanned_lines: last?.scanned_lines ?? 0,
-      total_lines: null,
-      truncated: 'worker_timeout',
-      resume_from: last?.safe_resume ?? options.startLine,
-      ...(options.preset ? { preset_index: options.patterns.length } : {}),
-      ...(options.section ? { section: last?.section ?? null } : {}),
-      ...(options.byteOffsets ? { scanned_bytes: last?.scanned_bytes ?? 0 } : {}),
-      ...(options.maxBytes !== undefined ? { scan_limit_reached: false } : {}),
-    };
+    return timedOut(options, hunks, last);
   } finally {
     // Cancelling only stops the transfer; a read failure already surfaced from read(),
     // so a cancel failure must not replace a finished result or that original error.

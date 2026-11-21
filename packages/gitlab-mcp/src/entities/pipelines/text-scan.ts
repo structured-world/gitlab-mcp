@@ -39,6 +39,8 @@ export class TextValidator {
   private pendingWidth = 0;
 
   push(bytes: Buffer): void {
+    // An indexed loop: for...of over a Buffer runs through the iterator protocol and scans
+    // several times slower, on every byte of up to 20 MiB.
     for (let index = 0; index < bytes.length; index++) {
       const byte = bytes[index];
       if (byte < 32 && byte !== 9 && byte !== 10 && byte !== 12 && byte !== 13 && byte !== 27)

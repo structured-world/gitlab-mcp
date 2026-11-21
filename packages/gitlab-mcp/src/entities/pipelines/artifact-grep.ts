@@ -61,8 +61,9 @@ export async function grepArtifactFile(input: ArtifactGrepInput): Promise<Artifa
         assertDownloadStatus(response, external, target, 'artifact_grep');
         assertTextResponse(response);
         if (response.status === 416) return emptyFile(response);
-        if (response.status === 206) assertLeadingRange(response.headers.get('content-range'));
-        return response.body;
+        if (response.status !== 206) return response.body;
+        const length = assertLeadingRange(response.headers.get('content-range'));
+        return response.body && exactLength(response.body, length);
       },
     );
     return { ...target, ...result };
@@ -92,13 +93,41 @@ function emptyFile(response: Response): ReadableStream<Uint8Array> | null {
 /**
  * The partial response must start the file and reach as far as was asked or the file goes,
  * since bytes a shorter answer leaves out would go unsearched. RFC 9110 section 15.3.7
- * lets a server send less than the requested range.
+ * lets a server send less than the requested range; with an unknown total (`/*`) only the
+ * full range shows how far the file goes. Returns the announced body length.
  */
-function assertLeadingRange(value: string | null): void {
+export function assertLeadingRange(value: string | null): number {
   const { length, total } = readRange(value, 0, ARTIFACT_GREP_MAX_BYTES - 3);
-  if (total !== null && length < Math.min(total, ARTIFACT_GREP_MAX_BYTES + 1))
+  const requested = ARTIFACT_GREP_MAX_BYTES + 1;
+  if (length < (total === null ? requested : Math.min(total, requested)))
     throw new ArtifactReadError(
       'invalid_range',
       'Artifact server returned less of the file than requested',
     );
+  return length;
+}
+
+/**
+ * The body must carry exactly the bytes its Content-Range announces (RFC 9110 section 14.4);
+ * a body ending early would otherwise report a complete search of bytes never received.
+ */
+function exactLength(body: ReadableStream<Uint8Array>, length: number): ReadableStream<Uint8Array> {
+  let received = 0;
+  return body.pipeThrough(
+    new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, controller) {
+        received += chunk.byteLength;
+        if (received > length)
+          throw new ArtifactReadError('invalid_range', 'Artifact response exceeds Content-Range');
+        controller.enqueue(chunk);
+      },
+      flush() {
+        if (received < length)
+          throw new ArtifactReadError(
+            'invalid_range',
+            'Artifact response is shorter than Content-Range',
+          );
+      },
+    }),
+  );
 }

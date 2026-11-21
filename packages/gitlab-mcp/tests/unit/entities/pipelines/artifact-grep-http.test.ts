@@ -11,6 +11,13 @@ jest.mock('../../../../src/logger', () => ({
   logWarn: (...args: unknown[]) => mockLogs.push(args),
 }));
 
+// These tests check where the scan stops by size; a 2 s wall-clock budget would make a
+// 20 MiB scan on a loaded machine stop on time instead.
+jest.mock('../../../../src/entities/pipelines/pipeline-grep', () => ({
+  ...jest.requireActual('../../../../src/entities/pipelines/pipeline-grep'),
+  LOG_GREP_BUDGET_MS: 60_000,
+}));
+
 const MIB = 1024 * 1024;
 const EURO = String.fromCodePoint(0x20ac);
 // Multibyte text on both sides of the 64 KiB read size, so matches span transport chunks.
@@ -89,6 +96,21 @@ const source = createServer((request, response) => {
     response.end('FAIL');
   } else if (file === 'short-range.txt') {
     response.writeHead(206, { 'Content-Range': `bytes 0-4/${report.length}` });
+    response.end(report.subarray(0, 5));
+  } else if (file === 'short-body.txt') {
+    // Announces the whole file but closes after five bytes.
+    response.writeHead(206, { 'Content-Range': `bytes 0-${report.length - 1}/${report.length}` });
+    response.end(report.subarray(0, 5));
+  } else if (file === 'long-body.txt') {
+    // Announces a five-byte file but sends the whole report.
+    response.writeHead(206, { 'Content-Range': 'bytes 0-4/5' });
+    response.end(report);
+  } else if (file === 'unsatisfied.txt') {
+    // A range from byte 0 refused for a file that is not empty.
+    response.writeHead(416, { 'Content-Range': 'bytes */10' });
+    response.end();
+  } else if (file === 'unknown-total.txt') {
+    response.writeHead(206, { 'Content-Range': 'bytes 0-4/*' });
     response.end(report.subarray(0, 5));
   } else if (file === 'endless.txt') serveEndless(response);
   else if (/^(403|404)\.txt$/.test(file)) {
@@ -286,6 +308,31 @@ it('searches an empty file', async () => {
 // A partial response shorter than the file would leave bytes unsearched.
 it('refuses a range shorter than requested', async () => {
   await expect(grep('short-range.txt')).rejects.toMatchObject({
+    structuredError: { reason: 'invalid_range', action: 'artifact_grep' },
+  });
+});
+
+// A body that ends before or runs past its Content-Range is not the announced file: a short
+// one would be reported as a complete search of bytes never received.
+it.each(['short-body.txt', 'long-body.txt'])(
+  'refuses a body that disagrees with its Content-Range (%s)',
+  async (path) => {
+    await expect(grep(path)).rejects.toMatchObject({
+      structuredError: { reason: 'invalid_range', action: 'artifact_grep' },
+    });
+  },
+);
+
+// Only an empty file cannot satisfy a range from byte 0; any other 416 is a broken answer.
+it('refuses an unsatisfied range for a file that is not empty', async () => {
+  await expect(grep('unsatisfied.txt')).rejects.toMatchObject({
+    structuredError: { reason: 'invalid_range', action: 'artifact_grep' },
+  });
+});
+
+// With an unknown total, a range shorter than requested may end anywhere in the file.
+it('refuses a short range of unknown total', async () => {
+  await expect(grep('unknown-total.txt')).rejects.toMatchObject({
     structuredError: { reason: 'invalid_range', action: 'artifact_grep' },
   });
 });

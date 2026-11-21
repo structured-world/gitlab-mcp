@@ -590,26 +590,13 @@ export class LineGrepScanner {
    */
   finish(): LineGrepResult {
     this.charged = performance.now();
-    // The log ends here: a token still open ends with it, and so does a character.
-    this.stream?.end();
-    if (this.stop === null) this.text?.end();
-    if (this.stop === null) {
-      const scanned = this.line;
-      this.finishLine(this.carry, 0, this.carryLength, this.lineBytes);
-      if (this.line > scanned) this.scannedBytes = this.received;
-    }
-    if (this.stop === null) this.closeGroup();
+    this.endSource();
     this.closePending();
     this.charge();
     // The end of the searched section is the end of the search, not a cut.
     const cut = this.stop === 'budget' || this.stop === 'output' || this.stop === 'scan_limit';
     this.sections?.finish(this.stop === null ? this.line - 1 : null);
-    let truncated: GrepTruncation | null = null;
-    if (this.stop === 'output') truncated = 'output_limit';
-    else if (this.stop === 'budget') truncated = 'budget';
-    // Matches seen while finishing the after-context at EOF were held back by the budget.
-    else if (this.matchCount > this.recorded) truncated = this.draining ? 'budget' : 'max_matches';
-    else if (this.stop === 'scan_limit') truncated = 'scan_limit';
+    const truncated = this.truncation();
     const hunks = this.outbox;
     this.outbox = [];
     return {
@@ -628,6 +615,26 @@ export class LineGrepScanner {
       ...(this.byteOffsets ? { scanned_bytes: this.scannedBytes } : {}),
       ...(this.maxBytes !== Infinity ? { scan_limit_reached: this.stop === 'scan_limit' } : {}),
     };
+  }
+
+  /** The source ended: a token still open ends with it, and so do a character and a line. */
+  private endSource(): void {
+    this.stream?.end();
+    if (this.stop !== null) return;
+    this.text?.end();
+    const scanned = this.line;
+    this.finishLine(this.carry, 0, this.carryLength, this.lineBytes);
+    if (this.line > scanned) this.scannedBytes = this.received;
+    if (this.stop === null) this.closeGroup();
+  }
+
+  private truncation(): GrepTruncation | null {
+    if (this.stop === 'output') return 'output_limit';
+    if (this.stop === 'budget') return 'budget';
+    // Matches seen while finishing the after-context at EOF were held back by the budget.
+    if (this.matchCount > this.recorded) return this.draining ? 'budget' : 'max_matches';
+    if (this.stop === 'scan_limit') return 'scan_limit';
+    return null;
   }
 
   /** Applies the markers read on lines up to `line`, in log order. */

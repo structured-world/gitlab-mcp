@@ -51,3 +51,40 @@ it('reports a missing section from the worker thread with the available names', 
     ),
   ).rejects.toThrow("Section 'build' not found; sections: step_script");
 }, 30_000);
+
+// A stream that is not a byte stream (the raw artifact download) cannot be read in place.
+// Its chunks, here 3 bytes cutting through multibyte characters and lines, are copied
+// into the transport buffer unchanged and in order.
+it('searches a stream that is not a byte stream', async () => {
+  const text = `ok\n${'€'.repeat(40000)}\nFAIL €\nok\n`;
+  const bytes = Buffer.from(text);
+  let offset = 0;
+  const body = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      if (offset >= bytes.length) return controller.close();
+      controller.enqueue(bytes.subarray(offset, offset + 3));
+      offset += 3;
+    },
+  });
+  const result = await grepStream(
+    {
+      patterns: ['^FAIL'],
+      before: 0,
+      after: 0,
+      maxMatches: 50,
+      invert: false,
+      startLine: 0,
+      normalize: false,
+      budgetMs: 2000,
+      outputBytes: 1 << 20,
+      byteOffsets: true,
+      requireText: true,
+    },
+    async () => body,
+  );
+  expect(result).toMatchObject({
+    hunks: [{ start_line: 2, lines: ['FAIL €'], byte_offset: 120004 }],
+    total_lines: 5,
+    scanned_bytes: bytes.length,
+  });
+}, 30_000);

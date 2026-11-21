@@ -2,6 +2,7 @@ import { performance } from 'node:perf_hooks';
 import type { MessagePort } from 'node:worker_threads';
 import { compilePatterns, type PatternMatcher } from '../../utils/re2-compile';
 import { PatternError } from '../../utils/re2-pattern';
+import { NotTextError, TextValidator } from './text-scan';
 import { decodeFragment, TRACE_LINE_BYTES } from './trace';
 import {
   SectionTracker,
@@ -70,6 +71,12 @@ export interface LineGrepOptions {
   section?: SectionTarget;
   /** Report every section of the log with its line range. */
   listSections?: boolean;
+  /** Report each hunk's source byte offset and the bytes scanned. */
+  byteOffsets?: boolean;
+  /** Source bytes searched at most; a line ending past them stops the scan before it. */
+  maxBytes?: number;
+  /** Refuse binary or non-UTF-8 content with NotTextError. */
+  requireText?: boolean;
 }
 
 export interface GrepMatch {
@@ -87,9 +94,12 @@ export interface GrepHunk {
   timestamps?: Array<string | null>;
   /** Lines whose text lost bytes to the 16 KiB per-line limit. */
   clipped?: Array<{ line: number; omitted_bytes: number }>;
+  /** Source byte offset where `start_line` begins, with `byteOffsets`. */
+  byte_offset?: number;
 }
 
-export type GrepTruncation = 'max_matches' | 'budget' | 'output_limit' | 'worker_timeout';
+export type GrepTruncation =
+  'max_matches' | 'budget' | 'output_limit' | 'worker_timeout' | 'scan_limit';
 
 export interface LineGrepResult {
   hunks: GrepHunk[];
@@ -105,6 +115,10 @@ export interface LineGrepResult {
   /** The searched section; null when the scan stopped before it started. */
   section?: SectionBounds | null;
   sections?: SectionListing;
+  /** Source bytes of the scanned lines, with `byteOffsets`. */
+  scanned_bytes?: number;
+  /** With `maxBytes`: the source continues past the searched bytes. */
+  scan_limit_reached?: boolean;
 }
 
 /** State after one chunk: hunks closed since the previous report and a safe continuation. */
@@ -116,6 +130,7 @@ export interface LineGrepProgress {
   exhausted: boolean;
   /** The searched section as far as it is known, so a cut-off scan can still report it. */
   section?: SectionBounds | null;
+  scanned_bytes?: number;
 }
 
 // Fragments one logical line may span before the scanner starts a new one.
@@ -317,7 +332,8 @@ function renderTraceLine(buffer: Buffer, size: number): number {
 }
 
 // `section`: the searched section ended, so nothing later can be reported.
-type StopReason = 'budget' | 'output' | 'section';
+// `scan_limit`: the next line ends past `maxBytes`.
+type StopReason = 'budget' | 'output' | 'section' | 'scan_limit';
 
 /**
  * Streaming line search with `grep -C` hunks. Memory is bounded by the context ring
@@ -365,6 +381,14 @@ export class LineGrepScanner {
   private ringOmitted: Float64Array;
   private ringStamp: Buffer;
   private ringHasStamp: Uint8Array;
+  // Source byte offset where each held line starts.
+  private ringStart: Float64Array;
+  private readonly byteOffsets: boolean;
+  private readonly maxBytes: number;
+  private readonly text: TextValidator | null;
+  // Source bytes pushed so far, and those of the lines already scanned.
+  private received = 0;
+  private scannedBytes = 0;
   private readonly carry = Buffer.allocUnsafe(TRACE_LINE_BYTES);
   private readonly decoder = new TextDecoder('utf-8', { ignoreBOM: true });
   private carryLength = 0;
@@ -435,6 +459,10 @@ export class LineGrepScanner {
     this.ringOmitted = new Float64Array(this.ringSize);
     this.ringStamp = Buffer.allocUnsafe(this.ringSize * TIMESTAMP_BYTES);
     this.ringHasStamp = new Uint8Array(this.ringSize);
+    this.ringStart = new Float64Array(this.ringSize);
+    this.byteOffsets = options.byteOffsets ?? false;
+    this.maxBytes = options.maxBytes ?? Infinity;
+    this.text = options.requireText ? new TextValidator() : null;
   }
 
   /** Re-index the held lines into a ring with room for the longest logical line. */
@@ -445,12 +473,14 @@ export class LineGrepScanner {
     const omitted = new Float64Array(size);
     const stamp = Buffer.allocUnsafe(size * TIMESTAMP_BYTES);
     const hasStamp = new Uint8Array(size);
+    const start = new Float64Array(size);
     for (let line = Math.max(this.firstStored, number - this.ringSize + 1); line < number; line++) {
       const from = line % this.ringSize;
       const to = line % size;
       ring[to] = this.ring[from];
       length[to] = this.ringLength[from];
       omitted[to] = this.ringOmitted[from];
+      start[to] = this.ringStart[from];
       this.ringStamp.copy(
         stamp,
         to * TIMESTAMP_BYTES,
@@ -465,6 +495,7 @@ export class LineGrepScanner {
     this.ringOmitted = omitted;
     this.ringStamp = stamp;
     this.ringHasStamp = hasStamp;
+    this.ringStart = start;
   }
 
   get exhausted(): boolean {
@@ -476,16 +507,27 @@ export class LineGrepScanner {
     if (this.stop !== null) return;
     this.charged = performance.now();
     const bytes = Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength);
+    const base = this.received;
+    this.received += bytes.length;
+    // Bytes past the scan limit are never searched, so they are not judged either.
+    this.text?.push(
+      this.received > this.maxBytes ? bytes.subarray(0, Math.max(0, this.maxBytes - base)) : bytes,
+    );
     // Markers are read ahead of placement: a group closes only after its lines were read.
     this.stream?.push(bytes);
     let offset = 0;
     while (offset < bytes.length) {
       const newline = bytes.indexOf(10, offset);
-      if (newline === -1) {
-        this.collect(bytes, offset, bytes.length - offset);
+      if (newline === -1 || base + newline >= this.maxBytes) {
+        // A line ending past the limit is not searched, nor is anything after it.
+        if (this.received > this.maxBytes) this.halt('scan_limit');
+        else this.collect(bytes, offset, bytes.length - offset);
         break;
       }
-      if (!this.endLine(bytes, offset, newline - offset)) break;
+      const scanned = this.line;
+      const going = this.endLine(bytes, offset, newline - offset);
+      if (this.line > scanned) this.scannedBytes = base + newline + 1;
+      if (!going) break;
       offset = newline + 1;
     }
     this.charge();
@@ -538,6 +580,7 @@ export class LineGrepScanner {
       safe_resume: this.resumePoint(true),
       exhausted: this.stop !== null,
       ...(this.searchesSection ? { section: (this.sections as SectionTracker).bounds() } : {}),
+      ...(this.byteOffsets ? { scanned_bytes: this.scannedBytes } : {}),
     };
   }
 
@@ -547,20 +590,26 @@ export class LineGrepScanner {
    */
   finish(): LineGrepResult {
     this.charged = performance.now();
-    // The log ends here: a token still open ends with it.
+    // The log ends here: a token still open ends with it, and so does a character.
     this.stream?.end();
-    if (this.stop === null) this.finishLine(this.carry, 0, this.carryLength, this.lineBytes);
+    if (this.stop === null) this.text?.end();
+    if (this.stop === null) {
+      const scanned = this.line;
+      this.finishLine(this.carry, 0, this.carryLength, this.lineBytes);
+      if (this.line > scanned) this.scannedBytes = this.received;
+    }
     if (this.stop === null) this.closeGroup();
     this.closePending();
     this.charge();
     // The end of the searched section is the end of the search, not a cut.
-    const cut = this.stop === 'budget' || this.stop === 'output';
+    const cut = this.stop === 'budget' || this.stop === 'output' || this.stop === 'scan_limit';
     this.sections?.finish(this.stop === null ? this.line - 1 : null);
     let truncated: GrepTruncation | null = null;
     if (this.stop === 'output') truncated = 'output_limit';
     else if (this.stop === 'budget') truncated = 'budget';
     // Matches seen while finishing the after-context at EOF were held back by the budget.
     else if (this.matchCount > this.recorded) truncated = this.draining ? 'budget' : 'max_matches';
+    else if (this.stop === 'scan_limit') truncated = 'scan_limit';
     const hunks = this.outbox;
     this.outbox = [];
     return {
@@ -570,10 +619,14 @@ export class LineGrepScanner {
       scanned_lines: this.line,
       total_lines: this.stop === null ? this.line : null,
       truncated,
-      resume_from: truncated === null ? null : this.resumePoint(false),
+      // Nothing past the scan limit can be searched, so a continuation would find no more.
+      resume_from:
+        truncated === null || truncated === 'scan_limit' ? null : this.resumePoint(false),
       ...(this.presetIndex !== undefined ? { preset_index: this.presetIndex } : {}),
       ...(this.searchesSection ? { section: (this.sections as SectionTracker).bounds() } : {}),
       ...(this.listsSections ? { sections: (this.sections as SectionTracker).listing() } : {}),
+      ...(this.byteOffsets ? { scanned_bytes: this.scannedBytes } : {}),
+      ...(this.maxBytes !== Infinity ? { scan_limit_reached: this.stop === 'scan_limit' } : {}),
     };
   }
 
@@ -715,6 +768,8 @@ export class LineGrepScanner {
     const out = (this.ring[slot] ??= Buffer.allocUnsafe(SLOT_BYTES));
     let from = begin;
     this.ringHasStamp[slot] = 0;
+    // The bytes of the lines before this one: where this line starts.
+    this.ringStart[slot] = this.scannedBytes;
     if (this.normalize) {
       // Response.text() drops only the initial UTF-8 BOM; `logs` shows the same text.
       if (number === 0 && end - from >= 3 && src[from] === 0xef) {
@@ -957,6 +1012,7 @@ export class LineGrepScanner {
       return false;
     }
     this.outputBytes += size;
+    if (this.byteOffsets && hunk.lines.length === 0) hunk.byte_offset = this.ringStart[slot];
     hunk.lines.push(decoded.text);
     if (this.ringHasStamp[slot]) {
       hunk.timestamps ??= new Array<string | null>(hunk.lines.length - 1).fill(null);
@@ -1024,6 +1080,7 @@ export type GrepReply =
   | { type: 'invalid'; message: string }
   | { type: 'progress'; progress: LineGrepProgress; buffer: ArrayBuffer }
   | { type: 'done'; result: LineGrepResult }
+  | { type: 'refused'; message: string }
   | { type: 'failed'; message: string };
 
 export type GrepPort = Pick<MessagePort, 'on' | 'postMessage'>;
@@ -1069,11 +1126,10 @@ export function serveLineGrep(port: GrepPort): void {
     } catch (error) {
       scanner = null;
       const message = error instanceof Error ? error.message : String(error);
-      port.postMessage(
-        (error instanceof PatternError
-          ? { type: 'invalid', message }
-          : { type: 'failed', message }) satisfies GrepReply,
-      );
+      let reply: GrepReply = { type: 'failed', message };
+      if (error instanceof PatternError) reply = { type: 'invalid', message };
+      else if (error instanceof NotTextError) reply = { type: 'refused', message };
+      port.postMessage(reply);
     }
   });
 }

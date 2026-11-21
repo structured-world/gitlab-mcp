@@ -30,17 +30,18 @@ View pipeline status, job details, console output, and individual artifact files
 
 <!-- @autogen:tool browse_pipelines -->
 
-| Action          | Description                                                                                                                                       |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `list`          | List pipelines with filtering                                                                                                                     |
-| `get`           | Get single pipeline details                                                                                                                       |
-| `jobs`          | List jobs in a pipeline                                                                                                                           |
-| `triggers`      | List bridge/trigger jobs in a pipeline                                                                                                            |
-| `job`           | Get single job details                                                                                                                            |
-| `log_sections`  | List the sections of a job log (runner steps such as step_script, and custom sections) with line ranges and durations                             |
-| `logs`          | Read job logs with bounded memory and explicit byte truncation                                                                                    |
-| `log_grep`      | Search a whole job log, or the logs of a pipeline's failed jobs, with RE2 patterns; returns matching lines with context and absolute line numbers |
-| `artifact_file` | Read one artifact file as bounded UTF-8 text; inspect job metadata to choose its path                                                             |
+| Action          | Description                                                                                                                                                                                                       |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `list`          | List pipelines with filtering                                                                                                                                                                                     |
+| `get`           | Get single pipeline details                                                                                                                                                                                       |
+| `jobs`          | List jobs in a pipeline                                                                                                                                                                                           |
+| `triggers`      | List bridge/trigger jobs in a pipeline                                                                                                                                                                            |
+| `job`           | Get single job details                                                                                                                                                                                            |
+| `log_sections`  | List the sections of a job log (runner steps such as step_script, and custom sections) with line ranges and durations                                                                                             |
+| `logs`          | Read job logs with bounded memory and explicit byte truncation                                                                                                                                                    |
+| `log_grep`      | Search a whole job log, or the logs of a pipeline's failed jobs, with RE2 patterns; returns matching lines with context and absolute line numbers                                                                 |
+| `artifact_file` | Read one artifact file as bounded UTF-8 text; inspect job metadata to choose its path                                                                                                                             |
+| `artifact_grep` | Search one text artifact file (test reports, JUnit XML, coverage or tool output) with RE2 patterns; returns matching lines with context, absolute line numbers and the byte offset of each hunk for artifact_file |
 
 <!-- @autogen:end -->
 
@@ -293,6 +294,7 @@ the next call reports each remaining match exactly once.
 | `budget`         | The search spent its processing time (2 s) before the end of the trace       |
 | `output_limit`   | The returned lines reached 1 MiB of text, the same bound as a page of `logs` |
 | `worker_timeout` | One line took too long to match; returned hunks are complete                 |
+| `scan_limit`     | `artifact_grep` only: the file continues past the 20 MiB it searches         |
 
 When the budget runs out inside a hunk, the search first finishes that hunk's
 after-context. At the output limit, a hunk that does not fit is left for the next
@@ -436,6 +438,52 @@ An object-storage HTTP error is reported as `storage_http_error` with `http_stat
 without asking to reauthenticate a valid GitLab account.
 Redirects are bounded, signed query strings are omitted from diagnostics, and
 credentials are never forwarded or reinjected after leaving the GitLab origin.
+
+### Artifact File Search
+
+`artifact_grep` searches one text artifact file, such as a test report, JUnit XML,
+coverage output or a tool log, with RE2 patterns in one call instead of reading it
+window by window. It downloads the file through the same path as `artifact_file`,
+with the same path rules, permissions, redirect handling and credential isolation,
+and searches it on the log search workers.
+
+```json
+{
+  "action": "artifact_grep",
+  "project_id": "my-org/api",
+  "job_id": "5678",
+  "artifact_path": "reports/junit.xml",
+  "patterns": ["<failure", "(?i)assertion"],
+  "after": 5
+}
+```
+
+`patterns` is required; `before`, `after`, `max_matches`, `invert` and
+`start_line` work as in [Log Search](#log-search). Each stored line is matched and
+returned as is: there is no log rendering, so carriage returns, escape sequences
+and a leading byte order mark stay in the text.
+
+The result has the fields of a log search (`hunks`, `match_count`, `total_lines`,
+`truncated`, `resume_from`) plus:
+
+| Field                 | Meaning                                                                                                                  |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `hunks[].byte_offset` | Source byte offset where the hunk's first line starts; pass it as `byte_offset` to `artifact_file` to read on from there |
+| `scanned_bytes`       | Source bytes of the lines searched                                                                                       |
+| `scan_limit_reached`  | The file continues past the first 20 MiB, which is as far as a search reaches                                            |
+
+The first **20 MiB** are searched, the same reach as the largest `artifact_file`
+`byte_offset`. A line that ends past that point is not searched; the result then
+has `truncated: "scan_limit"`, `total_lines: null` and `resume_from: null`, since a
+continuation would find nothing more. `scan_limit_reached` is reported on its own as
+well, because another truncation, such as `max_matches`, can come first.
+
+Content is checked as `artifact_file` checks a window: a control byte other than tab,
+line feed, form feed, carriage return or escape, or invalid UTF-8 anywhere in the
+searched part fails the call with `ARTIFACT_READ_REFUSED` and reason `not_text`,
+with a GitLab `artifact_view_url`, even when matches were already found. Binary media
+types and compressed responses are refused before any byte is searched. Other
+refusals and GitLab errors are those of `artifact_file`.
 
 ## manage_pipeline
 

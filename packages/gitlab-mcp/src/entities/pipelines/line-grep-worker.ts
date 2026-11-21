@@ -9,6 +9,7 @@ import type {
   LineGrepProgress,
   LineGrepResult,
 } from './line-grep';
+import { NotTextError } from './text-scan';
 
 // Per-process compute admission only; no caller data survives a lease.
 const MAX_WORKERS = Math.max(1, Math.min(4, availableParallelism() - 1));
@@ -176,6 +177,7 @@ function expectReply<T extends GrepReply['type']>(
   type: T,
 ): Extract<GrepReply, { type: T }> {
   if (reply.type === type) return reply as Extract<GrepReply, { type: T }>;
+  if (reply.type === 'refused') throw new NotTextError(reply.message);
   if (reply.type === 'invalid' || reply.type === 'failed') throw new Error(reply.message);
   throw new Error(`Log search worker sent ${reply.type} instead of ${type}`);
 }
@@ -302,12 +304,68 @@ async function scanOn(
   }
 }
 
+/** Fills a transport buffer from a stream; null at the end of the stream. */
+interface ChunkReader {
+  read(buffer: ArrayBuffer): Promise<Uint8Array<ArrayBuffer> | null>;
+  cancel(): Promise<void>;
+  release(): void;
+}
+
+/**
+ * A byte stream reads straight into the transport buffer. Any other stream's chunks are
+ * copied into it: they may share a pooled allocation, which must not be transferred away.
+ */
+function chunkReader(body: ReadableStream<Uint8Array>): ChunkReader {
+  let byob: ReadableStreamBYOBReader | undefined;
+  try {
+    byob = body.getReader({ mode: 'byob' });
+  } catch {
+    // Not a byte stream: fall through to the copying reader.
+  }
+  if (byob) {
+    const reader = byob;
+    return {
+      read: async (buffer) => {
+        const { value, done } = await reader.read(new Uint8Array(buffer));
+        return done ? null : value;
+      },
+      cancel: () => reader.cancel(),
+      release: () => reader.releaseLock(),
+    };
+  }
+  const reader = body.getReader();
+  let rest: Uint8Array | undefined;
+  let ended = false;
+  return {
+    // Fills the whole buffer from as many chunks as it takes, so each worker message carries
+    // a full transport buffer however small the stream's chunks are.
+    read: async (buffer) => {
+      let size = 0;
+      while (size < buffer.byteLength && !ended) {
+        if (!rest?.length) {
+          const { value, done } = await reader.read();
+          if (done) ended = true;
+          else rest = value;
+          continue;
+        }
+        const take = Math.min(rest.length, buffer.byteLength - size);
+        new Uint8Array(buffer, size, take).set(rest.subarray(0, take));
+        rest = rest.subarray(take);
+        size += take;
+      }
+      return size === 0 && ended ? null : new Uint8Array(buffer, 0, size);
+    },
+    cancel: () => reader.cancel(),
+    release: () => reader.releaseLock(),
+  };
+}
+
 async function pump(
   worker: GrepWorker,
   options: LineGrepOptions,
   body: ReadableStream<Uint8Array>,
 ): Promise<LineGrepResult> {
-  const reader = body.getReader({ mode: 'byob' });
+  const reader = chunkReader(body);
   const timeout = options.budgetMs + LINE_GRACE_MS;
   const hunks: GrepHunk[] = [];
   let last: LineGrepProgress | undefined;
@@ -315,8 +373,8 @@ async function pump(
   let eof = false;
   try {
     for (;;) {
-      const { value, done } = await reader.read(new Uint8Array(buffer));
-      if (done) {
+      const value = await reader.read(buffer);
+      if (value === null) {
         eof = true;
         break;
       }
@@ -349,11 +407,13 @@ async function pump(
       resume_from: last?.safe_resume ?? options.startLine,
       ...(options.preset ? { preset_index: options.patterns.length } : {}),
       ...(options.section ? { section: last?.section ?? null } : {}),
+      ...(options.byteOffsets ? { scanned_bytes: last?.scanned_bytes ?? 0 } : {}),
+      ...(options.maxBytes !== undefined ? { scan_limit_reached: false } : {}),
     };
   } finally {
     // Cancelling only stops the transfer; a read failure already surfaced from read(),
     // so a cancel failure must not replace a finished result or that original error.
     if (!eof) await reader.cancel().catch(() => undefined);
-    reader.releaseLock();
+    reader.release();
   }
 }

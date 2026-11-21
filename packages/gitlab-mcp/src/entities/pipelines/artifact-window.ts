@@ -96,6 +96,11 @@ function validateWindow(response: Response, offset: number, limit: number): void
       'Artifact window exceeds the supported byte limits',
     );
   }
+  assertTextResponse(response);
+}
+
+/** Refuse a compressed body or a binary media type before reading any of it. */
+export function assertTextResponse(response: Response): void {
   const encoding = response.headers.get('content-encoding');
   if (encoding !== null && encoding.toLowerCase() !== 'identity') {
     throw new ArtifactReadError(
@@ -210,7 +215,8 @@ function utf8Width(byte: number): number {
   return 1;
 }
 
-function readRange(value: string | null, offset: number, limit: number) {
+/** The Content-Range of a 206 answering `bytes=offset-(offset + limit + 3)`. */
+export function readRange(value: string | null, offset: number, limit: number) {
   const match = value?.match(/^bytes (\d+)-(\d+)\/(\d+|\*)$/i);
   if (!match)
     throw new ArtifactReadError('invalid_range', 'Artifact server returned invalid Content-Range');

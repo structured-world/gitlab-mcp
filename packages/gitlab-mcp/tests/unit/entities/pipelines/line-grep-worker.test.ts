@@ -2,10 +2,13 @@ import { setImmediate } from 'node:timers';
 import type { LineGrepOptions } from '../../../../src/entities/pipelines/line-grep';
 import { fakeGrepWorkers as mockWorkers } from '../../helpers/in-process-grep-worker';
 
+// Creations left to fail as Node does when a thread cannot start; counted down per worker.
+const mockCreation = { failAfter: Infinity };
 jest.mock('node:worker_threads', () => ({
   ...jest.requireActual<typeof import('node:worker_threads')>('node:worker_threads'),
   // A plain constructor: mock resets between tests must not erase the worker stand-in.
   Worker: function Worker() {
+    if (mockCreation.failAfter-- <= 0) throw new Error('ERR_WORKER_INIT_FAILED');
     return jest
       .requireActual<typeof import('../../helpers/in-process-grep-worker')>(
         '../../helpers/in-process-grep-worker',
@@ -21,6 +24,7 @@ jest.mock('node:os', () => ({
 
 import {
   closeLineGrepWorkers,
+  grepAll,
   grepStream,
 } from '../../../../src/entities/pipelines/line-grep-worker';
 
@@ -76,6 +80,7 @@ function body(text: string, chunkSize = 5) {
 }
 
 afterEach(async () => {
+  mockCreation.failAfter = Infinity;
   await closeLineGrepWorkers();
   mockWorkers.length = 0;
 });
@@ -289,5 +294,64 @@ describe('grepStream', () => {
     await grepStream(options(), async () => body('error').stream);
     await closeLineGrepWorkers();
     expect(mockWorkers[0].terminate).toHaveBeenCalled();
+  });
+});
+
+describe('grepAll', () => {
+  const shared = (budgetMs: number) => {
+    const spent = new Int32Array(new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT));
+    return { spent, admit: () => Atomics.load(spent, 0) < budgetMs * 1000 };
+  };
+
+  // A thread that cannot start is missing capacity, not a failed call: the streams run on
+  // the workers already leased, and every lease is returned.
+  it('runs on the leased workers when another cannot be created', async () => {
+    mockCreation.failAfter = 1;
+    const outcomes = await grepAll(
+      [0, 1, 2].map(() => ({ options: options(), open: async () => body('error').stream })),
+      2,
+      () => true,
+    );
+    expect(outcomes.map((outcome) => outcome.status)).toEqual(['done', 'done', 'done']);
+    expect(mockWorkers).toHaveLength(1);
+    mockCreation.failAfter = Infinity;
+    const [first, second] = await Promise.all([
+      grepStream(options(), async () => body('error').stream),
+      grepStream(options(), async () => body('error').stream),
+    ]);
+    expect([first.match_count, second.match_count]).toEqual([1, 1]);
+  });
+
+  // A scan killed for a line that outran the budget spent at least the budget: no further
+  // stream of the call starts, so one slow log cannot cost a timeout per job.
+  it('charges a timed-out scan against the shared budget', async () => {
+    jest.useFakeTimers({ doNotFake: ['setImmediate', 'queueMicrotask', 'nextTick'] });
+    try {
+      const { spent, admit } = shared(10);
+      const stalled = jest.fn(async () => {
+        mockWorkers[0].stallAfterChunks = 0;
+        return body('error\n').stream;
+      });
+      const next = jest.fn(async () => body('error').stream);
+      const pending = grepAll(
+        [
+          { options: options({ budgetMs: 10, spent }), open: stalled },
+          { options: options({ budgetMs: 10, spent }), open: next },
+        ],
+        1,
+        admit,
+      );
+      await waitFor(() => (mockWorkers[0]?.chunks ?? 0) >= 1, pending);
+      await jest.advanceTimersByTimeAsync(2010);
+      const outcomes = await pending;
+      expect(outcomes[0]).toMatchObject({
+        status: 'done',
+        result: { truncated: 'worker_timeout' },
+      });
+      expect(outcomes[1]).toEqual({ status: 'not_started' });
+      expect(next).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });

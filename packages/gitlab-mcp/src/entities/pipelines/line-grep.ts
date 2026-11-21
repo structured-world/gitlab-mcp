@@ -42,6 +42,11 @@ export interface LineGrepOptions {
   normalize: boolean;
   /** Processing time after which the scan stops at a line boundary. */
   budgetMs: number;
+  /**
+   * Processing time already spent against `budgetMs`, in microseconds (cell 0). Scans of
+   * one call share it through a SharedArrayBuffer, so the budget spans all of them.
+   */
+  spent?: Int32Array;
   /** Text bytes the reported lines may hold; the scan stops before exceeding it. */
   outputBytes: number;
 }
@@ -440,8 +445,9 @@ export class LineGrepScanner {
   private stop: StopReason | null = null;
   private stopLine = 0;
   private outputResume = 0;
-  private elapsedMs = 0;
-  private sliceStart = 0;
+  private readonly spent: Int32Array;
+  // When this scan last added its processing time to `spent`.
+  private charged = 0;
   private sinceCheck = 0;
 
   constructor(options: LineGrepOptions) {
@@ -458,6 +464,7 @@ export class LineGrepScanner {
       : this.firstKept;
     this.normalize = options.normalize;
     this.budgetMs = options.budgetMs;
+    this.spent = options.spent ?? new Int32Array(1);
     this.outputLimit = options.outputBytes;
     // A logical line is placed with its before-context once the next line has arrived.
     this.ringSize = options.before + 2;
@@ -505,7 +512,7 @@ export class LineGrepScanner {
   /** Consume source bytes; the view is not retained after the call returns. */
   push(chunk: Uint8Array): void {
     if (this.stop !== null) return;
-    this.sliceStart = performance.now();
+    this.charged = performance.now();
     const bytes = Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength);
     let offset = 0;
     while (offset < bytes.length) {
@@ -517,7 +524,17 @@ export class LineGrepScanner {
       if (!this.endLine(bytes, offset, newline - offset)) break;
       offset = newline + 1;
     }
-    this.elapsedMs += performance.now() - this.sliceStart;
+    this.charge();
+  }
+
+  /**
+   * Adds the processing time since the last charge to the counter the call's scans share,
+   * so scans on other threads see it at their next budget check.
+   */
+  private charge(): void {
+    const now = performance.now();
+    Atomics.add(this.spent, 0, Math.round((now - this.charged) * 1000));
+    this.charged = now;
   }
 
   /**
@@ -561,12 +578,11 @@ export class LineGrepScanner {
 
   /** Close the final line (String.split semantics) and report the hunks not yet taken. */
   finish(): LineGrepResult {
-    if (this.stop === null) {
-      this.sliceStart = performance.now();
-      this.finishLine(this.carry, 0, this.carryLength, this.lineBytes);
-    }
+    this.charged = performance.now();
+    if (this.stop === null) this.finishLine(this.carry, 0, this.carryLength, this.lineBytes);
     if (this.stop === null) this.closeGroup();
     this.closePending();
+    this.charge();
     const stopped = this.stop !== null;
     let truncated: GrepTruncation | null = null;
     if (this.stop === 'output') truncated = 'output_limit';
@@ -617,7 +633,8 @@ export class LineGrepScanner {
     if (this.draining || this.line <= this.startLine || ++this.sinceCheck < BUDGET_CHECK_LINES)
       return false;
     this.sinceCheck = 0;
-    if (this.elapsedMs + performance.now() - this.sliceStart <= this.budgetMs) return false;
+    this.charge();
+    if (Atomics.load(this.spent, 0) <= this.budgetMs * 1000) return false;
     if (this.pending !== null && this.afterRemaining > 0) {
       this.draining = true;
       return false;

@@ -12,28 +12,8 @@ import { assertActionAllowed } from '../utils';
 import { readTracePage, TRACE_PAGE_BYTES } from './trace';
 import { readArtifactFile } from './artifact';
 import { grepStream } from './line-grep-worker';
-
-/** Processing time one log search may spend before it returns a resumable partial result. */
-const LOG_GREP_BUDGET_MS = 2000;
-
-/** Request a job trace as a byte stream; a GitLab error never yields a partial body. */
-async function openTrace(
-  projectId: string,
-  jobId: string,
-): Promise<ReadableStream<Uint8Array> | null> {
-  const apiUrl = `${getGitLabBaseUrl()}/api/v4/projects/${normalizeProjectId(projectId)}/jobs/${encodeApiSegment(jobId)}/trace`;
-  const response = await enhancedFetch(apiUrl);
-  if (!response.ok) {
-    const error = new Error(`GitLab API error: ${response.status} ${response.statusText}`);
-    try {
-      await response.body?.cancel();
-    } catch (cause) {
-      error.cause = cause;
-    }
-    throw error;
-  }
-  return response.body;
-}
+import { openTrace } from './trace-open';
+import { grepPipelineLogs, LOG_GREP_BUDGET_MS } from './pipeline-grep';
 
 /**
  * Pipelines tools registry - 2 CQRS tools replacing 12 individual tools
@@ -51,7 +31,7 @@ export const pipelinesToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
     {
       name: 'browse_pipelines',
       description:
-        "Monitor CI/CD pipelines and read job logs or individual artifact files. Actions: list (filter by status/ref/source/username), get (pipeline details), jobs (list pipeline jobs), triggers (bridge/trigger jobs), job (single job details), logs (job console output), log_grep (RE2 search over a whole job log with context; preset 'failures' finds errors without a pattern), artifact_file (bounded UTF-8 text with byte continuation). Related: manage_pipeline to trigger/retry/cancel pipelines and play/retry/cancel individual jobs.",
+        "Monitor CI/CD pipelines and read job logs or individual artifact files. Actions: list (filter by status/ref/source/username), get (pipeline details), jobs (list pipeline jobs), triggers (bridge/trigger jobs), job (single job details), logs (job console output), log_grep (RE2 search over a whole job log with context; with pipeline_id instead of job_id, searches the failed jobs of a pipeline and its child pipelines in one call, grouped per job; preset 'failures' finds errors without a pattern), artifact_file (bounded UTF-8 text with byte continuation). Related: manage_pipeline to trigger/retry/cancel pipelines and play/retry/cancel individual jobs.",
       inputSchema: z.toJSONSchema(BrowsePipelinesSchema),
       requirements: { default: { tier: 'free' } },
       gate: { envVar: 'USE_PIPELINE', defaultValue: true },
@@ -121,6 +101,7 @@ export const pipelinesToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
 
           case 'log_grep': {
             const { project_id, job_id, patterns = [], preset } = input;
+            if (job_id === undefined) return grepPipelineLogs(input);
             if (patterns.length === 0 && !preset)
               throw new Error('log_grep needs patterns, a preset or both');
             return grepStream(

@@ -67,6 +67,7 @@ import {
   type EffectivePolicy,
 } from './configuration/policy';
 import { executeScoped, parseScopedArguments } from './configuration/scoped-execution';
+import { runInCallScope } from './configuration/call-scope';
 import { withScopePaths, withTargetPaths } from './configuration/scope-ids';
 import { operatorProjectRejection, withOperatorProjects } from './configuration/operator-projects';
 import { assertOperatorOwnership } from './configuration/operator-ownership';
@@ -834,7 +835,10 @@ async function executeInScope(
       dispatch(validated),
     );
   };
-  return executeScoped(run, toolName, requested, policy, true);
+  // Projects a tool reaches beyond its targets are checked against the working scope as the
+  // caller set it; the operator's project list narrows scopeEnforcer to the call's targets.
+  const workingScope = policy.operatorProjectIds ? policy.workingScope : policy.scopeEnforcer;
+  return runInCallScope(workingScope, () => executeScoped(run, toolName, requested, policy, true));
 }
 
 function recordCallContext(scopePath: string | undefined, readOnly: boolean): void {

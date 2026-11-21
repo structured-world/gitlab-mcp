@@ -33,6 +33,11 @@ export interface EffectivePolicy {
   deniedActions: ReadonlyMap<string, ReadonlySet<string>>;
   scope?: ScopeConfig;
   scopeEnforcer?: ScopeEnforcer;
+  /**
+   * With an operator project list: the caller's working scope alone, before scopeEnforcer
+   * was narrowed to the operator's projects of the call. Undefined when it has none.
+   */
+  workingScope?: ScopeEnforcer;
 }
 
 /**

@@ -30,16 +30,16 @@ View pipeline status, job details, console output, and individual artifact files
 
 <!-- @autogen:tool browse_pipelines -->
 
-| Action          | Description                                                                                             |
-| --------------- | ------------------------------------------------------------------------------------------------------- |
-| `list`          | List pipelines with filtering                                                                           |
-| `get`           | Get single pipeline details                                                                             |
-| `jobs`          | List jobs in a pipeline                                                                                 |
-| `triggers`      | List bridge/trigger jobs in a pipeline                                                                  |
-| `job`           | Get single job details                                                                                  |
-| `logs`          | Read job logs with bounded memory and explicit byte truncation                                          |
-| `log_grep`      | Search a whole job log with RE2 patterns; returns matching lines with context and absolute line numbers |
-| `artifact_file` | Read one artifact file as bounded UTF-8 text; inspect job metadata to choose its path                   |
+| Action          | Description                                                                                                                                       |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `list`          | List pipelines with filtering                                                                                                                     |
+| `get`           | Get single pipeline details                                                                                                                       |
+| `jobs`          | List jobs in a pipeline                                                                                                                           |
+| `triggers`      | List bridge/trigger jobs in a pipeline                                                                                                            |
+| `job`           | Get single job details                                                                                                                            |
+| `logs`          | Read job logs with bounded memory and explicit byte truncation                                                                                    |
+| `log_grep`      | Search a whole job log, or the logs of a pipeline's failed jobs, with RE2 patterns; returns matching lines with context and absolute line numbers |
+| `artifact_file` | Read one artifact file as bounded UTF-8 text; inspect job metadata to choose its path                                                             |
 
 <!-- @autogen:end -->
 
@@ -82,6 +82,14 @@ View pipeline status, job details, console output, and individual artifact files
   "project_id": "my-org/api",
   "job_id": "5678",
   "preset": "failures"
+}
+```
+
+```json [Why a pipeline failed]
+{
+  "action": "log_grep",
+  "project_id": "my-org/api",
+  "pipeline_id": "1234"
 }
 ```
 
@@ -211,6 +219,80 @@ Searches run on a small pool of worker threads, so a long trace never blocks oth
 requests. When every worker is busy, the call fails at once with a retryable error.
 The trace is streamed with bounded memory, as with `logs`, and the returned text is
 bounded too.
+
+### Pipeline Log Search
+
+With `pipeline_id` instead of `job_id`, `log_grep` answers "why did this pipeline
+fail" in one call: it lists the pipeline's jobs and searches their logs. Without
+`patterns`, the `failures` preset is used. The two IDs are mutually exclusive.
+
+| Parameter                  | Description                                                                                  |
+| -------------------------- | -------------------------------------------------------------------------------------------- |
+| `job_scope`                | Statuses of the jobs to search, default `["failed"]`                                         |
+| `include_downstream`       | Follow trigger jobs into child and multi-project pipelines, two levels down; default true    |
+| `include_allowed_failures` | Also search failed jobs and follow failed trigger jobs marked `allow_failure`; default false |
+| `max_jobs`                 | Jobs to search, default 10, maximum 20                                                       |
+| `resume`                   | The `resume` list of a previous result, to continue where it stopped                         |
+
+The other search parameters apply to every job; `max_matches` counts per job.
+`start_line` is not accepted: continue with `resume` instead.
+
+`job_scope` selects the jobs to search, not the trigger jobs to follow: every trigger
+job that started a pipeline is followed, whatever its status, except a failed trigger
+marked `allow_failure`, which is followed only with `include_allowed_failures` and
+otherwise listed in `jobs_skipped`. A trigger with the default strategy succeeds as
+soon as its pipeline is created, so the failed jobs of a child pipeline are found even
+when its trigger job is green.
+
+```json
+{
+  "action": "log_grep",
+  "project_id": "my-org/api",
+  "pipeline_id": "1234",
+  "patterns": ["(?i)timed? ?out"],
+  "job_scope": ["failed", "canceled"]
+}
+```
+
+The result has one entry per searched job in `jobs`: `job_id`, `name`, `stage`,
+`status`, `failure_reason`, `project_id`, `pipeline_id` and `web_url`, followed by
+the fields of a single-job search (`hunks`, `match_count`, `total_lines`,
+`truncated`, `resume_from` and the rest). A job whose trace could not be read has
+an `error` instead, and the other jobs are still returned. Jobs of a triggered
+pipeline carry that pipeline's `pipeline_id` and `project_id`.
+
+`jobs_skipped` lists jobs that were seen but not searched, each with a `reason`:
+
+| `reason`                  | Meaning                                                                                                              |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `allowed_failure`         | A failed job or trigger marked `allow_failure`                                                                       |
+| `max_jobs`                | The job came after the `max_jobs` limit                                                                              |
+| `no_downstream_pipeline`  | A trigger job in a searched status that started no pipeline; its `failure_reason` tells why                          |
+| `downstream_depth`        | A trigger job more than two levels below the searched pipeline                                                       |
+| `downstream_unreadable`   | The triggered pipeline, or its project when checked against the scope, could not be read; `error` gives the response |
+| `downstream_out_of_scope` | The triggered pipeline is in a project outside `GITLAB_ALLOWED_PROJECT_IDS` or the working scope; it is not read     |
+| `not_found`               | A `resume` entry whose job the pipeline no longer lists                                                              |
+
+`listing_complete` is false when the `max_jobs` limit stopped the listing, or a
+listing failed, before every reachable job was seen. When a later page of a
+pipeline's job listing fails, the jobs already listed are still searched and its
+triggers are still followed. When a page of its trigger listing fails, only the
+triggers listed before that page are followed, none if the first page fails. In
+each case `listing_errors` names the pipeline (`project_id`, `pipeline_id`,
+`error`); the field is present only then. A searched pipeline whose job listing fails on the
+first page fails the call.
+
+The 2 s processing budget and the 1 MiB output bound belong to the call and are
+shared by its jobs: each job may return an equal part of the output, and up to
+three traces are read at a time. When the budget runs out, `resume` lists every job
+left, with the line to continue from: jobs not started yet from line 0, and jobs
+cut by the budget or a limit from their `resume_from`. Pass the list unchanged as
+`resume` with the same `pipeline_id` and search parameters; the next call searches
+only those jobs and reports each remaining match exactly once. A resumed job is
+found by its ID even if its status changed or it was retried since, including behind a trigger that
+has since failed as an allowed failure or been retried, and an entry whose pipeline
+cannot be listed this time stays in `resume` instead of being reported as
+`not_found`. `resume` is null when nothing is left.
 
 ### Individual Artifact Files
 

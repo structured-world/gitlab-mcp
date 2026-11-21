@@ -17,6 +17,7 @@ import { setupHandlers, resetHandlersState } from '../../src/handlers';
 import * as scopeIds from '../../src/configuration/scope-ids';
 import * as runtimeConfig from '../../src/config';
 import * as operatorProjects from '../../src/configuration/operator-projects';
+import * as callScope from '../../src/configuration/call-scope';
 import { ScopeEnforcer } from '../../src/profiles/scope-enforcer';
 import { StructuredToolError, parseGitLabApiError } from '../../src/utils/error-handler';
 import { GitLabTimeoutError } from '../../src/utils/fetch';
@@ -3418,6 +3419,41 @@ describe('handlers', () => {
         expect(result.isError).toBe(true);
         expect(mockRegistryManager.executeTool).not.toHaveBeenCalled();
       } finally {
+        runtimeConfig.GITLAB_ALLOWED_PROJECT_IDS.splice(0);
+      }
+    });
+
+    // A tool that reaches projects beyond the call's target (a pipeline search following
+    // triggers) runs under the caller's working scope as set, not the policy the operator's
+    // list narrowed to the target, so it can hold those projects to both.
+    it('runs the tool under the working scope the caller set', async () => {
+      runtimeConfig.GITLAB_ALLOWED_PROJECT_IDS.push('1');
+      const configured = await service().resolve(staticCaller());
+      const working = new ScopeEnforcer({ groups: ['team'] });
+      const operator = jest.spyOn(operatorProjects, 'withOperatorProjects').mockResolvedValue({
+        ...configured.policy,
+        scope: { projects: ['team/allowed'] },
+        scopeEnforcer: new ScopeEnforcer({ projects: ['1', 'team/allowed'] }),
+        operatorProjectIds: new Set(['1']),
+        workingScope: working,
+      });
+      const scoped = jest.spyOn(callScope, 'runInCallScope');
+      try {
+        const result = await callToolHandler(
+          {
+            params: {
+              name: 'browse_pipelines',
+              arguments: { action: 'log_grep', project_id: '1', pipeline_id: '5' },
+            },
+          },
+          { sessionId: 'sess-1' },
+        );
+        expect(result.isError).toBeFalsy();
+        expect(scoped).toHaveBeenCalledWith(working, expect.any(Function));
+        expect(mockRegistryManager.executeTool).toHaveBeenCalled();
+      } finally {
+        scoped.mockRestore();
+        operator.mockRestore();
         runtimeConfig.GITLAB_ALLOWED_PROJECT_IDS.splice(0);
       }
     });

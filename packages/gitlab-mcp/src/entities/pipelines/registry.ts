@@ -13,12 +13,13 @@ import { readTracePage, TRACE_PAGE_BYTES } from './trace';
 import { readArtifactFile } from './artifact';
 import { grepStream } from './line-grep-worker';
 import { openTrace } from './trace-open';
-import { grepPipelineLogs, LOG_GREP_BUDGET_MS } from './pipeline-grep';
+import { grepPipelineLogs, LOG_GREP_BUDGET_MS, sectionOption } from './pipeline-grep';
+import { listLogSections, readSectionLogs } from './job-log-sections';
 
 /**
  * Pipelines tools registry - 2 CQRS tools replacing 12 individual tools
  *
- * browse_pipelines (Query): list, get, jobs, triggers, job, logs, log_grep, artifact_file
+ * browse_pipelines (Query): list, get, jobs, triggers, job, log_sections, logs, log_grep, artifact_file
  * manage_pipeline (Command): create, retry, cancel, play_job, retry_job, cancel_job
  */
 export const pipelinesToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinition>([
@@ -31,7 +32,7 @@ export const pipelinesToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
     {
       name: 'browse_pipelines',
       description:
-        "Monitor CI/CD pipelines and read job logs or individual artifact files. Actions: list (filter by status/ref/source/username), get (pipeline details), jobs (list pipeline jobs), triggers (bridge/trigger jobs), job (single job details), logs (job console output), log_grep (RE2 search over a whole job log with context; with pipeline_id instead of job_id, searches the failed jobs of a pipeline and its child pipelines in one call, grouped per job; preset 'failures' finds errors without a pattern), artifact_file (bounded UTF-8 text with byte continuation). Related: manage_pipeline to trigger/retry/cancel pipelines and play/retry/cancel individual jobs.",
+        "Monitor CI/CD pipelines and read job logs or individual artifact files. Actions: list (filter by status/ref/source/username), get (pipeline details), jobs (list pipeline jobs), triggers (bridge/trigger jobs), job (single job details), log_sections (sections of a job log such as step_script, with line ranges and durations), logs (job console output; section reads within one section), log_grep (RE2 search over a whole job log with context, or within one section; with pipeline_id instead of job_id, searches the failed jobs of a pipeline and its child pipelines in one call, grouped per job; preset 'failures' finds errors without a pattern), artifact_file (bounded UTF-8 text with byte continuation). Related: manage_pipeline to trigger/retry/cancel pipelines and play/retry/cancel individual jobs.",
       inputSchema: z.toJSONSchema(BrowsePipelinesSchema),
       requirements: { default: { tier: 'free' } },
       gate: { envVar: 'USE_PIPELINE', defaultValue: true },
@@ -99,6 +100,9 @@ export const pipelinesToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
           case 'artifact_file':
             return readArtifactFile(input);
 
+          case 'log_sections':
+            return listLogSections(input);
+
           case 'log_grep': {
             const { project_id, job_id, patterns = [], preset } = input;
             if (job_id === undefined) return grepPipelineLogs(input);
@@ -117,6 +121,7 @@ export const pipelinesToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
                 budgetMs: LOG_GREP_BUDGET_MS,
                 // The same text bound as one page of `logs`.
                 outputBytes: TRACE_PAGE_BYTES,
+                ...sectionOption(input),
               },
               () => openTrace(project_id, job_id),
             );
@@ -124,7 +129,8 @@ export const pipelinesToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
 
           case 'logs': {
             // TypeScript knows: input has job_id (required), per_page, start (optional)
-            const { project_id, job_id, per_page, start } = input;
+            const { project_id, job_id, per_page, start, section } = input;
+            if (section !== undefined) return readSectionLogs({ ...input, section });
 
             const defaultMaxLines = 200;
             const maxLinesToShow = per_page ?? defaultMaxLines;

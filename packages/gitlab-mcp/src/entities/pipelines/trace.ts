@@ -63,11 +63,14 @@ export function decodeFragment(
 /**
  * Scan through EOF for exact line totals. A byte ring bounds retained content,
  * and a line ring bounds bookkeeping even for an arbitrarily large negative start.
+ * With `end`, reading stops once line `end` (exclusive) is reached and `totalLines`
+ * counts only the lines read; it needs a non-negative `start`.
  */
 export async function readTracePage(
   body: ReadableStream<Uint8Array> | null,
   perPage: number,
   start?: number,
+  end?: number,
 ): Promise<TracePage> {
   if (!body) throw new Error('GitLab trace response has no readable body');
   const tail = start === undefined || start < 0;
@@ -106,19 +109,25 @@ export async function readTracePage(
   // than allocating a new body buffer on every read of a large trace.
   const reader = body.getReader({ mode: 'byob' });
   let readBuffer = new ArrayBuffer(64 * 1024);
-  let completed = false;
+  let eof = false;
+  const limit = end ?? Infinity;
   try {
-    for (;;) {
+    while (lineNumber < limit) {
       const { value, done } = await reader.read(new Uint8Array(readBuffer));
-      if (done) break;
+      if (done) {
+        // String.split('\n') counts one line for empty input and one after a final LF.
+        finishLine();
+        eof = true;
+        break;
+      }
       readBuffer = value.buffer;
       // A view only: never copy an entire transport chunk, including a huge one.
       const chunk = Buffer.from(value.buffer, value.byteOffset, value.byteLength);
       let offset = 0;
-      while (offset < chunk.length) {
+      while (offset < chunk.length && lineNumber < limit) {
         const newline = chunk.indexOf(10, offset);
-        const end = newline === -1 ? chunk.length : newline;
-        const length = end - offset;
+        const lineEnd = newline === -1 ? chunk.length : newline;
+        const length = lineEnd - offset;
         if (selected()) {
           let keep = Math.min(length, TRACE_LINE_BYTES - captured);
           if (!tail) keep = Math.min(keep, TRACE_PAGE_BYTES - written);
@@ -133,15 +142,13 @@ export async function readTracePage(
         }
         lineBytes += length;
         if (newline !== -1) finishLine();
-        offset = end + 1;
+        offset = lineEnd + 1;
       }
     }
-    // String.split('\n') counts one line for empty input and one after a final LF.
-    finishLine();
-    completed = true;
   } finally {
     try {
-      if (!completed) await reader.cancel();
+      // Stopped at `end` or by an error: the rest of the trace is not wanted.
+      if (!eof) await reader.cancel();
     } finally {
       reader.releaseLock();
     }

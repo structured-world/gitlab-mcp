@@ -3,6 +3,23 @@ import type { MessagePort } from 'node:worker_threads';
 import { compilePatterns, type PatternMatcher } from '../../utils/re2-compile';
 import { PatternError } from '../../utils/re2-pattern';
 import { decodeFragment, TRACE_LINE_BYTES } from './trace';
+import {
+  SectionTracker,
+  type SectionBounds,
+  type SectionListing,
+  type SectionTarget,
+} from './log-sections';
+import {
+  continuesLine,
+  ESC,
+  isTimestampHeader,
+  MarkerStream,
+  SECTION_PREFIX,
+  sectionMarkerEnd,
+  TIMESTAMP_BYTES,
+  TIMESTAMP_HEADER_BYTES,
+  type HiddenSpan,
+} from './section-markers';
 
 /**
  * Common failure output of compilers, test runners, interpreters and the runner itself.
@@ -49,6 +66,10 @@ export interface LineGrepOptions {
   spent?: Int32Array;
   /** Text bytes the reported lines may hold; the scan stops before exceeding it. */
   outputBytes: number;
+  /** Match and report only inside this section; the scan ends with it. */
+  section?: SectionTarget;
+  /** Report every section of the log with its line range. */
+  listSections?: boolean;
 }
 
 export interface GrepMatch {
@@ -81,6 +102,9 @@ export interface LineGrepResult {
   /** Pass as `start_line` to continue; every remaining match is reported exactly once. */
   resume_from: number | null;
   preset_index?: number;
+  /** The searched section; null when the scan stopped before it started. */
+  section?: SectionBounds | null;
+  sections?: SectionListing;
 }
 
 /** State after one chunk: hunks closed since the previous report and a safe continuation. */
@@ -90,68 +114,15 @@ export interface LineGrepProgress {
   scanned_lines: number;
   safe_resume: number;
   exhausted: boolean;
+  /** The searched section as far as it is known, so a cut-off scan can still report it. */
+  section?: SectionBounds | null;
 }
 
-// https://gitlab.com/gitlab-org/gitlab lib/gitlab/ci/trace/stream.rb TIMESTAMP_HEADER_*:
-// "<RFC3339 UTC, 6 fractional digits> <2 hex stream><E|O><+| >", 27 + 5 bytes. A '+' in
-// the last byte continues the previous line (lib/gitlab/ci/ansi2json/converter.rb).
-const TIMESTAMP_BYTES = 27;
-const TIMESTAMP_HEADER_BYTES = 32;
-const CONTINUATION = 0x2b;
 // Fragments one logical line may span before the scanner starts a new one.
 const MAX_GROUP_LINES = 32;
 const BUDGET_CHECK_LINES = 256;
 const NO_PATTERNS: readonly number[] = Object.freeze([]);
-const ESC = 0x1b;
 const CR = 0x0d;
-const SECTION_PREFIX = Buffer.from('section_', 'latin1');
-const SECTION_START = Buffer.from('start', 'latin1');
-const SECTION_END = Buffer.from('end', 'latin1');
-const SECTION_SUFFIX = Buffer.from('\r\x1b[0K', 'latin1');
-
-const isDigit = (byte: number) => byte >= 0x30 && byte <= 0x39;
-const isWord = (byte: number) =>
-  isDigit(byte) ||
-  (byte >= 0x41 && byte <= 0x5a) ||
-  (byte >= 0x61 && byte <= 0x7a) ||
-  byte === 0x5f;
-
-function startsWith(src: Uint8Array, at: number, end: number, prefix: Uint8Array): boolean {
-  if (end - at < prefix.length) return false;
-  for (let index = 0; index < prefix.length; index++)
-    if (src[at + index] !== prefix[index]) return false;
-  return true;
-}
-
-const TIMESTAMP_DIGITS = [0, 1, 2, 3, 5, 6, 8, 9, 11, 12, 14, 15, 17, 18, 20, 21, 22, 23, 24, 25];
-const isLowerHex = (byte: number) => isDigit(byte) || (byte >= 0x61 && byte <= 0x66);
-
-function isTimestampHeader(src: Uint8Array, at: number): boolean {
-  for (const offset of TIMESTAMP_DIGITS) if (!isDigit(src[at + offset])) return false;
-  return (
-    src[at + 4] === 0x2d &&
-    src[at + 7] === 0x2d &&
-    src[at + 10] === 0x54 &&
-    src[at + 13] === 0x3a &&
-    src[at + 16] === 0x3a &&
-    src[at + 19] === 0x2e &&
-    src[at + 26] === 0x5a &&
-    src[at + 27] === 0x20 &&
-    isLowerHex(src[at + 28]) &&
-    isLowerHex(src[at + 29]) &&
-    (src[at + 30] === 0x45 || src[at + 30] === 0x4f) &&
-    (src[at + 31] === CONTINUATION || src[at + 31] === 0x20)
-  );
-}
-
-/** Whether a source line carries a runner timestamp marking it a continuation. */
-function continuesLine(src: Uint8Array, begin: number, end: number): boolean {
-  return (
-    end - begin >= TIMESTAMP_HEADER_BYTES &&
-    src[begin + TIMESTAMP_HEADER_BYTES - 1] === CONTINUATION &&
-    isTimestampHeader(src, begin)
-  );
-}
 
 /**
  * End of the escape sequence at `start`, mirroring GitLab's ansi2json tokens
@@ -168,49 +139,10 @@ function skipEscape(src: Uint8Array, start: number, end: number): number {
   return at >= end ? end : at + 1;
 }
 
-/** End of the run of `\w` bytes at `at`. */
-function wordEnd(src: Uint8Array, at: number, end: number): number {
-  while (at < end && isWord(src[at])) at++;
-  return at;
-}
-
-/** End of a section options block `[\w+=\w+(, ?\w+=\w+)*]` starting at `[`, or -1. */
-function sectionOptionsEnd(src: Uint8Array, start: number, end: number): number {
-  let at = start + 1;
-  for (;;) {
-    const keyEnd = wordEnd(src, at, end);
-    if (keyEnd === at || src[keyEnd] !== 0x3d) return -1;
-    at = wordEnd(src, keyEnd + 1, end);
-    if (at === keyEnd + 1) return -1;
-    if (src[at] === 0x5d) return at + 1;
-    if (src[at] !== 0x2c) return -1;
-    at += src[at + 1] === 0x20 ? 2 : 1;
-  }
-}
-
-/**
- * End of a GitLab section marker at `start`, or -1. Grammar from Gitlab::Regex
- * build_trace_section_regex: section_(start|end):\d+:[A-Za-z0-9_.-]+
- * (\[\w+=\w+(, ?\w+=\w+)*\])?\r\e\[0K. Called only where SECTION_PREFIX starts.
- */
-function sectionMarkerEnd(src: Uint8Array, start: number, end: number): number {
-  let at = start + SECTION_PREFIX.length;
-  if (startsWith(src, at, end, SECTION_START)) at += SECTION_START.length;
-  else if (startsWith(src, at, end, SECTION_END)) at += SECTION_END.length;
-  else return -1;
-  if (src[at++] !== 0x3a) return -1;
-  const digits = at;
-  while (at < end && isDigit(src[at])) at++;
-  if (at === digits || src[at++] !== 0x3a) return -1;
-  const name = at;
-  while (at < end && (isWord(src[at]) || src[at] === 0x2e || src[at] === 0x2d)) at++;
-  if (at === name) return -1;
-  if (src[at] === 0x5b) {
-    at = sectionOptionsEnd(src, at, end);
-    if (at === -1) return -1;
-  }
-  return startsWith(src, at, end, SECTION_SUFFIX) ? at + SECTION_SUFFIX.length : -1;
-}
+// Source ranges of the line being rendered that a token read across a clipped gap consumes,
+// ascending; the renderer cannot see such a token, so the marker stream reports them.
+const hiddenFrom: number[] = [];
+const hiddenTo: number[] = [];
 
 // Source offsets where each later fragment of a joined logical line starts. Rendering
 // rewrites the first `startCount` in place to the same points in the rendered text, so
@@ -357,15 +289,24 @@ function renderTraceLine(buffer: Buffer, size: number): number {
   let cr = line.indexOf(CR);
   let section = line.indexOf(SECTION_PREFIX);
   let at = 0;
+  let hidden = 0;
   for (;;) {
     esc = nextOf(line, ESC, esc, at);
     cr = nextOf(line, CR, cr, at);
     section = nextOf(line, SECTION_PREFIX, section, at);
-    const next = earliest(earliest(earliest(size, esc), cr), section);
+    let next = earliest(earliest(earliest(size, esc), cr), section);
+    // A hidden range starts where its token does, so it is taken before a token there.
+    const atHidden = hidden < hiddenFrom.length && hiddenFrom[hidden] <= next;
+    if (atHidden) next = Math.max(at, hiddenFrom[hidden]);
     if (next > at) {
       if (renderLength !== at) line.copy(line, renderLength, at, next);
       mapCopied(at, next, renderLength);
       renderLength += next - at;
+    }
+    if (atHidden) {
+      at = Math.max(next, hiddenTo[hidden++]);
+      mapRemoved(at, renderLength);
+      continue;
     }
     if (next === size) break;
     at = applyToken(line, next, size, next === cr, next === esc);
@@ -375,7 +316,8 @@ function renderTraceLine(buffer: Buffer, size: number): number {
   return renderLength;
 }
 
-type StopReason = 'budget' | 'output';
+// `section`: the searched section ended, so nothing later can be reported.
+type StopReason = 'budget' | 'output' | 'section';
 
 /**
  * Streaming line search with `grep -C` hunks. Memory is bounded by the context ring
@@ -392,7 +334,13 @@ type StopReason = 'budget' | 'output';
  * behind the input.
  */
 export class LineGrepScanner {
-  private readonly matcher: PatternMatcher;
+  // Null when only sections are followed: nothing is matched.
+  private readonly matcher: PatternMatcher | null;
+  private readonly sections: SectionTracker | null;
+  private readonly searchesSection: boolean;
+  private readonly listsSections: boolean;
+  // Reads section markers from every byte of the trace; null when sections are not followed.
+  private readonly stream: MarkerStream | null;
   private readonly presetIndex: number | undefined;
   private readonly before: number;
   private readonly after: number;
@@ -451,17 +399,31 @@ export class LineGrepScanner {
   private sinceCheck = 0;
 
   constructor(options: LineGrepOptions) {
-    this.matcher = compilePatterns(options.patterns, options.preset ? [FAILURE_PATTERN] : []);
+    this.searchesSection = options.section !== undefined;
+    this.listsSections = options.listSections ?? false;
+    // Only a scan that follows sections may run without patterns; any other is refused.
+    const onlySections =
+      options.patterns.length === 0 &&
+      !options.preset &&
+      (this.searchesSection || this.listsSections);
+    const presetPatterns = options.preset ? [FAILURE_PATTERN] : [];
+    this.matcher = onlySections ? null : compilePatterns(options.patterns, presetPatterns);
     this.presetIndex = options.preset ? options.patterns.length : undefined;
+    this.sections =
+      this.searchesSection || this.listsSections ? new SectionTracker(options.section) : null;
+    this.stream = this.sections ? new MarkerStream(options.normalize) : null;
     this.before = options.before;
     this.after = options.after;
     this.maxMatches = options.maxMatches;
     this.invert = options.invert;
     this.startLine = options.startLine;
     this.firstKept = Math.max(0, options.startLine - options.before);
-    this.firstStored = options.normalize
-      ? Math.max(0, this.firstKept - (MAX_GROUP_LINES - 1))
-      : this.firstKept;
+    // Following sections needs every marker from the first line, wherever the search starts.
+    if (this.sections) this.firstStored = 0;
+    else
+      this.firstStored = options.normalize
+        ? Math.max(0, this.firstKept - (MAX_GROUP_LINES - 1))
+        : this.firstKept;
     this.normalize = options.normalize;
     this.budgetMs = options.budgetMs;
     this.spent = options.spent ?? new Int32Array(1);
@@ -514,6 +476,8 @@ export class LineGrepScanner {
     if (this.stop !== null) return;
     this.charged = performance.now();
     const bytes = Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength);
+    // Markers are read ahead of placement: a group closes only after its lines were read.
+    this.stream?.push(bytes);
     let offset = 0;
     while (offset < bytes.length) {
       const newline = bytes.indexOf(10, offset);
@@ -573,17 +537,25 @@ export class LineGrepScanner {
       scanned_lines: this.line,
       safe_resume: this.resumePoint(true),
       exhausted: this.stop !== null,
+      ...(this.searchesSection ? { section: (this.sections as SectionTracker).bounds() } : {}),
     };
   }
 
-  /** Close the final line (String.split semantics) and report the hunks not yet taken. */
+  /**
+   * Close the final line (String.split semantics) and report the hunks not yet taken.
+   * Throws SectionNotFoundError when the whole log lacks the searched section.
+   */
   finish(): LineGrepResult {
     this.charged = performance.now();
+    // The log ends here: a token still open ends with it.
+    this.stream?.end();
     if (this.stop === null) this.finishLine(this.carry, 0, this.carryLength, this.lineBytes);
     if (this.stop === null) this.closeGroup();
     this.closePending();
     this.charge();
-    const stopped = this.stop !== null;
+    // The end of the searched section is the end of the search, not a cut.
+    const cut = this.stop === 'budget' || this.stop === 'output';
+    this.sections?.finish(this.stop === null ? this.line - 1 : null);
     let truncated: GrepTruncation | null = null;
     if (this.stop === 'output') truncated = 'output_limit';
     else if (this.stop === 'budget') truncated = 'budget';
@@ -594,13 +566,54 @@ export class LineGrepScanner {
     return {
       hunks,
       match_count: this.matchCount,
-      match_count_complete: !stopped,
+      match_count_complete: !cut,
       scanned_lines: this.line,
-      total_lines: stopped ? null : this.line,
+      total_lines: this.stop === null ? this.line : null,
       truncated,
       resume_from: truncated === null ? null : this.resumePoint(false),
       ...(this.presetIndex !== undefined ? { preset_index: this.presetIndex } : {}),
+      ...(this.searchesSection ? { section: (this.sections as SectionTracker).bounds() } : {}),
+      ...(this.listsSections ? { sections: (this.sections as SectionTracker).listing() } : {}),
     };
+  }
+
+  /** Applies the markers read on lines up to `line`, in log order. */
+  private applyMarkers(line: number): void {
+    const events = (this.stream as MarkerStream).events;
+    const tracker = this.sections as SectionTracker;
+    let read = 0;
+    while (read < events.length && events[read].line <= line) {
+      const event = events[read++];
+      if (event.kind === 'start') tracker.start(event.line, event.stamp, event.name, event.options);
+      else if (event.kind === 'end') tracker.end(event.line, event.stamp, event.name);
+      else tracker.unread(event.line);
+    }
+    if (read > 0) events.splice(0, read);
+  }
+
+  /**
+   * Takes the hidden ranges of the group's lines, as source offsets of its joined text, for the
+   * renderer; `starts[i]` is where fragment i starts.
+   */
+  private takeHidden(first: number, starts: (index: number) => number): void {
+    hiddenFrom.length = 0;
+    hiddenTo.length = 0;
+    const hidden = (this.stream as MarkerStream).hidden;
+    if (hidden.length === 0) return;
+    const taken: HiddenSpan[] = [];
+    let kept = 0;
+    for (const span of hidden) {
+      if (span.line <= this.groupEnd) {
+        if (span.line >= first) taken.push(span);
+      } else hidden[kept++] = span;
+    }
+    hidden.length = kept;
+    taken.sort((a, b) => a.line - b.line || a.from - b.from);
+    for (const span of taken) {
+      const start = starts(span.line - first);
+      hiddenFrom.push(start + span.from);
+      hiddenTo.push(start + span.to);
+    }
   }
 
   /**
@@ -613,9 +626,11 @@ export class LineGrepScanner {
     else if (undelivered && this.pending !== null) resume = this.pending.matches[0].line;
     else if (this.matchCount > this.recorded) resume = this.lastRecorded + 1;
     else resume = this.stop === null ? this.line : this.stopLine;
-    // An unfinished logical line has not been matched yet; one headed before start_line
-    // belongs to an earlier page and is never matched here.
-    return this.groupOpen && this.groupMatchable ? Math.min(resume, this.groupFirst) : resume;
+    // An unfinished logical line has not been matched yet. Its match is reported on its head,
+    // or in a searched section on its first line inside the section, and never before
+    // start_line, so a continuation never goes back past start_line.
+    if (!this.groupOpen || !this.groupMatchable) return resume;
+    return Math.min(resume, Math.max(this.groupFirst, this.startLine));
   }
 
   private halt(reason: StopReason): void {
@@ -719,7 +734,10 @@ export class LineGrepScanner {
     this.groupOpen = true;
     this.groupFirst = number;
     this.groupEnd = number;
-    this.groupMatchable = matchable && number >= this.startLine;
+    // With a searched section, a group is matched on its first line inside the section, so
+    // the page owning that line is known only once the group closes.
+    this.groupMatchable =
+      matchable && this.matcher !== null && (this.searchesSection || number >= this.startLine);
   }
 
   /**
@@ -734,15 +752,28 @@ export class LineGrepScanner {
     if (this.groupEnd === first) {
       startCount = 0;
       gapCount = 0;
+      if (this.stream) this.takeHidden(first, () => 0);
       const line = this.ring[head] as Buffer;
       this.ringLength[head] = renderTraceLine(line, this.ringLength[head]);
+      this.clearHidden();
       return line.subarray(0, this.ringLength[head]);
     }
     // Room for every fragment the group may hold, so no fragment text goes unsearched.
     const logical = (this.logical ??= Buffer.allocUnsafe(MAX_GROUP_LINES * TRACE_LINE_BYTES));
-    const length = renderTraceLine(logical, this.joinGroup(logical, first));
+    const size = this.joinGroup(logical, first);
+    if (this.stream)
+      this.takeHidden(first, (index) => (index === 0 ? 0 : fragmentStarts[index - 1]));
+    const length = renderTraceLine(logical, size);
+    this.clearHidden();
     this.splitGroup(logical, first, length);
     return logical.subarray(0, length);
+  }
+
+  /** Hidden ranges belong to one render; a scan that follows no sections never sets them. */
+  private clearHidden(): void {
+    if (!this.stream) return;
+    hiddenFrom.length = 0;
+    hiddenTo.length = 0;
   }
 
   /**
@@ -779,24 +810,35 @@ export class LineGrepScanner {
       }
       this.ringLength[slot] = logical.copy(this.ring[slot] as Buffer, 0, from, to);
       if (index < clearedFragments) this.ringOmitted[slot] = 0;
+      // Matching a part of the group cuts it where the slots were cut.
+      if (index < startCount) fragmentStarts[index] = to;
       from = to;
     }
   }
 
+  /** Offset in the rendered group where fragment `index` starts; past the last, its length. */
+  private static fragmentOffset(text: Buffer, index: number): number {
+    if (index === 0) return 0;
+    return index > startCount ? text.length : fragmentStarts[index - 1];
+  }
+
   /**
-   * Matches each part of the rendered group between clipped gaps on its own, since the bytes
-   * a clip dropped lie between them, and returns the patterns any part matched. A part a CR
-   * cleared is empty and skipped; the last part always holds the visible end of the line.
+   * Matches fragments `lo` through `hi` of the rendered group, each part between clipped gaps
+   * on its own, since the bytes a clip dropped lie between them, and returns the patterns any
+   * part matched. A part a CR cleared is empty and skipped; the last part always holds the
+   * visible end of the range.
    */
-  private matchBetweenGaps(text: Buffer): readonly number[] {
+  private matchFragments(text: Buffer, lo: number, hi: number): readonly number[] {
+    const matcher = this.matcher as PatternMatcher;
+    const end = LineGrepScanner.fragmentOffset(text, hi + 1);
+    let from = LineGrepScanner.fragmentOffset(text, lo);
+    if (gapCount === 0) return matcher.match(text.subarray(from, end));
     let found = NO_PATTERNS;
-    let from = 0;
-    for (let index = 0; index <= startCount; index++) {
-      const last = index === startCount;
+    for (let index = lo; index <= hi; index++) {
+      const last = index === hi;
       if (!last && gapBefore[index] === 0) continue;
-      const to = last ? text.length : fragmentStarts[index];
-      if (last || to > from)
-        found = unionSorted(found, this.matcher.match(text.subarray(from, to)));
+      const to = last ? end : fragmentStarts[index];
+      if (last || to > from) found = unionSorted(found, matcher.match(text.subarray(from, to)));
       from = to;
     }
     return found;
@@ -809,6 +851,7 @@ export class LineGrepScanner {
     const first = this.groupFirst;
     let isMatch = false;
     let hits = NO_PATTERNS;
+    if (this.sections) this.applyMarkers(this.groupEnd);
     // Raw lines are matched as stored; every rendered line is kept for the returned text.
     const text = this.normalize
       ? this.renderGroup()
@@ -816,19 +859,37 @@ export class LineGrepScanner {
           0,
           this.ringLength[first % this.ringSize],
         );
-    if (this.groupMatchable) {
-      const found =
-        this.normalize && gapCount > 0 ? this.matchBetweenGaps(text) : this.matcher.match(text);
+    // With a searched section, only the group's lines inside it are matched or reported: from
+    // its start, which may be a continuation, through its end, which then is the last line.
+    let from = first;
+    let last = this.groupEnd;
+    if (this.searchesSection) {
+      const tracker = this.sections as SectionTracker;
+      const end = tracker.targetEnd;
+      if (tracker.unresolved || (end !== null && end < first)) {
+        this.halt('section');
+        return;
+      }
+      if (end !== null) last = Math.min(last, end);
+      const start = tracker.targetStart;
+      from = start === null ? last + 1 : Math.max(first, start);
+    }
+    if (from > last) return;
+    if (this.groupMatchable && from >= this.startLine) {
+      const found = this.normalize
+        ? this.matchFragments(text, from - first, last - first)
+        : (this.matcher as PatternMatcher).match(text);
       isMatch = this.invert ? found.length === 0 : found.length > 0;
       if (!this.invert) hits = found;
     }
-    const recorded = this.place(first, isMatch, hits);
-    for (let line = first + 1; line <= this.groupEnd && this.stop === null; line++) {
+    const recorded = this.place(from, isMatch, hits);
+    for (let line = from + 1; line <= last && this.stop === null; line++) {
       // The rest of a reported logical line belongs to it, whatever the after-context.
-      if (recorded) this.emit(this.pending as GrepHunk, line, first);
+      if (recorded) this.emit(this.pending as GrepHunk, line, from);
       else this.place(line, false, NO_PATTERNS);
     }
     if (recorded && this.stop === null) this.afterRemaining = this.after;
+    if (this.searchesSection && this.sections?.targetEnd !== null) this.halt('section');
   }
 
   /**
@@ -852,8 +913,10 @@ export class LineGrepScanner {
   }
 
   private record(number: number, hits: readonly number[]): boolean {
+    // Before-context stays inside a searched section, so it starts at the section at most.
+    const floor = this.sections?.targetStart ?? 0;
     const hunk = (this.pending ??= {
-      start_line: Math.max(this.lastEmitted + 1, number - this.before),
+      start_line: Math.max(this.lastEmitted + 1, number - this.before, floor),
       lines: [],
       matches: [],
     });

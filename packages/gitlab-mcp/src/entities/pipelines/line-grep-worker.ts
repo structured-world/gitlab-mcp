@@ -348,6 +348,7 @@ async function pump(
       truncated: 'worker_timeout',
       resume_from: last?.safe_resume ?? options.startLine,
       ...(options.preset ? { preset_index: options.patterns.length } : {}),
+      ...(options.section ? { section: last?.section ?? null } : {}),
     };
   } finally {
     // Cancelling only stops the transfer; a read failure already surfaced from read(),

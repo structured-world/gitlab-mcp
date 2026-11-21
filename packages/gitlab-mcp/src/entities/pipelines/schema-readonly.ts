@@ -7,6 +7,7 @@ import {
   encodeArtifactPath,
 } from './artifact-path';
 import { MAX_PATTERN_LENGTH, MAX_PATTERNS } from '../../utils/re2-pattern';
+import { MAX_SECTION_NAME } from './log-sections';
 
 export const LOG_GREP_MAX_CONTEXT = 20;
 export const LOG_GREP_MAX_MATCHES = 500;
@@ -230,7 +231,7 @@ const TriggerJobScopeSchema = z
 
 // ============================================================================
 // browse_pipelines - CQRS Query Tool (discriminated union schema)
-// Actions: list, get, jobs, triggers, job, logs, log_grep, artifact_file
+// Actions: list, get, jobs, triggers, job, log_sections, logs, log_grep, artifact_file
 // Uses z.discriminatedUnion() for type-safe action handling.
 // Schema pipeline flattens to flat JSON Schema for AI clients that don't support oneOf.
 // ============================================================================
@@ -297,30 +298,75 @@ const GetJobSchema = z.object({
   job_id: numericId.describe('The ID of the job'),
 });
 
-// --- Action: logs ---
-const GetJobLogsSchema = z.object({
+// --- Section selection, shared by logs and log_grep ---
+const sectionField = z
+  .string()
+  .min(1)
+  .max(MAX_SECTION_NAME)
+  .regex(/^[A-Za-z0-9_.-]+$/, 'Section names use letters, digits, _ . and -')
+  .optional()
+  .describe(
+    'Only this log section, by its exact name from log_sections (for example step_script); an unknown name returns the available ones',
+  );
+const sectionIndexField = z
+  .number()
+  .int()
+  .min(0)
+  .optional()
+  .describe('Which section of that name, counting from 0 (default: 0); requires section');
+
+/** section_index means nothing without the section it counts. */
+function requireSectionForIndex(
+  input: { section?: string; section_index?: number },
+  context: z.RefinementCtx,
+): void {
+  if (input.section_index !== undefined && input.section === undefined)
+    context.addIssue({
+      code: 'custom',
+      path: ['section_index'],
+      message: "'section_index' needs 'section'",
+    });
+}
+
+// --- Action: log_sections ---
+const ListLogSectionsSchema = z.object({
   action: z
-    .literal('logs')
-    .describe('Read job logs with bounded memory and explicit byte truncation'),
+    .literal('log_sections')
+    .describe(
+      'List the sections of a job log (runner steps such as step_script, and custom sections) with line ranges and durations',
+    ),
   project_id: projectIdField,
   job_id: numericId.describe('The ID of the job'),
-  per_page: z
-    .number()
-    .int()
-    .min(1)
-    .max(10000)
-    .optional()
-    .describe(
-      'Maximum source lines to return (default: 200, max: 10000). Up to 16 KiB per line and 1 MiB per page of source bytes; omitted content is reported in truncation.lines. Use with start for pagination',
-    ),
-  start: z
-    .number()
-    .int()
-    .optional()
-    .describe(
-      'Start from specific line number (0-based). Positive from beginning, negative from end (e.g., -100 = last 100 lines). Use nextStart from previous response to paginate',
-    ),
 });
+
+// --- Action: logs ---
+const GetJobLogsSchema = z
+  .object({
+    action: z
+      .literal('logs')
+      .describe('Read job logs with bounded memory and explicit byte truncation'),
+    project_id: projectIdField,
+    job_id: numericId.describe('The ID of the job'),
+    per_page: z
+      .number()
+      .int()
+      .min(1)
+      .max(10000)
+      .optional()
+      .describe(
+        'Maximum source lines to return (default: 200, max: 10000). Up to 16 KiB per line and 1 MiB per page of source bytes; omitted content is reported in truncation.lines. Use with start for pagination',
+      ),
+    start: z
+      .number()
+      .int()
+      .optional()
+      .describe(
+        'Start from specific line number (0-based). Positive from beginning, negative from end (e.g., -100 = last 100 lines). Use nextStart from previous response to paginate. With section, counted within the section',
+      ),
+    section: sectionField,
+    section_index: sectionIndexField,
+  })
+  .superRefine(requireSectionForIndex);
 
 // --- Action: log_grep ---
 const contextLines = (side: string) =>
@@ -432,11 +478,14 @@ const GrepJobLogsSchema = z
       .describe(
         'Match source bytes as stored. By default timestamps, ANSI escapes, CR rewrites and section markers are removed, as the GitLab log view shows them',
       ),
+    section: sectionField,
+    section_index: sectionIndexField,
   })
   // Cross-field rules stay out of the JSON Schema: the default flat mode merges action
   // branches into one object for clients without oneOf support, so a per-branch oneOf would
   // be lost or rejected. The parameter descriptions state them instead.
   .superRefine((input, context) => {
+    requireSectionForIndex(input, context);
     if ((input.job_id === undefined) === (input.pipeline_id === undefined))
       context.addIssue({ code: 'custom', message: 'Give exactly one of job_id or pipeline_id' });
     if (input.job_id !== undefined) {
@@ -506,6 +555,7 @@ export const BrowsePipelinesSchema = z.discriminatedUnion('action', [
   ListPipelineJobsSchema,
   ListPipelineTriggersSchema,
   GetJobSchema,
+  ListLogSectionsSchema,
   GetJobLogsSchema,
   GrepJobLogsSchema,
   GetArtifactFileSchema,

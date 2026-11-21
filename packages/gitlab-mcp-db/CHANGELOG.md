@@ -1,5 +1,20 @@
 # Changelog
 
+## [13.4.0](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-db-v13.3.1...gitlab-mcp-db-v13.4.0) (2026-11-21)
+
+
+### Features
+
+* **pipelines:** grep job logs with RE2 patterns ([#768](https://github.com/structured-world/gitlab-mcp/issues/768)) ([7f78b31](https://github.com/structured-world/gitlab-mcp/commit/7f78b31054b31343db04c68f60da47d99d79dd33))
+* **pipelines:** list job log sections and read within one ([#772](https://github.com/structured-world/gitlab-mcp/issues/772)) ([338b3fb](https://github.com/structured-world/gitlab-mcp/commit/338b3fb3878e8baefe1ddf897b2019ae73f5054b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @structured-world/gitlab-mcp bumped to 13.4.0
+
 ## [13.3.1](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-db-v13.3.0...gitlab-mcp-db-v13.3.1) (2026-11-14)
 
 

@@ -4,6 +4,15 @@
 
 * exempt stdio session from idle timeout cleanup ([#363](https://github.com/structured-world/gitlab-mcp/issues/363)) ([ca563bd](https://github.com/structured-world/gitlab-mcp/commit/ca563bda9aa969d5d7680d3d89c2c72f32344838)), closes [#361](https://github.com/structured-world/gitlab-mcp/issues/361)
 
+## [13.4.0](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-v13.3.1...gitlab-mcp-v13.4.0) (2026-11-21)
+
+
+### Features
+
+* **pipelines:** grep job logs with RE2 patterns ([#768](https://github.com/structured-world/gitlab-mcp/issues/768)) ([7f78b31](https://github.com/structured-world/gitlab-mcp/commit/7f78b31054b31343db04c68f60da47d99d79dd33))
+* **pipelines:** list job log sections and read within one ([#772](https://github.com/structured-world/gitlab-mcp/issues/772)) ([338b3fb](https://github.com/structured-world/gitlab-mcp/commit/338b3fb3878e8baefe1ddf897b2019ae73f5054b))
+* **pipelines:** search failed job logs across a pipeline ([#771](https://github.com/structured-world/gitlab-mcp/issues/771)) ([12c5553](https://github.com/structured-world/gitlab-mcp/commit/12c5553ae763c77a8f989cad3ad4fbe9358e5393))
+
 ## [13.3.1](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-v13.3.0...gitlab-mcp-v13.3.1) (2026-11-14)
 
 

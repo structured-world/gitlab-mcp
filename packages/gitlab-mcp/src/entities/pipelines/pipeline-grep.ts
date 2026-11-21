@@ -361,6 +361,16 @@ function discover(
   return new PipelineDiscovery(input, scope, wanted).run();
 }
 
+/** The scanner option selecting the section a log search is limited to, if any. */
+export function sectionOption(input: {
+  section?: string;
+  section_index?: number;
+}): Pick<LineGrepOptions, 'section'> {
+  return input.section === undefined
+    ? {}
+    : { section: { name: input.section, index: input.section_index ?? 0 } };
+}
+
 /**
  * Search the logs of a pipeline's jobs, its triggered pipelines' included, in one call.
  * The processing budget and the output size are shared by all jobs of the call; jobs the
@@ -388,6 +398,8 @@ export async function grepPipelineLogs(input: LogGrepInput): Promise<PipelineGre
     spent,
     // One page of `logs` in total, divided between the jobs below.
     outputBytes: TRACE_PAGE_BYTES,
+    // A job without the section reports that as its own error.
+    ...sectionOption(input),
   };
   // Invalid RE2 fails the call before GitLab is asked anything, with or without jobs.
   if (patterns.length > 0) await checkPatterns({ ...shared, startLine: 0 });

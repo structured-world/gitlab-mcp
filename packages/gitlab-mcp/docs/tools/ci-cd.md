@@ -37,6 +37,7 @@ View pipeline status, job details, console output, and individual artifact files
 | `jobs`          | List jobs in a pipeline                                                                                                                           |
 | `triggers`      | List bridge/trigger jobs in a pipeline                                                                                                            |
 | `job`           | Get single job details                                                                                                                            |
+| `log_sections`  | List the sections of a job log (runner steps such as step_script, and custom sections) with line ranges and durations                             |
 | `logs`          | Read job logs with bounded memory and explicit byte truncation                                                                                    |
 | `log_grep`      | Search a whole job log, or the logs of a pipeline's failed jobs, with RE2 patterns; returns matching lines with context and absolute line numbers |
 | `artifact_file` | Read one artifact file as bounded UTF-8 text; inspect job metadata to choose its path                                                             |
@@ -76,6 +77,24 @@ View pipeline status, job details, console output, and individual artifact files
 }
 ```
 
+```json [Log sections]
+{
+  "action": "log_sections",
+  "project_id": "my-org/api",
+  "job_id": "5678"
+}
+```
+
+```json [Search the script output]
+{
+  "action": "log_grep",
+  "project_id": "my-org/api",
+  "job_id": "5678",
+  "preset": "failures",
+  "section": "step_script"
+}
+```
+
 ```json [Find failures in a log]
 {
   "action": "log_grep",
@@ -105,12 +124,62 @@ View pipeline status, job details, console output, and individual artifact files
 | `username` | Filter by triggering user                                       |
 | `order_by` | `id`, `status`, `ref`, `updated_at`                             |
 
+### Log Sections
+
+`log_sections` lists the sections of a job log before you read it: the runner's own
+steps (`prepare_executor`, `get_sources`, `step_script`, `upload_artifacts_on_failure`,
+...) and the custom collapsible sections a job writes with `section_start` and
+`section_end` markers. Each entry has:
+
+| Field              | Meaning                                                                         |
+| ------------------ | ------------------------------------------------------------------------------- |
+| `name`             | The name in the marker, as written                                              |
+| `occurrence`       | Earlier sections with the same name, counted from 0; pass it as `section_index` |
+| `depth`            | Sections open when this one started                                             |
+| `start_line`       | Line of the start marker, numbered as in `logs`                                 |
+| `end_line`         | Line of the end marker, or the last line for a section still open at the end    |
+| `line_count`       | Lines from `start_line` to `end_line`                                           |
+| `duration_seconds` | Time between the two markers; null without an end marker                        |
+| `collapsed`        | Whether the marker asks the GitLab view to show the section collapsed           |
+| `terminated`       | Whether an end marker closed the section                                        |
+
+```json
+{
+  "action": "log_sections",
+  "project_id": "my-org/api",
+  "job_id": "5678"
+}
+```
+
+Sections follow the GitLab log view: they are open by name rather than nested on a
+stack, a second start of an open name restarts that section, and an end marker whose
+name is not open is ignored. Names are compared as GitLab compares them, ignoring
+case and treating every character other than a letter or digit alike. At most 500
+sections are listed; `sections_truncated` is true when the log has more.
+`complete` is false, and `total_lines` null, when the processing budget stopped the
+scan; sections still open then have no `end_line`.
+
+Pass `section` to `logs` or `log_grep` to work inside one section, by its exact name;
+`section_index` picks a repeated one. An unknown name, or an index past the last
+occurrence, returns an error naming the sections the log has. The section is found
+on the rendered log, so a marker inside a color sequence or split by the runner across
+timestamped fragments counts as it does in the GitLab view; with `raw: true`, markers
+are found in each stored line on its own.
+
 ### Log Navigation
 
-| Parameter  | Description                                                |
-| ---------- | ---------------------------------------------------------- |
-| `start`    | Line number (positive from start, negative from end)       |
-| `per_page` | Maximum source lines to return, default 200, maximum 10000 |
+| Parameter       | Description                                                     |
+| --------------- | --------------------------------------------------------------- |
+| `start`         | Line number (positive from start, negative from end)            |
+| `per_page`      | Maximum source lines to return, default 200, maximum 10000      |
+| `section`       | Read only this section; `start` and `nextStart` count within it |
+| `section_index` | Which section of that name, counting from 0                     |
+
+With `section`, `start`, `per_page` and `nextStart` count lines from the section's
+first line, a negative `start` counts from its last line, and `totalLines` is the
+section's line count. `startLine` stays the absolute line number of the first line
+shown, and `section` reports the section's absolute range. The trace is read only up
+to the section's end, and the page only up to its own last line.
 
 Without `start`, logs return the last `per_page` lines. A negative `start` selects
 from the end, limited to the last `per_page` lines of that selection. A nonnegative
@@ -144,16 +213,18 @@ read returns an error rather than a successful partial page.
 with context, instead of pages of the log. Use it before paging `logs` when you
 need to find something in a long job.
 
-| Parameter     | Description                                                                        |
-| ------------- | ---------------------------------------------------------------------------------- |
-| `patterns`    | Up to 8 RE2 patterns, 512 characters each; a line matches when any pattern does    |
-| `preset`      | `failures`: common compiler, test, interpreter and runner failure output           |
-| `before`      | Context lines before each match, default 2, maximum 20                             |
-| `after`       | Context lines after each match, default 2, maximum 20                              |
-| `max_matches` | Matches to return, default 50, maximum 500; `match_count` still counts all of them |
-| `invert`      | Select lines matching no pattern                                                   |
-| `start_line`  | First line to search; pass `resume_from` from a truncated result                   |
-| `raw`         | Match the stored bytes instead of the rendered text                                |
+| Parameter       | Description                                                                        |
+| --------------- | ---------------------------------------------------------------------------------- |
+| `patterns`      | Up to 8 RE2 patterns, 512 characters each; a line matches when any pattern does    |
+| `preset`        | `failures`: common compiler, test, interpreter and runner failure output           |
+| `before`        | Context lines before each match, default 2, maximum 20                             |
+| `after`         | Context lines after each match, default 2, maximum 20                              |
+| `max_matches`   | Matches to return, default 50, maximum 500; `match_count` still counts all of them |
+| `invert`        | Select lines matching no pattern                                                   |
+| `start_line`    | First line to search; pass `resume_from` from a truncated result                   |
+| `raw`           | Match the stored bytes instead of the rendered text                                |
+| `section`       | Search only this section; see [Log Sections](#log-sections)                        |
+| `section_index` | Which section of that name, counting from 0                                        |
 
 At least one of `patterns` and `preset` is required. Patterns use
 [RE2 syntax](https://github.com/google/re2/wiki/Syntax), which runs in linear time;
@@ -198,6 +269,11 @@ same as in `logs`, so `logs` with `start` set to a match reads more around it. L
 clipped by the 16 KiB per-line limit are listed in `clipped`; only their first 16 KiB
 is searched.
 
+With `section`, matches and their context lines all come from that section, with
+absolute line numbers, and the result reports the section's range in `section`. The
+search ends with the section, so `total_lines` is null; `match_count` is still
+complete. A `start_line` inside the section continues a truncated search there.
+
 `match_count` counts every match found, including those beyond `max_matches`.
 `total_lines` is the number of lines in the trace, or null when the scan stopped
 early. When `truncated` is set, pass `resume_from` as `start_line` to continue:
@@ -235,7 +311,9 @@ fail" in one call: it lists the pipeline's jobs and searches their logs. Without
 | `resume`                   | The `resume` list of a previous result, to continue where it stopped                         |
 
 The other search parameters apply to every job; `max_matches` counts per job.
-`start_line` is not accepted: continue with `resume` instead.
+`start_line` is not accepted: continue with `resume` instead. With `section`, each
+job is searched inside its own section of that name, and a job whose log lacks it
+reports that as its `error`.
 
 `job_scope` selects the jobs to search, not the trigger jobs to follow: every trigger
 job that started a pipeline is followed, whatever its status, except a failed trigger

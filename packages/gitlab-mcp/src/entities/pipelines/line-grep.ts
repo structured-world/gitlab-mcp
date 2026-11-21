@@ -3,6 +3,12 @@ import type { MessagePort } from 'node:worker_threads';
 import { compilePatterns, type PatternMatcher } from '../../utils/re2-compile';
 import { PatternError } from '../../utils/re2-pattern';
 import { decodeFragment, TRACE_LINE_BYTES } from './trace';
+import {
+  SectionTracker,
+  type SectionBounds,
+  type SectionListing,
+  type SectionTarget,
+} from './log-sections';
 
 /**
  * Common failure output of compilers, test runners, interpreters and the runner itself.
@@ -49,6 +55,10 @@ export interface LineGrepOptions {
   spent?: Int32Array;
   /** Text bytes the reported lines may hold; the scan stops before exceeding it. */
   outputBytes: number;
+  /** Match and report only inside this section; the scan ends with it. */
+  section?: SectionTarget;
+  /** Report every section of the log with its line range. */
+  listSections?: boolean;
 }
 
 export interface GrepMatch {
@@ -81,6 +91,9 @@ export interface LineGrepResult {
   /** Pass as `start_line` to continue; every remaining match is reported exactly once. */
   resume_from: number | null;
   preset_index?: number;
+  /** The searched section; null when the scan stopped before it started. */
+  section?: SectionBounds | null;
+  sections?: SectionListing;
 }
 
 /** State after one chunk: hunks closed since the previous report and a safe continuation. */
@@ -188,6 +201,16 @@ function sectionOptionsEnd(src: Uint8Array, start: number, end: number): number 
   }
 }
 
+// Parts of the marker sectionMarkerEnd last accepted, as source offsets: valid until the
+// bytes are moved, which is after the marker callback returns.
+let markerIsStart = false;
+let markerStamp = 0;
+let markerStampEnd = 0;
+let markerName = 0;
+let markerNameEnd = 0;
+let markerOptions = -1;
+let markerOptionsEnd = -1;
+
 /**
  * End of a GitLab section marker at `start`, or -1. Grammar from Gitlab::Regex
  * build_trace_section_regex: section_(start|end):\d+:[A-Za-z0-9_.-]+
@@ -195,21 +218,51 @@ function sectionOptionsEnd(src: Uint8Array, start: number, end: number): number 
  */
 function sectionMarkerEnd(src: Uint8Array, start: number, end: number): number {
   let at = start + SECTION_PREFIX.length;
+  let isStart = true;
   if (startsWith(src, at, end, SECTION_START)) at += SECTION_START.length;
-  else if (startsWith(src, at, end, SECTION_END)) at += SECTION_END.length;
-  else return -1;
+  else if (startsWith(src, at, end, SECTION_END)) {
+    at += SECTION_END.length;
+    isStart = false;
+  } else return -1;
   if (src[at++] !== 0x3a) return -1;
   const digits = at;
   while (at < end && isDigit(src[at])) at++;
+  const digitsEnd = at;
   if (at === digits || src[at++] !== 0x3a) return -1;
   const name = at;
   while (at < end && (isWord(src[at]) || src[at] === 0x2e || src[at] === 0x2d)) at++;
   if (at === name) return -1;
+  const nameEnd = at;
+  let options = -1;
   if (src[at] === 0x5b) {
+    options = at;
     at = sectionOptionsEnd(src, at, end);
     if (at === -1) return -1;
   }
-  return startsWith(src, at, end, SECTION_SUFFIX) ? at + SECTION_SUFFIX.length : -1;
+  if (!startsWith(src, at, end, SECTION_SUFFIX)) return -1;
+  markerIsStart = isStart;
+  markerStamp = digits;
+  markerStampEnd = digitsEnd;
+  markerName = name;
+  markerNameEnd = nameEnd;
+  markerOptions = options;
+  markerOptionsEnd = options === -1 ? -1 : at;
+  return at + SECTION_SUFFIX.length;
+}
+
+/** Receives each accepted marker with the fragment of the logical line it starts in. */
+type MarkerSink = (src: Buffer, fragment: number) => void;
+// Set only while a scanner that tracks sections renders a line.
+let markerSink: MarkerSink | null = null;
+
+/**
+ * Fragment of the logical line holding source offset `at` of a token being applied: starts
+ * before `at` are mapped already, and a fragment holds `at` if its start is at or before it.
+ */
+function fragmentAt(at: number): number {
+  let fragment = startsMapped;
+  while (fragment < startCount && fragmentStarts[fragment] <= at) fragment++;
+  return fragment;
 }
 
 // Source offsets where each later fragment of a joined logical line starts. Rendering
@@ -316,6 +369,8 @@ function applyToken(
   const end = tokenEnd(next, size);
   const at = isEscape ? skipEscape(line, next, end) : sectionMarkerEnd(line, next, end);
   if (at > next) {
+    // GitLab applies a marker where it is scanned, even if a later CR clears the line.
+    if (!isEscape && markerSink) markerSink(line, fragmentAt(next));
     mapRemoved(at, renderLength);
     return at;
   }
@@ -375,7 +430,8 @@ function renderTraceLine(buffer: Buffer, size: number): number {
   return renderLength;
 }
 
-type StopReason = 'budget' | 'output';
+// `section`: the searched section ended, so nothing later can be reported.
+type StopReason = 'budget' | 'output' | 'section';
 
 /**
  * Streaming line search with `grep -C` hunks. Memory is bounded by the context ring
@@ -392,7 +448,12 @@ type StopReason = 'budget' | 'output';
  * behind the input.
  */
 export class LineGrepScanner {
-  private readonly matcher: PatternMatcher;
+  // Null when only sections are followed: nothing is matched.
+  private readonly matcher: PatternMatcher | null;
+  private readonly sections: SectionTracker | null;
+  private readonly searchesSection: boolean;
+  private readonly listsSections: boolean;
+  private readonly onMarker: MarkerSink;
   private readonly presetIndex: number | undefined;
   private readonly before: number;
   private readonly after: number;
@@ -451,17 +512,32 @@ export class LineGrepScanner {
   private sinceCheck = 0;
 
   constructor(options: LineGrepOptions) {
-    this.matcher = compilePatterns(options.patterns, options.preset ? [FAILURE_PATTERN] : []);
+    this.searchesSection = options.section !== undefined;
+    this.listsSections = options.listSections ?? false;
+    // Only a scan that follows sections may run without patterns; any other is refused.
+    const onlySections =
+      options.patterns.length === 0 &&
+      !options.preset &&
+      (this.searchesSection || this.listsSections);
+    this.matcher = onlySections
+      ? null
+      : compilePatterns(options.patterns, options.preset ? [FAILURE_PATTERN] : []);
     this.presetIndex = options.preset ? options.patterns.length : undefined;
+    this.sections =
+      this.searchesSection || this.listsSections ? new SectionTracker(options.section) : null;
+    this.onMarker = (src, fragment) => this.marker(src, this.groupFirst + fragment);
     this.before = options.before;
     this.after = options.after;
     this.maxMatches = options.maxMatches;
     this.invert = options.invert;
     this.startLine = options.startLine;
     this.firstKept = Math.max(0, options.startLine - options.before);
-    this.firstStored = options.normalize
-      ? Math.max(0, this.firstKept - (MAX_GROUP_LINES - 1))
-      : this.firstKept;
+    // Following sections needs every marker from the first line, wherever the search starts.
+    if (this.sections) this.firstStored = 0;
+    else
+      this.firstStored = options.normalize
+        ? Math.max(0, this.firstKept - (MAX_GROUP_LINES - 1))
+        : this.firstKept;
     this.normalize = options.normalize;
     this.budgetMs = options.budgetMs;
     this.spent = options.spent ?? new Int32Array(1);
@@ -576,14 +652,19 @@ export class LineGrepScanner {
     };
   }
 
-  /** Close the final line (String.split semantics) and report the hunks not yet taken. */
+  /**
+   * Close the final line (String.split semantics) and report the hunks not yet taken.
+   * Throws SectionNotFoundError when the whole log lacks the searched section.
+   */
   finish(): LineGrepResult {
     this.charged = performance.now();
     if (this.stop === null) this.finishLine(this.carry, 0, this.carryLength, this.lineBytes);
     if (this.stop === null) this.closeGroup();
     this.closePending();
     this.charge();
-    const stopped = this.stop !== null;
+    // The end of the searched section is the end of the search, not a cut.
+    const cut = this.stop === 'budget' || this.stop === 'output';
+    this.sections?.finish(this.stop === null ? this.line - 1 : null);
     let truncated: GrepTruncation | null = null;
     if (this.stop === 'output') truncated = 'output_limit';
     else if (this.stop === 'budget') truncated = 'budget';
@@ -594,13 +675,39 @@ export class LineGrepScanner {
     return {
       hunks,
       match_count: this.matchCount,
-      match_count_complete: !stopped,
+      match_count_complete: !cut,
       scanned_lines: this.line,
-      total_lines: stopped ? null : this.line,
+      total_lines: this.stop === null ? this.line : null,
       truncated,
       resume_from: truncated === null ? null : this.resumePoint(false),
       ...(this.presetIndex !== undefined ? { preset_index: this.presetIndex } : {}),
+      ...(this.searchesSection ? { section: (this.sections as SectionTracker).bounds() } : {}),
+      ...(this.listsSections ? { sections: (this.sections as SectionTracker).listing() } : {}),
     };
+  }
+
+  /** Applies the marker sectionMarkerEnd just accepted, found on physical line `line`. */
+  private marker(src: Buffer, line: number): void {
+    const tracker = this.sections as SectionTracker;
+    const stamp = Number(src.toString('latin1', markerStamp, markerStampEnd));
+    const name = src.toString('latin1', markerName, markerNameEnd);
+    if (!markerIsStart) {
+      tracker.end(line, stamp, name);
+      return;
+    }
+    const options =
+      markerOptions === -1 ? null : src.toString('latin1', markerOptions, markerOptionsEnd);
+    tracker.start(line, stamp, name, options);
+  }
+
+  /** Raw lines are not rendered: markers are found in each stored line on its own. */
+  private rawMarkers(text: Buffer, line: number): void {
+    let at = text.indexOf(SECTION_PREFIX);
+    while (at !== -1) {
+      const end = sectionMarkerEnd(text, at, text.length);
+      if (end !== -1) this.marker(text, line);
+      at = text.indexOf(SECTION_PREFIX, end === -1 ? at + 1 : end);
+    }
   }
 
   /**
@@ -719,7 +826,7 @@ export class LineGrepScanner {
     this.groupOpen = true;
     this.groupFirst = number;
     this.groupEnd = number;
-    this.groupMatchable = matchable && number >= this.startLine;
+    this.groupMatchable = matchable && number >= this.startLine && this.matcher !== null;
   }
 
   /**
@@ -729,6 +836,15 @@ export class LineGrepScanner {
    * loses its clipped tail with the rest of its text.
    */
   private renderGroup(): Buffer {
+    markerSink = this.sections ? this.onMarker : null;
+    try {
+      return this.renderFragments();
+    } finally {
+      markerSink = null;
+    }
+  }
+
+  private renderFragments(): Buffer {
     const first = this.groupFirst;
     const head = first % this.ringSize;
     if (this.groupEnd === first) {
@@ -796,7 +912,7 @@ export class LineGrepScanner {
       if (!last && gapBefore[index] === 0) continue;
       const to = last ? text.length : fragmentStarts[index];
       if (last || to > from)
-        found = unionSorted(found, this.matcher.match(text.subarray(from, to)));
+        found = unionSorted(found, (this.matcher as PatternMatcher).match(text.subarray(from, to)));
       from = to;
     }
     return found;
@@ -816,19 +932,32 @@ export class LineGrepScanner {
           0,
           this.ringLength[first % this.ringSize],
         );
-    if (this.groupMatchable) {
+    if (!this.normalize && this.sections) this.rawMarkers(text, first);
+    // With a searched section, only its lines are matched or reported, and its end is the last.
+    let last = this.groupEnd;
+    if (this.searchesSection) {
+      const end = (this.sections as SectionTracker).targetEnd;
+      if (end !== null && end < first) {
+        this.halt('section');
+        return;
+      }
+      if (end !== null) last = Math.min(last, end);
+    }
+    if (this.groupMatchable && (!this.searchesSection || this.sections?.inTarget(first))) {
+      const matcher = this.matcher as PatternMatcher;
       const found =
-        this.normalize && gapCount > 0 ? this.matchBetweenGaps(text) : this.matcher.match(text);
+        this.normalize && gapCount > 0 ? this.matchBetweenGaps(text) : matcher.match(text);
       isMatch = this.invert ? found.length === 0 : found.length > 0;
       if (!this.invert) hits = found;
     }
     const recorded = this.place(first, isMatch, hits);
-    for (let line = first + 1; line <= this.groupEnd && this.stop === null; line++) {
+    for (let line = first + 1; line <= last && this.stop === null; line++) {
       // The rest of a reported logical line belongs to it, whatever the after-context.
       if (recorded) this.emit(this.pending as GrepHunk, line, first);
       else this.place(line, false, NO_PATTERNS);
     }
     if (recorded && this.stop === null) this.afterRemaining = this.after;
+    if (this.searchesSection && this.sections?.targetEnd !== null) this.halt('section');
   }
 
   /**
@@ -852,8 +981,10 @@ export class LineGrepScanner {
   }
 
   private record(number: number, hits: readonly number[]): boolean {
+    // Before-context stays inside a searched section, so it starts at the section at most.
+    const floor = this.sections?.targetStart ?? 0;
     const hunk = (this.pending ??= {
-      start_line: Math.max(this.lastEmitted + 1, number - this.before),
+      start_line: Math.max(this.lastEmitted + 1, number - this.before, floor),
       lines: [],
       matches: [],
     });

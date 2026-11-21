@@ -29,3 +29,25 @@ it('scans on a real worker thread when the pool runs from TypeScript sources', a
     truncated: null,
   });
 }, 30_000);
+
+// A missing section is found on the worker; its explanation must reach the caller intact.
+it('reports a missing section from the worker thread with the available names', async () => {
+  const log = 'section_start:1:step_script\r\x1b[0Kx\nsection_end:2:step_script\r\x1b[0K\n';
+  await expect(
+    grepStream(
+      {
+        patterns: [],
+        before: 0,
+        after: 0,
+        maxMatches: 1,
+        invert: false,
+        startLine: 0,
+        normalize: true,
+        budgetMs: 2000,
+        outputBytes: 1 << 20,
+        section: { name: 'build', index: 0 },
+      },
+      async () => new Response(log).body,
+    ),
+  ).rejects.toThrow("Section 'build' not found; sections: step_script");
+}, 30_000);

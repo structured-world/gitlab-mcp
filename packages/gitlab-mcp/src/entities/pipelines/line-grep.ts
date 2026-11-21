@@ -836,7 +836,9 @@ export class LineGrepScanner {
    * loses its clipped tail with the rest of its text.
    */
   private renderGroup(): Buffer {
-    markerSink = this.sections ? this.onMarker : null;
+    // A scan that does not follow sections renders every line without the sink's bookkeeping.
+    if (!this.sections) return this.renderFragments();
+    markerSink = this.onMarker;
     try {
       return this.renderFragments();
     } finally {

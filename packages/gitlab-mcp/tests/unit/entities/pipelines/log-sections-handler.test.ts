@@ -88,7 +88,9 @@ describe('browse_pipelines log_sections', () => {
       total_lines: 10,
       complete: true,
     });
-    expect(mockEnhancedFetch.mock.calls[0][0]).toMatch(/\/projects\/test%2Fproject\/jobs\/7\/trace$/);
+    expect(mockEnhancedFetch.mock.calls[0][0]).toMatch(
+      /\/projects\/test%2Fproject\/jobs\/7\/trace$/,
+    );
   });
 });
 
@@ -189,9 +191,9 @@ describe('browse_pipelines section parameters', () => {
     await expect(browse({ action: 'logs', section_index: 1 })).rejects.toThrow(
       "'section_index' needs 'section'",
     );
-    await expect(
-      browse({ action: 'log_grep', patterns: ['x'], section_index: 1 }),
-    ).rejects.toThrow("'section_index' needs 'section'");
+    await expect(browse({ action: 'log_grep', patterns: ['x'], section_index: 1 })).rejects.toThrow(
+      "'section_index' needs 'section'",
+    );
     expect(mockEnhancedFetch).not.toHaveBeenCalled();
   });
 

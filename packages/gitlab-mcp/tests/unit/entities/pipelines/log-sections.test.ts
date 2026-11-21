@@ -238,6 +238,62 @@ describe('log section listing', () => {
         "Section 's' cannot be located: line 1 holds section markers the scan could not read",
       );
     });
+
+    // In a joined timestamped line, a clipped fragment's tail lies before the next fragment:
+    // its end marker closes the section before the next fragment restarts it.
+    it('applies a fragment tail before the markers of the next fragment', () => {
+      const stamp = '2026-11-18T10:00:00.123456Z';
+      const log = [
+        `${stamp} 00O ${start(1, 'a')}${LONG}${end(2, 'a')}`,
+        `${stamp} 00O+${start(3, 'a')}x`,
+        `${stamp} 00O tail`,
+      ].join('\n');
+      expect(
+        list(log, 4096)?.sections.map((s) => [s.start_line, s.end_line, s.terminated]),
+      ).toEqual([
+        [0, 0, true],
+        [1, 2, false],
+      ]);
+    });
+
+    // Escape state carries across chunk boundaries inside a dropped tail.
+    it.each([1, 3])('tokenizes escapes split by chunks in a tail (chunks of %i)', (size) => {
+      const log = [
+        `${start(1, 'a')}${start(1, 'b')}x`,
+        `${LONG}${ESC}[${end(2, 'a')}${ESC}1${end(3, 'b')}`,
+      ].join('\n');
+      // '\e[' swallows the 's' of the first marker; an ESC before '1' starts no sequence.
+      expect(list(log, size)?.sections.map((s) => [s.name, s.terminated])).toEqual([
+        ['a', false],
+        ['b', true],
+      ]);
+    });
+
+    // A held "section_" that turns out to be no marker is text, and what follows is scanned.
+    it('rescans after a cut-off candidate that is no marker', () => {
+      const log = [`${start(1, 's')}x`, `${LONG}section_bogus ${end(2, 's')}`].join('\n');
+      expect(list(log, 7)?.sections).toEqual([
+        expect.objectContaining({ end_line: 1, terminated: true }),
+      ]);
+    });
+
+    it('reads options of a start marker in a tail', () => {
+      const log = `${LONG}${start(1, 't', '[collapsed=true]')}x`;
+      expect(list(log, 4096)?.sections).toEqual([
+        expect.objectContaining({ name: 't', collapsed: true }),
+      ]);
+    });
+
+    // The queue of tail markers is bounded; the overflow is reported, not dropped silently.
+    it('reports a line whose tails hold more markers than the queue keeps', () => {
+      const many = Array.from({ length: 300 }, (_, i) => start(i, `m${i}`)).join('');
+      expect(list(`x\n${LONG}${many}`, 65_536)?.unread_from_line).toBe(1);
+    });
+  });
+
+  it('reads collapsed only from its own option', () => {
+    const log = [start(1, 'a', '[hidden=true]'), start(2, 'b', '[x=1, collapsed=false]')];
+    expect(list(log.join('\n'))?.sections.map((s) => s.collapsed)).toEqual([false, false]);
   });
 
   // The listing stays bounded however many sections a log opens.
@@ -373,6 +429,14 @@ describe('log search within a section', () => {
       expect(result.match_count).toBe(0);
       expect(result.section).toMatchObject({ start_line: 0, end_line: 1 });
     });
+  });
+
+  // A restart of the searched name ends it on the line before, like any restarted section.
+  it('ends a searched section where its name restarts', () => {
+    const log = [start(1, 'a'), 'error one', start(5, 'a'), 'error two', end(9, 'a')];
+    const result = scan(log.join('\n'), { patterns: ['error'], section: { name: 'a', index: 0 } });
+    expect(result.hunks.map((hunk) => hunk.lines)).toEqual([['error one']]);
+    expect(result.section).toMatchObject({ start_line: 0, end_line: 1, terminated: false });
   });
 
   // A section left open at EOF lasts to the last line.

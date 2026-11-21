@@ -239,6 +239,43 @@ describe('log section listing', () => {
       );
     });
 
+    // A long line ending in text that only looks like the start of a marker ends there: a real
+    // line boundary means no marker, so nothing is unread.
+    it.each(['s', 'sect', 'section_end:2:'])(
+      'drops a cut-off marker prefix %p at a real line end',
+      (suffix) => {
+        const log = [`${start(1, 's')}x`, `${LONG}${suffix}`, 'error inside', end(3, 's')];
+        expect(list(log.join('\n'), 4096)).toMatchObject({
+          unread_from_line: null,
+          sections: [{ name: 's', end_line: 3, terminated: true }],
+        });
+        const result = scan(
+          log.join('\n'),
+          { patterns: ['error'], section: { name: 's', index: 0 } },
+          4096,
+        );
+        expect(result.match_count).toBe(1);
+      },
+    );
+
+    // A marker cut by the end of a clipped fragment continues in the next fragment GitLab joins.
+    it.each([7, 4096, 65_536])(
+      'completes a cut-off tail marker in the continuation (chunks of %i)',
+      (size) => {
+        const stamp = '2026-11-18T10:00:00.123456Z';
+        const log = [
+          `${stamp} 00O ${start(1, 'a')}x`,
+          `${stamp} 00O ${LONG}section_e`,
+          `${stamp} 00O+nd:2:a\r${ESC}[0Kafter`,
+          `${stamp} 00O later`,
+        ].join('\n');
+        expect(list(log, size)).toMatchObject({
+          unread_from_line: null,
+          sections: [{ name: 'a', start_line: 0, end_line: 1, terminated: true }],
+        });
+      },
+    );
+
     // In a joined timestamped line, a clipped fragment's tail lies before the next fragment:
     // its end marker closes the section before the next fragment restarts it.
     it('applies a fragment tail before the markers of the next fragment', () => {

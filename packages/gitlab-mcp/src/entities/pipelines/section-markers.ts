@@ -151,6 +151,10 @@ export class MarkerTail {
   private heldLength = 0;
   // A line whose markers are past the queue's room only reports that once.
   private unread = false;
+  // A marker cut off by the end of an earlier line, which a joined fragment may complete.
+  private pending: Buffer | undefined;
+  private pendingLength = 0;
+  private pendingLine = 0;
 
   /** Starts the tail of line `line` after its kept bytes `src[start, end)`. */
   begin(line: number, src: Buffer, start: number, end: number): void {
@@ -198,10 +202,49 @@ export class MarkerTail {
     if (at < to) this.scan(src, at, to, true);
   }
 
-  /** Ends the line: a marker still cut off could only continue in a joined fragment. */
+  /**
+   * Ends the line. A marker still cut off waits for the next line: GitLab joins a timestamped
+   * continuation to it, and at any other line end it was text.
+   */
   finish(): void {
-    if (this.heldLength > 0) this.markUnread();
+    if (this.heldLength === 0) return;
+    const held = this.held as Buffer;
+    this.held = this.pending;
+    this.pending = held;
+    this.pendingLength = this.heldLength;
+    this.pendingLine = this.line;
     this.heldLength = 0;
+  }
+
+  /**
+   * Settles a marker the previous line left cut off, once the next line is known: dropped when
+   * that line is no continuation, otherwise completed from the continuation's kept bytes
+   * `src[from, to)`; `clipped` tells that those bytes are not the fragment's end.
+   */
+  resolvePending(chained: boolean, src: Buffer, from: number, to: number, clipped: boolean): void {
+    if (this.pendingLength === 0) return;
+    const pending = this.pending as Buffer;
+    if (!chained) {
+      this.pendingLength = 0;
+      return;
+    }
+    const size =
+      this.pendingLength +
+      src.copy(
+        pending,
+        this.pendingLength,
+        from,
+        Math.min(to, from + HELD_BYTES - this.pendingLength),
+      );
+    const end = sectionMarkerEnd(pending, 0, size);
+    if (end === NEEDS_MORE && size < HELD_BYTES && !clipped) {
+      // The whole fragment fits in the marker so far: a further continuation may finish it.
+      this.pendingLength = size;
+      return;
+    }
+    this.pendingLength = 0;
+    if (end >= 0) this.insert(this.parsed(pending, this.pendingLine));
+    else if (end === NEEDS_MORE) this.insert({ line: this.pendingLine, kind: 'unread' });
   }
 
   private scan(src: Buffer, from: number, to: number, record: boolean): void {
@@ -270,17 +313,29 @@ export class MarkerTail {
       this.markUnread();
       return;
     }
+    this.events.push(this.parsed(src, this.line));
+  }
+
+  /** The event of the marker sectionMarkerEnd just accepted in `src`. */
+  private parsed(src: Buffer, line: number): TailEvent {
     const stamp = Number(src.toString('latin1', parsedMarker.stamp, parsedMarker.stampEnd));
     const name = src.toString('latin1', parsedMarker.name, parsedMarker.nameEnd);
-    if (!parsedMarker.isStart) {
-      this.events.push({ line: this.line, kind: 'end', stamp, name });
-      return;
-    }
+    if (!parsedMarker.isStart) return { line, kind: 'end', stamp, name };
     const options =
       parsedMarker.options === -1
         ? null
         : src.toString('latin1', parsedMarker.options, parsedMarker.optionsEnd);
-    this.events.push({ line: this.line, kind: 'start', stamp, name, options });
+    return { line, kind: 'start', stamp, name, options };
+  }
+
+  /**
+   * Queues an event of an earlier line after that line's events and before later lines', which
+   * the next line's tail may already have queued.
+   */
+  private insert(event: TailEvent): void {
+    let at = this.events.length;
+    while (at > 0 && this.events[at - 1].line > event.line) at--;
+    this.events.splice(at, 0, event);
   }
 
   private markUnread(): void {

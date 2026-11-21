@@ -601,13 +601,18 @@ export class LineGrepScanner {
       if (this.tail !== null && length > TRACE_LINE_BYTES) {
         this.tail.begin(this.line, bytes, offset, kept);
         this.tail.feed(bytes, kept, offset + length);
-        this.tail.finish();
+        this.tailOpen = true;
       }
-      return this.finishLine(bytes, offset, kept, length);
+      const going = this.finishLine(bytes, offset, kept, length);
+      this.closeTail();
+      return going;
     }
     this.collect(bytes, offset, length);
+    // Finishing the line settles what the previous line left cut off; this line's cut-off
+    // marker waits for the next one.
+    const going = this.finishLine(this.carry, 0, this.carryLength, this.lineBytes);
     this.closeTail();
-    return this.finishLine(this.carry, 0, this.carryLength, this.lineBytes);
+    return going;
   }
 
   /** Hunks closed since the previous call, with a continuation that loses none of them. */
@@ -629,8 +634,9 @@ export class LineGrepScanner {
    */
   finish(): LineGrepResult {
     this.charged = performance.now();
-    this.closeTail();
     if (this.stop === null) this.finishLine(this.carry, 0, this.carryLength, this.lineBytes);
+    // The log ends here: a marker the last line left cut off was text.
+    this.closeTail();
     if (this.stop === null) this.closeGroup();
     this.closePending();
     this.charge();
@@ -771,6 +777,14 @@ export class LineGrepScanner {
     this.carryLength = 0;
     this.lineBytes = 0;
     const chained = this.chain(src, begin, end);
+    // A continuation always starts with its timestamp header; the marker goes on after it.
+    this.tail?.resolvePending(
+      chained,
+      src,
+      begin + TIMESTAMP_HEADER_BYTES,
+      end,
+      sourceBytes > end - begin,
+    );
     if (number < this.firstStored) return true;
     // Grow before storing, so the new fragment cannot overwrite a line still to be placed.
     if (chained && this.groupOpen && this.ringSize < this.before + 2 + MAX_GROUP_LINES)

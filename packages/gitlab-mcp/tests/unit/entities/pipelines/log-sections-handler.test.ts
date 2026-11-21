@@ -85,6 +85,7 @@ describe('browse_pipelines log_sections', () => {
         },
       ],
       sections_truncated: false,
+      sections_unread_from_line: null,
       total_lines: 10,
       complete: true,
     });

@@ -67,6 +67,7 @@ describe('log section listing', () => {
   it('lists runner and nested custom sections with ranges, depth and duration', () => {
     expect(list(RUNNER_LOG)).toEqual({
       truncated: false,
+      unread_from_line: null,
       sections: [
         {
           name: 'prepare_executor',
@@ -111,7 +112,18 @@ describe('log section listing', () => {
   });
 
   it('lists nothing for a log without sections', () => {
-    expect(list('one\ntwo\n')).toEqual({ truncated: false, sections: [] });
+    expect(list('one\ntwo\n')).toEqual({ truncated: false, unread_from_line: null, sections: [] });
+  });
+
+  // Section identity is the whole name: names sharing a long prefix are separate sections.
+  it('tells apart names that differ only after a long common prefix', () => {
+    const first = `${'a'.repeat(300)}x`;
+    const second = `${'a'.repeat(300)}y`;
+    const log = [start(1, first), start(2, second), end(3, first), end(4, second)].join('\n');
+    expect(list(log, 4096)?.sections.map((s) => [s.name, s.start_line, s.end_line])).toEqual([
+      [first, 0, 2],
+      [second, 1, 3],
+    ]);
   });
 
   // A name repeated in one log is told apart by its occurrence, which section_index takes.
@@ -179,6 +191,53 @@ describe('log section listing', () => {
       ['split', 0, 0, 5],
       ['mid', 1, 3, 4],
     ]);
+  });
+
+  // GitLab applies markers wherever they are on a line; the scan keeps only 16 KiB of each
+  // line, and markers past that must still close and open sections.
+  describe('markers past the 16 KiB a line keeps', () => {
+    const LONG = 'a'.repeat(17_000);
+
+    it.each([7, 4096, 65_536])('reads an end marker in the dropped tail (chunks of %i)', (size) => {
+      const log = [`${start(1, 's')}x`, `${LONG}${end(2, 's')}`, 'after'].join('\n');
+      expect(list(log, size)).toMatchObject({
+        unread_from_line: null,
+        sections: [{ name: 's', start_line: 0, end_line: 1, terminated: true }],
+      });
+    });
+
+    it.each([7, 4096])('reads a marker cut by the 16 KiB limit (chunks of %i)', (size) => {
+      const log = [`${start(1, 's')}x`, `${'a'.repeat(16_384 - 5)}${end(2, 's')}`, 'after'];
+      expect(list(log.join('\n'), size)?.sections).toEqual([
+        expect.objectContaining({ end_line: 1, terminated: true }),
+      ]);
+    });
+
+    // The tail's markers come after the kept part's: a start then an end on one line.
+    it('applies kept and dropped markers of one line in order', () => {
+      const log = [`${start(2, 't')}${LONG}${end(5, 't')}`, 'after'].join('\n');
+      expect(list(log)?.sections).toEqual([
+        expect.objectContaining({ name: 't', start_line: 0, end_line: 0, duration_seconds: 3 }),
+      ]);
+    });
+
+    // An escape cut by the limit still swallows the marker's 's', as GitLab's view does.
+    it('does not read a marker an escape cut by the limit swallows', () => {
+      const log = `${'a'.repeat(16_382)}${ESC}[${start(1, 'hidden')}text`;
+      expect(list(log, 4096)?.sections).toEqual([]);
+    });
+
+    // A marker longer than the scan can hold is reported, never silently skipped.
+    it('reports markers it cannot read instead of trusting later bounds', () => {
+      const huge = 'n'.repeat(20_000);
+      const log = [`${start(1, 's')}x`, `${LONG}${end(2, huge)}`, 'error after'].join('\n');
+      expect(list(log, 4096)?.unread_from_line).toBe(1);
+      expect(() =>
+        scan(log, { patterns: ['error'], section: { name: 's', index: 0 } }, 4096),
+      ).toThrow(
+        "Section 's' cannot be located: line 1 holds section markers the scan could not read",
+      );
+    });
   });
 
   // The listing stays bounded however many sections a log opens.
@@ -275,6 +334,45 @@ describe('log search within a section', () => {
       section: { name: 'step_script', index: 0 },
     });
     expect(result.hunks.flatMap((hunk) => hunk.matches.map((match) => match.line))).toEqual([6, 8]);
+  });
+
+  // A timestamped logical line can cross a section boundary; only the fragments inside the
+  // section are searched, and a match is reported on the first of them.
+  describe('a logical line crossing the section boundary', () => {
+    const stamp = '2026-11-18T10:00:00.123456Z';
+    const opening = [
+      `${stamp} 00O error outside `,
+      `${stamp} 00O+${start(1, 's')}error inside`,
+      `${stamp} 00O ${end(2, 's')}`,
+    ].join('\n');
+
+    it('finds a match in a section that starts in a continuation', () => {
+      const result = scan(opening, { patterns: ['inside'], section: { name: 's', index: 0 } });
+      expect(result.hunks).toEqual([
+        {
+          start_line: 1,
+          lines: ['error inside'],
+          matches: [{ line: 1, patterns: [0] }],
+          timestamps: [stamp],
+        },
+      ]);
+    });
+
+    it('does not match the fragment before the section start', () => {
+      const result = scan(opening, { patterns: ['outside'], section: { name: 's', index: 0 } });
+      expect(result.match_count).toBe(0);
+    });
+
+    it('does not match a continuation after the section end', () => {
+      const log = [
+        `${stamp} 00O ${start(1, 's')}in`,
+        `${stamp} 00O ${end(2, 's')}`,
+        `${stamp} 00O+error after`,
+      ].join('\n');
+      const result = scan(log, { patterns: ['error'], section: { name: 's', index: 0 } });
+      expect(result.match_count).toBe(0);
+      expect(result.section).toMatchObject({ start_line: 0, end_line: 1 });
+    });
   });
 
   // A section left open at EOF lasts to the last line.

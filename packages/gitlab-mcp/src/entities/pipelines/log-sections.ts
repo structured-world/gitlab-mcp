@@ -1,7 +1,12 @@
+import { TRACE_LINE_BYTES } from './trace';
+
 /** Sections a listing reports; later sections only set `truncated`. */
 export const MAX_LOG_SECTIONS = 500;
-/** Longest section name kept. GitLab's marker grammar sets no limit; names are ASCII. */
-export const MAX_SECTION_NAME = 255;
+/**
+ * Longest section name the scan can read: a marker must fit in the bytes a line keeps or a
+ * dropped tail holds. GitLab's grammar sets no limit; names are ASCII.
+ */
+export const MAX_SECTION_NAME = TRACE_LINE_BYTES;
 
 export interface LogSection {
   name: string;
@@ -22,6 +27,8 @@ export interface LogSection {
 export interface SectionListing {
   sections: LogSection[];
   truncated: boolean;
+  /** First line with section markers the scan could not read; ranges from it on may be wrong. */
+  unread_from_line: number | null;
 }
 
 /** One occurrence of a named section, chosen by its 0-based index among sections of that name. */
@@ -77,6 +84,9 @@ export class SectionTracker {
   private targetSeen = 0;
   private target: Tracked | null = null;
   private targetDone = false;
+  private unreadFrom: number | null = null;
+  // Markers went unread while the requested section was not yet over.
+  private targetUnread = false;
   // A plain field: the worker loads this module with Node's type stripping, which rejects
   // parameter properties.
   private readonly wanted: SectionTarget | undefined;
@@ -86,8 +96,7 @@ export class SectionTracker {
     this.targetKey = wanted ? sanitize(wanted.name) : null;
   }
 
-  start(line: number, stamp: number, rawName: string, options: string | null): void {
-    const name = rawName.slice(0, MAX_SECTION_NAME);
+  start(line: number, stamp: number, name: string, options: string | null): void {
     const key = sanitize(name);
     const restarted = this.open.get(key);
     if (restarted) {
@@ -125,8 +134,8 @@ export class SectionTracker {
     }
   }
 
-  end(line: number, stamp: number, rawName: string): void {
-    const key = sanitize(rawName.slice(0, MAX_SECTION_NAME));
+  end(line: number, stamp: number, name: string): void {
+    const key = sanitize(name);
     const tracked = this.open.get(key);
     if (tracked) {
       this.close(tracked, line, stamp);
@@ -138,6 +147,17 @@ export class SectionTracker {
     }
   }
 
+  /** Records that markers on `line` could not be read, so later bounds may be wrong. */
+  unread(line: number): void {
+    this.unreadFrom ??= line;
+    if (this.wanted && !this.targetDone) this.targetUnread = true;
+  }
+
+  /** Whether the requested section's bounds can no longer be trusted. */
+  get unresolved(): boolean {
+    return this.targetUnread;
+  }
+
   private close(tracked: Tracked, line: number, stamp: number | null): void {
     const section = tracked.section;
     if (section.end_line !== null) return;
@@ -145,13 +165,6 @@ export class SectionTracker {
     section.line_count = line - section.start_line + 1;
     section.terminated = stamp !== null;
     section.duration_seconds = stamp === null ? null : stamp - tracked.startStamp;
-  }
-
-  /** Whether `line` lies in the requested section as far as it is known. */
-  inTarget(line: number): boolean {
-    const section = this.target?.section;
-    if (!section || line < section.start_line) return false;
-    return section.end_line === null || line <= section.end_line;
   }
 
   /** Last line of the requested section once it has ended, otherwise null. */
@@ -169,6 +182,10 @@ export class SectionTracker {
    * when the scan stopped first. A requested section the whole log lacks is an error.
    */
   finish(lastLine: number | null): void {
+    if (this.targetUnread)
+      throw new Error(
+        `Section '${(this.wanted as SectionTarget).name}' cannot be located: line ${this.unreadFrom} holds section markers the scan could not read`,
+      );
     if (lastLine === null) return;
     for (const tracked of this.open.values()) this.close(tracked, lastLine, null);
     this.open.clear();
@@ -192,7 +209,11 @@ export class SectionTracker {
   }
 
   listing(): SectionListing {
-    return { sections: this.listed.map((tracked) => tracked.section), truncated: this.truncated };
+    return {
+      sections: this.listed.map((tracked) => tracked.section),
+      truncated: this.truncated,
+      unread_from_line: this.unreadFrom,
+    };
   }
 
   bounds(): SectionBounds | null {

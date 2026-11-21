@@ -29,6 +29,8 @@ export interface LogSectionsResult {
   sections: LogSection[];
   /** True when the log has more than the listed sections. */
   sections_truncated: boolean;
+  /** First line with section markers the scan could not read; ranges from it on may be wrong. */
+  sections_unread_from_line: number | null;
   /** Null when the processing budget stopped the scan; sections still open then have no end. */
   total_lines: number | null;
   complete: boolean;
@@ -39,10 +41,11 @@ export async function listLogSections(input: SectionsInput): Promise<LogSections
   const result = await grepStream(markerScan({ listSections: true }), () =>
     openTrace(input.project_id, input.job_id),
   );
-  const listing = result.sections ?? { sections: [], truncated: false };
+  const listing = result.sections ?? { sections: [], truncated: false, unread_from_line: null };
   return {
     sections: listing.sections,
     sections_truncated: listing.truncated,
+    sections_unread_from_line: listing.unread_from_line,
     total_lines: result.total_lines,
     complete: result.truncated === null,
   };

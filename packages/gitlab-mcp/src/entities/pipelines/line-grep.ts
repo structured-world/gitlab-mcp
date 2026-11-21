@@ -9,6 +9,15 @@ import {
   type SectionListing,
   type SectionTarget,
 } from './log-sections';
+import {
+  ESC,
+  isDigit,
+  MarkerTail,
+  parsedMarker,
+  SECTION_PREFIX,
+  sectionMarkerEnd,
+  type TailEvent,
+} from './section-markers';
 
 /**
  * Common failure output of compilers, test runners, interpreters and the runner itself.
@@ -115,26 +124,7 @@ const CONTINUATION = 0x2b;
 const MAX_GROUP_LINES = 32;
 const BUDGET_CHECK_LINES = 256;
 const NO_PATTERNS: readonly number[] = Object.freeze([]);
-const ESC = 0x1b;
 const CR = 0x0d;
-const SECTION_PREFIX = Buffer.from('section_', 'latin1');
-const SECTION_START = Buffer.from('start', 'latin1');
-const SECTION_END = Buffer.from('end', 'latin1');
-const SECTION_SUFFIX = Buffer.from('\r\x1b[0K', 'latin1');
-
-const isDigit = (byte: number) => byte >= 0x30 && byte <= 0x39;
-const isWord = (byte: number) =>
-  isDigit(byte) ||
-  (byte >= 0x41 && byte <= 0x5a) ||
-  (byte >= 0x61 && byte <= 0x7a) ||
-  byte === 0x5f;
-
-function startsWith(src: Uint8Array, at: number, end: number, prefix: Uint8Array): boolean {
-  if (end - at < prefix.length) return false;
-  for (let index = 0; index < prefix.length; index++)
-    if (src[at + index] !== prefix[index]) return false;
-  return true;
-}
 
 const TIMESTAMP_DIGITS = [0, 1, 2, 3, 5, 6, 8, 9, 11, 12, 14, 15, 17, 18, 20, 21, 22, 23, 24, 25];
 const isLowerHex = (byte: number) => isDigit(byte) || (byte >= 0x61 && byte <= 0x66);
@@ -181,79 +171,15 @@ function skipEscape(src: Uint8Array, start: number, end: number): number {
   return at >= end ? end : at + 1;
 }
 
-/** End of the run of `\w` bytes at `at`. */
-function wordEnd(src: Uint8Array, at: number, end: number): number {
-  while (at < end && isWord(src[at])) at++;
-  return at;
-}
-
-/** End of a section options block `[\w+=\w+(, ?\w+=\w+)*]` starting at `[`, or -1. */
-function sectionOptionsEnd(src: Uint8Array, start: number, end: number): number {
-  let at = start + 1;
-  for (;;) {
-    const keyEnd = wordEnd(src, at, end);
-    if (keyEnd === at || src[keyEnd] !== 0x3d) return -1;
-    at = wordEnd(src, keyEnd + 1, end);
-    if (at === keyEnd + 1) return -1;
-    if (src[at] === 0x5d) return at + 1;
-    if (src[at] !== 0x2c) return -1;
-    at += src[at + 1] === 0x20 ? 2 : 1;
-  }
-}
-
-// Parts of the marker sectionMarkerEnd last accepted, as source offsets: valid until the
-// bytes are moved, which is after the marker callback returns.
-let markerIsStart = false;
-let markerStamp = 0;
-let markerStampEnd = 0;
-let markerName = 0;
-let markerNameEnd = 0;
-let markerOptions = -1;
-let markerOptionsEnd = -1;
-
-/**
- * End of a GitLab section marker at `start`, or -1. Grammar from Gitlab::Regex
- * build_trace_section_regex: section_(start|end):\d+:[A-Za-z0-9_.-]+
- * (\[\w+=\w+(, ?\w+=\w+)*\])?\r\e\[0K. Called only where SECTION_PREFIX starts.
- */
-function sectionMarkerEnd(src: Uint8Array, start: number, end: number): number {
-  let at = start + SECTION_PREFIX.length;
-  let isStart = true;
-  if (startsWith(src, at, end, SECTION_START)) at += SECTION_START.length;
-  else if (startsWith(src, at, end, SECTION_END)) {
-    at += SECTION_END.length;
-    isStart = false;
-  } else return -1;
-  if (src[at++] !== 0x3a) return -1;
-  const digits = at;
-  while (at < end && isDigit(src[at])) at++;
-  const digitsEnd = at;
-  if (at === digits || src[at++] !== 0x3a) return -1;
-  const name = at;
-  while (at < end && (isWord(src[at]) || src[at] === 0x2e || src[at] === 0x2d)) at++;
-  if (at === name) return -1;
-  const nameEnd = at;
-  let options = -1;
-  if (src[at] === 0x5b) {
-    options = at;
-    at = sectionOptionsEnd(src, at, end);
-    if (at === -1) return -1;
-  }
-  if (!startsWith(src, at, end, SECTION_SUFFIX)) return -1;
-  markerIsStart = isStart;
-  markerStamp = digits;
-  markerStampEnd = digitsEnd;
-  markerName = name;
-  markerNameEnd = nameEnd;
-  markerOptions = options;
-  markerOptionsEnd = options === -1 ? -1 : at;
-  return at + SECTION_SUFFIX.length;
-}
-
 /** Receives each accepted marker with the fragment of the logical line it starts in. */
 type MarkerSink = (src: Buffer, fragment: number) => void;
 // Set only while a scanner that tracks sections renders a line.
 let markerSink: MarkerSink | null = null;
+// Applies the markers queued from the dropped tail of a fragment; set only while a group
+// with such markers renders, so they are applied between the markers around them.
+let tailSink: ((fragment: number) => void) | null = null;
+// Fragments whose dropped tails were applied during the current render.
+let tailsApplied = 0;
 
 /**
  * Fragment of the logical line holding source offset `at` of a token being applied: starts
@@ -412,20 +338,36 @@ function renderTraceLine(buffer: Buffer, size: number): number {
   let cr = line.indexOf(CR);
   let section = line.indexOf(SECTION_PREFIX);
   let at = 0;
+  tailsApplied = 0;
   for (;;) {
     esc = nextOf(line, ESC, esc, at);
     cr = nextOf(line, CR, cr, at);
     section = nextOf(line, SECTION_PREFIX, section, at);
-    const next = earliest(earliest(earliest(size, esc), cr), section);
+    let next = earliest(earliest(earliest(size, esc), cr), section);
+    // A fragment's dropped tail lies where the next fragment starts, before any token there.
+    let atTail = false;
+    if (tailSink !== null) {
+      while (tailsApplied < startsMapped) tailSink(tailsApplied++);
+      if (tailsApplied < startCount && fragmentStarts[tailsApplied] <= next) {
+        next = fragmentStarts[tailsApplied];
+        atTail = next < size;
+      }
+    }
     if (next > at) {
       if (renderLength !== at) line.copy(line, renderLength, at, next);
       mapCopied(at, next, renderLength);
       renderLength += next - at;
     }
+    if (atTail) {
+      (tailSink as (fragment: number) => void)(tailsApplied++);
+      at = next;
+      continue;
+    }
     if (next === size) break;
     at = applyToken(line, next, size, next === cr, next === esc);
     if (at === -1) break;
   }
+  if (tailSink !== null) while (tailsApplied <= startCount) tailSink(tailsApplied++);
   mapRemoved(Infinity, renderLength);
   return renderLength;
 }
@@ -454,6 +396,13 @@ export class LineGrepScanner {
   private readonly searchesSection: boolean;
   private readonly listsSections: boolean;
   private readonly onMarker: MarkerSink;
+  // Reads markers in the bytes a line drops past its limit; null when sections are not followed.
+  private readonly tail: MarkerTail | null;
+  private readonly onTail: (fragment: number) => void;
+  // Whether the line being read has dropped bytes, so its tail is being scanned.
+  private tailOpen = false;
+  // Tail events already applied, the first of `tail.events` still to apply.
+  private tailRead = 0;
   private readonly presetIndex: number | undefined;
   private readonly before: number;
   private readonly after: number;
@@ -526,6 +475,8 @@ export class LineGrepScanner {
     this.sections =
       this.searchesSection || this.listsSections ? new SectionTracker(options.section) : null;
     this.onMarker = (src, fragment) => this.marker(src, this.groupFirst + fragment);
+    this.tail = this.sections ? new MarkerTail() : null;
+    this.onTail = (fragment) => this.applyTail(this.groupFirst + fragment);
     this.before = options.before;
     this.after = options.after;
     this.maxMatches = options.maxMatches;
@@ -627,15 +578,35 @@ export class LineGrepScanner {
       this.carryLength += keep;
     }
     this.lineBytes += length;
+    // Followed sections store every line, so the limit here is the stored one.
+    if (this.tail !== null && keep < length) {
+      if (!this.tailOpen) this.tail.begin(this.line, this.carry, 0, this.carryLength);
+      this.tailOpen = true;
+      this.tail.feed(bytes, offset + Math.max(keep, 0), offset + length);
+    }
+  }
+
+  /** Ends the dropped tail of the line being finished, if it has one. */
+  private closeTail(): void {
+    if (!this.tailOpen) return;
+    (this.tail as MarkerTail).finish();
+    this.tailOpen = false;
   }
 
   /** Finishes the line whose last piece ends at `offset + length`; false once stopped. */
   private endLine(bytes: Buffer, offset: number, length: number): boolean {
     if (this.lineBytes === 0 && this.line >= this.firstStored) {
       // The whole line is inside this chunk: render it without the carry copy.
-      return this.finishLine(bytes, offset, offset + Math.min(length, TRACE_LINE_BYTES), length);
+      const kept = offset + Math.min(length, TRACE_LINE_BYTES);
+      if (this.tail !== null && length > TRACE_LINE_BYTES) {
+        this.tail.begin(this.line, bytes, offset, kept);
+        this.tail.feed(bytes, kept, offset + length);
+        this.tail.finish();
+      }
+      return this.finishLine(bytes, offset, kept, length);
     }
     this.collect(bytes, offset, length);
+    this.closeTail();
     return this.finishLine(this.carry, 0, this.carryLength, this.lineBytes);
   }
 
@@ -658,6 +629,7 @@ export class LineGrepScanner {
    */
   finish(): LineGrepResult {
     this.charged = performance.now();
+    this.closeTail();
     if (this.stop === null) this.finishLine(this.carry, 0, this.carryLength, this.lineBytes);
     if (this.stop === null) this.closeGroup();
     this.closePending();
@@ -689,14 +661,16 @@ export class LineGrepScanner {
   /** Applies the marker sectionMarkerEnd just accepted, found on physical line `line`. */
   private marker(src: Buffer, line: number): void {
     const tracker = this.sections as SectionTracker;
-    const stamp = Number(src.toString('latin1', markerStamp, markerStampEnd));
-    const name = src.toString('latin1', markerName, markerNameEnd);
-    if (!markerIsStart) {
+    const stamp = Number(src.toString('latin1', parsedMarker.stamp, parsedMarker.stampEnd));
+    const name = src.toString('latin1', parsedMarker.name, parsedMarker.nameEnd);
+    if (!parsedMarker.isStart) {
       tracker.end(line, stamp, name);
       return;
     }
     const options =
-      markerOptions === -1 ? null : src.toString('latin1', markerOptions, markerOptionsEnd);
+      parsedMarker.options === -1
+        ? null
+        : src.toString('latin1', parsedMarker.options, parsedMarker.optionsEnd);
     tracker.start(line, stamp, name, options);
   }
 
@@ -705,9 +679,34 @@ export class LineGrepScanner {
     let at = text.indexOf(SECTION_PREFIX);
     while (at !== -1) {
       const end = sectionMarkerEnd(text, at, text.length);
-      if (end !== -1) this.marker(text, line);
-      at = text.indexOf(SECTION_PREFIX, end === -1 ? at + 1 : end);
+      if (end >= 0) this.marker(text, line);
+      at = text.indexOf(SECTION_PREFIX, end >= 0 ? end : at + 1);
     }
+  }
+
+  /** Whether markers from dropped tails wait for a line of the group being closed. */
+  private tailsPending(): boolean {
+    const events = (this.tail as MarkerTail).events;
+    return this.tailRead < events.length && events[this.tailRead].line <= this.groupEnd;
+  }
+
+  /** Applies the queued tail events of lines up to `line`, in the order they were read. */
+  private applyTail(line: number): void {
+    const events = (this.tail as MarkerTail).events;
+    const tracker = this.sections as SectionTracker;
+    while (this.tailRead < events.length && events[this.tailRead].line <= line) {
+      const event: TailEvent = events[this.tailRead++];
+      if (event.kind === 'start') tracker.start(event.line, event.stamp, event.name, event.options);
+      else if (event.kind === 'end') tracker.end(event.line, event.stamp, event.name);
+      else tracker.unread(event.line);
+    }
+  }
+
+  /** Drops the applied tail events; those of lines after the group stay queued. */
+  private compactTail(): void {
+    if (this.tailRead === 0) return;
+    (this.tail as MarkerTail).events.splice(0, this.tailRead);
+    this.tailRead = 0;
   }
 
   /**
@@ -839,10 +838,13 @@ export class LineGrepScanner {
     // A scan that does not follow sections renders every line without the sink's bookkeeping.
     if (!this.sections) return this.renderFragments();
     markerSink = this.onMarker;
+    if (this.tailsPending()) tailSink = this.onTail;
     try {
       return this.renderFragments();
     } finally {
       markerSink = null;
+      tailSink = null;
+      this.compactTail();
     }
   }
 
@@ -897,24 +899,35 @@ export class LineGrepScanner {
       }
       this.ringLength[slot] = logical.copy(this.ring[slot] as Buffer, 0, from, to);
       if (index < clearedFragments) this.ringOmitted[slot] = 0;
+      // Matching a part of the group cuts it where the slots were cut.
+      if (index < startCount) fragmentStarts[index] = to;
       from = to;
     }
   }
 
+  /** Offset in the rendered group where fragment `index` starts; past the last, its length. */
+  private static fragmentOffset(text: Buffer, index: number): number {
+    if (index === 0) return 0;
+    return index > startCount ? text.length : fragmentStarts[index - 1];
+  }
+
   /**
-   * Matches each part of the rendered group between clipped gaps on its own, since the bytes
-   * a clip dropped lie between them, and returns the patterns any part matched. A part a CR
-   * cleared is empty and skipped; the last part always holds the visible end of the line.
+   * Matches fragments `lo` through `hi` of the rendered group, each part between clipped gaps
+   * on its own, since the bytes a clip dropped lie between them, and returns the patterns any
+   * part matched. A part a CR cleared is empty and skipped; the last part always holds the
+   * visible end of the range.
    */
-  private matchBetweenGaps(text: Buffer): readonly number[] {
+  private matchFragments(text: Buffer, lo: number, hi: number): readonly number[] {
+    const matcher = this.matcher as PatternMatcher;
+    const end = LineGrepScanner.fragmentOffset(text, hi + 1);
+    let from = LineGrepScanner.fragmentOffset(text, lo);
+    if (gapCount === 0) return matcher.match(text.subarray(from, end));
     let found = NO_PATTERNS;
-    let from = 0;
-    for (let index = 0; index <= startCount; index++) {
-      const last = index === startCount;
+    for (let index = lo; index <= hi; index++) {
+      const last = index === hi;
       if (!last && gapBefore[index] === 0) continue;
-      const to = last ? text.length : fragmentStarts[index];
-      if (last || to > from)
-        found = unionSorted(found, (this.matcher as PatternMatcher).match(text.subarray(from, to)));
+      const to = last ? end : fragmentStarts[index];
+      if (last || to > from) found = unionSorted(found, matcher.match(text.subarray(from, to)));
       from = to;
     }
     return found;
@@ -934,28 +947,38 @@ export class LineGrepScanner {
           0,
           this.ringLength[first % this.ringSize],
         );
-    if (!this.normalize && this.sections) this.rawMarkers(text, first);
-    // With a searched section, only its lines are matched or reported, and its end is the last.
+    if (!this.normalize && this.sections) {
+      this.rawMarkers(text, first);
+      this.applyTail(first);
+      this.compactTail();
+    }
+    // With a searched section, only the group's lines inside it are matched or reported: from
+    // its start, which may be a continuation, through its end, which then is the last line.
+    let from = first;
     let last = this.groupEnd;
     if (this.searchesSection) {
-      const end = (this.sections as SectionTracker).targetEnd;
-      if (end !== null && end < first) {
+      const tracker = this.sections as SectionTracker;
+      const end = tracker.targetEnd;
+      if (tracker.unresolved || (end !== null && end < first)) {
         this.halt('section');
         return;
       }
       if (end !== null) last = Math.min(last, end);
+      const start = tracker.targetStart;
+      from = start === null ? last + 1 : Math.max(first, start);
     }
-    if (this.groupMatchable && (!this.searchesSection || this.sections?.inTarget(first))) {
-      const matcher = this.matcher as PatternMatcher;
-      const found =
-        this.normalize && gapCount > 0 ? this.matchBetweenGaps(text) : matcher.match(text);
+    if (from > last) return;
+    if (this.groupMatchable) {
+      const found = this.normalize
+        ? this.matchFragments(text, from - first, last - first)
+        : (this.matcher as PatternMatcher).match(text);
       isMatch = this.invert ? found.length === 0 : found.length > 0;
       if (!this.invert) hits = found;
     }
-    const recorded = this.place(first, isMatch, hits);
-    for (let line = first + 1; line <= last && this.stop === null; line++) {
+    const recorded = this.place(from, isMatch, hits);
+    for (let line = from + 1; line <= last && this.stop === null; line++) {
       // The rest of a reported logical line belongs to it, whatever the after-context.
-      if (recorded) this.emit(this.pending as GrepHunk, line, first);
+      if (recorded) this.emit(this.pending as GrepHunk, line, from);
       else this.place(line, false, NO_PATTERNS);
     }
     if (recorded && this.stop === null) this.afterRemaining = this.after;

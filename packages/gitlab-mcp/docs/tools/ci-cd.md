@@ -157,14 +157,20 @@ name is not open is ignored. Names are compared as GitLab compares them, ignorin
 case and treating every character other than a letter or digit alike. At most 500
 sections are listed; `sections_truncated` is true when the log has more.
 `complete` is false, and `total_lines` null, when the processing budget stopped the
-scan; sections still open then have no `end_line`.
+scan; sections still open then have no `end_line`. Markers count wherever they stand
+on a line, also past the 16 KiB of a line that `logs` returns. A marker the scan cannot
+read (one longer than 16 KiB, or more than 256 in the long tails of one line) sets
+`sections_unread_from_line`; ranges from that line on may be wrong, and a `section`
+whose bounds it affects returns an error instead of a guess.
 
 Pass `section` to `logs` or `log_grep` to work inside one section, by its exact name;
 `section_index` picks a repeated one. An unknown name, or an index past the last
 occurrence, returns an error naming the sections the log has. The section is found
 on the rendered log, so a marker inside a color sequence or split by the runner across
 timestamped fragments counts as it does in the GitLab view; with `raw: true`, markers
-are found in each stored line on its own.
+are found in each stored line on its own. When a timestamped line continues across a
+section boundary, only its fragments inside the section are searched, and a match is
+reported on the first of them.
 
 ### Log Navigation
 

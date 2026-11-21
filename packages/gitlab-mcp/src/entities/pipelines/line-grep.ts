@@ -10,13 +10,15 @@ import {
   type SectionTarget,
 } from './log-sections';
 import {
+  continuesLine,
   ESC,
-  isDigit,
-  MarkerTail,
-  parsedMarker,
+  isTimestampHeader,
+  MarkerStream,
   SECTION_PREFIX,
   sectionMarkerEnd,
-  type TailEvent,
+  TIMESTAMP_BYTES,
+  TIMESTAMP_HEADER_BYTES,
+  type HiddenSpan,
 } from './section-markers';
 
 /**
@@ -114,47 +116,11 @@ export interface LineGrepProgress {
   exhausted: boolean;
 }
 
-// https://gitlab.com/gitlab-org/gitlab lib/gitlab/ci/trace/stream.rb TIMESTAMP_HEADER_*:
-// "<RFC3339 UTC, 6 fractional digits> <2 hex stream><E|O><+| >", 27 + 5 bytes. A '+' in
-// the last byte continues the previous line (lib/gitlab/ci/ansi2json/converter.rb).
-const TIMESTAMP_BYTES = 27;
-const TIMESTAMP_HEADER_BYTES = 32;
-const CONTINUATION = 0x2b;
 // Fragments one logical line may span before the scanner starts a new one.
 const MAX_GROUP_LINES = 32;
 const BUDGET_CHECK_LINES = 256;
 const NO_PATTERNS: readonly number[] = Object.freeze([]);
 const CR = 0x0d;
-
-const TIMESTAMP_DIGITS = [0, 1, 2, 3, 5, 6, 8, 9, 11, 12, 14, 15, 17, 18, 20, 21, 22, 23, 24, 25];
-const isLowerHex = (byte: number) => isDigit(byte) || (byte >= 0x61 && byte <= 0x66);
-
-function isTimestampHeader(src: Uint8Array, at: number): boolean {
-  for (const offset of TIMESTAMP_DIGITS) if (!isDigit(src[at + offset])) return false;
-  return (
-    src[at + 4] === 0x2d &&
-    src[at + 7] === 0x2d &&
-    src[at + 10] === 0x54 &&
-    src[at + 13] === 0x3a &&
-    src[at + 16] === 0x3a &&
-    src[at + 19] === 0x2e &&
-    src[at + 26] === 0x5a &&
-    src[at + 27] === 0x20 &&
-    isLowerHex(src[at + 28]) &&
-    isLowerHex(src[at + 29]) &&
-    (src[at + 30] === 0x45 || src[at + 30] === 0x4f) &&
-    (src[at + 31] === CONTINUATION || src[at + 31] === 0x20)
-  );
-}
-
-/** Whether a source line carries a runner timestamp marking it a continuation. */
-function continuesLine(src: Uint8Array, begin: number, end: number): boolean {
-  return (
-    end - begin >= TIMESTAMP_HEADER_BYTES &&
-    src[begin + TIMESTAMP_HEADER_BYTES - 1] === CONTINUATION &&
-    isTimestampHeader(src, begin)
-  );
-}
 
 /**
  * End of the escape sequence at `start`, mirroring GitLab's ansi2json tokens
@@ -171,25 +137,10 @@ function skipEscape(src: Uint8Array, start: number, end: number): number {
   return at >= end ? end : at + 1;
 }
 
-/** Receives each accepted marker with the fragment of the logical line it starts in. */
-type MarkerSink = (src: Buffer, fragment: number) => void;
-// Set only while a scanner that tracks sections renders a line.
-let markerSink: MarkerSink | null = null;
-// Applies the markers queued from the dropped tail of a fragment; set only while a group
-// with such markers renders, so they are applied between the markers around them.
-let tailSink: ((fragment: number) => void) | null = null;
-// Fragments whose dropped tails were applied during the current render.
-let tailsApplied = 0;
-
-/**
- * Fragment of the logical line holding source offset `at` of a token being applied: starts
- * before `at` are mapped already, and a fragment holds `at` if its start is at or before it.
- */
-function fragmentAt(at: number): number {
-  let fragment = startsMapped;
-  while (fragment < startCount && fragmentStarts[fragment] <= at) fragment++;
-  return fragment;
-}
+// Source ranges of the line being rendered that a token read across a clipped gap consumes,
+// ascending; the renderer cannot see such a token, so the marker stream reports them.
+const hiddenFrom: number[] = [];
+const hiddenTo: number[] = [];
 
 // Source offsets where each later fragment of a joined logical line starts. Rendering
 // rewrites the first `startCount` in place to the same points in the rendered text, so
@@ -295,8 +246,6 @@ function applyToken(
   const end = tokenEnd(next, size);
   const at = isEscape ? skipEscape(line, next, end) : sectionMarkerEnd(line, next, end);
   if (at > next) {
-    // GitLab applies a marker where it is scanned, even if a later CR clears the line.
-    if (!isEscape && markerSink) markerSink(line, fragmentAt(next));
     mapRemoved(at, renderLength);
     return at;
   }
@@ -338,36 +287,29 @@ function renderTraceLine(buffer: Buffer, size: number): number {
   let cr = line.indexOf(CR);
   let section = line.indexOf(SECTION_PREFIX);
   let at = 0;
-  tailsApplied = 0;
+  let hidden = 0;
   for (;;) {
     esc = nextOf(line, ESC, esc, at);
     cr = nextOf(line, CR, cr, at);
     section = nextOf(line, SECTION_PREFIX, section, at);
     let next = earliest(earliest(earliest(size, esc), cr), section);
-    // A fragment's dropped tail lies where the next fragment starts, before any token there.
-    let atTail = false;
-    if (tailSink !== null) {
-      while (tailsApplied < startsMapped) tailSink(tailsApplied++);
-      if (tailsApplied < startCount && fragmentStarts[tailsApplied] <= next) {
-        next = fragmentStarts[tailsApplied];
-        atTail = next < size;
-      }
-    }
+    // A hidden range starts where its token does, so it is taken before a token there.
+    const atHidden = hidden < hiddenFrom.length && hiddenFrom[hidden] <= next;
+    if (atHidden) next = Math.max(at, hiddenFrom[hidden]);
     if (next > at) {
       if (renderLength !== at) line.copy(line, renderLength, at, next);
       mapCopied(at, next, renderLength);
       renderLength += next - at;
     }
-    if (atTail) {
-      (tailSink as (fragment: number) => void)(tailsApplied++);
-      at = next;
+    if (atHidden) {
+      at = Math.max(next, hiddenTo[hidden++]);
+      mapRemoved(at, renderLength);
       continue;
     }
     if (next === size) break;
     at = applyToken(line, next, size, next === cr, next === esc);
     if (at === -1) break;
   }
-  if (tailSink !== null) while (tailsApplied <= startCount) tailSink(tailsApplied++);
   mapRemoved(Infinity, renderLength);
   return renderLength;
 }
@@ -395,14 +337,8 @@ export class LineGrepScanner {
   private readonly sections: SectionTracker | null;
   private readonly searchesSection: boolean;
   private readonly listsSections: boolean;
-  private readonly onMarker: MarkerSink;
-  // Reads markers in the bytes a line drops past its limit; null when sections are not followed.
-  private readonly tail: MarkerTail | null;
-  private readonly onTail: (fragment: number) => void;
-  // Whether the line being read has dropped bytes, so its tail is being scanned.
-  private tailOpen = false;
-  // Tail events already applied, the first of `tail.events` still to apply.
-  private tailRead = 0;
+  // Reads section markers from every byte of the trace; null when sections are not followed.
+  private readonly stream: MarkerStream | null;
   private readonly presetIndex: number | undefined;
   private readonly before: number;
   private readonly after: number;
@@ -474,9 +410,7 @@ export class LineGrepScanner {
     this.presetIndex = options.preset ? options.patterns.length : undefined;
     this.sections =
       this.searchesSection || this.listsSections ? new SectionTracker(options.section) : null;
-    this.onMarker = (src, fragment) => this.marker(src, this.groupFirst + fragment);
-    this.tail = this.sections ? new MarkerTail() : null;
-    this.onTail = (fragment) => this.applyTail(this.groupFirst + fragment);
+    this.stream = this.sections ? new MarkerStream(options.normalize) : null;
     this.before = options.before;
     this.after = options.after;
     this.maxMatches = options.maxMatches;
@@ -541,6 +475,8 @@ export class LineGrepScanner {
     if (this.stop !== null) return;
     this.charged = performance.now();
     const bytes = Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength);
+    // Markers are read ahead of placement: a group closes only after its lines were read.
+    this.stream?.push(bytes);
     let offset = 0;
     while (offset < bytes.length) {
       const newline = bytes.indexOf(10, offset);
@@ -578,41 +514,16 @@ export class LineGrepScanner {
       this.carryLength += keep;
     }
     this.lineBytes += length;
-    // Followed sections store every line, so the limit here is the stored one.
-    if (this.tail !== null && keep < length) {
-      if (!this.tailOpen) this.tail.begin(this.line, this.carry, 0, this.carryLength);
-      this.tailOpen = true;
-      this.tail.feed(bytes, offset + Math.max(keep, 0), offset + length);
-    }
-  }
-
-  /** Ends the dropped tail of the line being finished, if it has one. */
-  private closeTail(): void {
-    if (!this.tailOpen) return;
-    (this.tail as MarkerTail).finish();
-    this.tailOpen = false;
   }
 
   /** Finishes the line whose last piece ends at `offset + length`; false once stopped. */
   private endLine(bytes: Buffer, offset: number, length: number): boolean {
     if (this.lineBytes === 0 && this.line >= this.firstStored) {
       // The whole line is inside this chunk: render it without the carry copy.
-      const kept = offset + Math.min(length, TRACE_LINE_BYTES);
-      if (this.tail !== null && length > TRACE_LINE_BYTES) {
-        this.tail.begin(this.line, bytes, offset, kept);
-        this.tail.feed(bytes, kept, offset + length);
-        this.tailOpen = true;
-      }
-      const going = this.finishLine(bytes, offset, kept, length);
-      this.closeTail();
-      return going;
+      return this.finishLine(bytes, offset, offset + Math.min(length, TRACE_LINE_BYTES), length);
     }
     this.collect(bytes, offset, length);
-    // Finishing the line settles what the previous line left cut off; this line's cut-off
-    // marker waits for the next one.
-    const going = this.finishLine(this.carry, 0, this.carryLength, this.lineBytes);
-    this.closeTail();
-    return going;
+    return this.finishLine(this.carry, 0, this.carryLength, this.lineBytes);
   }
 
   /** Hunks closed since the previous call, with a continuation that loses none of them. */
@@ -634,9 +545,9 @@ export class LineGrepScanner {
    */
   finish(): LineGrepResult {
     this.charged = performance.now();
+    // The log ends here: a token still open ends with it.
+    this.stream?.end();
     if (this.stop === null) this.finishLine(this.carry, 0, this.carryLength, this.lineBytes);
-    // The log ends here: a marker the last line left cut off was text.
-    this.closeTail();
     if (this.stop === null) this.closeGroup();
     this.closePending();
     this.charge();
@@ -664,55 +575,43 @@ export class LineGrepScanner {
     };
   }
 
-  /** Applies the marker sectionMarkerEnd just accepted, found on physical line `line`. */
-  private marker(src: Buffer, line: number): void {
+  /** Applies the markers read on lines up to `line`, in log order. */
+  private applyMarkers(line: number): void {
+    const events = (this.stream as MarkerStream).events;
     const tracker = this.sections as SectionTracker;
-    const stamp = Number(src.toString('latin1', parsedMarker.stamp, parsedMarker.stampEnd));
-    const name = src.toString('latin1', parsedMarker.name, parsedMarker.nameEnd);
-    if (!parsedMarker.isStart) {
-      tracker.end(line, stamp, name);
-      return;
-    }
-    const options =
-      parsedMarker.options === -1
-        ? null
-        : src.toString('latin1', parsedMarker.options, parsedMarker.optionsEnd);
-    tracker.start(line, stamp, name, options);
-  }
-
-  /** Raw lines are not rendered: markers are found in each stored line on its own. */
-  private rawMarkers(text: Buffer, line: number): void {
-    let at = text.indexOf(SECTION_PREFIX);
-    while (at !== -1) {
-      const end = sectionMarkerEnd(text, at, text.length);
-      if (end >= 0) this.marker(text, line);
-      at = text.indexOf(SECTION_PREFIX, end >= 0 ? end : at + 1);
-    }
-  }
-
-  /** Whether markers from dropped tails wait for a line of the group being closed. */
-  private tailsPending(): boolean {
-    const events = (this.tail as MarkerTail).events;
-    return this.tailRead < events.length && events[this.tailRead].line <= this.groupEnd;
-  }
-
-  /** Applies the queued tail events of lines up to `line`, in the order they were read. */
-  private applyTail(line: number): void {
-    const events = (this.tail as MarkerTail).events;
-    const tracker = this.sections as SectionTracker;
-    while (this.tailRead < events.length && events[this.tailRead].line <= line) {
-      const event: TailEvent = events[this.tailRead++];
+    let read = 0;
+    while (read < events.length && events[read].line <= line) {
+      const event = events[read++];
       if (event.kind === 'start') tracker.start(event.line, event.stamp, event.name, event.options);
       else if (event.kind === 'end') tracker.end(event.line, event.stamp, event.name);
       else tracker.unread(event.line);
     }
+    if (read > 0) events.splice(0, read);
   }
 
-  /** Drops the applied tail events; those of lines after the group stay queued. */
-  private compactTail(): void {
-    if (this.tailRead === 0) return;
-    (this.tail as MarkerTail).events.splice(0, this.tailRead);
-    this.tailRead = 0;
+  /**
+   * Takes the hidden ranges of the group's lines, as source offsets of its joined text, for the
+   * renderer; `starts[i]` is where fragment i starts.
+   */
+  private takeHidden(first: number, starts: (index: number) => number): void {
+    hiddenFrom.length = 0;
+    hiddenTo.length = 0;
+    const hidden = (this.stream as MarkerStream).hidden;
+    if (hidden.length === 0) return;
+    const taken: HiddenSpan[] = [];
+    let kept = 0;
+    for (const span of hidden) {
+      if (span.line <= this.groupEnd) {
+        if (span.line >= first) taken.push(span);
+      } else hidden[kept++] = span;
+    }
+    hidden.length = kept;
+    taken.sort((a, b) => a.line - b.line || a.from - b.from);
+    for (const span of taken) {
+      const start = starts(span.line - first);
+      hiddenFrom.push(start + span.from);
+      hiddenTo.push(start + span.to);
+    }
   }
 
   /**
@@ -777,14 +676,6 @@ export class LineGrepScanner {
     this.carryLength = 0;
     this.lineBytes = 0;
     const chained = this.chain(src, begin, end);
-    // A continuation always starts with its timestamp header; the marker goes on after it.
-    this.tail?.resolvePending(
-      chained,
-      src,
-      begin + TIMESTAMP_HEADER_BYTES,
-      end,
-      sourceBytes > end - begin,
-    );
     if (number < this.firstStored) return true;
     // Grow before storing, so the new fragment cannot overwrite a line still to be placed.
     if (chained && this.groupOpen && this.ringSize < this.before + 2 + MAX_GROUP_LINES)
@@ -839,7 +730,10 @@ export class LineGrepScanner {
     this.groupOpen = true;
     this.groupFirst = number;
     this.groupEnd = number;
-    this.groupMatchable = matchable && number >= this.startLine && this.matcher !== null;
+    // With a searched section, a group is matched on its first line inside the section, so
+    // the page owning that line is known only once the group closes.
+    this.groupMatchable =
+      matchable && this.matcher !== null && (this.searchesSection || number >= this.startLine);
   }
 
   /**
@@ -849,34 +743,33 @@ export class LineGrepScanner {
    * loses its clipped tail with the rest of its text.
    */
   private renderGroup(): Buffer {
-    // A scan that does not follow sections renders every line without the sink's bookkeeping.
-    if (!this.sections) return this.renderFragments();
-    markerSink = this.onMarker;
-    if (this.tailsPending()) tailSink = this.onTail;
-    try {
-      return this.renderFragments();
-    } finally {
-      markerSink = null;
-      tailSink = null;
-      this.compactTail();
-    }
-  }
-
-  private renderFragments(): Buffer {
     const first = this.groupFirst;
     const head = first % this.ringSize;
     if (this.groupEnd === first) {
       startCount = 0;
       gapCount = 0;
+      if (this.stream) this.takeHidden(first, () => 0);
       const line = this.ring[head] as Buffer;
       this.ringLength[head] = renderTraceLine(line, this.ringLength[head]);
+      this.clearHidden();
       return line.subarray(0, this.ringLength[head]);
     }
     // Room for every fragment the group may hold, so no fragment text goes unsearched.
     const logical = (this.logical ??= Buffer.allocUnsafe(MAX_GROUP_LINES * TRACE_LINE_BYTES));
-    const length = renderTraceLine(logical, this.joinGroup(logical, first));
+    const size = this.joinGroup(logical, first);
+    if (this.stream)
+      this.takeHidden(first, (index) => (index === 0 ? 0 : fragmentStarts[index - 1]));
+    const length = renderTraceLine(logical, size);
+    this.clearHidden();
     this.splitGroup(logical, first, length);
     return logical.subarray(0, length);
+  }
+
+  /** Hidden ranges belong to one render; a scan that follows no sections never sets them. */
+  private clearHidden(): void {
+    if (!this.stream) return;
+    hiddenFrom.length = 0;
+    hiddenTo.length = 0;
   }
 
   /**
@@ -954,6 +847,7 @@ export class LineGrepScanner {
     const first = this.groupFirst;
     let isMatch = false;
     let hits = NO_PATTERNS;
+    if (this.sections) this.applyMarkers(this.groupEnd);
     // Raw lines are matched as stored; every rendered line is kept for the returned text.
     const text = this.normalize
       ? this.renderGroup()
@@ -961,11 +855,6 @@ export class LineGrepScanner {
           0,
           this.ringLength[first % this.ringSize],
         );
-    if (!this.normalize && this.sections) {
-      this.rawMarkers(text, first);
-      this.applyTail(first);
-      this.compactTail();
-    }
     // With a searched section, only the group's lines inside it are matched or reported: from
     // its start, which may be a continuation, through its end, which then is the last line.
     let from = first;
@@ -982,7 +871,7 @@ export class LineGrepScanner {
       from = start === null ? last + 1 : Math.max(first, start);
     }
     if (from > last) return;
-    if (this.groupMatchable) {
+    if (this.groupMatchable && from >= this.startLine) {
       const found = this.normalize
         ? this.matchFragments(text, from - first, last - first)
         : (this.matcher as PatternMatcher).match(text);

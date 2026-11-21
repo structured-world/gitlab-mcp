@@ -7,6 +7,7 @@ import {
   MAX_LOG_SECTIONS,
   SectionNotFoundError,
 } from '../../../../src/entities/pipelines/log-sections';
+import { MAX_LINE_MARKERS } from '../../../../src/entities/pipelines/section-markers';
 
 const ESC = '\x1b';
 const start = (stamp: number, name: string, options = '') =>
@@ -321,10 +322,80 @@ describe('log section listing', () => {
       ]);
     });
 
-    // The queue of tail markers is bounded; the overflow is reported, not dropped silently.
-    it('reports a line whose tails hold more markers than the queue keeps', () => {
-      const many = Array.from({ length: 300 }, (_, i) => start(i, `m${i}`)).join('');
-      expect(list(`x\n${LONG}${many}`, 65_536)?.unread_from_line).toBe(1);
+    // The markers queued for one logical line are bounded; the overflow is reported.
+    it('reports a line with more markers than one line may queue', () => {
+      const many = Array.from({ length: MAX_LINE_MARKERS + 1 }, (_, i) => end(i, `m${i}`));
+      expect(list(`x\n${LONG}${many.join('')}`, 65_536)?.unread_from_line).toBe(1);
+    });
+
+    // The bound counts each logical line on its own: the markers of the line before do not
+    // use up the next line's allowance.
+    it('gives each line its own marker allowance', () => {
+      const half = (line: number) =>
+        Array.from({ length: MAX_LINE_MARKERS - 10 }, (_, i) => end(i, `l${line}m${i}`)).join('');
+      const log = [`${start(1, 's')}x`, `${LONG}${half(1)}`, `${LONG}${half(2)}${end(9, 's')}`];
+      expect(list(log.join('\n'), 65_536)).toMatchObject({
+        unread_from_line: null,
+        sections: [{ name: 's', end_line: 2, terminated: true }],
+      });
+    });
+
+    // Raw scans find markers without reading escapes, on both sides of the 16 KiB limit.
+    it('finds a raw marker after an escape in the dropped tail', () => {
+      const log = [start(1, 's'), `${LONG}${ESC}[${end(2, 's')}`, 'error after'].join('\n');
+      const result = scan(
+        log,
+        { patterns: ['error'], normalize: false, section: { name: 's', index: 0 } },
+        4096,
+      );
+      expect(result.match_count).toBe(0);
+      expect(result.section).toMatchObject({ end_line: 1, terminated: true });
+    });
+
+    const stamp = '2026-11-18T10:00:00.123456Z';
+
+    // A marker begun in an unclipped fragment and finished past the next fragment's limit is
+    // one marker, as GitLab joins the fragments before reading it.
+    it('reads a marker that crosses a join and then a clip', () => {
+      const name = 'n'.repeat(16_384 - 32);
+      const log = [
+        `${stamp} 00O ${start(1, name)}x`,
+        `${stamp} 00O section_end:2:`,
+        `${stamp} 00O+${name}\r${ESC}[0K`,
+        `${stamp} 00O after`,
+      ].join('\n');
+      expect(list(log, 4096)).toMatchObject({
+        unread_from_line: null,
+        sections: [{ start_line: 0, end_line: 1, terminated: true }],
+      });
+    });
+
+    // The CR inside a marker finished in a continuation is part of the marker: it does not
+    // clear the text before it.
+    it('keeps text a marker across a clip and a join would otherwise clear', () => {
+      const log = [
+        `${stamp} 00O ${start(1, 's')}x`,
+        `${stamp} 00O needle ${'a'.repeat(17_000)}section_e`,
+        `${stamp} 00O+nd:2:s\r${ESC}[0Ktail`,
+        `${stamp} 00O later`,
+      ].join('\n');
+      const result = scan(log, { patterns: ['needle'], section: { name: 's', index: 0 } }, 4096);
+      expect(result.hunks.map((hunk) => hunk.matches.map((match) => match.line))).toEqual([[1]]);
+      expect(result.section).toMatchObject({ end_line: 1, terminated: true });
+    });
+
+    // A rejected candidate is read again from its second byte, also across a join.
+    it('finds a marker inside a rejected candidate that continues in the next fragment', () => {
+      const log = [
+        `${stamp} 00O ${start(1, 's')}x`,
+        `${stamp} 00O ${LONG}section_start:1:section_e`,
+        `${stamp} 00O+nd:2:s\r${ESC}[0K`,
+        `${stamp} 00O later`,
+      ].join('\n');
+      expect(list(log, 4096)).toMatchObject({
+        unread_from_line: null,
+        sections: [{ name: 's', end_line: 1, terminated: true }],
+      });
     });
   });
 
@@ -449,6 +520,18 @@ describe('log search within a section', () => {
           timestamps: [stamp],
         },
       ]);
+    });
+
+    // A page starting at the section's first line owns the match on it, though the logical
+    // line began on an earlier page.
+    it('matches on the section start when the search starts there', () => {
+      const result = scan(opening, {
+        patterns: ['inside'],
+        startLine: 1,
+        section: { name: 's', index: 0 },
+      });
+      expect(result.hunks.map((hunk) => hunk.matches.map((match) => match.line))).toEqual([[1]]);
+      expect(result.match_count_complete).toBe(true);
     });
 
     it('does not match the fragment before the section start', () => {

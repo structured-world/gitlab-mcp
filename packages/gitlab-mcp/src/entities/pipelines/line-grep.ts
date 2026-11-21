@@ -404,9 +404,8 @@ export class LineGrepScanner {
       options.patterns.length === 0 &&
       !options.preset &&
       (this.searchesSection || this.listsSections);
-    this.matcher = onlySections
-      ? null
-      : compilePatterns(options.patterns, options.preset ? [FAILURE_PATTERN] : []);
+    const presetPatterns = options.preset ? [FAILURE_PATTERN] : [];
+    this.matcher = onlySections ? null : compilePatterns(options.patterns, presetPatterns);
     this.presetIndex = options.preset ? options.patterns.length : undefined;
     this.sections =
       this.searchesSection || this.listsSections ? new SectionTracker(options.section) : null;

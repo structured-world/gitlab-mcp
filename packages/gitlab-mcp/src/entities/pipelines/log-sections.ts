@@ -1,12 +1,9 @@
-import { TRACE_LINE_BYTES } from './trace';
+// Longest section name the scan can read: the marker stream holds a marker of at most the
+// bytes a line keeps. GitLab's grammar sets no limit; names are ASCII.
+export { TRACE_LINE_BYTES as MAX_SECTION_NAME } from './trace';
 
 /** Sections a listing reports; later sections only set `truncated`. */
 export const MAX_LOG_SECTIONS = 500;
-/**
- * Longest section name the scan can read: a marker must fit in the bytes a line keeps or a
- * dropped tail holds. GitLab's grammar sets no limit; names are ASCII.
- */
-export const MAX_SECTION_NAME = TRACE_LINE_BYTES;
 
 export interface LogSection {
   name: string;

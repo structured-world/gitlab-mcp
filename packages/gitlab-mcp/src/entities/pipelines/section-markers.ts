@@ -67,22 +67,61 @@ function wordEnd(src: Uint8Array, at: number, end: number): number {
   return at;
 }
 
+/** End of one option `\w+=\w+` at `at`, -1 or NEEDS_MORE. */
+function optionEnd(src: Uint8Array, at: number, end: number): number {
+  const keyEnd = wordEnd(src, at, end);
+  if (keyEnd >= end) return NEEDS_MORE;
+  if (keyEnd === at || src[keyEnd] !== 0x3d) return -1;
+  const valueEnd = wordEnd(src, keyEnd + 1, end);
+  if (valueEnd >= end) return NEEDS_MORE;
+  return valueEnd === keyEnd + 1 ? -1 : valueEnd;
+}
+
 /** End of a section options block `[\w+=\w+(, ?\w+=\w+)*]` starting at `[`, -1 or NEEDS_MORE. */
 function sectionOptionsEnd(src: Uint8Array, start: number, end: number): number {
   let at = start + 1;
   for (;;) {
-    const keyEnd = wordEnd(src, at, end);
-    if (keyEnd >= end) return NEEDS_MORE;
-    if (keyEnd === at || src[keyEnd] !== 0x3d) return -1;
-    at = wordEnd(src, keyEnd + 1, end);
-    if (at >= end) return NEEDS_MORE;
-    if (at === keyEnd + 1) return -1;
+    at = optionEnd(src, at, end);
+    if (at < 0) return at;
     if (src[at] === 0x5d) return at + 1;
     if (src[at] !== 0x2c) return -1;
     if (at + 1 >= end) return NEEDS_MORE;
     at += src[at + 1] === 0x20 ? 2 : 1;
   }
 }
+
+/** Position after `prefix` at `at`, -1 when it is not there, NEEDS_MORE when input ends in it. */
+function expect(src: Uint8Array, at: number, end: number, prefix: Uint8Array): number {
+  const state = prefixAt(src, at, end, prefix);
+  if (state === 1) return at + prefix.length;
+  return state === 0 ? -1 : NEEDS_MORE;
+}
+
+// Kind of the marker being parsed; copied to parsedMarker only once the whole marker is read.
+let kindIsStart = false;
+
+/** Position after `start` or `end` at `at`, recording which; -1 or NEEDS_MORE otherwise. */
+function kindEnd(src: Uint8Array, at: number, end: number): number {
+  const opens = expect(src, at, end, SECTION_START);
+  if (opens >= 0) {
+    kindIsStart = true;
+    return opens;
+  }
+  const closes = expect(src, at, end, SECTION_END);
+  if (closes >= 0) {
+    kindIsStart = false;
+    return closes;
+  }
+  return opens === NEEDS_MORE || closes === NEEDS_MORE ? NEEDS_MORE : -1;
+}
+
+/** End of the run of bytes `accepts` takes at `at`; NEEDS_MORE when it reaches the input end. */
+function runEnd(src: Uint8Array, at: number, end: number, accepts: (byte: number) => boolean) {
+  while (at < end && accepts(src[at])) at++;
+  return at >= end ? NEEDS_MORE : at;
+}
+
+const COLON = Buffer.from(':', 'latin1');
 
 /**
  * Parts of the marker sectionMarkerEnd last accepted, as offsets into its input: valid until
@@ -104,46 +143,33 @@ export const parsedMarker = {
  * section_(start|end):\d+:[A-Za-z0-9_.-]+(\[\w+=\w+(, ?\w+=\w+)*\])?\r\e\[0K.
  */
 export function sectionMarkerEnd(src: Uint8Array, start: number, end: number): number {
-  const prefix = prefixAt(src, start, end, SECTION_PREFIX);
-  if (prefix !== 1) return prefix === 0 ? -1 : NEEDS_MORE;
-  let at = start + SECTION_PREFIX.length;
-  let isStart = true;
-  const opens = prefixAt(src, at, end, SECTION_START);
-  if (opens === 1) at += SECTION_START.length;
-  else {
-    const closes = prefixAt(src, at, end, SECTION_END);
-    if (closes !== 1) return opens === NEEDS_MORE || closes === NEEDS_MORE ? NEEDS_MORE : -1;
-    at += SECTION_END.length;
-    isStart = false;
-  }
-  if (at >= end) return NEEDS_MORE;
-  if (src[at++] !== 0x3a) return -1;
+  let at = expect(src, start, end, SECTION_PREFIX);
+  if (at >= 0) at = kindEnd(src, at, end);
+  if (at >= 0) at = expect(src, at, end, COLON);
+  if (at < 0) return at;
   const digits = at;
-  while (at < end && isDigit(src[at])) at++;
-  if (at >= end) return NEEDS_MORE;
-  if (at === digits || src[at] !== 0x3a) return -1;
-  const digitsEnd = at++;
+  at = runEnd(src, at, end, isDigit);
+  if (at === digits) return -1;
+  const digitsEnd = at;
+  if (at >= 0) at = expect(src, at, end, COLON);
+  if (at < 0) return at;
   const name = at;
-  while (at < end && isNameByte(src[at])) at++;
-  if (at >= end) return NEEDS_MORE;
+  at = runEnd(src, at, end, isNameByte);
   if (at === name) return -1;
+  if (at < 0) return at;
   const nameEnd = at;
-  let options = -1;
-  if (src[at] === 0x5b) {
-    options = at;
-    at = sectionOptionsEnd(src, at, end);
-    if (at < 0) return at;
-  }
-  const suffix = prefixAt(src, at, end, SECTION_SUFFIX);
-  if (suffix !== 1) return suffix === 0 ? -1 : NEEDS_MORE;
-  parsedMarker.isStart = isStart;
+  const options = src[at] === 0x5b ? at : -1;
+  if (options !== -1) at = sectionOptionsEnd(src, at, end);
+  const markerEnd = at < 0 ? at : expect(src, at, end, SECTION_SUFFIX);
+  if (markerEnd < 0) return markerEnd;
+  parsedMarker.isStart = kindIsStart;
   parsedMarker.stamp = digits;
   parsedMarker.stampEnd = digitsEnd;
   parsedMarker.name = name;
   parsedMarker.nameEnd = nameEnd;
   parsedMarker.options = options;
   parsedMarker.optionsEnd = options === -1 ? -1 : at;
-  return at + SECTION_SUFFIX.length;
+  return markerEnd;
 }
 
 /**
@@ -291,18 +317,10 @@ export class MarkerStream {
 
   /** Decides where the line's text starts and whether it continues the previous line. */
   private decide(): void {
-    let start = 0;
-    let continues = false;
-    if (this.normalize) {
-      // Response.text() drops only the initial UTF-8 BOM, as the stored lines do.
-      const probe = this.probe;
-      if (this.line === 0 && this.probeLength >= 3 && probe[0] === 0xef)
-        if (probe[1] === 0xbb && probe[2] === 0xbf) start = 3;
-      if (this.probeLength - start >= TIMESTAMP_HEADER_BYTES && isTimestampHeader(probe, start)) {
-        start += TIMESTAMP_HEADER_BYTES;
-        continues = this.line > 0 && probe[start - 1] === CONTINUATION;
-      }
-    }
+    const start = this.textStart();
+    // Only a timestamp header moves the start this far; its last byte marks a continuation.
+    const continues =
+      this.line > 0 && start >= TIMESTAMP_HEADER_BYTES && this.probe[start - 1] === CONTINUATION;
     if (this.boundary) {
       this.boundary = false;
       // GitLab joins a continuation to the line before it; any other line end ends tokens.
@@ -312,6 +330,19 @@ export class MarkerStream {
     this.kept = TRACE_LINE_BYTES - start;
     this.length = 0;
     if (start < this.probeLength) this.scan(this.probe, start, this.probeLength);
+  }
+
+  /** Where the probed line's text starts: after line 0's BOM and a runner timestamp header. */
+  private textStart(): number {
+    if (!this.normalize) return 0;
+    const probe = this.probe;
+    let start = 0;
+    // Response.text() drops only the initial UTF-8 BOM, as the stored lines do.
+    if (this.line === 0 && this.probeLength >= 3 && probe[0] === 0xef)
+      if (probe[1] === 0xbb && probe[2] === 0xbf) start = 3;
+    const header =
+      this.probeLength - start >= TIMESTAMP_HEADER_BYTES && isTimestampHeader(probe, start);
+    return header ? start + TIMESTAMP_HEADER_BYTES : start;
   }
 
   private active(): boolean {
@@ -338,54 +369,73 @@ export class MarkerStream {
 
   /** Reads text bytes `src[from, to)` of the current line. */
   private scan(src: Buffer, from: number, to: number): void {
-    const base = this.length - from;
-    let at = from;
-    while (at !== -1) {
-      if (this.heldLength > 0) at = this.extend(src, at, to, base, this.line);
-      else if (this.escape !== TEXT) at = this.resumeEscape(src, at, to, base, this.line);
-      else {
-        this.tokens(src, at, to, base, this.line);
-        at = -1;
-      }
-    }
+    this.read(src, from, to, this.length - from, this.line);
     this.length += to - from;
   }
 
   /**
-   * Finds escapes and markers in `src[at, to)` of line `line`, whose text offsets are
-   * `base + index`; a token cut off by `to` is left in progress.
+   * Reads `src[from, to)` of line `line`, whose text offsets are `base + index`: first the
+   * token earlier bytes left open, then new tokens; one cut off by `to` stays in progress.
    */
-  private tokens(src: Buffer, from: number, to: number, base: number, line: number): void {
+  private read(src: Buffer, from: number, to: number, base: number, line: number): void {
+    let at = from;
+    while (at !== -1) {
+      if (this.heldLength > 0) at = this.extend(src, at, to, base, line);
+      else if (this.escape === TEXT) at = this.tokens(src, at, to, base, line);
+      else at = this.resumeEscape(src, at, to, base, line);
+    }
+  }
+
+  /** Finds escapes and markers from `at`; returns -1 once the bytes are read. */
+  private tokens(src: Buffer, from: number, to: number, base: number, line: number): number {
     let at = from;
     const view = src.subarray(0, to);
     let esc = this.normalize ? view.indexOf(ESC, at) : -1;
     let section = view.indexOf(SECTION_PREFIX, at);
-    for (;;) {
+    while (at !== -1) {
       if (esc !== -1 && esc < at) esc = view.indexOf(ESC, at);
       if (section !== -1 && section < at) section = view.indexOf(SECTION_PREFIX, at);
-      if (esc === -1 && section === -1) break;
-      if (esc !== -1 && (section === -1 || esc < section)) {
-        const end = escapeEnd(src, esc, to);
-        if (end === NEEDS_MORE) {
-          this.escape = esc === to - 1 ? AFTER_ESC : IN_ESCAPE;
-          this.tokenLine = line;
-          this.tokenOffset = base + esc;
-          return;
-        }
-        if (end !== -1) this.finishToken(line, base + esc, line, base + end);
-        at = end === -1 ? esc + 1 : end;
-        continue;
+      if (esc === -1 && section === -1) {
+        this.holdCutPrefix(src, at, to, base, line);
+        return -1;
       }
-      const end = sectionMarkerEnd(src, section, to);
-      if (end === NEEDS_MORE) {
-        this.hold(src, section, to, base, line);
-        return;
-      }
-      if (end >= 0) this.accept(src, line, base + section, line, base + end);
-      at = end >= 0 ? end : section + 1;
+      at =
+        esc !== -1 && (section === -1 || esc < section)
+          ? this.escapeAt(src, esc, to, base, line)
+          : this.markerAt(src, section, to, base, line);
     }
-    // A marker prefix cut off by the end of these bytes.
-    for (let start = Math.max(at, to - SECTION_PREFIX.length + 1); start < to; start++) {
+    return -1;
+  }
+
+  /** Reads the escape at `esc`; returns where reading goes on, or -1 when it is left open. */
+  private escapeAt(src: Buffer, esc: number, to: number, base: number, line: number): number {
+    const end = escapeEnd(src, esc, to);
+    if (end === -1) return esc + 1;
+    if (end === NEEDS_MORE) {
+      this.escape = esc === to - 1 ? AFTER_ESC : IN_ESCAPE;
+      this.tokenLine = line;
+      this.tokenOffset = base + esc;
+      return -1;
+    }
+    this.finishToken(line, base + esc, line, base + end);
+    return end;
+  }
+
+  /** Reads the candidate at `at`; returns where reading goes on, or -1 when it is held. */
+  private markerAt(src: Buffer, at: number, to: number, base: number, line: number): number {
+    const end = sectionMarkerEnd(src, at, to);
+    if (end === -1) return at + 1;
+    if (end === NEEDS_MORE) {
+      this.hold(src, at, to, base, line);
+      return -1;
+    }
+    this.accept(src, line, base + at, line, base + end);
+    return end;
+  }
+
+  /** Holds a marker prefix cut off by the end of these bytes, if one is there. */
+  private holdCutPrefix(src: Buffer, from: number, to: number, base: number, line: number): void {
+    for (let start = Math.max(from, to - SECTION_PREFIX.length + 1); start < to; start++) {
       if (sectionMarkerEnd(src, start, to) === NEEDS_MORE) {
         this.hold(src, start, to, base, line);
         return;
@@ -429,7 +479,7 @@ export class MarkerStream {
     const held = this.held as Buffer;
     const old = this.heldLength;
     const added = src.copy(held, old, from, Math.min(to, from + HELD_BYTES - old));
-    if (added > 0 && this.segments[this.segments.length - 1].line !== line)
+    if (added > 0 && this.segments.at(-1)?.line !== line)
       this.segments.push({ at: old, line, offset: base + from });
     const size = old + added;
     const end = sectionMarkerEnd(held, 0, size);
@@ -463,16 +513,7 @@ export class MarkerStream {
       const segment = segments[index];
       const from = Math.max(0, segment.at - 1);
       const to = index + 1 < segments.length ? segments[index + 1].at - 1 : again.length;
-      const base = segment.offset - segment.at + 1;
-      let at = from;
-      while (at !== -1 && at < to) {
-        if (this.heldLength > 0) at = this.extend(again, at, to, base, segment.line);
-        else if (this.escape !== TEXT) at = this.resumeEscape(again, at, to, base, segment.line);
-        else {
-          this.tokens(again, at, to, base, segment.line);
-          at = -1;
-        }
-      }
+      this.read(again, from, to, segment.offset - segment.at + 1, segment.line);
     }
   }
 

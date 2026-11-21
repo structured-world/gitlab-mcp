@@ -1,6 +1,6 @@
 import { grepStream } from './line-grep-worker';
 import type { LineGrepOptions } from './line-grep';
-import type { LogSection, SectionBounds, SectionTarget } from './log-sections';
+import type { LogSection, SectionBounds, SectionListing, SectionTarget } from './log-sections';
 import { LOG_GREP_BUDGET_MS } from './pipeline-grep';
 import { readTracePage, TRACE_PAGE_BYTES, type TracePage } from './trace';
 import { openTrace } from './trace-open';
@@ -41,7 +41,8 @@ export async function listLogSections(input: SectionsInput): Promise<LogSections
   const result = await grepStream(markerScan({ listSections: true }), () =>
     openTrace(input.project_id, input.job_id),
   );
-  const listing = result.sections ?? { sections: [], truncated: false, unread_from_line: null };
+  // A listing scan always reports its sections.
+  const listing = result.sections as SectionListing;
   return {
     sections: listing.sections,
     sections_truncated: listing.truncated,
@@ -82,7 +83,7 @@ export interface SectionLogsPage {
   hasMore: boolean;
   /** Section-relative `start` of the next page. */
   nextStart: number | null;
-  truncation?: TracePage['truncation'];
+  truncation?: NonNullable<TracePage['truncation']>;
 }
 
 /**

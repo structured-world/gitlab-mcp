@@ -1285,6 +1285,7 @@ describe('Core Registry', () => {
       });
 
       describe('diff with line_patterns', () => {
+        const FULL_SHA = 'a'.repeat(40);
         const page = (files: unknown, next: string) =>
           ({
             ok: true,
@@ -1311,7 +1312,7 @@ describe('Core Registry', () => {
           const result = await coreToolRegistry.get('browse_commits')!.handler({
             action: 'diff',
             project_id: '123',
-            sha: 'abc123',
+            sha: FULL_SHA,
             unidiff: true,
             line_patterns: ['TODO'],
           });
@@ -1335,6 +1336,7 @@ describe('Core Registry', () => {
           });
         });
 
+        // One page reads one commit, so a short reference is used as given.
         it('searches only the page asked for', async () => {
           mockEnhancedFetch.mockResolvedValueOnce(page([change('b.ts', 'TODO')], '4'));
 
@@ -1351,18 +1353,54 @@ describe('Core Registry', () => {
           expect(String(mockEnhancedFetch.mock.calls[0][0])).toContain('page=3');
         });
 
-        // A next page that does not move forward ends the walk instead of looping on it.
-        it('stops at a next page that does not advance', async () => {
-          mockEnhancedFetch.mockResolvedValueOnce(page([change('a.ts', 'TODO')], '1'));
+        // A continuation that is not a later page would leave pages unread: the call fails
+        // rather than report a partial search as complete, and does not loop on it.
+        it.each(['1', 'next'])('refuses a next page header of %j', async (next) => {
+          mockEnhancedFetch.mockResolvedValueOnce(page([change('a.ts', 'TODO')], next));
+
+          await expect(
+            coreToolRegistry.get('browse_commits')!.handler({
+              action: 'diff',
+              project_id: '123',
+              sha: FULL_SHA,
+              line_patterns: ['TODO'],
+            }),
+          ).rejects.toThrow(`unexpected next page "${next}" after page 1`);
+          expect(mockEnhancedFetch).toHaveBeenCalledTimes(1);
+        });
+
+        // A branch moves; every page must read the same commit, so the name is resolved once.
+        it('pins a branch to its commit before reading pages', async () => {
+          mockEnhancedFetch
+            .mockResolvedValueOnce(okJson({ id: FULL_SHA }))
+            .mockResolvedValueOnce(page([change('a.ts', 'ok')], '2'))
+            .mockResolvedValueOnce(page([change('b.ts', 'TODO')], ''));
 
           await coreToolRegistry.get('browse_commits')!.handler({
             action: 'diff',
             project_id: '123',
-            sha: 'abc123',
+            sha: 'main',
             line_patterns: ['TODO'],
           });
 
-          expect(mockEnhancedFetch).toHaveBeenCalledTimes(1);
+          const urls = mockEnhancedFetch.mock.calls.map((call) => String(call[0]));
+          expect(urls[0]).toContain('/repository/commits/main?');
+          expect(urls[1]).toContain(`/repository/commits/${FULL_SHA}/diff?`);
+          expect(urls[2]).toContain(`/repository/commits/${FULL_SHA}/diff?`);
+        });
+
+        // A malformed entry fails as a GitLab response error, not a TypeError in the search.
+        it('refuses a malformed diff entry', async () => {
+          mockEnhancedFetch.mockResolvedValueOnce(page([null], ''));
+
+          await expect(
+            coreToolRegistry.get('browse_commits')!.handler({
+              action: 'diff',
+              project_id: '123',
+              sha: FULL_SHA,
+              line_patterns: ['TODO'],
+            }),
+          ).rejects.toThrow('GitLab API error: unexpected diff response');
         });
 
         it('rejects a body that is not a file list', async () => {
@@ -1372,10 +1410,10 @@ describe('Core Registry', () => {
             coreToolRegistry.get('browse_commits')!.handler({
               action: 'diff',
               project_id: '123',
-              sha: 'abc123',
+              sha: FULL_SHA,
               line_patterns: ['TODO'],
             }),
-          ).rejects.toThrow('unexpected commit diff response');
+          ).rejects.toThrow('GitLab API error: unexpected diff response (body:');
         });
       });
 

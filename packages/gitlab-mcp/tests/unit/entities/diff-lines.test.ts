@@ -1,4 +1,9 @@
-import { diffLineFilter, searchDiffLines, type DiffFile } from '../../../src/entities/diff-lines';
+import {
+  diffLineFilter,
+  parseDiffFiles,
+  searchDiffLines,
+  type DiffFile,
+} from '../../../src/entities/diff-lines';
 
 const filter = (overrides: Parameters<typeof diffLineFilter>[0] = {}) =>
   diffLineFilter({ line_patterns: ['console\\.log'], ...overrides })!;
@@ -197,12 +202,6 @@ describe('searchDiffLines', () => {
     expect(result.files[0].matches[0]).toMatchObject({ new_line: 2 });
   });
 
-  // An entry missing its fields is reported, not thrown on.
-  it('lists an entry without diff text or paths as not scanned', () => {
-    const result = searchDiffLines([{ diff: null, old_path: 1 }], filter());
-    expect(result.not_scanned).toEqual([{ old_path: '', new_path: '', reason: 'empty_diff' }]);
-  });
-
   // The marker is not a line: it neither matches nor shifts the numbers after it.
   it('skips the no-newline marker', () => {
     const diff = [
@@ -326,6 +325,26 @@ describe('searchDiffLines', () => {
       text: `TODO ${euro}`,
       context: { before: [{ text: `price ${euro}5` }] },
     });
+  });
+});
+
+describe('parseDiffFiles', () => {
+  // GitLab's entries are checked at the boundary: a malformed one names where it broke.
+  it.each([
+    [{ message: 'not a list' }, 'body:'],
+    [[null], '0:'],
+    [[{ diff: '', old_path: 'a' }], '0.new_path:'],
+    [[{ diff: '', old_path: 'a', new_path: 'a', collapsed: 'yes' }], '0.collapsed:'],
+  ])('refuses %j', (body, where) => {
+    expect(() => parseDiffFiles(body)).toThrow(
+      `GitLab API error: unexpected diff response (${where}`,
+    );
+  });
+
+  // Fields the search does not read are kept, and the 18.4 flags pass through.
+  it('keeps the entry as GitLab sent it', () => {
+    const entry = { diff: '', old_path: 'a', new_path: 'b', collapsed: false, a_mode: '100644' };
+    expect(parseDiffFiles([entry])).toEqual([entry]);
   });
 });
 

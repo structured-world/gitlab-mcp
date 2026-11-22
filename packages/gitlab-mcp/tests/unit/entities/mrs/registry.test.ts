@@ -1167,6 +1167,22 @@ describe('MRS Registry', () => {
             });
           });
 
+          // A malformed entry fails as a GitLab response error, not a TypeError in the search.
+          it.each([
+            ['diffs', { merge_request_iid: 1 }, { changes: [null] }],
+            ['compare', { from: 'main', to: 'feature' }, { diffs: [{ old_path: 'a' }] }],
+          ])('refuses a malformed %s entry', async (action, args, body) => {
+            mockGitlab.get.mockResolvedValueOnce(body);
+            await expect(
+              mrsToolRegistry.get('browse_merge_requests')!.handler({
+                action,
+                project_id: 'test/project',
+                ...args,
+                line_patterns: ['TODO'],
+              }),
+            ).rejects.toThrow('GitLab API error: unexpected diff response');
+          });
+
           it('refuses an invalid pattern before calling GitLab', async () => {
             await expect(
               mrsToolRegistry.get('browse_merge_requests')!.handler({

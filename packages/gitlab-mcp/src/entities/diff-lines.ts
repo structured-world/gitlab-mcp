@@ -1,19 +1,37 @@
+import { z } from 'zod';
 import { compilePatterns, type PatternMatcher } from '../utils/re2-compile';
 import { DIFF_DEFAULT_CONTEXT, DIFF_DEFAULT_MATCHES } from './line-patterns';
 
 export type DiffSide = 'added' | 'removed' | 'any';
 type LineType = 'added' | 'removed' | 'unchanged';
 
-/** A file entry of a GitLab diff response; `collapsed`/`too_large` exist from GitLab 18.4. */
-export interface DiffFile {
-  diff?: unknown;
-  old_path?: unknown;
-  new_path?: unknown;
-  new_file?: unknown;
-  renamed_file?: unknown;
-  deleted_file?: unknown;
-  collapsed?: unknown;
-  too_large?: unknown;
+/**
+ * A file entry of GitLab's diff responses (API::Entities::Diff). `collapsed` and
+ * `too_large` exist from GitLab 18.4; their presence tells why an empty diff is empty.
+ */
+const DiffFileSchema = z.looseObject({
+  diff: z.string(),
+  old_path: z.string(),
+  new_path: z.string(),
+  new_file: z.boolean().optional(),
+  renamed_file: z.boolean().optional(),
+  deleted_file: z.boolean().optional(),
+  collapsed: z.boolean().optional(),
+  too_large: z.boolean().optional(),
+});
+export type DiffFile = z.infer<typeof DiffFileSchema>;
+const DiffFilesSchema = z.array(DiffFileSchema);
+
+/** The file entries of a GitLab diff response, refused when they are not that shape. */
+export function parseDiffFiles(value: unknown): DiffFile[] {
+  const parsed = DiffFilesSchema.safeParse(value);
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0];
+    throw new Error(
+      `GitLab API error: unexpected diff response (${issue.path.join('.') || 'body'}: ${issue.message})`,
+    );
+  }
+  return parsed.data;
 }
 
 /** One diff line with the numbers a positioned MR comment takes: old_line, new_line or both. */
@@ -224,19 +242,16 @@ function contextLines(bytes: Buffer, table: LineTable, i: number, count: number)
   return { before, after };
 }
 
-const isTrue = (value: unknown): boolean => value === true;
-const asPath = (value: unknown): string => (typeof value === 'string' ? value : '');
-
 /** Why GitLab's entry carries no searchable text, or null when its diff can be searched. */
-function unsearchable(file: DiffFile, diff: string): NotScannedReason | 'empty' | null {
-  if (isTrue(file.too_large)) return 'too_large';
-  if (isTrue(file.collapsed)) return 'collapsed';
-  if (diff.length === 0) {
+function unsearchable(file: DiffFile): NotScannedReason | 'empty' | null {
+  if (file.too_large === true) return 'too_large';
+  if (file.collapsed === true) return 'collapsed';
+  if (file.diff.length === 0) {
     // From 18.4 the flags say why text is missing; an empty diff without them is a change
     // with no text lines (rename, mode change, empty file), searched with nothing to match.
-    return 'collapsed' in file || 'too_large' in file ? 'empty' : 'empty_diff';
+    return file.collapsed !== undefined || file.too_large !== undefined ? 'empty' : 'empty_diff';
   }
-  if (diff.startsWith('Binary files ')) return 'binary';
+  if (file.diff.startsWith('Binary files ')) return 'binary';
   return null;
 }
 
@@ -265,10 +280,8 @@ export function searchDiffLines(
   const wantRemoved = filter.side !== 'added';
   let returned = 0;
   for (const file of entries) {
-    const diff = typeof file.diff === 'string' ? file.diff : '';
-    const old_path = asPath(file.old_path);
-    const new_path = asPath(file.new_path);
-    const reason = unsearchable(file, diff);
+    const { diff, old_path, new_path } = file;
+    const reason = unsearchable(file);
     if (reason !== null && reason !== 'empty') {
       result.not_scanned.push({ old_path, new_path, reason });
       continue;
@@ -292,9 +305,9 @@ export function searchDiffLines(
       found ??= {
         old_path,
         new_path,
-        new_file: isTrue(file.new_file),
-        renamed_file: isTrue(file.renamed_file),
-        deleted_file: isTrue(file.deleted_file),
+        new_file: file.new_file === true,
+        renamed_file: file.renamed_file === true,
+        deleted_file: file.deleted_file === true,
         matches: [],
       };
       found.matches.push({

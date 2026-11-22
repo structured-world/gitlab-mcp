@@ -1449,23 +1449,26 @@ describe('🔄 Data Lifecycle - Complete Infrastructure Setup', () => {
       expect(created.ok).toBe(true);
 
       // The MR diff and its diff_refs are computed asynchronously after the push.
-      type LineSearch = {
-        changes: Array<{
-          new_path: string;
-          matches: Array<{ new_line: number | null; text: string }>;
-        }>;
-        diff_refs?: MergeRequestDiffRefs;
-      };
+      const LineSearchSchema = MergeRequestDiffRefsSchema.extend({
+        changes: z.array(
+          z.object({
+            new_path: z.string(),
+            matches: z.array(z.object({ new_line: z.number().nullable(), text: z.string() })),
+          }),
+        ),
+      });
       const deadline = Date.now() + 5 * 60_000;
       let found: { new_line: number | null; text: string } | undefined;
       let diffRefs: MergeRequestDiffRefs = null;
       while (found === undefined && Date.now() < deadline) {
-        const search = (await helper.browseMergeRequests({
-          action: 'diffs',
-          project_id: projectId,
-          merge_request_iid: mr.iid.toString(),
-          line_patterns: [`TODO ${marker}`],
-        })) as LineSearch;
+        const search = LineSearchSchema.parse(
+          await helper.browseMergeRequests({
+            action: 'diffs',
+            project_id: projectId,
+            merge_request_iid: mr.iid.toString(),
+            line_patterns: [`TODO ${marker}`],
+          }),
+        );
         found = search.changes.find((file) => file.new_path === path)?.matches[0];
         diffRefs = search.diff_refs ?? null;
         if (found === undefined) await new Promise((resolve) => setTimeout(resolve, 3000));
@@ -1473,21 +1476,32 @@ describe('🔄 Data Lifecycle - Complete Infrastructure Setup', () => {
       expect(found).toEqual(expect.objectContaining({ new_line: 3, text: `// TODO ${marker}` }));
       expect(diffRefs?.head_sha).toBeTruthy();
 
-      const thread = (await helper.manageMrDiscussion({
-        action: 'thread',
-        project_id: projectId,
-        merge_request_iid: mr.iid.toString(),
-        body: 'Comment placed on a line found by line_patterns',
-        position: {
-          base_sha: diffRefs!.base_sha,
-          head_sha: diffRefs!.head_sha,
-          start_sha: diffRefs!.start_sha,
-          position_type: 'text' as const,
-          old_path: path,
-          new_path: path,
-          new_line: found!.new_line!,
-        },
-      })) as { notes: Array<{ position?: { new_path: string; new_line: number } }> };
+      const ThreadSchema = z.object({
+        notes: z
+          .array(
+            z.object({
+              position: z.object({ new_path: z.string(), new_line: z.number() }).nullish(),
+            }),
+          )
+          .min(1),
+      });
+      const thread = ThreadSchema.parse(
+        await helper.manageMrDiscussion({
+          action: 'thread',
+          project_id: projectId,
+          merge_request_iid: mr.iid.toString(),
+          body: 'Comment placed on a line found by line_patterns',
+          position: {
+            base_sha: diffRefs!.base_sha,
+            head_sha: diffRefs!.head_sha,
+            start_sha: diffRefs!.start_sha,
+            position_type: 'text' as const,
+            old_path: path,
+            new_path: path,
+            new_line: found!.new_line!,
+          },
+        }),
+      );
 
       expect(thread.notes[0].position).toEqual(
         expect.objectContaining({ new_path: path, new_line: 3 }),

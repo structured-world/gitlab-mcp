@@ -16,7 +16,7 @@ import { normalizeProjectId } from '../../utils/projectIdentifier';
 import { encodeApiSegment } from '../../utils/api-path';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
 import { assertActionAllowed } from '../utils';
-import { diffLineFilter, searchDiffLines, type DiffFile } from '../diff-lines';
+import { diffLineFilter, parseDiffFiles, searchDiffLines } from '../diff-lines';
 
 /**
  * Response shape for MR status check before merge.
@@ -320,8 +320,8 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
               };
             }
 
-            if (lineFilter !== null && Array.isArray(response.changes)) {
-              const search = searchDiffLines(response.changes, lineFilter);
+            if (lineFilter !== null && response.changes !== undefined) {
+              const search = searchDiffLines(parseDiffFiles(response.changes), lineFilter);
               return {
                 ...response,
                 changes: search.files,
@@ -348,8 +348,8 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
               `projects/${normalizeProjectId(project_id)}/repository/compare`,
               { query },
             );
-            if (lineFilter === null || !Array.isArray(response.diffs)) return response;
-            const search = searchDiffLines(response.diffs as DiffFile[], lineFilter);
+            if (lineFilter === null || response.diffs === undefined) return response;
+            const search = searchDiffLines(parseDiffFiles(response.diffs), lineFilter);
             return {
               ...response,
               diffs: search.files,

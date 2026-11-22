@@ -126,6 +126,83 @@ describe('searchDiffLines', () => {
     expect(result.files[0].matches.map((m) => m.new_line)).toEqual([1, 30]);
   });
 
+  // The line table starts at 256 rows and grows; rows written before growing keep their
+  // numbers and text, and later rows land after them.
+  it('keeps every line of a diff longer than the initial table', () => {
+    const lines = Array.from({ length: 300 }, (_, i) => `+line ${i + 1}`);
+    const diff = `@@ -0,0 +1,300 @@\n${lines.join('\n')}\n`;
+    const result = searchDiffLines(
+      [file(diff)],
+      filter({ line_patterns: ['^line (1|256|257|300)$'], context: 1 }),
+    );
+    expect(result.files[0].matches.map((m) => [m.new_line, m.text])).toEqual([
+      [1, 'line 1'],
+      [256, 'line 256'],
+      [257, 'line 257'],
+      [300, 'line 300'],
+    ]);
+    expect(result.files[0].matches[1].context.after).toEqual([
+      { type: 'added', old_line: null, new_line: 257, text: 'line 257' },
+    ]);
+  });
+
+  // A count of one may be left out of a header (`@@ -5 +5 @@`).
+  it('reads a header without counts as one line per side', () => {
+    const result = searchDiffLines(
+      [file('@@ -5 +5 @@\n-TODO old\n+TODO new\n+TODO past the hunk\n')],
+      filter({ line_patterns: ['TODO'], side: 'any', context: 0 }),
+    );
+    expect(result.files[0].matches.map((m) => [m.side, m.old_line, m.new_line])).toEqual([
+      ['removed', 5, null],
+      ['added', null, 5],
+    ]);
+  });
+
+  // Some tools strip the space of a blank context line; it is still context and still counts.
+  it('treats an empty line inside a hunk as context', () => {
+    const result = searchDiffLines(
+      [file('@@ -1,2 +1,3 @@\n a\n\n+TODO\n')],
+      filter({ line_patterns: ['TODO'], context: 1 }),
+    );
+    expect(result.files[0].matches[0]).toMatchObject({
+      new_line: 3,
+      context: { before: [{ type: 'unchanged', old_line: 2, new_line: 2, text: '' }] },
+    });
+  });
+
+  // Only a well-formed header opens a hunk; other text before the first one is not a line.
+  it('ignores an @@ line that is not a hunk header', () => {
+    const result = searchDiffLines(
+      [file('@@ not a header\n+TODO outside\n@@ -0,0 +1,1 @@\n+TODO inside\n')],
+      filter({ line_patterns: ['TODO'], context: 0 }),
+    );
+    expect(result.files[0].matches.map((m) => m.text)).toEqual(['TODO inside']);
+  });
+
+  // GitLab's diff text may end without a newline; its last line is still read.
+  it('reads a last line without a trailing newline', () => {
+    const result = searchDiffLines(
+      [file('@@ -0,0 +1,1 @@\n+TODO last')],
+      filter({ line_patterns: ['TODO'] }),
+    );
+    expect(result.files[0].matches[0]).toMatchObject({ new_line: 1, text: 'TODO last' });
+  });
+
+  // A context line past one side's count consumes only the other side, never a negative count.
+  it('keeps counting a hunk whose context outruns one side', () => {
+    const result = searchDiffLines(
+      [file('@@ -1,0 +1,2 @@\n ctx\n+TODO\n')],
+      filter({ line_patterns: ['TODO'], context: 0 }),
+    );
+    expect(result.files[0].matches[0]).toMatchObject({ new_line: 2 });
+  });
+
+  // An entry missing its fields is reported, not thrown on.
+  it('lists an entry without diff text or paths as not scanned', () => {
+    const result = searchDiffLines([{ diff: null, old_path: 1 }], filter());
+    expect(result.not_scanned).toEqual([{ old_path: '', new_path: '', reason: 'empty_diff' }]);
+  });
+
   // The marker is not a line: it neither matches nor shifts the numbers after it.
   it('skips the no-newline marker', () => {
     const diff = [

@@ -1092,6 +1092,11 @@ describe('addActionParameter', () => {
     expect(flat.properties).not.toHaveProperty('jmespath');
   });
 
+  it('leaves a flat schema without an action enum unchanged', () => {
+    const plain = { type: 'object', properties: { project_id: { type: 'string' } } };
+    expect(addActionParameter(plain, ['list'], 'jmespath', property)).toBe(plain);
+  });
+
   it('keeps the description of a flat schema where every action accepts it', () => {
     const flat = { type: 'object', properties: { action: { type: 'string', enum: ['list'] } } };
     const result = addActionParameter(flat, ['list'], 'jmespath', property);

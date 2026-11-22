@@ -2226,6 +2226,14 @@ describe('handlers', () => {
       }
     });
 
+    it('names the tool alone when a call with an expression names no action', async () => {
+      const result = await call({ project_id: 'g/p', jmespath: '@' });
+      expect(payload(result).error).toBe(
+        "'browse_pipelines' does not accept 'jmespath'; list and search actions do.",
+      );
+      expect(mockRegistryManager.executeTool).not.toHaveBeenCalled();
+    });
+
     it('refuses a non-string expression', async () => {
       const result = await call({ action: 'jobs', project_id: 'g/p', pipeline_id: 7, jmespath: 5 });
       expect(payload(result).error).toBe("'jmespath' must be a string expression.");

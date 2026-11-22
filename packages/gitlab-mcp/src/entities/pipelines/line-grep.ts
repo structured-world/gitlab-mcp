@@ -547,7 +547,9 @@ export class LineGrepScanner {
    */
   private charge(): void {
     const now = performance.now();
-    Atomics.add(this.spent, 0, Math.round((now - this.charged) * 1000));
+    // Lines before start_line are skipped or kept as context: their time is not search time.
+    if (this.line >= this.startLine)
+      Atomics.add(this.spent, 0, Math.round((now - this.charged) * 1000));
     this.charged = now;
   }
 
@@ -747,6 +749,8 @@ export class LineGrepScanner {
   private finishLine(src: Buffer, begin: number, end: number, sourceBytes: number): boolean {
     if (this.overBudget()) return false;
     const number = this.line++;
+    // The search starts with the next line: the prefix time read so far is not charged.
+    if (this.line === this.startLine) this.charged = performance.now();
     this.carryLength = 0;
     this.lineBytes = 0;
     const chained = this.chain(src, begin, end);

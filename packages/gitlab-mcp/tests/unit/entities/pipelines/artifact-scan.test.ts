@@ -97,6 +97,35 @@ describe('byte offsets of hunks', () => {
   });
 });
 
+describe('search budget on a continuation', () => {
+  // Each clock reading advances 1 ms, so every charge adds a known, non-zero amount.
+  let clock = 0;
+  beforeEach(() => {
+    clock = 0;
+    jest.spyOn(globalThis.performance, 'now').mockImplementation(() => ++clock);
+  });
+  afterEach(() => jest.restoreAllMocks());
+
+  // Lines before start_line are only skipped or kept as context. Charging their time let a
+  // continuation that re-reads a long prefix stop 256 lines after start_line every call.
+  it('charges no time for the lines before start_line', () => {
+    const spent = new Int32Array(1);
+    const scanner = new LineGrepScanner(options({ spent, startLine: 5, before: 1 }));
+    for (let line = 0; line < 4; line++) scanner.push(Buffer.from('ok\n'));
+    expect(Atomics.load(spent, 0)).toBe(0);
+  });
+
+  // The search itself, from start_line on, is still charged.
+  it('charges the time of the searched lines', () => {
+    const spent = new Int32Array(1);
+    const scanner = new LineGrepScanner(options({ spent, startLine: 2 }));
+    scanner.push(Buffer.from('ok\nok\n'));
+    scanner.push(Buffer.from('FAIL\nok\n'));
+    expect(Atomics.load(spent, 0)).toBeGreaterThan(0);
+    expect(scanner.finish().match_count).toBe(1);
+  });
+});
+
 describe('scan limit', () => {
   // A line that ends exactly at the limit is searched; nothing past it is.
   it('searches lines ending at the limit and stops before the next', () => {

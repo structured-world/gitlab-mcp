@@ -37,6 +37,9 @@ describe('browse_files content encoding', () => {
       encoding: 'base64',
       size: bytes.byteLength,
       content_type: 'application/pdf',
+      last_commit_id: null,
+      blob_id: null,
+      content_sha256: null,
     });
   });
 
@@ -61,6 +64,36 @@ describe('browse_files content encoding', () => {
       encoding: 'utf8',
       size: bytes.byteLength,
       content_type: 'application/octet-stream',
+      last_commit_id: null,
+      blob_id: null,
+      content_sha256: null,
+    });
+  });
+
+  // The raw read's X-Gitlab-* headers tie the content to the version a later edit names.
+  it('returns the file version GitLab sends with the content', async () => {
+    mockEnhancedFetch.mockResolvedValueOnce(
+      new Response('a: 1\n', {
+        headers: {
+          'content-type': 'text/plain',
+          'x-gitlab-last-commit-id': 'c0ffee',
+          'x-gitlab-blob-id': 'b10b',
+          'x-gitlab-content-sha256': '5ha',
+        },
+      }),
+    );
+    await expect(
+      filesToolRegistry.get('browse_files')!.handler({
+        action: 'content',
+        project_id: 'test/project',
+        file_path: 'values.yaml',
+        ref: 'main',
+      }),
+    ).resolves.toMatchObject({
+      content: 'a: 1\n',
+      last_commit_id: 'c0ffee',
+      blob_id: 'b10b',
+      content_sha256: '5ha',
     });
   });
 

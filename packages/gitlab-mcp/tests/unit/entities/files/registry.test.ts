@@ -174,8 +174,11 @@ describe('Files Registry', () => {
           .mockResolvedValue(
             new TextEncoder().encode(typeof data === 'string' ? data : JSON.stringify(data)).buffer,
           ),
+        // Only the content type is sent, as by a GitLab without the file version headers.
         headers: {
-          get: jest.fn().mockReturnValue('text/plain; charset=utf-8'),
+          get: jest.fn((name: string) =>
+            name.toLowerCase() === 'content-type' ? 'text/plain; charset=utf-8' : null,
+          ),
         },
       }) as unknown as Response;
 
@@ -252,7 +255,7 @@ describe('Files Registry', () => {
           });
 
           expect(mockEnhancedFetch).toHaveBeenCalledWith(
-            'https://gitlab.example.com/api/v4/projects/test%2Fproject/repository/files/README.md/raw?',
+            'https://gitlab.example.com/api/v4/projects/test%2Fproject/repository/files/README.md/raw',
           );
           expect(result).toEqual({
             file_path: 'README.md',
@@ -261,6 +264,9 @@ describe('Files Registry', () => {
             content: mockFileContent,
             encoding: 'utf8',
             content_type: 'text/plain; charset=utf-8',
+            last_commit_id: null,
+            blob_id: null,
+            content_sha256: null,
           });
         });
 
@@ -286,6 +292,9 @@ describe('Files Registry', () => {
             content: mockFileContent,
             encoding: 'utf8',
             content_type: 'text/plain; charset=utf-8',
+            last_commit_id: null,
+            blob_id: null,
+            content_sha256: null,
           });
         });
 

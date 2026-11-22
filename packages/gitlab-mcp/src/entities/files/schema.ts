@@ -1,9 +1,10 @@
 import { z } from 'zod';
 import { flexibleBoolean, requiredId } from '../utils';
+import { EDIT_MAX_EDITS } from './edit';
 
 // ============================================================================
 // manage_files - CQRS Command Tool (discriminated union schema)
-// Actions: single, batch, upload
+// Actions: single, batch, edit, upload
 // Uses z.discriminatedUnion() for type-safe action handling.
 // Schema pipeline flattens to flat JSON Schema for AI clients that don't support oneOf.
 // ============================================================================
@@ -57,6 +58,49 @@ const BatchActionSchema = z.object({
   author_name: z.string().optional().describe('Commit author name'),
 });
 
+// --- Action: edit ---
+const TextEditSchema = z.object({
+  old_text: z
+    .string()
+    .min(1)
+    .describe(
+      'Exact text to replace, matched byte for byte (whitespace, indentation and line endings included)',
+    ),
+  new_text: z.string().describe('Replacement text'),
+  replace_all: flexibleBoolean
+    .optional()
+    .describe('Replace every occurrence; without it old_text must occur exactly once'),
+});
+
+const EditActionSchema = z.object({
+  action: z
+    .literal('edit')
+    .describe(
+      'Edit an existing text file in place by replacing exact fragments; returns the unified diff and the new last_commit_id',
+    ),
+  project_id: projectIdField,
+  file_path: z.string().describe('Path to the existing file'),
+  branch: z.string().describe('Target branch name'),
+  commit_message: z.string().describe('Commit message'),
+  edits: z
+    .array(TextEditSchema)
+    .min(1)
+    .max(EDIT_MAX_EDITS)
+    .describe(
+      `1 to ${EDIT_MAX_EDITS} replacements, each located in the original file; overlapping edits are refused`,
+    ),
+  expected_last_commit_id: z
+    .string()
+    .optional()
+    .describe(
+      'last_commit_id the file was read at (browse_files content returns it); the edit is refused if the file changed since',
+    ),
+  dry_run: flexibleBoolean.optional().describe('Return the diff without committing'),
+  start_branch: z.string().optional().describe('Base branch to start from'),
+  author_email: z.string().optional().describe('Commit author email'),
+  author_name: z.string().optional().describe('Commit author name'),
+});
+
 // --- Action: upload ---
 const UploadActionSchema = z.object({
   action: z.literal('upload').describe('Upload a file as markdown attachment'),
@@ -69,6 +113,7 @@ const UploadActionSchema = z.object({
 export const ManageFilesSchema = z.discriminatedUnion('action', [
   SingleActionSchema,
   BatchActionSchema,
+  EditActionSchema,
   UploadActionSchema,
 ]);
 

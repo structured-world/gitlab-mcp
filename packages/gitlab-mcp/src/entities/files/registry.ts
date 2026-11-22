@@ -10,6 +10,8 @@ import { getGitLabBaseUrl } from '../../utils/gitlab-base-url';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
 import { assertActionAllowed } from '../utils';
 import { parseGitLabApiError } from '../../utils/error-handler';
+import { editRepositoryFile } from './edit-handler';
+import { readRepositoryFile } from './read';
 
 /**
  * Files tools registry - 2 CQRS tools replacing 5 individual tools
@@ -28,7 +30,7 @@ export const filesToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefin
       name: 'browse_files',
       projectableActions: ['tree'],
       description:
-        'Explore project file structure and read source code. Actions: tree (list directory contents with recursive depth control), content (read file at specific ref/branch; UTF-8 text or base64 for binary data, with encoding and byte size), download_attachment (get uploaded file by secret+filename). Related: manage_files to create/update files.',
+        'Explore project file structure and read source code. Actions: tree (list directory contents with recursive depth control), content (read file at specific ref/branch; UTF-8 text or base64 for binary data, with encoding, byte size and the last_commit_id an edit can pass back), download_attachment (get uploaded file by secret+filename). Related: manage_files to create/update files.',
       inputSchema: z.toJSONSchema(BrowseFilesSchema),
       // Downloading an upload by secret + filename landed in GitLab 17.4.
       requirements: {
@@ -57,18 +59,10 @@ export const filesToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefin
           }
 
           case 'content': {
-            // TypeScript knows: input has file_path (required)
-            const queryParams = new URLSearchParams();
-            if (input.ref) queryParams.set('ref', input.ref);
-
-            const apiUrl = `${getGitLabBaseUrl()}/api/v4/projects/${normalizeProjectId(input.project_id)}/repository/files/${encodeURIComponent(input.file_path)}/raw?${queryParams}`;
-            const response = await enhancedFetch(apiUrl);
-
-            if (!response.ok) {
-              throw new Error(`GitLab API error: ${response.status} ${response.statusText}`);
-            }
-
-            const bytes = Buffer.from(await response.arrayBuffer());
+            // The raw read carries the file's version in its headers, so the read can be
+            // tied to a later edit or update at no extra request.
+            const file = await readRepositoryFile(input.project_id, input.file_path, input.ref);
+            const bytes = file.bytes;
             let content: string;
             let encoding: 'utf8' | 'base64';
             try {
@@ -93,7 +87,10 @@ export const filesToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefin
               size: bytes.byteLength,
               content,
               encoding,
-              content_type: response.headers.get('content-type') ?? 'text/plain',
+              content_type: file.content_type,
+              last_commit_id: file.last_commit_id,
+              blob_id: file.blob_id,
+              content_sha256: file.content_sha256,
             };
           }
 
@@ -131,7 +128,7 @@ export const filesToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefin
     {
       name: 'manage_files',
       description:
-        'Create, update, or upload repository files. Actions: single (create/update one file with commit message), batch (atomic multi-file commit), upload (add attachment returning markdown link). Related: browse_files to read existing files.',
+        'Create, update, or upload repository files. Actions: single (create/update one file with commit message), batch (atomic multi-file commit), edit (change exact fragments of an existing text file without resending it; dry_run previews the diff, a file changed since it was read is refused), upload (add attachment returning markdown link). Related: browse_files to read existing files.',
       inputSchema: z.toJSONSchema(ManageFilesSchema),
       requirements: { default: { tier: 'free' } },
       gate: { envVar: 'USE_FILES', defaultValue: true },
@@ -304,6 +301,9 @@ export const filesToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefin
               contentType: 'json',
             });
           }
+
+          case 'edit':
+            return editRepositoryFile(input);
 
           case 'upload': {
             // TypeScript knows: input has file, filename (required)

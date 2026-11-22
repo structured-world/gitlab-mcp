@@ -162,7 +162,22 @@ always returns base64.
 }
 ```
 
+```json [Find removed unwraps]
+{
+  "action": "diff",
+  "project_id": "my-org/api",
+  "sha": "abc1234",
+  "line_patterns": ["\\.unwrap\\(\\)"],
+  "side": "removed"
+}
+```
+
 :::
+
+`diff` takes `line_patterns`, `side`, `context` and `max_matches` as described in
+[Diff Line Search](./code-review.md#diff-line-search) and then returns
+`{ diffs, not_scanned, _filtered }` with only the matching lines. Without `page`,
+every page of the commit's files is searched; with `page`, only that page.
 
 ### Commit Filters
 

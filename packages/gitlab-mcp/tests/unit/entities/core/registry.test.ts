@@ -1284,6 +1284,101 @@ describe('Core Registry', () => {
         }
       });
 
+      describe('diff with line_patterns', () => {
+        const page = (files: unknown, next: string) =>
+          ({
+            ok: true,
+            status: 200,
+            headers: new Headers({ 'x-next-page': next }),
+            json: jest.fn().mockResolvedValue(files),
+          }) as unknown as Response;
+        const change = (path: string, line: string) => ({
+          old_path: path,
+          new_path: path,
+          new_file: false,
+          renamed_file: false,
+          deleted_file: false,
+          diff: `@@ -0,0 +1,1 @@\n+${line}\n`,
+        });
+
+        // The endpoint pages files; without a page every page is searched, so a match on a
+        // later page is found and an empty result covers the whole commit.
+        it('searches every page when no page is asked for', async () => {
+          mockEnhancedFetch
+            .mockResolvedValueOnce(page([change('a.ts', 'ok')], '2'))
+            .mockResolvedValueOnce(page([change('b.ts', 'TODO later')], ''));
+
+          const result = await coreToolRegistry.get('browse_commits')!.handler({
+            action: 'diff',
+            project_id: '123',
+            sha: 'abc123',
+            unidiff: true,
+            line_patterns: ['TODO'],
+          });
+
+          const urls = mockEnhancedFetch.mock.calls.map((call) => String(call[0]));
+          expect(urls).toHaveLength(2);
+          expect(urls[0]).toContain('per_page=100');
+          expect(urls[0]).toContain('page=1');
+          expect(urls[1]).toContain('page=2');
+          // The search returns no diff text, so unified headers are never requested.
+          expect(urls[0]).not.toContain('unidiff');
+          expect(result).toEqual({
+            diffs: [
+              expect.objectContaining({
+                new_path: 'b.ts',
+                matches: [expect.objectContaining({ new_line: 1, text: 'TODO later' })],
+              }),
+            ],
+            not_scanned: [],
+            _filtered: expect.objectContaining({ files_scanned: 2, match_count: 1 }),
+          });
+        });
+
+        it('searches only the page asked for', async () => {
+          mockEnhancedFetch.mockResolvedValueOnce(page([change('b.ts', 'TODO')], '4'));
+
+          await coreToolRegistry.get('browse_commits')!.handler({
+            action: 'diff',
+            project_id: '123',
+            sha: 'abc123',
+            page: 3,
+            per_page: 10,
+            line_patterns: ['TODO'],
+          });
+
+          expect(mockEnhancedFetch).toHaveBeenCalledTimes(1);
+          expect(String(mockEnhancedFetch.mock.calls[0][0])).toContain('page=3');
+        });
+
+        // A next page that does not move forward ends the walk instead of looping on it.
+        it('stops at a next page that does not advance', async () => {
+          mockEnhancedFetch.mockResolvedValueOnce(page([change('a.ts', 'TODO')], '1'));
+
+          await coreToolRegistry.get('browse_commits')!.handler({
+            action: 'diff',
+            project_id: '123',
+            sha: 'abc123',
+            line_patterns: ['TODO'],
+          });
+
+          expect(mockEnhancedFetch).toHaveBeenCalledTimes(1);
+        });
+
+        it('rejects a body that is not a file list', async () => {
+          mockEnhancedFetch.mockResolvedValueOnce(page({ message: 'odd' }, ''));
+
+          await expect(
+            coreToolRegistry.get('browse_commits')!.handler({
+              action: 'diff',
+              project_id: '123',
+              sha: 'abc123',
+              line_patterns: ['TODO'],
+            }),
+          ).rejects.toThrow('unexpected commit diff response');
+        });
+      });
+
       it('should handle API error for list action', async () => {
         // Test: Error handling for commit list
         mockEnhancedFetch.mockResolvedValueOnce({

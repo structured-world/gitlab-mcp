@@ -1423,6 +1423,77 @@ describe('🔄 Data Lifecycle - Complete Infrastructure Setup', () => {
       }
     });
 
+    // A line found by diffs line_patterns carries the new_line a positioned comment takes:
+    // posting at it must land the note on that very line.
+    it('should comment on a line found by diffs line_patterns', async () => {
+      const testData = getTestData();
+      expect(testData.mergeRequests?.length).toBeGreaterThan(0);
+      const mr = testData.mergeRequests![0];
+      const projectId = testData.project!.id.toString();
+      const marker = `line-search-${Date.now()}`;
+      const path = `line-search-${Date.now()}.js`;
+      const content = `const a = 1;\nconst b = 2;\n// TODO ${marker}\nexport { a, b };\n`;
+
+      const created = await fetch(
+        `${GITLAB_API_URL}/api/v4/projects/${testData.project!.id}/repository/files/${encodeURIComponent(path)}`,
+        {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${GITLAB_TOKEN}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            branch: mr.source_branch,
+            content,
+            commit_message: 'Add a file for the diff line search test',
+          }),
+        },
+      );
+      expect(created.ok).toBe(true);
+
+      // The MR diff and its diff_refs are computed asynchronously after the push.
+      type LineSearch = {
+        changes: Array<{
+          new_path: string;
+          matches: Array<{ new_line: number | null; text: string }>;
+        }>;
+        diff_refs?: MergeRequestDiffRefs;
+      };
+      const deadline = Date.now() + 5 * 60_000;
+      let found: { new_line: number | null; text: string } | undefined;
+      let diffRefs: MergeRequestDiffRefs = null;
+      while (found === undefined && Date.now() < deadline) {
+        const search = (await helper.browseMergeRequests({
+          action: 'diffs',
+          project_id: projectId,
+          merge_request_iid: mr.iid.toString(),
+          line_patterns: [`TODO ${marker}`],
+        })) as LineSearch;
+        found = search.changes.find((file) => file.new_path === path)?.matches[0];
+        diffRefs = search.diff_refs ?? null;
+        if (found === undefined) await new Promise((resolve) => setTimeout(resolve, 3000));
+      }
+      expect(found).toEqual(expect.objectContaining({ new_line: 3, text: `// TODO ${marker}` }));
+      expect(diffRefs?.head_sha).toBeTruthy();
+
+      const thread = (await helper.manageMrDiscussion({
+        action: 'thread',
+        project_id: projectId,
+        merge_request_iid: mr.iid.toString(),
+        body: 'Comment placed on a line found by line_patterns',
+        position: {
+          base_sha: diffRefs!.base_sha,
+          head_sha: diffRefs!.head_sha,
+          start_sha: diffRefs!.start_sha,
+          position_type: 'text' as const,
+          old_path: path,
+          new_path: path,
+          new_line: found!.new_line!,
+        },
+      })) as { notes: Array<{ position?: { new_path: string; new_line: number } }> };
+
+      expect(thread.notes[0].position).toEqual(
+        expect.objectContaining({ new_path: path, new_line: 3 }),
+      );
+    });
+
     it('should test draft note with position (validates flattenPositionToFormFields for drafts)', async () => {
       const testData = getTestData();
       expect(testData.mergeRequests?.length).toBeGreaterThan(0);

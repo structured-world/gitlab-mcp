@@ -6,7 +6,7 @@ import {
   ARTIFACT_MAX_OFFSET,
   encodeArtifactPath,
 } from './artifact-path';
-import { MAX_PATTERN_LENGTH, MAX_PATTERNS } from '../../utils/re2-pattern';
+import { patternList, PATTERNS_DESCRIPTION } from '../line-patterns';
 import { MAX_SECTION_NAME } from './log-sections';
 
 export const LOG_GREP_MAX_CONTEXT = 20;
@@ -387,9 +387,6 @@ const maxMatchesField = z
   .describe(
     `Matches to return (default: 50, max: ${LOG_GREP_MAX_MATCHES}); match_count still counts all`,
   );
-
-const patternList = z.array(z.string().min(1).max(MAX_PATTERN_LENGTH)).min(1).max(MAX_PATTERNS);
-const PATTERNS_DESCRIPTION = `RE2 patterns (up to ${MAX_PATTERNS}, ${MAX_PATTERN_LENGTH} chars each); inline flags such as (?i). A line matches when any pattern does`;
 
 const invertField = flexibleBoolean
   .optional()

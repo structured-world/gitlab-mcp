@@ -1,3 +1,4 @@
+import { availableParallelism } from 'node:os';
 import { MessageChannel } from 'node:worker_threads';
 import { TreeInterpreter } from '@jmespath-community/jmespath';
 import {
@@ -8,6 +9,7 @@ import {
   JMESPATH_MAX_OUTPUT_CHARS,
   JmespathExpressionSchema,
   ProjectionError,
+  errorMessage,
   serveProjection,
   type ProjectionReply,
 } from '../../../src/utils/jmespath-projection';
@@ -165,6 +167,19 @@ describe('evaluateProjection', () => {
   });
 });
 
+describe('errorMessage', () => {
+  it('reads an error message and stringifies anything else', () => {
+    expect(errorMessage(new Error('boom'))).toBe('boom');
+    expect(errorMessage('plain')).toBe('plain');
+  });
+});
+
+describe('result size of scalars', () => {
+  it('counts a non-finite number as the null it serializes to', () => {
+    expect(evaluateProjection('`1e308` * `10`', {})).toBe(Infinity);
+  });
+});
+
 describe('serveProjection', () => {
   it('announces itself, answers requests and reports failures by their detail', async () => {
     const { port1, port2 } = new MessageChannel();
@@ -319,6 +334,14 @@ describe('applyProjection', () => {
     expect(result).not.toHaveProperty('message');
   });
 
+  it('counts no input rows for a null result and one output row for a scalar', async () => {
+    expect((await project('@', null)).jmespath).toMatchObject({ input_items: 0, output_items: 0 });
+    expect((await project('length(@)', jobs)).jmespath).toMatchObject({
+      input_items: 3,
+      output_items: 1,
+    });
+  });
+
   it('adds nothing beside the data for an array result', async () => {
     const result = await project('[].id', jobs);
     expect(Object.keys(result).sort()).toEqual(['data', 'jmespath']);
@@ -361,6 +384,18 @@ describe('bounded evaluation', () => {
     await expect(project("pad_left('x', `1000000000`)", {})).rejects.toThrow(
       /^Invalid jmespath expression: /,
     );
+  }, 20_000);
+
+  it('refuses a call while every worker of the pool is busy', async () => {
+    // The pool is sized from the machine; one call more than it holds finds no worker.
+    const size = Math.max(1, Math.min(4, availableParallelism() - 1));
+    const busy = Array.from({ length: size }, () =>
+      project(doubling(28, ' | to_string(@)'), {}).catch((error: unknown) => error),
+    );
+    await expect(project('[].id', jobs)).rejects.toThrow(
+      'Projection is at capacity; retry shortly',
+    );
+    await Promise.all(busy);
   }, 20_000);
 
   it('keeps answering after a worker was stopped', async () => {

@@ -127,10 +127,8 @@ function pattern(source: string): RE2JS {
     return cached;
   }
   const compiled = compileCallerPattern(source, 0);
-  if (patterns.size === PATTERN_CACHE_SIZE) {
-    const oldest = patterns.keys().next().value;
-    if (oldest !== undefined) patterns.delete(oldest);
-  }
+  // A full cache has a first key: the least recently used pattern.
+  if (patterns.size === PATTERN_CACHE_SIZE) patterns.delete(patterns.keys().next().value as string);
   patterns.set(source, compiled);
   return compiled;
 }
@@ -153,13 +151,18 @@ const RE2_FUNCTIONS: Record<string, { arity: number; run: (args: string[]) => JS
 };
 
 for (const [name, { arity, run }] of Object.entries(RE2_FUNCTIONS)) {
-  // The function table is process-wide; a second import of this module must not fail.
-  if (isRegistered(name)) continue;
+  // The function table is process-wide; a second import of this module replaces its own entry.
   registerFunction(
     name,
     (args) => run(args as string[]),
     Array.from({ length: arity }, () => STRING_ARGUMENT),
+    { override: true },
   );
+}
+
+/** The message of a thrown value, whatever it is. */
+export function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 /** Names of the functions an expression calls, in the order they appear. */
@@ -189,7 +192,7 @@ export function compileProjection(expression: string): Projection {
   try {
     ast = compile(expression, COMPILE_LIMITS);
   } catch (error) {
-    throw new ProjectionError(error instanceof Error ? error.message : String(error));
+    throw new ProjectionError(errorMessage(error));
   }
   const unknown = calledFunctions(ast).find((name) => !isRegistered(name));
   if (unknown !== undefined) throw new ProjectionError(`unknown function ${unknown}()`);
@@ -280,7 +283,7 @@ export function evaluateProjection(expression: string, input: unknown): JSONValu
   try {
     data = TreeInterpreter.search(ast, input as JSONValue, EVALUATION_LIMITS);
   } catch (error) {
-    throw new ProjectionError(error instanceof Error ? error.message : String(error));
+    throw new ProjectionError(errorMessage(error));
   } finally {
     // The library's one shared evaluator keeps its last input as the root value; an idle
     // pooled worker would otherwise hold a whole GitLab result until its next call.
@@ -309,15 +312,8 @@ export function serveProjection(port: MessagePort): void {
     try {
       reply = { ok: true, data: evaluateProjection(request.expression, request.input) };
     } catch (error) {
-      reply = {
-        ok: false,
-        detail:
-          error instanceof ProjectionError
-            ? error.detail
-            : error instanceof Error
-              ? error.message
-              : String(error),
-      };
+      // evaluateProjection reports every failure as a ProjectionError.
+      reply = { ok: false, detail: (error as ProjectionError).detail };
     }
     port.postMessage(reply);
   });

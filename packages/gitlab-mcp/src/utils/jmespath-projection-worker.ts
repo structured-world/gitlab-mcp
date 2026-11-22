@@ -84,8 +84,9 @@ class ProjectionWorker {
   }
 
   async evaluate(request: ProjectionRequest): Promise<ProjectionReply> {
+    // A worker that failed to start rejects `ready`; one that failed while idle is dropped
+    // by the pool before it is leased again.
     await this.ready;
-    if (this.failure) throw this.failure;
     const reply = this.await(EVALUATION_TIMEOUT_MS);
     try {
       this.worker.postMessage(request);

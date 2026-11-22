@@ -788,6 +788,41 @@ async function prepareScopedCall(
 }
 
 /**
+ * The call prepared to run: its projection taken off and compiled, then its arguments held
+ * to the caller's settings. The projection belongs to the call, not to the tool: it is
+ * removed before the settings, scope emulation or the handler see the arguments, and
+ * applied once to the final result, as a scoped call may run the tool many times to build it.
+ */
+async function prepareCall(
+  toolName: string,
+  args: Record<string, unknown> | undefined,
+  configured: EffectivePolicy,
+  registryManager: import('./registry-manager').RegistryManager,
+  expired: () => boolean,
+): Promise<{
+  rejection: CallToolResult | null;
+  args: Record<string, unknown>;
+  policy: EffectivePolicy;
+  projection?: Projection;
+}> {
+  const taken = takeProjection(toolName, args, registryManager);
+  if ('rejection' in taken) return { rejection: taken.rejection, args: {}, policy: configured };
+  const prepared = await prepareScopedCall(
+    toolName,
+    taken.args ?? {},
+    configured,
+    registryManager,
+    expired,
+  );
+  return { ...prepared, projection: taken.projection };
+}
+
+/** The tool result, projected when the call asked for a projection. */
+async function withProjection(result: unknown, projection: Projection | undefined) {
+  return projection ? applyProjection(projection, result) : result;
+}
+
+/**
  * The call's arguments without `jmespath`, and its compiled projection. An expression that
  * does not compile, or an action that does not accept one, is refused before any request.
  */
@@ -1306,26 +1341,20 @@ export async function setupHandlers(server: Server): Promise<void> {
       const healthMonitor = HealthMonitor.getInstance();
       const toolName = request.params.name;
       const { RegistryManager: CallRegistry } = await import('./registry-manager');
-      // The projection belongs to the call, not to the tool: it is taken off before the
-      // settings, scope emulation or the handler see the arguments, and applied once to the
-      // final result, as a scoped call may run the tool many times to build it.
-      const taken = takeProjection(toolName, request.params.arguments, CallRegistry.getInstance());
-      if ('rejection' in taken) return taken.rejection;
-      const { projection } = taken;
-      let toolArguments = taken.args;
 
       // The caller's settings, checked before anything reaches GitLab. A call is refused
       // when they cannot be read: allowing it could bypass a restriction.
       const configuration = await getConfigurationService().resolve(caller);
-      const prepared = await prepareScopedCall(
+      const prepared = await prepareCall(
         toolName,
-        toolArguments ?? {},
+        request.params.arguments,
         configuration.policy,
         CallRegistry.getInstance(),
         timedOut,
       );
       if (prepared.rejection) return prepared.rejection;
-      toolArguments = prepared.args;
+      const { projection } = prepared;
+      let toolArguments = prepared.args;
 
       // Early return: instance unreachable for non-context tools
       // (isInstanceReachable treats untracked URLs as reachable before HealthMonitor.initialize)
@@ -1434,10 +1463,7 @@ export async function setupHandlers(server: Server): Promise<void> {
           healthMonitor.reportSuccess(effectiveInstanceUrl);
         }
 
-        return formatToolResult(
-          projection ? await applyProjection(projection, result) : result,
-          definition,
-        );
+        return formatToolResult(await withProjection(result, projection), definition);
       } catch (error) {
         throwDispatchError(error, toolName, effectiveInstanceUrl, healthMonitor, timedOut());
       }

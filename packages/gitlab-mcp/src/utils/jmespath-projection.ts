@@ -221,20 +221,26 @@ export function checkProjection(expression: unknown): Projection | { refusal: st
  */
 function quotedLength(text: string, limit: number): number {
   let length = 2;
-  for (let index = 0; index < text.length && length <= limit; index++) {
-    const code = text.charCodeAt(index);
-    if (code === 34 || code === 92) length += 2;
-    else if (code < 0x20)
-      length += code === 8 || code === 9 || code === 10 || code === 12 || code === 13 ? 2 : 6;
-    else if (code >= 0xd800 && code <= 0xdfff) {
-      const next = text.charCodeAt(index + 1);
-      const paired = code <= 0xdbff && next >= 0xdc00 && next <= 0xdfff;
-      length += paired ? 2 : 6;
-      if (paired) index++;
-    } else length++;
+  for (let index = 0; index < text.length && length <= limit;) {
+    // A surrogate pair is one code point above U+FFFF; a lone surrogate comes back alone.
+    const point = text.codePointAt(index) as number;
+    const units = point > 0xffff ? 2 : 1;
+    length += escapedWidth(point, units);
+    index += units;
   }
   return length;
 }
+
+/** Characters one code point of `units` UTF-16 units takes in a JSON string. */
+function escapedWidth(point: number, units: number): number {
+  if (point === 34 || point === 92) return 2;
+  if (point < 0x20) return SHORT_ESCAPES.has(point) ? 2 : 6;
+  if (point >= 0xd800 && point <= 0xdfff) return 6;
+  return units;
+}
+
+/** Controls JSON writes as a two-character escape: \b \t \n \f \r. */
+const SHORT_ESCAPES = new Set([8, 9, 10, 12, 13]);
 
 /** Depth of the projected data inside the tool result object it is returned in. */
 const DATA_DEPTH = 1;
@@ -251,26 +257,47 @@ function exceedsSerializedSize(value: unknown, budget: number): boolean {
   const stack: Array<{ item: unknown; depth: number }> = [{ item: value, depth: DATA_DEPTH }];
   while (stack.length > 0 && size <= budget) {
     const { item, depth } = stack.pop() as { item: unknown; depth: number };
-    if (typeof item === 'string') size += quotedLength(item, budget - size);
-    else if (typeof item === 'number') size += Number.isFinite(item) ? String(item).length : 4;
-    else if (item === null || typeof item !== 'object') size += String(item).length;
-    else {
-      const entries: Array<[string | null, unknown]> = Array.isArray(item)
-        ? item.map((element): [null, unknown] => [null, element])
-        : Object.entries(item);
-      // Brackets, plus the closing bracket's own line and indentation when not empty; that
-      // line break stands in for the separator the last member does not have.
-      size += entries.length === 0 ? 2 : 2 + 2 * depth;
-      for (const [key, element] of entries) {
-        // Each member on its own line, indented one level deeper, with its separator.
-        size += 2 * (depth + 1) + 2;
-        if (key !== null) size += quotedLength(key, budget - size) + 2;
-        stack.push({ item: element, depth: depth + 1 });
-        if (size > budget) break;
-      }
-    }
+    size +=
+      item !== null && typeof item === 'object'
+        ? containerSize(item, depth, budget - size, stack)
+        : scalarSize(item, budget - size);
   }
   return size > budget;
+}
+
+/** Characters a string, number, boolean or null takes in JSON, counted up to `limit`. */
+function scalarSize(item: unknown, limit: number): number {
+  if (typeof item === 'string') return quotedLength(item, limit);
+  // A non-finite number is written as null.
+  if (typeof item === 'number' && !Number.isFinite(item)) return 4;
+  return String(item).length;
+}
+
+/**
+ * Characters an array or object adds at `depth` besides its members' values, which are
+ * pushed for the caller to count; stops once `limit` is passed.
+ */
+function containerSize(
+  item: object,
+  depth: number,
+  limit: number,
+  stack: Array<{ item: unknown; depth: number }>,
+): number {
+  const entries: Array<[string | null, unknown]> = Array.isArray(item)
+    ? item.map((element): [null, unknown] => [null, element])
+    : Object.entries(item);
+  if (entries.length === 0) return 2;
+  // Brackets, plus the closing bracket's own line and indentation; that line break stands
+  // in for the separator the last member does not have.
+  let size = 2 + 2 * depth;
+  for (const [key, element] of entries) {
+    // Each member on its own line, indented one level deeper, with its separator.
+    size += 2 * (depth + 1) + 2;
+    if (key !== null) size += quotedLength(key, limit - size) + 2;
+    stack.push({ item: element, depth: depth + 1 });
+    if (size > limit) break;
+  }
+  return size;
 }
 
 /** An expression whose evaluation on null leaves the shared evaluator holding nothing. */

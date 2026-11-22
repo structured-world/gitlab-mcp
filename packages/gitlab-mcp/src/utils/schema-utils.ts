@@ -537,10 +537,11 @@ export function addActionParameter(
   const enumerated = schema.properties?.action?.enum ?? [];
   const accepting = enumerated.filter((action) => wanted.has(action));
   if (accepting.length === 0) return schema;
+  const quoted = accepting.map((action) => `'${action}'`).join(', ');
   const description =
     accepting.length === enumerated.length
       ? property.description
-      : `${property.description} Only for ${accepting.map((a) => `'${a}'`).join(', ')}.`;
+      : `${property.description} Only for ${quoted}.`;
   return {
     ...schema,
     properties: { ...schema.properties, [name]: { ...property, description } },

@@ -42,7 +42,8 @@ const EVALUATOR_MODULE = require.resolve('./jmespath-projection');
 /** A worker leased to one call at a time; the pool owns its lifetime. */
 class ProjectionWorker {
   private readonly worker: Worker;
-  private readonly ready: Promise<ProjectionReply>;
+  /** Settles with the thread's first message; set by start(). */
+  private ready?: Promise<ProjectionReply>;
   failure?: Error;
   busy = false;
   private waiting?: {
@@ -58,9 +59,6 @@ class ProjectionWorker {
       // A tool result is cloned into the worker; the limit stops a runaway allocation.
       resourceLimits: { maxOldGenerationSizeMb: 128, maxYoungGenerationSizeMb: 16, stackSizeMb: 4 },
     });
-    this.ready = this.await(START_TIMEOUT_MS);
-    // A start failure surfaces to the call that awaits `ready`; an idle worker has none.
-    this.ready.catch(() => undefined);
     this.worker.on('message', (reply: ProjectionReply) => {
       const waiting = this.waiting;
       if (!waiting) return;
@@ -71,6 +69,16 @@ class ProjectionWorker {
     this.worker.on('error', (error) => this.fail(error));
     this.worker.on('exit', (code) => this.fail(new Error(`Projection worker exited (${code})`)));
     this.worker.unref();
+  }
+
+  /**
+   * Wait for the thread's first message, sent once the evaluator is loaded. Called right
+   * after construction: the listeners are already attached, so that message is not missed.
+   */
+  start(): void {
+    this.ready = this.await(START_TIMEOUT_MS);
+    // A start failure surfaces to the call that awaits `ready`; an idle worker has none.
+    this.ready.catch(() => undefined);
   }
 
   private await(timeoutMs: number): Promise<ProjectionReply> {
@@ -151,6 +159,7 @@ function leaseWorker(): ProjectionWorker {
   if (!worker) {
     if (workers.length >= MAX_WORKERS) throw new Error('Projection is at capacity; retry shortly');
     worker = new ProjectionWorker();
+    worker.start();
     workers.push(worker);
   }
   worker.lease();

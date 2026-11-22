@@ -109,7 +109,7 @@ describe('evaluateProjection', () => {
     const head = '"\n\u0001\u{1F600}\ud800';
     const fill = (extra: number) =>
       head + 'x'.repeat(JMESPATH_MAX_OUTPUT_CHARS - JSON.stringify(head).length + extra);
-    expect(JSON.stringify(fill(0)).length).toBe(JMESPATH_MAX_OUTPUT_CHARS);
+    expect(JSON.stringify(fill(0))).toHaveLength(JMESPATH_MAX_OUTPUT_CHARS);
     expect(evaluateProjection('@', fill(0))).toBe(fill(0));
     expect(() => evaluateProjection('@', fill(1))).toThrow(ProjectionError);
   });

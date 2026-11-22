@@ -22,6 +22,7 @@ export const releasesToolRegistry: ToolRegistry = new Map<string, EnhancedToolDe
     'browse_releases',
     {
       name: 'browse_releases',
+      projectableActions: ['list', 'assets'],
       description:
         'View project releases and asset download links. Actions: list (releases sorted by date), get (release details by tag name), assets (download link list for release). Related: manage_release to create/publish.',
       inputSchema: z.toJSONSchema(BrowseReleasesSchema),

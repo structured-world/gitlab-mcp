@@ -22,6 +22,7 @@ export const snippetsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDe
     'browse_snippets',
     {
       name: 'browse_snippets',
+      projectableActions: ['list'],
       description:
         'Find and read code snippets with versioning support. Actions: list (personal/project/public scope with filtering), get (snippet metadata or raw file content). Related: manage_snippet to create/update.',
       inputSchema: z.toJSONSchema(BrowseSnippetsSchema),

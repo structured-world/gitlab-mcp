@@ -83,6 +83,11 @@ export interface EnhancedToolDefinition extends ToolDefinition {
    * Set explicitly to override the default behavior.
    */
   idempotent?: boolean;
+  /**
+   * Read actions whose JSON result may be reshaped with a `jmespath` expression before it
+   * is returned. Tools returning an MCP envelope with an outputSchema never declare any.
+   */
+  projectableActions?: readonly string[];
 }
 
 // Tool registry type for storing enhanced tool definitions

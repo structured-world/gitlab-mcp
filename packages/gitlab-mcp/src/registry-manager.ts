@@ -116,6 +116,7 @@ import { logDebug, logError } from './logger';
 import {
   transformToolSchema,
   stripTierRestrictedParameters,
+  addActionParameter,
   shouldRemoveTool,
   extractActionsFromSchema,
   declaredArgumentNames,
@@ -124,6 +125,11 @@ import {
   type ClientSchemaMode,
 } from './utils/schema-utils';
 import { resolveRelatedReferences, stripRelatedSection } from './utils/description-utils';
+import {
+  JMESPATH_ARGUMENT,
+  JMESPATH_DESCRIPTION,
+  JMESPATH_MAX_LENGTH,
+} from './utils/jmespath-projection';
 import { normalizeInstanceUrl } from './utils/url';
 import { groupOfRegistry } from './configuration/groups';
 import { getGitLabApiUrlFromContext, getTokenContext } from './oauth/token-context';
@@ -131,6 +137,7 @@ import { isOAuthEnabled } from './oauth/config';
 import { currentTokenAccount } from './accounts/token-account';
 
 const NONE_UNAVAILABLE: ReadonlyMap<string, string> = new Map();
+type ToolInputSchema = Parameters<typeof addActionParameter>[0];
 
 // The complete catalog and its read-only policy share the owning entity registries.
 const ALL_REGISTRIES: ReadonlyArray<readonly [ToolRegistry, () => string[]]> = [
@@ -627,6 +634,8 @@ class RegistryManager {
           }
         }
 
+        transformedSchema = this.withProjectionParameter(toolName, tool, transformedSchema);
+
         const customDescription = this.descriptionOverrides.get(toolName);
         const finalTool = {
           ...tool,
@@ -644,6 +653,43 @@ class RegistryManager {
     }
 
     return result;
+  }
+
+  /**
+   * The actions of a tool that accept a `jmespath` projection. A tool returning an MCP
+   * envelope with an outputSchema, or a context tool, accepts none: its structured content
+   * must match the declared schema, and it does not read GitLab.
+   */
+  private projectableActionsOf(toolName: string, tool: EnhancedToolDefinition): readonly string[] {
+    if (!tool.projectableActions || tool.outputSchema || tool.resultFormat === 'mcp') return [];
+    if (this.registries.get('context')?.has(toolName)) return [];
+    return tool.projectableActions;
+  }
+
+  private withProjectionParameter(
+    toolName: string,
+    tool: EnhancedToolDefinition,
+    schema: ToolInputSchema,
+  ): ToolInputSchema {
+    return addActionParameter(
+      schema,
+      this.projectableActionsOf(toolName, tool),
+      JMESPATH_ARGUMENT,
+      {
+        type: 'string',
+        minLength: 1,
+        maxLength: JMESPATH_MAX_LENGTH,
+        description: JMESPATH_DESCRIPTION,
+      },
+    );
+  }
+
+  /** Whether the tool's action accepts a `jmespath` projection of its result. */
+  public acceptsProjection(toolName: string, action: unknown): boolean {
+    const key = this.getToolRegistryKey(toolName);
+    const tool = key === undefined ? undefined : this.registries.get(key)?.get(toolName);
+    if (!tool || typeof action !== 'string') return false;
+    return this.projectableActionsOf(toolName, tool).includes(action);
   }
 
   /** Resolve or strip Related: references in tool descriptions. */
@@ -960,6 +1006,7 @@ class RegistryManager {
       unavailableActions: _unavailable,
       idempotent: _idempotent,
       resultFormat: _format,
+      projectableActions: _projectable,
       ...definition
     } = tool;
     // Registry query membership is reviewed per entity; manage_context is deliberately
@@ -1084,7 +1131,11 @@ class RegistryManager {
         }
 
         // Transform schema to remove denied actions and apply description overrides
-        const transformedSchema = transformToolSchema(toolName, tool.inputSchema);
+        const transformedSchema = this.withProjectionParameter(
+          toolName,
+          tool,
+          transformToolSchema(toolName, tool.inputSchema),
+        );
 
         // Apply dynamically loaded description override if available
         const customDescription = descOverrides.get(toolName);

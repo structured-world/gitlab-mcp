@@ -60,6 +60,7 @@ export const searchToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefi
     'browse_search',
     {
       name: 'browse_search',
+      projectableActions: ['global', 'project', 'group'],
       description:
         'Search across GitLab resources globally or within a scope. Actions: global (entire instance), project (within specific project), group (within specific group). Searchable: projects, issues, merge_requests, milestones, users, blobs (code), commits, wiki_blobs, notes.',
       inputSchema: z.toJSONSchema(BrowseSearchSchema),

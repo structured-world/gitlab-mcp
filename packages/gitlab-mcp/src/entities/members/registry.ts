@@ -22,6 +22,7 @@ export const membersToolRegistry: ToolRegistry = new Map<string, EnhancedToolDef
     'browse_members',
     {
       name: 'browse_members',
+      projectableActions: ['list_project', 'list_group', 'list_all_project', 'list_all_group'],
       description:
         'View team members and access levels in projects or groups. Actions: list_project, list_group, get_project, get_group (direct members), list_all_project, list_all_group (includes inherited). Levels: Guest(10), Reporter(20), Developer(30), Maintainer(40), Owner(50). Related: manage_member to add/remove, browse_users to find users by name.',
       inputSchema: z.toJSONSchema(BrowseMembersSchema),

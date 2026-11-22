@@ -12,6 +12,7 @@ export const duoToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
     'browse_duo_sessions',
     {
       name: 'browse_duo_sessions',
+      projectableActions: ['agents_and_flows', 'list'],
       description:
         'Discover and inspect GitLab Duo sessions. Actions: agents_and_flows (project catalog and foundational agents; keep paging even after an empty filtered page), list (your sessions, optionally in a project), get (progress, pending input, latest answer and created objects). Reads do not start Duo or consume execution credits. Related: manage_duo_session.',
       inputSchema: z.toJSONSchema(BrowseDuoSessionsSchema),

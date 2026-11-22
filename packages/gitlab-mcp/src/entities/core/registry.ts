@@ -73,6 +73,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
     'browse_projects',
     {
       name: 'browse_projects',
+      projectableActions: ['search', 'list'],
       description:
         'Find, list, or inspect GitLab projects. Actions: search (find by name/topic across GitLab), list (browse accessible projects or group projects), get (retrieve full project details). Related: manage_project to create/update/delete projects.',
       inputSchema: z.toJSONSchema(BrowseProjectsSchema),
@@ -96,6 +97,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
     'browse_namespaces',
     {
       name: 'browse_namespaces',
+      projectableActions: ['list'],
       description:
         'Explore GitLab groups and user namespaces. Actions: list (discover available namespaces), get (retrieve details with storage stats), verify (check if path exists). Related: manage_namespace to create/update/delete groups.',
       inputSchema: z.toJSONSchema(BrowseNamespacesSchema),
@@ -108,6 +110,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
     'browse_commits',
     {
       name: 'browse_commits',
+      projectableActions: ['list', 'diff'],
       description:
         'Explore repository commit history and diffs. Actions: list (browse commits with filters), get (retrieve commit metadata and stats), diff (view code changes, or only the changed lines matching line_patterns). Related: browse_refs for branch/tag info.',
       inputSchema: z.toJSONSchema(BrowseCommitsSchema),
@@ -275,6 +278,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
     'browse_events',
     {
       name: 'browse_events',
+      projectableActions: ['user', 'project'],
       description:
         'Track GitLab activity and events. Actions: user (your activity across all projects), project (specific project activity feed). Filter by date range, action type, or target type.',
       inputSchema: z.toJSONSchema(BrowseEventsSchema),
@@ -342,6 +346,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
     'browse_users',
     {
       name: 'browse_users',
+      projectableActions: ['search'],
       description:
         'Find GitLab users with smart pattern detection. Actions: search (find users by name/email/username with transliteration support), get (retrieve specific user by ID). Related: browse_members for project/group membership.',
       inputSchema: z.toJSONSchema(BrowseUsersSchema),
@@ -409,6 +414,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
     'browse_todos',
     {
       name: 'browse_todos',
+      projectableActions: ['list'],
       description:
         'View your GitLab todo queue (notifications requiring action). Actions: list (filter by state, action type, target type). Todos are auto-created for assignments, mentions, reviews, and pipeline failures. Related: manage_todos to mark done/restore.',
       inputSchema: z.toJSONSchema(BrowseTodosSchema),

@@ -26,6 +26,7 @@ export const filesToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefin
     'browse_files',
     {
       name: 'browse_files',
+      projectableActions: ['tree'],
       description:
         'Explore project file structure and read source code. Actions: tree (list directory contents with recursive depth control), content (read file at specific ref/branch; UTF-8 text or base64 for binary data, with encoding and byte size), download_attachment (get uploaded file by secret+filename). Related: manage_files to create/update files.',
       inputSchema: z.toJSONSchema(BrowseFilesSchema),

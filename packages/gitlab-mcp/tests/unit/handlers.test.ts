@@ -71,6 +71,8 @@ const mockRegistryManager = {
   isReadOnlyTool: jest.fn().mockReturnValue(true),
   /** Argument names a tool declares; undefined when unknown, so every argument is checked. */
   getDeclaredArguments: jest.fn().mockReturnValue(undefined),
+  /** Whether the tool's action takes a `jmespath` projection; none does unless a test says so. */
+  acceptsProjection: jest.fn().mockReturnValue(false),
   // Built from the two mocks above, as the real registry builds it from its tables.
   getToolFacts: (name: string) => ({
     name,
@@ -2112,6 +2114,99 @@ describe('handlers', () => {
     });
   });
 
+  describe('jmespath projection', () => {
+    const jobs = [
+      { id: 1, name: 'lint', status: 'success' },
+      { id: 2, name: 'unit', status: 'failed' },
+    ];
+    const call = (args: Record<string, unknown>) =>
+      callToolHandler({ params: { name: 'browse_pipelines', arguments: args } });
+    const payload = (result: HandlerResult): Record<string, unknown> =>
+      JSON.parse(result.content?.[0]?.text ?? 'null') as Record<string, unknown>;
+
+    beforeEach(async () => {
+      await setupHandlers(mockServer);
+      callToolHandler = getRegisteredHandler(mockServer, CallToolRequestSchema);
+      mockRegistryManager.acceptsProjection.mockImplementation(
+        (tool: string, action: unknown) => tool === 'browse_pipelines' && action === 'jobs',
+      );
+      mockRegistryManager.executeTool.mockResolvedValue(jobs);
+    });
+
+    afterEach(() => {
+      mockRegistryManager.acceptsProjection.mockReturnValue(false);
+    });
+
+    it('takes the expression off the arguments the tool receives and projects its result', async () => {
+      const result = await call({
+        action: 'jobs',
+        project_id: 'g/p',
+        pipeline_id: 7,
+        jmespath: "[?status=='failed'].name",
+      });
+      expect(result.isError).toBeFalsy();
+      const [, received] = mockRegistryManager.executeTool.mock.calls[0];
+      // A passthrough schema would otherwise forward it to GitLab as a query parameter.
+      expect(received).toEqual({ action: 'jobs', project_id: 'g/p', pipeline_id: 7 });
+      expect(payload(result)).toEqual({
+        data: ['unit'],
+        jmespath: { expression: "[?status=='failed'].name", input_items: 2, output_items: 1 },
+      });
+    });
+
+    it('keeps the reason of a partial page beside the projected data', async () => {
+      // A scoped listing reports a bounded read this way; the expression cannot drop it.
+      mockRegistryManager.executeTool.mockResolvedValue({
+        items: jobs,
+        partial: true,
+        message: 'Read the first 1000 rows.',
+      });
+      const result = await call({
+        action: 'jobs',
+        project_id: 'g/p',
+        pipeline_id: 7,
+        jmespath: 'items[].id',
+      });
+      expect(payload(result)).toMatchObject({
+        data: [1, 2],
+        partial: true,
+        message: 'Read the first 1000 rows.',
+      });
+    });
+
+    it('refuses a syntax error before the tool runs', async () => {
+      const result = await call({
+        action: 'jobs',
+        project_id: 'g/p',
+        pipeline_id: 7,
+        jmespath: '[?status==',
+      });
+      expect(result.isError).toBe(true);
+      expect(payload(result).error).toMatch(/^Invalid jmespath expression: Syntax error/);
+      expect(mockRegistryManager.executeTool).not.toHaveBeenCalled();
+    });
+
+    it('refuses the expression on an action that does not accept it, before the tool runs', async () => {
+      const result = await call({ action: 'logs', project_id: 'g/p', job_id: 1, jmespath: '@' });
+      expect(result.isError).toBe(true);
+      expect(payload(result).error).toBe(
+        "'browse_pipelines logs' does not accept 'jmespath'; list and search actions do.",
+      );
+      expect(mockRegistryManager.executeTool).not.toHaveBeenCalled();
+    });
+
+    it('refuses a non-string expression', async () => {
+      const result = await call({ action: 'jobs', project_id: 'g/p', pipeline_id: 7, jmespath: 5 });
+      expect(payload(result).error).toBe("'jmespath' must be a string expression.");
+      expect(mockRegistryManager.executeTool).not.toHaveBeenCalled();
+    });
+
+    it('leaves a call without the argument untouched', async () => {
+      const result = await call({ action: 'jobs', project_id: 'g/p', pipeline_id: 7 });
+      expect(payload(result)).toEqual(jobs as unknown as Record<string, unknown>);
+    });
+  });
+
   describe('timeout error handling', () => {
     beforeEach(async () => {
       await setupHandlers(mockServer);
@@ -4078,6 +4173,44 @@ describe('handlers', () => {
       expect(JSON.parse(result.content?.[0].text ?? '')).toEqual([
         { path_with_namespace: 'team/app' },
       ]);
+    });
+
+    // The scope reads the tool page by page and filters each page; a projection applied per
+    // run would hand the filter projected rows instead of GitLab's.
+    it('projects only the scoped page built from several tool runs', async () => {
+      await service().updateAccount(staticCaller(), {
+        scope: { type: 'group', path: 'team', includeSubgroups: true },
+      });
+      mockRegistryManager.acceptsProjection.mockImplementation(
+        (tool: string, action: unknown) => tool === 'browse_projects' && action === 'search',
+      );
+      const outside = Array.from({ length: 100 }, (_, i) => ({
+        path_with_namespace: `other/p${i}`,
+      }));
+      mockRegistryManager.executeTool.mockImplementation(
+        async (_tool: string, args: Record<string, unknown>) =>
+          args.page === 1 ? outside : [{ id: 7, path_with_namespace: 'team/app' }],
+      );
+
+      const result = await callToolHandler(
+        {
+          params: {
+            name: 'browse_projects',
+            arguments: { action: 'search', q: 'app', jmespath: '[].id' },
+          },
+        },
+        { sessionId: 'sess-1' },
+      );
+      mockRegistryManager.acceptsProjection.mockReturnValue(false);
+
+      expect(mockRegistryManager.executeTool.mock.calls.map(([, args]) => args)).toEqual([
+        { action: 'search', q: 'app', page: 1, per_page: 100 },
+        { action: 'search', q: 'app', page: 2, per_page: 100 },
+      ]);
+      expect(JSON.parse(result.content?.[0].text ?? '')).toEqual({
+        data: [7],
+        jmespath: { expression: '[].id', input_items: 1, output_items: 1 },
+      });
     });
 
     it('returns the requested scoped page', async () => {

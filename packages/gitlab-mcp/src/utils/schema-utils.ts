@@ -505,6 +505,45 @@ function stripFromProperties(schema: JSONSchema, restrictedParams: Set<string>):
   }
 }
 
+/**
+ * Add an optional parameter to the branches of the given actions (discriminated union), or
+ * to a flat schema whose action enum names any of them. A schema without them is returned
+ * unchanged; otherwise the result is a copy.
+ */
+export function addActionParameter(
+  schema: JSONSchema,
+  actions: readonly string[],
+  name: string,
+  property: JSONSchemaProperty,
+): JSONSchema {
+  if (actions.length === 0) return schema;
+  const wanted = new Set(actions);
+  if (schema.oneOf) {
+    const actionOf = (branch: JSONSchema): string | undefined =>
+      branch.properties?.action?.const ?? branch.properties?.action?.enum?.[0];
+    if (!schema.oneOf.some((branch) => wanted.has(actionOf(branch) ?? ''))) return schema;
+    return {
+      ...schema,
+      oneOf: schema.oneOf.map((branch) =>
+        wanted.has(actionOf(branch) ?? '')
+          ? { ...branch, properties: { ...branch.properties, [name]: { ...property } } }
+          : branch,
+      ),
+    };
+  }
+  const enumerated = schema.properties?.action?.enum ?? [];
+  const accepting = enumerated.filter((action) => wanted.has(action));
+  if (accepting.length === 0) return schema;
+  const description =
+    accepting.length === enumerated.length
+      ? property.description
+      : `${property.description ?? ''} Only for ${accepting.map((a) => `'${a}'`).join(', ')}.`.trim();
+  return {
+    ...schema,
+    properties: { ...schema.properties, [name]: { ...property, description } },
+  };
+}
+
 // ============================================================================
 // Utility Functions
 // ============================================================================

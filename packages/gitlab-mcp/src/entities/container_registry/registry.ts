@@ -89,6 +89,7 @@ export const containerRegistryToolRegistry: ToolRegistry = new Map<string, Enhan
     'browse_registry',
     {
       name: 'browse_registry',
+      projectableActions: ['list_repositories', 'list_tags'],
       description:
         "Inspect the GitLab Container Registry. Actions: list_repositories (a project's image repositories), get_repository (single repository by ID), list_tags (tags of a repository), get_tag (single tag with manifest digest, size, and timestamps). Related: manage_registry to delete repositories and tags (including regex bulk cleanup).",
       inputSchema: z.toJSONSchema(BrowseRegistrySchema),

@@ -21,6 +21,7 @@ export const variablesToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
     'browse_variables',
     {
       name: 'browse_variables',
+      projectableActions: ['list'],
       description:
         'List and inspect CI/CD variables for projects or groups. Actions: list (all variables with pagination), get (single variable by key with environment scope filter). Related: manage_variable to create/update/delete.',
       inputSchema: z.toJSONSchema(BrowseVariablesSchema),

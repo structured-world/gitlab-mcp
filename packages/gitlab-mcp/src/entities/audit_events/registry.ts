@@ -38,6 +38,7 @@ export const auditEventsToolRegistry: ToolRegistry = new Map<string, EnhancedToo
     'browse_audit_events',
     {
       name: 'browse_audit_events',
+      projectableActions: ['list_instance', 'list_group', 'list_project'],
       description:
         'Inspect audit events: the immutable record of who did what, when. Actions: list_instance (instance-wide, admin-only), list_group / list_project (a group or project audit trail), get (a single event by ID - pass project_id or group_id for group/project events, neither for an instance event). Premium/Ultimate feature; there is no write counterpart because audit events cannot be modified.',
       inputSchema: z.toJSONSchema(BrowseAuditEventsSchema),

@@ -23,6 +23,7 @@ export const integrationsToolRegistry: ToolRegistry = new Map<string, EnhancedTo
     'browse_integrations',
     {
       name: 'browse_integrations',
+      projectableActions: ['list'],
       description:
         'Discover active project integrations and their configuration. Actions: list (all active: Slack, Jira, Discord, Teams, Jenkins, etc.), get (specific integration settings by slug). Related: manage_integration to configure/disable.',
       inputSchema: z.toJSONSchema(BrowseIntegrationsSchema, {}),

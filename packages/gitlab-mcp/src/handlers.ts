@@ -41,6 +41,13 @@ import {
 import { getSchemaMode } from './utils/schema-utils';
 import { formatToolResult, errorToolResult } from './utils/tool-result';
 import {
+  applyProjection,
+  compileProjection,
+  JMESPATH_ARGUMENT,
+  ProjectionError,
+  type Projection,
+} from './utils/jmespath-projection';
+import {
   APP_PANEL_SECURITY_SCHEMES,
   OAUTH_SECURITY_SCHEMES,
   resourceScopeRejection,
@@ -780,6 +787,37 @@ async function prepareScopedCall(
   };
 }
 
+/**
+ * The call's arguments without `jmespath`, and its compiled projection. An expression that
+ * does not compile, or an action that does not accept one, is refused before any request.
+ */
+function takeProjection(
+  toolName: string,
+  args: Record<string, unknown> | undefined,
+  registryManager: import('./registry-manager').RegistryManager,
+):
+  | { args: Record<string, unknown> | undefined; projection?: Projection }
+  | { rejection: CallToolResult } {
+  if (!args || !Object.hasOwn(args, JMESPATH_ARGUMENT)) return { args };
+  const { [JMESPATH_ARGUMENT]: expression, ...rest } = args;
+  const action = typeof args.action === 'string' ? args.action : undefined;
+  const refuse = (message: string): { rejection: CallToolResult } => {
+    recordEarlyReturnError(toolName, action, message);
+    return { rejection: errorToolResult({ error: message }) };
+  };
+  const call = action ? `${toolName} ${action}` : toolName;
+  if (!registryManager.acceptsProjection(toolName, action))
+    return refuse(`'${call}' does not accept '${JMESPATH_ARGUMENT}'; list and search actions do.`);
+  if (typeof expression !== 'string')
+    return refuse(`'${JMESPATH_ARGUMENT}' must be a string expression.`);
+  try {
+    return { args: rest, projection: compileProjection(expression) };
+  } catch (error) {
+    if (error instanceof ProjectionError) return refuse(error.message);
+    throw error;
+  }
+}
+
 /** A refusal for a call the given policy does not allow, or null when it may run. */
 function settingsRejection(
   toolName: string,
@@ -1271,11 +1309,17 @@ export async function setupHandlers(server: Server): Promise<void> {
       const connectionManager = ConnectionManager.getInstance();
       const healthMonitor = HealthMonitor.getInstance();
       const toolName = request.params.name;
-      let toolArguments = request.params.arguments;
+      const { RegistryManager: CallRegistry } = await import('./registry-manager');
+      // The projection belongs to the call, not to the tool: it is taken off before the
+      // settings, scope emulation or the handler see the arguments, and applied once to the
+      // final result, as a scoped call may run the tool many times to build it.
+      const taken = takeProjection(toolName, request.params.arguments, CallRegistry.getInstance());
+      if ('rejection' in taken) return taken.rejection;
+      const { projection } = taken;
+      let toolArguments = taken.args;
 
       // The caller's settings, checked before anything reaches GitLab. A call is refused
       // when they cannot be read: allowing it could bypass a restriction.
-      const { RegistryManager: CallRegistry } = await import('./registry-manager');
       const configuration = await getConfigurationService().resolve(caller);
       const prepared = await prepareScopedCall(
         toolName,
@@ -1394,7 +1438,10 @@ export async function setupHandlers(server: Server): Promise<void> {
           healthMonitor.reportSuccess(effectiveInstanceUrl);
         }
 
-        return formatToolResult(result, definition);
+        return formatToolResult(
+          projection ? applyProjection(projection, result) : result,
+          definition,
+        );
       } catch (error) {
         throwDispatchError(error, toolName, effectiveInstanceUrl, healthMonitor, timedOut());
       }

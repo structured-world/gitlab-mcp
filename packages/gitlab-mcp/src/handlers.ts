@@ -818,7 +818,7 @@ async function prepareCall(
 }
 
 /** The tool result, projected when the call asked for a projection. */
-async function withProjection(result: unknown, projection: Projection | undefined) {
+function withProjection(result: unknown, projection: Projection | undefined): unknown {
   return projection ? applyProjection(projection, result) : result;
 }
 

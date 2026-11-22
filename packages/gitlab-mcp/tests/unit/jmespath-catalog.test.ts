@@ -62,12 +62,27 @@ describe('jmespath projection in the tool catalog', () => {
     }
   });
 
-  it('names the accepting actions in a flat schema where not all actions accept it', () => {
-    const pipelines = catalog().find((tool) => tool.name === 'browse_pipelines');
-    const flat = pipelines?.inputSchema as { properties: Record<string, { description?: string }> };
-    expect(flat.properties[JMESPATH_ARGUMENT]?.description).toMatch(
-      /Only for 'list', 'jobs', 'triggers'\.$/,
-    );
+  it('names the accepting actions in a flat schema where not all actions accept it', async () => {
+    const previous = process.env.GITLAB_SCHEMA_MODE;
+    process.env.GITLAB_SCHEMA_MODE = 'flat';
+    try {
+      // The mode is fixed here, so the check holds whatever mode the test run starts with.
+      await jest.isolateModulesAsync(async () => {
+        const isolated = await import('../../src/registry-manager');
+        const pipelines = isolated.RegistryManager.getInstance()
+          .getAllToolDefinitionsTierless()
+          .find((tool) => tool.name === 'browse_pipelines');
+        const flat = pipelines?.inputSchema as {
+          properties: Record<string, { description?: string }>;
+        };
+        expect(flat.properties[JMESPATH_ARGUMENT]?.description).toMatch(
+          /Only for 'list', 'jobs', 'triggers'\.$/,
+        );
+      });
+    } finally {
+      if (previous === undefined) delete process.env.GITLAB_SCHEMA_MODE;
+      else process.env.GITLAB_SCHEMA_MODE = previous;
+    }
   });
 
   it('describes the parameter as a bounded optional string', () => {

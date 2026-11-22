@@ -7,11 +7,17 @@ import {
   type ExpressionNode,
   type JSONValue,
 } from '@jmespath-community/jmespath';
+import type { MessagePort } from 'node:worker_threads';
 import type { RE2JS } from 're2js';
+import * as z from 'zod';
 import { compileCallerPattern } from './re2-compile';
+
+// Worker threads load this module with Node type stripping, so it uses only erasable syntax.
 
 /** Longest projection expression accepted, in UTF-16 code units. */
 export const JMESPATH_MAX_LENGTH = 2048;
+/** Most characters a projected result may serialize to, counted before it is serialized. */
+export const JMESPATH_MAX_OUTPUT_CHARS = 4 * 1024 * 1024;
 /** The argument a read action takes its projection from. */
 export const JMESPATH_ARGUMENT = 'jmespath';
 /** One-line description shown on every action that accepts a projection. */
@@ -19,25 +25,65 @@ export const JMESPATH_DESCRIPTION =
   "JMESPath to filter or reshape the JSON result, e.g. [?status=='failed'].id; " +
   'adds re_test/re_find/re_replace (RE2).';
 
+const INVALID = 'Invalid jmespath expression: ';
+
+/** The `jmespath` argument as a call may send it. */
+export const JmespathExpressionSchema = z
+  .string({ error: `'${JMESPATH_ARGUMENT}' must be a string expression.` })
+  .refine((expression) => expression.trim().length > 0, {
+    error: `${INVALID}expression is empty`,
+  })
+  .refine((expression) => expression.length <= JMESPATH_MAX_LENGTH, {
+    error: `${INVALID}expression exceeds ${JMESPATH_MAX_LENGTH} characters`,
+  });
+
 /** Bounds on one expression; the result it runs on is already a bounded tool result. */
 const COMPILE_LIMITS = { maxDepth: 64, maxNodes: 512 } as const;
-/** Evaluation runs in the request thread, so it is stopped on time and output size. */
+/** The evaluator's own deadline; the worker running it is stopped if a single call outlasts it. */
 const EVALUATION_LIMITS = { ...COMPILE_LIMITS, timeoutMs: 1000, maxOutputSize: 10_000 } as const;
 /** Compiled RE2 patterns kept for repeated function calls across rows and requests. */
 const PATTERN_CACHE_SIZE = 64;
 
 /** Top-level fields that say where the next page starts; kept beside the projected data. */
 const CONTINUATION_FIELDS = ['pageInfo', 'hasMore', 'endCursor'] as const;
-/** Top-level fields that say the result is incomplete; kept beside the projected data. */
-const COMPLETENESS_FIELDS = ['partial', 'truncated', 'overflow', 'compare_timeout'];
+/**
+ * Top-level fields of the results of projectable actions that say the result is incomplete
+ * or filtered, kept beside the projected data so an expression cannot drop them: scoped and
+ * diff results, diff line search (`not_scanned`, `_filtered`), user search (`_warning`,
+ * `searchMetadata`) and Duo session listings.
+ */
+const COMPLETENESS_FIELDS = [
+  'partial',
+  'truncated',
+  'overflow',
+  'compare_timeout',
+  'not_scanned',
+  '_filtered',
+  '_warning',
+  'searchMetadata',
+  'skipped_unverifiable_sessions',
+] as const;
 /** Fields of an object result that hold its rows, in the order they are looked for. */
-const ROW_FIELDS = ['items', 'nodes', 'results', 'changes', 'diffs', 'files'];
+const ROW_FIELDS = [
+  'items',
+  'nodes',
+  'results',
+  'changes',
+  'diffs',
+  'files',
+  'users',
+  'discussions',
+  'sessions',
+];
 
 /** A projection the caller asked for that cannot be compiled or evaluated. */
 export class ProjectionError extends Error {
-  constructor(message: string) {
-    super(`Invalid jmespath expression: ${message}`);
+  readonly detail: string;
+
+  constructor(detail: string) {
+    super(`${INVALID}${detail}`);
     this.name = 'ProjectionError';
+    this.detail = detail;
   }
 }
 
@@ -126,12 +172,10 @@ function calledFunctions(node: unknown, found: string[] = []): string[] {
 
 /**
  * Compile a projection before anything is fetched: syntax errors and unknown functions are
- * refused here, as the evaluator would only find an unknown function on the first row.
+ * refused here, as the evaluator would only find an unknown function on the first row. The
+ * expression is one `JmespathExpressionSchema` accepted.
  */
 export function compileProjection(expression: string): Projection {
-  if (expression.trim().length === 0) throw new ProjectionError('expression is empty');
-  if (expression.length > JMESPATH_MAX_LENGTH)
-    throw new ProjectionError(`expression exceeds ${JMESPATH_MAX_LENGTH} characters`);
   let ast: ExpressionNode;
   try {
     ast = compile(expression, COMPILE_LIMITS);
@@ -141,6 +185,96 @@ export function compileProjection(expression: string): Projection {
   const unknown = calledFunctions(ast).find((name) => !isRegistered(name));
   if (unknown !== undefined) throw new ProjectionError(`unknown function ${unknown}()`);
   return { expression, ast };
+}
+
+/**
+ * The `jmespath` argument of a call compiled, or why it is refused: validated by
+ * `JmespathExpressionSchema`, then compiled before anything is fetched.
+ */
+export function checkProjection(expression: unknown): Projection | { refusal: string } {
+  const parsed = JmespathExpressionSchema.safeParse(expression);
+  if (!parsed.success) return { refusal: parsed.error.issues[0].message };
+  try {
+    return compileProjection(parsed.data);
+  } catch (error) {
+    // compileProjection reports every failure as a ProjectionError.
+    return { refusal: (error as ProjectionError).message };
+  }
+}
+
+/**
+ * Whether a value serializes to more than `budget` characters. A value an expression
+ * repeats is counted at every occurrence, as serialization writes it out each time, and
+ * the walk stops as soon as the budget is passed, so a result that shares one value 2^30
+ * times costs no more than the budget to reject.
+ */
+function exceedsSerializedSize(value: unknown, budget: number): boolean {
+  let size = 0;
+  const stack: unknown[] = [value];
+  while (stack.length > 0) {
+    const item = stack.pop();
+    if (typeof item === 'string') size += item.length + 2;
+    else if (item === null || typeof item !== 'object') size += String(item).length;
+    else if (Array.isArray(item)) {
+      size += item.length + 1;
+      for (const element of item) stack.push(element);
+    } else {
+      for (const [key, element] of Object.entries(item)) {
+        size += key.length + 4;
+        stack.push(element);
+      }
+      size += 2;
+    }
+    if (size > budget) return true;
+  }
+  return false;
+}
+
+/** Evaluate a projection and refuse a result too large to return. */
+export function evaluateProjection(expression: string, input: unknown): JSONValue {
+  const { ast } = compileProjection(expression);
+  let data: JSONValue;
+  try {
+    data = TreeInterpreter.search(ast, input as JSONValue, EVALUATION_LIMITS);
+  } catch (error) {
+    throw new ProjectionError(error instanceof Error ? error.message : String(error));
+  }
+  if (exceedsSerializedSize(data, JMESPATH_MAX_OUTPUT_CHARS))
+    throw new ProjectionError(
+      `the result exceeds ${JMESPATH_MAX_OUTPUT_CHARS} characters; select fewer fields or rows`,
+    );
+  return data;
+}
+
+/** One evaluation request sent to a projection worker. */
+export interface ProjectionRequest {
+  expression: string;
+  input: unknown;
+}
+
+/** A projection worker's answer. */
+export type ProjectionReply = { ok: true; data: JSONValue } | { ok: false; detail: string };
+
+/** Serve evaluation requests in a worker thread; the parent stops it if one runs too long. */
+export function serveProjection(port: MessagePort): void {
+  port.on('message', (request: ProjectionRequest) => {
+    let reply: ProjectionReply;
+    try {
+      reply = { ok: true, data: evaluateProjection(request.expression, request.input) };
+    } catch (error) {
+      reply = {
+        ok: false,
+        detail:
+          error instanceof ProjectionError
+            ? error.detail
+            : error instanceof Error
+              ? error.message
+              : String(error),
+      };
+    }
+    port.postMessage(reply);
+  });
+  port.postMessage({ ok: true, data: null } satisfies ProjectionReply);
 }
 
 /** The rows a result holds: an array's elements, an object's row field, or the object. */
@@ -163,22 +297,20 @@ function isEmpty(value: JSONValue): boolean {
 }
 
 /**
- * Apply a projection to a tool result. Where the next page starts and whether the result is
+ * The projected result as returned: where the next page starts and whether the result is
  * incomplete are kept beside the data, so the expression cannot drop them.
  */
-export function applyProjection(projection: Projection, result: unknown): ProjectedResult {
-  let data: JSONValue;
-  try {
-    data = TreeInterpreter.search(projection.ast, result as JSONValue, EVALUATION_LIMITS);
-  } catch (error) {
-    throw new ProjectionError(error instanceof Error ? error.message : String(error));
-  }
+export function projectionEnvelope(
+  expression: string,
+  result: unknown,
+  data: JSONValue,
+): ProjectedResult {
   const inputItems = rowCount(result);
   const outputItems = isEmpty(data) ? 0 : rowCount(data);
   const projected: ProjectedResult = {
     data,
     jmespath: {
-      expression: projection.expression,
+      expression,
       input_items: inputItems,
       output_items: outputItems,
       ...(outputItems === 0 && { note: `Nothing matched out of ${inputItems} input items.` }),

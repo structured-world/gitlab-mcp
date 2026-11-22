@@ -40,13 +40,8 @@ import {
 } from './config';
 import { getSchemaMode } from './utils/schema-utils';
 import { formatToolResult, errorToolResult } from './utils/tool-result';
-import {
-  applyProjection,
-  compileProjection,
-  JMESPATH_ARGUMENT,
-  ProjectionError,
-  type Projection,
-} from './utils/jmespath-projection';
+import { checkProjection, JMESPATH_ARGUMENT, type Projection } from './utils/jmespath-projection';
+import { applyProjection } from './utils/jmespath-projection-worker';
 import {
   APP_PANEL_SECURITY_SCHEMES,
   OAUTH_SECURITY_SCHEMES,
@@ -808,14 +803,8 @@ function takeProjection(
   const call = action ? `${toolName} ${action}` : toolName;
   if (!registryManager.acceptsProjection(toolName, action))
     return refuse(`'${call}' does not accept '${JMESPATH_ARGUMENT}'; list and search actions do.`);
-  if (typeof expression !== 'string')
-    return refuse(`'${JMESPATH_ARGUMENT}' must be a string expression.`);
-  try {
-    return { args: rest, projection: compileProjection(expression) };
-  } catch (error) {
-    if (error instanceof ProjectionError) return refuse(error.message);
-    throw error;
-  }
+  const checked = checkProjection(expression);
+  return 'refusal' in checked ? refuse(checked.refusal) : { args: rest, projection: checked };
 }
 
 /** A refusal for a call the given policy does not allow, or null when it may run. */
@@ -1439,7 +1428,7 @@ export async function setupHandlers(server: Server): Promise<void> {
         }
 
         return formatToolResult(
-          projection ? applyProjection(projection, result) : result,
+          projection ? await applyProjection(projection, result) : result,
           definition,
         );
       } catch (error) {

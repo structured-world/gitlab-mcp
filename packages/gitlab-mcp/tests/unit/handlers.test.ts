@@ -26,6 +26,11 @@ import { ConfigurationService } from '../../src/configuration/service';
 import { resolveCaller } from '../../src/configuration/caller';
 import { runWithTokenAccount } from '../../src/accounts/token-account';
 import * as chatAccounts from '../../src/accounts/chat-accounts';
+import { compileProjection } from '../../src/utils/jmespath-projection';
+import {
+  applyProjection,
+  closeProjectionWorkers,
+} from '../../src/utils/jmespath-projection-worker';
 
 // Mock ConnectionManager
 const mockConnectionManager = {
@@ -216,6 +221,11 @@ function getRegisteredHandler(
 }
 
 describe('handlers', () => {
+  // This file's handler timeout is 100 ms; a cold projection worker start alone can take
+  // longer, so every projecting test finds a warm worker.
+  beforeAll(() => applyProjection(compileProjection('@'), []));
+  afterAll(() => closeProjectionWorkers());
+
   let mockServer: jest.Mocked<Server>;
   let listToolsHandler: McpHandler;
   let callToolHandler: McpHandler;

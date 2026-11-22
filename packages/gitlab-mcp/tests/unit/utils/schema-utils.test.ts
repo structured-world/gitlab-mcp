@@ -1068,6 +1068,15 @@ describe('addActionParameter', () => {
     expect(union.oneOf[0].properties).not.toHaveProperty('jmespath');
   });
 
+  it('recognizes an action given as a one-value enum and skips a branch without properties', () => {
+    const mixed = {
+      oneOf: [{ type: 'object', properties: { action: { enum: ['jobs'] } } }, { type: 'object' }],
+    };
+    const result = addActionParameter(mixed, ['jobs'], 'jmespath', property);
+    expect(result.oneOf?.[0].properties?.jmespath).toEqual(property);
+    expect(result.oneOf?.[1]).toEqual({ type: 'object' });
+  });
+
   it('returns the same schema when no action is named or none is present', () => {
     expect(addActionParameter(union, [], 'jmespath', property)).toBe(union);
     expect(addActionParameter(union, ['diff'], 'jmespath', property)).toBe(union);

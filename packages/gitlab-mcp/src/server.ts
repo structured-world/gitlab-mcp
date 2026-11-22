@@ -33,6 +33,7 @@ import {
   resetTagMatchers,
 } from './entities/container_registry/regex';
 import { closeLineGrepWorkers } from './entities/pipelines/line-grep-worker';
+import { closeProjectionWorkers } from './utils/jmespath-projection-worker';
 import { TransportMode } from './types';
 import { logInfo, logError, logDebug, logWarn } from './logger';
 import { getSessionManager, STDIO_SESSION_ID } from './session-manager';
@@ -983,6 +984,11 @@ export async function gracefulShutdown(signal: string): Promise<void> {
     await closeLineGrepWorkers();
   } catch (error) {
     logError('Error closing log search workers', { err: error as Error });
+  }
+  try {
+    await closeProjectionWorkers();
+  } catch (error) {
+    logError('Error closing projection workers', { err: error as Error });
   }
 
   // Close all tracked connections with server_shutdown reason

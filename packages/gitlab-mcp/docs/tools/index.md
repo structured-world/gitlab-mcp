@@ -48,9 +48,12 @@ reshapes or aggregates the JSON result before it is returned:
 
 The answer is `{ "data": ..., "jmespath": { "expression", "input_items", "output_items" } }`.
 When the full result carried a cursor (`pageInfo`, `hasMore`/`endCursor`) it is returned as
-`next_page`, and `partial`, `truncated`, `overflow` or `compare_timeout` are kept beside the
-data, so the expression cannot drop them. An empty result adds a note that nothing matched
-out of the input items. `re_test(s, pattern)`, `re_find(s, pattern)` and
+`next_page`, and what says the result is incomplete or filtered (`partial`, `truncated`,
+`overflow`, `compare_timeout`, a diff line search's `not_scanned` and `_filtered`, a user
+search's `_warning` or `searchMetadata`, `skipped_unverifiable_sessions`) is kept beside the
+data, so the expression cannot drop it. An empty result adds a note that nothing matched
+out of the input items. The expression runs in a separate worker with time and memory
+limits, and a result that would serialize to more than 4,194,304 characters is refused. `re_test(s, pattern)`, `re_find(s, pattern)` and
 `re_replace(s, pattern, replacement)` take RE2 patterns under the same limits as `line_patterns`.
 An expression that does not compile, calls an unknown function or is sent to an action that
 does not accept it is refused before GitLab is called. The schema of each tool shows which

@@ -514,18 +514,21 @@ export function addActionParameter(
   schema: JSONSchema,
   actions: readonly string[],
   name: string,
-  property: JSONSchemaProperty,
+  property: JSONSchemaProperty & { description: string },
 ): JSONSchema {
   if (actions.length === 0) return schema;
-  const wanted = new Set(actions);
+  const wanted = new Set<unknown>(actions);
   if (schema.oneOf) {
-    const actionOf = (branch: JSONSchema): string | undefined =>
-      branch.properties?.action?.const ?? branch.properties?.action?.enum?.[0];
-    if (!schema.oneOf.some((branch) => wanted.has(actionOf(branch) ?? ''))) return schema;
+    // A branch names its action as a const, or as a one-value enum.
+    const accepting = schema.oneOf.map((branch) => {
+      const action = branch.properties?.action;
+      return wanted.has(action?.const ?? action?.enum?.[0]);
+    });
+    if (!accepting.includes(true)) return schema;
     return {
       ...schema,
-      oneOf: schema.oneOf.map((branch) =>
-        wanted.has(actionOf(branch) ?? '')
+      oneOf: schema.oneOf.map((branch, index) =>
+        accepting[index]
           ? { ...branch, properties: { ...branch.properties, [name]: { ...property } } }
           : branch,
       ),
@@ -537,7 +540,7 @@ export function addActionParameter(
   const description =
     accepting.length === enumerated.length
       ? property.description
-      : `${property.description ?? ''} Only for ${accepting.map((a) => `'${a}'`).join(', ')}.`.trim();
+      : `${property.description} Only for ${accepting.map((a) => `'${a}'`).join(', ')}.`;
   return {
     ...schema,
     properties: { ...schema.properties, [name]: { ...property, description } },

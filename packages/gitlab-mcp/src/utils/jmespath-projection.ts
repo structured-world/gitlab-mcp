@@ -255,8 +255,9 @@ function exceedsSerializedSize(value: unknown, budget: number): boolean {
       const entries: Array<[string | null, unknown]> = Array.isArray(item)
         ? item.map((element): [null, unknown] => [null, element])
         : Object.entries(item);
-      // Brackets, plus the closing bracket's own line and indentation when not empty.
-      size += entries.length === 0 ? 2 : 3 + 2 * depth;
+      // Brackets, plus the closing bracket's own line and indentation when not empty; that
+      // line break stands in for the separator the last member does not have.
+      size += entries.length === 0 ? 2 : 2 + 2 * depth;
       for (const [key, element] of entries) {
         // Each member on its own line, indented one level deeper, with its separator.
         size += 2 * (depth + 1) + 2;
@@ -269,6 +270,9 @@ function exceedsSerializedSize(value: unknown, budget: number): boolean {
   return size > budget;
 }
 
+/** An expression whose evaluation on null leaves the shared evaluator holding nothing. */
+const RELEASE = compile('@');
+
 /** Evaluate a projection and refuse a result too large to return. */
 export function evaluateProjection(expression: string, input: unknown): JSONValue {
   const { ast } = compileProjection(expression);
@@ -277,6 +281,10 @@ export function evaluateProjection(expression: string, input: unknown): JSONValu
     data = TreeInterpreter.search(ast, input as JSONValue, EVALUATION_LIMITS);
   } catch (error) {
     throw new ProjectionError(error instanceof Error ? error.message : String(error));
+  } finally {
+    // The library's one shared evaluator keeps its last input as the root value; an idle
+    // pooled worker would otherwise hold a whole GitLab result until its next call.
+    TreeInterpreter.search(RELEASE, null);
   }
   if (exceedsSerializedSize(data, JMESPATH_MAX_OUTPUT_CHARS))
     throw new ProjectionError(

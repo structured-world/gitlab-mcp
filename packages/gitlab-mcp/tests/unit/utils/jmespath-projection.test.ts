@@ -1,4 +1,5 @@
 import { MessageChannel } from 'node:worker_threads';
+import { TreeInterpreter } from '@jmespath-community/jmespath';
 import {
   checkProjection,
   compileProjection,
@@ -109,6 +110,35 @@ describe('evaluateProjection', () => {
     expect(JSON.stringify(fill(0)).length).toBe(JMESPATH_MAX_OUTPUT_CHARS);
     expect(evaluateProjection('@', fill(0))).toBe(fill(0));
     expect(() => evaluateProjection('@', fill(1))).toThrow(ProjectionError);
+  });
+
+  it('counts containers exactly as the tool result writes them, at the limit and one past it', () => {
+    // The data sits one level deep in the result, so each of its lines is indented once more.
+    const written = (value: unknown) => {
+      const text = JSON.stringify(value, null, 2);
+      return text.length + 2 * (text.split('\n').length - 1);
+    };
+    for (const wrap of [
+      (s: string) => [s],
+      (s: string) => ({ k: [s, 'y'] }),
+      (s: string) => [{ a: s }, []],
+    ]) {
+      const fixed = written(wrap(''));
+      const at = wrap('x'.repeat(JMESPATH_MAX_OUTPUT_CHARS - fixed));
+      expect(written(at)).toBe(JMESPATH_MAX_OUTPUT_CHARS);
+      expect(evaluateProjection('@', at)).toEqual(at);
+      expect(() =>
+        evaluateProjection('@', wrap('x'.repeat(JMESPATH_MAX_OUTPUT_CHARS - fixed + 1))),
+      ).toThrow(ProjectionError);
+    }
+  });
+
+  it('does not keep the input reachable from the shared evaluator after it returns', () => {
+    // An idle pooled worker would otherwise hold its last GitLab result until the next call.
+    evaluateProjection('[0]', [{ big: 'x'.repeat(1000) }]);
+    expect(Reflect.get(TreeInterpreter, '_rootValue')).toBeNull();
+    expect(() => evaluateProjection('abs(@)', 'x')).toThrow(ProjectionError);
+    expect(Reflect.get(TreeInterpreter, '_rootValue')).toBeNull();
   });
 
   it('counts the indentation the tool result is serialized with', () => {

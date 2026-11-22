@@ -26,7 +26,8 @@ import { ConfigurationService } from '../../src/configuration/service';
 import { resolveCaller } from '../../src/configuration/caller';
 import { runWithTokenAccount } from '../../src/accounts/token-account';
 import * as chatAccounts from '../../src/accounts/chat-accounts';
-import { compileProjection } from '../../src/utils/jmespath-projection';
+import { compileProjection, ProjectionError } from '../../src/utils/jmespath-projection';
+import * as projectionWorker from '../../src/utils/jmespath-projection-worker';
 import {
   applyProjection,
   closeProjectionWorkers,
@@ -2203,6 +2204,26 @@ describe('handlers', () => {
         "'browse_pipelines logs' does not accept 'jmespath'; list and search actions do.",
       );
       expect(mockRegistryManager.executeTool).not.toHaveBeenCalled();
+    });
+
+    it('keeps a projection failure out of the GitLab health reports', async () => {
+      // The evaluator's own "timed out" reads as a transient network error to the classifier;
+      // counted as one, a few failing projections could mark a healthy instance down.
+      const failure = new ProjectionError('Query execution timed out after 1000ms');
+      const spy = jest.spyOn(projectionWorker, 'applyProjection').mockRejectedValueOnce(failure);
+      try {
+        const result = await call({
+          action: 'jobs',
+          project_id: 'g/p',
+          pipeline_id: 7,
+          jmespath: '[].id',
+        });
+        expect(result.isError).toBe(true);
+        expect(JSON.stringify(result)).toContain('Query execution timed out after 1000ms');
+        expect(mockHealthMonitor.reportError).not.toHaveBeenCalled();
+      } finally {
+        spy.mockRestore();
+      }
     });
 
     it('refuses a non-string expression', async () => {

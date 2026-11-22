@@ -40,7 +40,12 @@ import {
 } from './config';
 import { getSchemaMode } from './utils/schema-utils';
 import { formatToolResult, errorToolResult } from './utils/tool-result';
-import { checkProjection, JMESPATH_ARGUMENT, type Projection } from './utils/jmespath-projection';
+import {
+  checkProjection,
+  JMESPATH_ARGUMENT,
+  ProjectionError,
+  type Projection,
+} from './utils/jmespath-projection';
 import { applyProjection } from './utils/jmespath-projection-worker';
 import {
   APP_PANEL_SECURITY_SCHEMES,
@@ -899,7 +904,9 @@ function throwDispatchError(
   // 4xx (e.g. 404 "project not found") which don't indicate connection problems.
   // classifyError returns 'permanent' for 4xx like 400/403/404, 'transient' for network issues,
   // and 'auth' for authentication errors like 401; only 'transient' and 'auth' are reported here.
-  if (!timedOut && error instanceof Error) {
+  // A projection fails on this server, after GitLab answered; its evaluator's "timed out"
+  // would otherwise read as a transient connection error.
+  if (!timedOut && error instanceof Error && !(error instanceof ProjectionError)) {
     const category = classifyError(error);
     if (category === 'transient' || category === 'auth') {
       healthMonitor.reportError(instanceUrl, error);

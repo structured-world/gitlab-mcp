@@ -39,8 +39,17 @@ export const JmespathExpressionSchema = z
 
 /** Bounds on one expression; the result it runs on is already a bounded tool result. */
 const COMPILE_LIMITS = { maxDepth: 64, maxNodes: 512 } as const;
-/** The evaluator's own deadline; the worker running it is stopped if a single call outlasts it. */
-const EVALUATION_LIMITS = { ...COMPILE_LIMITS, timeoutMs: 1000, maxOutputSize: 10_000 } as const;
+/**
+ * The evaluator's own deadline (the worker running it is stopped if a single step outlasts
+ * it) and its cap on one string, list or object along the way, set to the result budget so
+ * no single value the result could hold is refused early; the result itself is measured
+ * as serialized.
+ */
+const EVALUATION_LIMITS = {
+  ...COMPILE_LIMITS,
+  timeoutMs: 1000,
+  maxOutputSize: JMESPATH_MAX_OUTPUT_CHARS,
+} as const;
 /** Compiled RE2 patterns kept for repeated function calls across rows and requests. */
 const PATTERN_CACHE_SIZE = 64;
 
@@ -203,31 +212,61 @@ export function checkProjection(expression: unknown): Projection | { refusal: st
 }
 
 /**
- * Whether a value serializes to more than `budget` characters. A value an expression
- * repeats is counted at every occurrence, as serialization writes it out each time, and
- * the walk stops as soon as the budget is passed, so a result that shares one value 2^30
- * times costs no more than the budget to reject.
+ * Characters a string takes in JSON, quotes included, counted until `limit` is passed.
+ * ECMA-262 JSON.stringify (QuoteJSONString): `"` and `\` and the short-escaped controls
+ * take two characters, other controls and lone surrogates six (`\uXXXX`).
+ */
+function quotedLength(text: string, limit: number): number {
+  let length = 2;
+  for (let index = 0; index < text.length && length <= limit; index++) {
+    const code = text.charCodeAt(index);
+    if (code === 34 || code === 92) length += 2;
+    else if (code < 0x20)
+      length += code === 8 || code === 9 || code === 10 || code === 12 || code === 13 ? 2 : 6;
+    else if (code >= 0xd800 && code <= 0xdfff) {
+      const next = text.charCodeAt(index + 1);
+      const paired = code <= 0xdbff && next >= 0xdc00 && next <= 0xdfff;
+      length += paired ? 2 : 6;
+      if (paired) index++;
+    } else length++;
+  }
+  return length;
+}
+
+/** Depth of the projected data inside the tool result object it is returned in. */
+const DATA_DEPTH = 1;
+
+/**
+ * Whether a value written as the tool result writes it (JSON with two-space indentation,
+ * at its depth in the result object) takes more than `budget` characters. A value an
+ * expression repeats is counted at every occurrence, as serialization writes it each time,
+ * and the walk stops once the budget is passed, so a result sharing one value 2^30 times
+ * costs no more than the budget to reject.
  */
 function exceedsSerializedSize(value: unknown, budget: number): boolean {
   let size = 0;
-  const stack: unknown[] = [value];
-  while (stack.length > 0) {
-    const item = stack.pop();
-    if (typeof item === 'string') size += item.length + 2;
+  const stack: Array<{ item: unknown; depth: number }> = [{ item: value, depth: DATA_DEPTH }];
+  while (stack.length > 0 && size <= budget) {
+    const { item, depth } = stack.pop() as { item: unknown; depth: number };
+    if (typeof item === 'string') size += quotedLength(item, budget - size);
+    else if (typeof item === 'number') size += Number.isFinite(item) ? String(item).length : 4;
     else if (item === null || typeof item !== 'object') size += String(item).length;
-    else if (Array.isArray(item)) {
-      size += item.length + 1;
-      for (const element of item) stack.push(element);
-    } else {
-      for (const [key, element] of Object.entries(item)) {
-        size += key.length + 4;
-        stack.push(element);
+    else {
+      const entries: Array<[string | null, unknown]> = Array.isArray(item)
+        ? item.map((element): [null, unknown] => [null, element])
+        : Object.entries(item);
+      // Brackets, plus the closing bracket's own line and indentation when not empty.
+      size += entries.length === 0 ? 2 : 3 + 2 * depth;
+      for (const [key, element] of entries) {
+        // Each member on its own line, indented one level deeper, with its separator.
+        size += 2 * (depth + 1) + 2;
+        if (key !== null) size += quotedLength(key, budget - size) + 2;
+        stack.push({ item: element, depth: depth + 1 });
+        if (size > budget) break;
       }
-      size += 2;
     }
-    if (size > budget) return true;
   }
-  return false;
+  return size > budget;
 }
 
 /** Evaluate a projection and refuse a result too large to return. */

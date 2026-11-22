@@ -85,6 +85,39 @@ describe('evaluateProjection', () => {
     expect(Date.now() - started).toBeLessThan(2000);
   });
 
+  it('counts escaped characters as serialization writes them', () => {
+    // One NUL is 3 characters raw but 8 serialized ("\u0000"); 2^19 copies pass a raw
+    // count under the limit while their serialized form is far above it.
+    expect(() => evaluateProjection(`\`"\\u0000"\`${' | [@,@]'.repeat(19)}`, {})).toThrow(
+      `the result exceeds ${JMESPATH_MAX_OUTPUT_CHARS} characters`,
+    );
+  });
+
+  it('returns a long field such as a file diff and a long list in full', () => {
+    // A 10,000-element or 10,000-character cap would refuse ordinary diffs and descriptions.
+    const diff = `@@ -1 +1 @@\n${'+line\n'.repeat(5000)}`;
+    expect(evaluateProjection('changes[0].diff', { changes: [{ diff }] })).toBe(diff);
+    const rows = Array.from({ length: 12_000 }, (_, id) => ({ id }));
+    expect(evaluateProjection('[].id', rows)).toHaveLength(12_000);
+  });
+
+  it('counts a string exactly as JSON.stringify writes it, at the limit and one past it', () => {
+    // Quote, newline, another control, a surrogate pair and a lone surrogate, then padding.
+    const head = '"\n\u0001\u{1F600}\ud800';
+    const fill = (extra: number) =>
+      head + 'x'.repeat(JMESPATH_MAX_OUTPUT_CHARS - JSON.stringify(head).length + extra);
+    expect(JSON.stringify(fill(0)).length).toBe(JMESPATH_MAX_OUTPUT_CHARS);
+    expect(evaluateProjection('@', fill(0))).toBe(fill(0));
+    expect(() => evaluateProjection('@', fill(1))).toThrow(ProjectionError);
+  });
+
+  it('counts the indentation the tool result is serialized with', () => {
+    // Deep nesting of short values: the two-space indentation dwarfs the values themselves.
+    expect(() => evaluateProjection(`\`1\`${' | [@,@]'.repeat(18)}`, {})).toThrow(
+      `the result exceeds ${JMESPATH_MAX_OUTPUT_CHARS} characters`,
+    );
+  });
+
   it('measures objects, numbers and literals toward the result size', () => {
     const wide = { key: 'v'.repeat(1000), n: 12345, flag: true, empty: null };
     expect(evaluateProjection('@', wide)).toEqual(wide);

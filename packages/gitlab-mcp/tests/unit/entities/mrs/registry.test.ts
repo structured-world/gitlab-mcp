@@ -1121,6 +1121,80 @@ describe('MRS Registry', () => {
             expect(result._filtered.excluded_count).toBe(1);
           });
         });
+
+        describe('line_patterns', () => {
+          const added = (line: string) => `@@ -0,0 +1,1 @@\n+${line}\n`;
+
+          // Path filters apply first, so an excluded file is neither scanned nor listed; the
+          // rest of the MR response stays, and _filtered carries both filters' counts.
+          it('searches the files left by the path filters', async () => {
+            mockGitlab.get.mockResolvedValueOnce({
+              iid: 1,
+              overflow: false,
+              changes: [
+                { old_path: 'src/a.ts', new_path: 'src/a.ts', diff: added('console.log(1)') },
+                { old_path: 'yarn.lock', new_path: 'yarn.lock', diff: added('console.log(2)') },
+                { old_path: 'src/b.ts', new_path: 'src/b.ts', diff: added('ok') },
+                { old_path: 'big.ts', new_path: 'big.ts', diff: '' },
+              ],
+            });
+
+            const result = (await mrsToolRegistry.get('browse_merge_requests')!.handler({
+              action: 'diffs',
+              project_id: 'test/project',
+              merge_request_iid: 1,
+              exclude_lockfiles: true,
+              line_patterns: ['console\\.log'],
+            })) as Record<string, unknown>;
+
+            expect(result).toMatchObject({
+              iid: 1,
+              overflow: false,
+              changes: [
+                {
+                  new_path: 'src/a.ts',
+                  matches: [{ side: 'added', new_line: 1, text: 'console.log(1)' }],
+                },
+              ],
+              not_scanned: [{ old_path: 'big.ts', new_path: 'big.ts', reason: 'empty_diff' }],
+              _filtered: {
+                excluded_count: 1,
+                files_scanned: 2,
+                files_matched: 1,
+                match_count: 1,
+                truncated: false,
+              },
+            });
+          });
+
+          // A malformed entry fails as a GitLab response error, not a TypeError in the search.
+          it.each([
+            ['diffs', { merge_request_iid: 1 }, { changes: [null] }],
+            ['compare', { from: 'main', to: 'feature' }, { diffs: [{ old_path: 'a' }] }],
+          ])('refuses a malformed %s entry', async (action, args, body) => {
+            mockGitlab.get.mockResolvedValueOnce(body);
+            await expect(
+              mrsToolRegistry.get('browse_merge_requests')!.handler({
+                action,
+                project_id: 'test/project',
+                ...args,
+                line_patterns: ['TODO'],
+              }),
+            ).rejects.toThrow('GitLab API error: unexpected diff response');
+          });
+
+          it('refuses an invalid pattern before calling GitLab', async () => {
+            await expect(
+              mrsToolRegistry.get('browse_merge_requests')!.handler({
+                action: 'diffs',
+                project_id: 'test/project',
+                merge_request_iid: 1,
+                line_patterns: ['(unclosed'],
+              }),
+            ).rejects.toThrow('Invalid RE2 pattern 0');
+            expect(mockGitlab.get).not.toHaveBeenCalled();
+          });
+        });
       });
 
       describe('action: compare', () => {
@@ -1157,6 +1231,39 @@ describe('MRS Registry', () => {
               to: 'nonexistent',
             }),
           ).rejects.toThrow('GitLab API error: 404 Error');
+        });
+
+        // compare_timeout stays next to the matches, so a cut-off file list is still visible.
+        it('searches the compared diffs with line_patterns', async () => {
+          mockGitlab.get.mockResolvedValueOnce({
+            commits: [],
+            compare_timeout: true,
+            diffs: [
+              {
+                old_path: 'a.rs',
+                new_path: 'a.rs',
+                diff: '@@ -3,1 +3,1 @@\n-x.unwrap()\n+x?\n',
+              },
+            ],
+          });
+
+          const result = await mrsToolRegistry.get('browse_merge_requests')!.handler({
+            action: 'compare',
+            project_id: 'test/project',
+            from: 'main',
+            to: 'feature',
+            line_patterns: ['unwrap\\(\\)'],
+            side: 'removed',
+          });
+
+          expect(result).toMatchObject({
+            compare_timeout: true,
+            diffs: [
+              { new_path: 'a.rs', matches: [{ side: 'removed', old_line: 3, new_line: null }] },
+            ],
+            not_scanned: [],
+            _filtered: { side: 'removed', match_count: 1 },
+          });
         });
       });
 
@@ -2425,6 +2532,18 @@ describe('MRS Registry', () => {
             from: 'main', // compare-only field
           }),
         ).rejects.toThrow();
+      });
+
+      // A line search would be silently ignored by an action that returns no diff.
+      it('should reject line search fields outside diffs and compare', async () => {
+        await expect(
+          mrsToolRegistry.get('browse_merge_requests')!.handler({
+            action: 'versions',
+            project_id: 'test/project',
+            merge_request_iid: 1,
+            line_patterns: ['TODO'],
+          }),
+        ).rejects.toThrow("'line_patterns' is only valid for 'diffs' and 'compare' actions");
       });
 
       it('should reject get-only fields in list action', async () => {

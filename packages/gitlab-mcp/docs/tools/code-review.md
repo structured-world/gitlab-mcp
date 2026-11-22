@@ -70,6 +70,16 @@ Find and inspect merge requests.
 }
 ```
 
+```json [Find added lines]
+{
+  "action": "diffs",
+  "project_id": "my-org/api",
+  "merge_request_iid": "42",
+  "line_patterns": ["console\\.log", "(?i)todo"],
+  "exclude_lockfiles": true
+}
+```
+
 ```json [Compare branches]
 {
   "action": "compare",
@@ -114,6 +124,42 @@ Find and inspect merge requests.
 | `wip` | `yes` for drafts, `no` for ready |
 | `order_by` | `created_at`, `updated_at`, `priority` |
 | `scope` | `created_by_me`, `assigned_to_me`, `all` |
+
+### Diff Line Search
+
+`diffs` and `compare`, like `browse_commits` `diff`, take `line_patterns` to return
+only the changed lines that match, instead of every hunk of every file. In `diffs`
+the path filters (`exclude_patterns`, `exclude_lockfiles`, `exclude_generated`)
+apply first.
+
+| Parameter | Description |
+|-----------|-------------|
+| `line_patterns` | RE2 patterns (up to 8, inline flags such as `(?i)`); a line matches when any pattern does |
+| `side` | `added` (default), `removed` or `any`; unchanged lines are context only |
+| `context` | Diff lines before and after each match, within its hunk (0 to 5, default 1) |
+| `max_matches` | Matches returned (default 200, max 1000); `match_count` counts all |
+
+The file list (`changes` for `diffs`, `diffs` for `compare`) then holds only files
+with matches, each with `old_path`, `new_path`, its `new_file`, `renamed_file` and
+`deleted_file` flags, and `matches`. A match has its `side`, `text` (without the
+`+`/`-` prefix), the indexes of the `patterns` it matched, `context.before` and
+`context.after`, and the line numbers a positioned comment takes: an added line has
+only `new_line`, a removed line only `old_line`, a context line both. Pass them to
+`manage_mr_discussion` with the MR's `diff_refs` to comment on the match.
+
+`_filtered` reports `files_scanned`, `files_matched`, `match_count` and `truncated`
+(more matches than `max_matches`). Files whose lines could not be searched are listed
+in `not_scanned` with a `reason`:
+
+| `reason` | Meaning |
+|----------|---------|
+| `collapsed` | GitLab left the diff out of the response; it can be read on its own |
+| `too_large` | The diff exceeds GitLab's size limit and cannot be retrieved |
+| `empty_diff` | GitLab sent no diff text and, before 18.4, does not say why: collapsed, too large, or a change without text lines such as a rename |
+| `binary` | Binary file |
+
+GitLab's own `overflow` (`diffs`) and `compare_timeout` (`compare`) stay in the
+result: when true, GitLab stopped listing files, so later files were not searched.
 
 ## manage_merge_request
 

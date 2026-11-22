@@ -24,6 +24,7 @@ import { cleanGidsFromObject } from '../../utils/idConversion';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
 import { assertActionAllowed } from '../utils';
 import { instanceAtLeast } from '../instance-version';
+import { diffLineFilter, parseDiffFiles, searchDiffLines, type DiffFile } from '../diff-lines';
 import { withSafeProjectResponse } from './project-response';
 import {
   browseProjects,
@@ -42,6 +43,10 @@ const CommitDiffsSchema = z.array(
   }),
 );
 type CommitDiff = z.infer<typeof CommitDiffsSchema>[number];
+
+const CommitIdSchema = z.looseObject({ id: z.string() });
+/** A full SHA-1 or SHA-256 object name, which names one commit for good. */
+const FULL_COMMIT_SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i;
 
 /**
  * Prefix a commit diff with unified-diff file headers, as GitLab's own `unidiff`
@@ -104,7 +109,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
     {
       name: 'browse_commits',
       description:
-        'Explore repository commit history and diffs. Actions: list (browse commits with filters), get (retrieve commit metadata and stats), diff (view code changes). Related: browse_refs for branch/tag info.',
+        'Explore repository commit history and diffs. Actions: list (browse commits with filters), get (retrieve commit metadata and stats), diff (view code changes, or only the changed lines matching line_patterns). Related: browse_refs for branch/tag info.',
       inputSchema: z.toJSONSchema(BrowseCommitsSchema),
       requirements: { default: { tier: 'free' } },
       handler: async (args: unknown): Promise<unknown> => {
@@ -172,22 +177,82 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
 
           case 'diff': {
             const { project_id, sha, unidiff, per_page, page } = input;
-            // `unidiff` landed in GitLab 16.5; before that the headers are added here.
+            const lineFilter = diffLineFilter(input);
+            // `unidiff` landed in GitLab 16.5; before that the headers are added here. A line
+            // search returns no diff text, so it needs neither.
             const nativeUnidiff = instanceAtLeast('16.5');
+            const commitsUrl = `${getGitLabBaseUrl()}/api/v4/projects/${normalizeProjectId(project_id)}/repository/commits`;
+            const diffUrl = (
+              commit: string,
+              pageNumber: number | undefined,
+              size: number | undefined,
+            ) => {
+              const queryParams = new URLSearchParams();
+              if (unidiff && nativeUnidiff && !lineFilter) queryParams.set('unidiff', 'true');
+              if (size) queryParams.set('per_page', String(size));
+              if (pageNumber) queryParams.set('page', String(pageNumber));
+              return `${commitsUrl}/${encodeURIComponent(commit)}/diff?${queryParams}`;
+            };
+            const resolveCommit = async (reference: string): Promise<string> => {
+              const response = await enhancedFetch(
+                `${commitsUrl}/${encodeURIComponent(reference)}?stats=false`,
+              );
+              if (!response.ok) {
+                throw new Error(`GitLab API error: ${response.status} ${response.statusText}`);
+              }
+              const parsed = CommitIdSchema.safeParse(await response.json());
+              if (!parsed.success) {
+                throw new Error('GitLab API error: unexpected commit response');
+              }
+              return parsed.data.id;
+            };
+            const fetchPage = async (
+              pageNumber: number | undefined,
+              size: number | undefined,
+              commit = sha,
+            ) => {
+              const response = await enhancedFetch(diffUrl(commit, pageNumber, size));
+              if (!response.ok) {
+                throw new Error(`GitLab API error: ${response.status} ${response.statusText}`);
+              }
+              const body = (await response.json()) as unknown;
+              return { body, headers: response.headers };
+            };
 
-            const queryParams = new URLSearchParams();
-            if (unidiff && nativeUnidiff) queryParams.set('unidiff', 'true');
-            if (per_page) queryParams.set('per_page', String(per_page));
-            if (page) queryParams.set('page', String(page));
-
-            const apiUrl = `${getGitLabBaseUrl()}/api/v4/projects/${normalizeProjectId(project_id)}/repository/commits/${encodeURIComponent(sha)}/diff?${queryParams}`;
-            const response = await enhancedFetch(apiUrl);
-
-            if (!response.ok) {
-              throw new Error(`GitLab API error: ${response.status} ${response.statusText}`);
+            if (lineFilter) {
+              // The endpoint pages its files (20 by default). Unless a page is asked for, every
+              // page is searched, so an empty result covers the whole commit.
+              const files: DiffFile[] = [];
+              // Walking every page, the page size is ours to choose; GitLab caps it at 100.
+              const size = page ? per_page : 100;
+              // A branch or tag resolves anew at each request, so a push between pages would
+              // mix two commits; the walk pins the reference to its commit first.
+              const commit = page || FULL_COMMIT_SHA.test(sha) ? sha : await resolveCommit(sha);
+              let pageNumber = page ?? 1;
+              for (;;) {
+                const { body, headers } = await fetchPage(pageNumber, size, commit);
+                files.push(...parseDiffFiles(body));
+                if (page) break;
+                const next = headers.get('x-next-page');
+                if (!next) break;
+                const following = Number(next);
+                // A continuation that is not a later page would leave pages unread.
+                if (!Number.isInteger(following) || following <= pageNumber) {
+                  throw new Error(
+                    `GitLab API error: unexpected next page "${next}" after page ${pageNumber} of the commit diff`,
+                  );
+                }
+                pageNumber = following;
+              }
+              const search = searchDiffLines(files, lineFilter);
+              return {
+                diffs: search.files,
+                not_scanned: search.not_scanned,
+                _filtered: search.summary,
+              };
             }
 
-            const diffs = (await response.json()) as unknown;
+            const { body: diffs } = await fetchPage(page, per_page);
             if (!unidiff || nativeUnidiff) return diffs;
             const parsed = CommitDiffsSchema.safeParse(diffs);
             if (!parsed.success) {

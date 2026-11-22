@@ -16,6 +16,7 @@ import { normalizeProjectId } from '../../utils/projectIdentifier';
 import { encodeApiSegment } from '../../utils/api-path';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
 import { assertActionAllowed } from '../utils';
+import { diffLineFilter, parseDiffFiles, searchDiffLines } from '../diff-lines';
 
 /**
  * Response shape for MR status check before merge.
@@ -190,7 +191,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
     {
       name: 'browse_merge_requests',
       description:
-        'Find and inspect merge requests. Actions: list (filter by state/author/reviewer/labels/branch), get (MR details by IID or source branch), closing_issues (one page of native issues that close on merge), diffs (file-level changes with inline suggestions), compare (diff between any two refs), versions (list diff versions from pushes), version (get specific version with diffs). Related: manage_merge_request to create/update/merge.',
+        'Find and inspect merge requests. Actions: list (filter by state/author/reviewer/labels/branch), get (MR details by IID or source branch), closing_issues (one page of native issues that close on merge), diffs (file-level changes with inline suggestions), compare (diff between any two refs); diffs and compare take line_patterns to return only matching changed lines with positions for comments, versions (list diff versions from pushes), version (get specific version with diffs). Related: manage_merge_request to create/update/merge.',
       inputSchema: z.toJSONSchema(BrowseMergeRequestsSchema),
       requirements: {
         default: { tier: 'free' },
@@ -269,6 +270,8 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
               exclude_lockfiles,
               exclude_generated,
             } = input;
+            // Invalid patterns fail before any request.
+            const lineFilter = diffLineFilter(input);
 
             const query: Record<string, number | boolean | undefined> = {};
             if (input.page !== undefined) query.page = input.page;
@@ -317,12 +320,23 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
               };
             }
 
+            if (lineFilter !== null && response.changes !== undefined) {
+              const search = searchDiffLines(parseDiffFiles(response.changes), lineFilter);
+              return {
+                ...response,
+                changes: search.files,
+                not_scanned: search.not_scanned,
+                _filtered: { ...(response._filtered as object | undefined), ...search.summary },
+              };
+            }
+
             return response;
           }
 
           case 'compare': {
             // TypeScript knows: input has project_id (required), from (required), to (required)
             const { project_id, from, to, straight } = input;
+            const lineFilter = diffLineFilter(input);
 
             const query: Record<string, string | boolean | undefined> = {
               from,
@@ -330,9 +344,18 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
             };
             if (straight !== undefined) query.straight = straight;
 
-            return gitlab.get(`projects/${normalizeProjectId(project_id)}/repository/compare`, {
-              query,
-            });
+            const response = await gitlab.get<{ diffs?: unknown; [key: string]: unknown }>(
+              `projects/${normalizeProjectId(project_id)}/repository/compare`,
+              { query },
+            );
+            if (lineFilter === null || response.diffs === undefined) return response;
+            const search = searchDiffLines(parseDiffFiles(response.diffs), lineFilter);
+            return {
+              ...response,
+              diffs: search.files,
+              not_scanned: search.not_scanned,
+              _filtered: search.summary,
+            };
           }
 
           case 'versions': {

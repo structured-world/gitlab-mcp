@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { flexibleBoolean, requiredId, numericId, paginationFields } from '../utils';
+import { diffLineFilterFields } from '../line-patterns';
 
 // ============================================================================
 // READ-ONLY RESPONSE SCHEMAS
@@ -221,6 +222,7 @@ const GetCommitDiffSchema = z.object({
   project_id: commitProjectIdField,
   sha: commitShaField,
   unidiff: flexibleBoolean.optional().describe('Return unified diff format.'),
+  ...diffLineFilterFields,
   ...paginationFields(),
 });
 

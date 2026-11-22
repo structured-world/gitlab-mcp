@@ -481,7 +481,9 @@ The first **20 MiB** are searched, the same reach as the largest `artifact_file`
 `byte_offset`. A line that ends past that point is not searched; the result then
 has `truncated: "scan_limit"`, `total_lines: null` and `resume_from: null`, since a
 continuation would find nothing more. `scan_limit_reached` is reported on its own as
-well, because another truncation, such as `max_matches`, can come first.
+well, because another truncation, such as `max_matches`, can come first. A search
+cut before the limit (`budget`, `output_limit`, `worker_timeout`) leaves it false;
+`truncated` and `resume_from` report that cut.
 
 Content is checked as `artifact_file` checks a window: a control byte other than tab,
 line feed, form feed, carriage return or escape, or invalid UTF-8 anywhere in the

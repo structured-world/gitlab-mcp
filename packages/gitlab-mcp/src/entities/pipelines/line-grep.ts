@@ -117,7 +117,10 @@ export interface LineGrepResult {
   sections?: SectionListing;
   /** Source bytes of the scanned lines, with `byteOffsets`. */
   scanned_bytes?: number;
-  /** With `maxBytes`: the source continues past the searched bytes. */
+  /**
+   * With `maxBytes`: the scan stopped at that limit with more source after it. A scan cut
+   * earlier (budget, output, worker timeout) leaves it false; `truncated` reports that.
+   */
   scan_limit_reached?: boolean;
   /** Matched lines longer than 16 KiB, of which only the first 16 KiB was searched. */
   partially_searched_lines?: number;

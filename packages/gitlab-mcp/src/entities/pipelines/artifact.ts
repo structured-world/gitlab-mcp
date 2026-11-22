@@ -9,14 +9,21 @@ import { StructuredToolError, type ArtifactReadRefusal } from '../../utils/error
 import { currentMcpAbortSignal } from '../../mcp-server-context';
 import { encodeArtifactPath, ARTIFACT_MAX_BYTES, ARTIFACT_MAX_OFFSET } from './artifact-path';
 import { readArtifactWindow, ArtifactReadError } from './artifact-window';
+import { NotTextError } from './text-scan';
 
-interface ArtifactInput {
+/** One file inside a job's artifacts archive. */
+export interface ArtifactTarget {
   project_id: string;
   job_id: string;
   artifact_path: string;
+}
+
+interface ArtifactInput extends ArtifactTarget {
   byte_offset: number;
   byte_limit: number;
 }
+
+export type ArtifactAction = 'artifact_file' | 'artifact_grep';
 
 /** Validate a provider redirect before connecting, without retaining invalid signed URL data. */
 export function resolveArtifactRedirect(target: URL, location: string): URL {
@@ -55,8 +62,19 @@ export function artifactViewUrl(jobUrl: string, encodedPath: string): string {
   return view.toString();
 }
 
-/** The configured GitLab supplies download locations; a caller never supplies an origin. */
-async function artifactResponse(url: string, offset: number, limit: number) {
+/** The download URL of the file on the configured GitLab; a caller never supplies an origin. */
+export function artifactFileUrl(target: ArtifactTarget): string {
+  const encodedPath = encodeArtifactPath(target.artifact_path);
+  const project = normalizeProjectId(target.project_id);
+  const job = encodeApiSegment(target.job_id);
+  return `${getGitLabBaseUrl()}/api/v4/projects/${project}/jobs/${job}/artifacts/${encodedPath}`;
+}
+
+/**
+ * Request `bytes=first-last` of the file, following GitLab's redirects to object storage
+ * without forwarding credentials there.
+ */
+export async function artifactResponse(url: string, first: number, last: number) {
   let target = new URL(url);
   const origin = target.origin;
   let external = false;
@@ -73,7 +91,7 @@ async function artifactResponse(url: string, offset: number, limit: number) {
       headers: {
         Accept: '*/*',
         'Accept-Encoding': 'identity',
-        Range: `bytes=${offset}-${offset + limit + 3}`,
+        Range: `bytes=${first}-${last}`,
       },
     });
     if (![301, 302, 303, 307, 308].includes(response.status)) return { response, external };
@@ -91,13 +109,13 @@ async function artifactResponse(url: string, offset: number, limit: number) {
 /** Read only the requested artifact file, retaining bytes for one UTF-8 window. */
 export async function readArtifactFile(input: ArtifactInput) {
   const { project_id, job_id, artifact_path, byte_offset, byte_limit } = input;
-  const encodedPath = encodeArtifactPath(artifact_path);
-  const project = normalizeProjectId(project_id);
-  const job = encodeApiSegment(job_id);
-  const url = `${getGitLabBaseUrl()}/api/v4/projects/${project}/jobs/${job}/artifacts/${encodedPath}`;
-  const { response, external } = await artifactResponse(url, byte_offset, byte_limit);
+  const { response, external } = await artifactResponse(
+    artifactFileUrl(input),
+    byte_offset,
+    byte_offset + byte_limit + 3,
+  );
   try {
-    assertDownloadStatus(response, external, input);
+    assertDownloadStatus(response, external, input, 'artifact_file');
     return {
       project_id,
       job_id,
@@ -105,36 +123,55 @@ export async function readArtifactFile(input: ArtifactInput) {
       ...(await readArtifactWindow(response, byte_offset, byte_limit)),
     };
   } catch (error) {
-    if (error instanceof Error && 'code' in error && error.code === 'UND_ERR_BODY_TIMEOUT') {
-      throw new GitLabTimeoutError('body', BODY_TIMEOUT_MS, error);
-    }
-    if (error instanceof ArtifactReadError) {
-      await discardUnreadBody(response);
-      let viewUrl: string | undefined;
-      if (error.reason === 'not_text') {
-        // Resolve a canonical browser link only for the refusal, not for every successful window.
-        const metadata = await gitlab.get<{ web_url: string }>(`projects/${project}/jobs/${job}`);
-        viewUrl = artifactViewUrl(metadata.web_url, encodedPath);
-      }
-      throw refusal(input, error.reason, error.message, {
-        ...(viewUrl !== undefined && { artifact_view_url: viewUrl }),
-      });
-    }
-    throw error;
+    if (error instanceof ArtifactReadError) await discardUnreadBody(response);
+    throw await artifactFailure(error, input, 'artifact_file');
   } finally {
     await discardUnreadBody(response);
   }
 }
 
-async function discardUnreadBody(response: Response): Promise<void> {
+/**
+ * The error a failed artifact read surfaces: a body timeout keeps its structured type, and a
+ * refused read becomes a typed refusal, with a browser link when the content is not text.
+ */
+export async function artifactFailure(
+  error: unknown,
+  target: ArtifactTarget,
+  action: ArtifactAction,
+): Promise<unknown> {
+  if (error instanceof Error && 'code' in error && error.code === 'UND_ERR_BODY_TIMEOUT') {
+    return new GitLabTimeoutError('body', BODY_TIMEOUT_MS, error);
+  }
+  if (!(error instanceof ArtifactReadError) && !(error instanceof NotTextError)) return error;
+  let viewUrl: string | undefined;
+  if (error.reason === 'not_text') {
+    // Resolve a canonical browser link only for the refusal, not for every successful read.
+    const project = normalizeProjectId(target.project_id);
+    const job = encodeApiSegment(target.job_id);
+    const metadata = await gitlab.get<{ web_url: string }>(`projects/${project}/jobs/${job}`);
+    viewUrl = artifactViewUrl(metadata.web_url, encodeArtifactPath(target.artifact_path));
+  }
+  return refusal(target, action, error.reason, error.message, {
+    ...(viewUrl !== undefined && { artifact_view_url: viewUrl }),
+  });
+}
+
+export async function discardUnreadBody(response: Response): Promise<void> {
   if (!response.bodyUsed && !response.body?.locked) await response.body?.cancel();
 }
 
-function assertDownloadStatus(response: Response, external: boolean, input: ArtifactInput): void {
+/** A failed download status: GitLab's keeps its API error, object storage's is a refusal. */
+export function assertDownloadStatus(
+  response: Response,
+  external: boolean,
+  target: ArtifactTarget,
+  action: ArtifactAction,
+): void {
   if (response.ok || response.status === 416) return;
   if (external) {
     throw refusal(
-      input,
+      target,
+      action,
       'storage_http_error',
       `Artifact storage returned HTTP ${response.status}`,
       { http_status: response.status },
@@ -153,7 +190,8 @@ function assertDownloadStatus(response: Response, external: boolean, input: Arti
 }
 
 function refusal(
-  input: ArtifactInput,
+  target: ArtifactTarget,
+  action: ArtifactAction,
   reason: string,
   message: string,
   details: Pick<ArtifactReadRefusal, 'artifact_view_url' | 'http_status'>,
@@ -163,10 +201,10 @@ function refusal(
     reason,
     message,
     tool: 'browse_pipelines',
-    action: 'artifact_file',
-    project_id: input.project_id,
-    job_id: input.job_id,
-    artifact_path: input.artifact_path,
+    action,
+    project_id: target.project_id,
+    job_id: target.job_id,
+    artifact_path: target.artifact_path,
     max_window_bytes: ARTIFACT_MAX_BYTES,
     max_prefix_bytes: ARTIFACT_MAX_OFFSET,
     ...details,

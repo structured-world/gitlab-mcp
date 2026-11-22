@@ -784,6 +784,18 @@ describe('bytes and long lines', () => {
     expect(result.hunks[0].lines[0]).toHaveLength(TRACE_LINE_BYTES);
     expect(result.hunks[0].matches).toEqual([{ line: 0, patterns: [1] }]);
     expect(result.hunks[0].clipped).toEqual([{ line: 0, omitted_bytes: 15 }]);
+    expect(result.partially_searched_lines).toBe(1);
+  });
+
+  // A clipped line with no match is in no hunk, so only the count tells that a match past its
+  // first 16 KiB was not looked for. Each clipped fragment of a timestamped group counts.
+  it('counts clipped lines that produced no hunk', () => {
+    const stamp = '2026-11-18T10:00:00.123456Z';
+    const long = 'x'.repeat(TRACE_LINE_BYTES);
+    const source = `${long}error\nok\n${stamp} 00O ${long}\n${stamp} 00O+${long}\n`;
+    const result = scan(source, { patterns: ['error'] }, 65536);
+    expect(result.match_count).toBe(0);
+    expect(result.partially_searched_lines).toBe(3);
   });
 
   // A clip through a multibyte character omits the fragment instead of inventing U+FFFD.

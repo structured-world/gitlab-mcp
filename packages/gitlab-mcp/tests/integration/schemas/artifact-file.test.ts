@@ -13,6 +13,11 @@ const Window = z.object({
   next_byte_offset: z.number().nullable(),
   complete: z.boolean(),
 });
+const Grep = z.object({
+  hunks: z.array(
+    z.object({ start_line: z.number(), byte_offset: z.number(), lines: z.array(z.string()) }),
+  ),
+});
 // Counted from the start of the test: with one more jobs request (up to the 120 s request
 // timeout of the test env) and the reads after it, the test ends within its 10-minute
 // limit, so a stuck job is still cancelled in finally.
@@ -118,6 +123,41 @@ describe('individual artifact files - GitLab integration', () => {
         },
       });
       await expect(read('reports/missing.txt')).rejects.toMatchObject({ status: 404 });
+
+      // artifact_grep searches the same uploaded files through the same download path, and
+      // its byte offset reads the matched hunk back with artifact_file.
+      const grep = (path: string) =>
+        helper.executeTool('browse_pipelines', {
+          action: 'artifact_grep',
+          project_id: projectId,
+          job_id: jobId,
+          artifact_path: path,
+          patterns: ['report A€'],
+        });
+      const result = await grep('reports/nested/result.txt');
+      const found = Grep.parse(result);
+      expect(result).toMatchObject({
+        match_count: 1,
+        total_lines: 2,
+        scanned_bytes: Buffer.byteLength(text),
+        truncated: null,
+        scan_limit_reached: false,
+        // The default after-context reaches the empty line after the final newline.
+        hunks: [{ start_line: 0, byte_offset: 0, lines: ['Artifact report A€😀', ''] }],
+      });
+      const back = Window.parse(
+        await read('reports/nested/result.txt', { byte_offset: found.hunks[0].byte_offset }),
+      );
+      expect(back.text.startsWith(found.hunks[0].lines.join('\n'))).toBe(true);
+      expect(await grep('reports/empty.txt')).toMatchObject({ match_count: 0, scanned_bytes: 0 });
+      await expect(grep('reports/binary.bin')).rejects.toMatchObject({
+        structuredError: {
+          error_code: 'ARTIFACT_READ_REFUSED',
+          reason: 'not_text',
+          action: 'artifact_grep',
+        },
+      });
+      await expect(grep('reports/missing.txt')).rejects.toMatchObject({ status: 404 });
     } finally {
       if (pipelineId !== undefined && !jobComplete) {
         await helper.executeTool('manage_pipeline', {

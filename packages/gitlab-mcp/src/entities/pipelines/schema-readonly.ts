@@ -231,7 +231,7 @@ const TriggerJobScopeSchema = z
 
 // ============================================================================
 // browse_pipelines - CQRS Query Tool (discriminated union schema)
-// Actions: list, get, jobs, triggers, job, log_sections, logs, log_grep, artifact_file
+// Actions: list, get, jobs, triggers, job, log_sections, logs, log_grep, artifact_file, artifact_grep
 // Uses z.discriminatedUnion() for type-safe action handling.
 // Schema pipeline flattens to flat JSON Schema for AI clients that don't support oneOf.
 // ============================================================================
@@ -378,6 +378,23 @@ const contextLines = (side: string) =>
     .default(2)
     .describe(`Context lines ${side} each match (default: 2, max: ${LOG_GREP_MAX_CONTEXT})`);
 
+const maxMatchesField = z
+  .number()
+  .int()
+  .min(1)
+  .max(LOG_GREP_MAX_MATCHES)
+  .default(50)
+  .describe(
+    `Matches to return (default: 50, max: ${LOG_GREP_MAX_MATCHES}); match_count still counts all`,
+  );
+
+const patternList = z.array(z.string().min(1).max(MAX_PATTERN_LENGTH)).min(1).max(MAX_PATTERNS);
+const PATTERNS_DESCRIPTION = `RE2 patterns (up to ${MAX_PATTERNS}, ${MAX_PATTERN_LENGTH} chars each); inline flags such as (?i). A line matches when any pattern does`;
+
+const invertField = flexibleBoolean
+  .optional()
+  .describe('Select lines that match no pattern instead of lines that match one');
+
 const PIPELINE_ONLY_FIELDS = [
   'job_scope',
   'include_downstream',
@@ -437,14 +454,7 @@ const GrepJobLogsSchema = z
       .describe(
         'With pipeline_id: pass the resume list of a previous result to search only the jobs and lines it left',
       ),
-    patterns: z
-      .array(z.string().min(1).max(MAX_PATTERN_LENGTH))
-      .min(1)
-      .max(MAX_PATTERNS)
-      .optional()
-      .describe(
-        `RE2 patterns (up to ${MAX_PATTERNS}, ${MAX_PATTERN_LENGTH} chars each); inline flags such as (?i). A line matches when any pattern does`,
-      ),
+    patterns: patternList.optional().describe(PATTERNS_DESCRIPTION),
     preset: z
       .enum(['failures'])
       .optional()
@@ -453,18 +463,8 @@ const GrepJobLogsSchema = z
       ),
     before: contextLines('before'),
     after: contextLines('after'),
-    max_matches: z
-      .number()
-      .int()
-      .min(1)
-      .max(LOG_GREP_MAX_MATCHES)
-      .default(50)
-      .describe(
-        `Matches to return (default: 50, max: ${LOG_GREP_MAX_MATCHES}); match_count still counts all`,
-      ),
-    invert: flexibleBoolean
-      .optional()
-      .describe('Select lines that match no pattern instead of lines that match one'),
+    max_matches: maxMatchesField,
+    invert: invertField,
     start_line: z
       .number()
       .int()
@@ -505,6 +505,47 @@ const GrepJobLogsSchema = z
     }
   });
 
+const artifactJobField = numericId.describe('The ID of the job that uploaded artifacts:paths');
+const artifactPathField = z
+  .string()
+  .min(1)
+  .max(4096)
+  .refine((path) => {
+    try {
+      encodeArtifactPath(path);
+      return true;
+    } catch {
+      return false;
+    }
+  }, 'Expected a relative artifact file path without traversal')
+  .describe(
+    'Relative path within artifacts:paths, such as reports/test-results.txt; reports-only uploads are not archive entries',
+  );
+
+const GrepArtifactFileSchema = z.object({
+  action: z
+    .literal('artifact_grep')
+    .describe(
+      'Search one text artifact file (test reports, JUnit XML, coverage or tool output) with RE2 patterns; returns matching lines with context, absolute line numbers and the byte offset of each hunk for artifact_file',
+    ),
+  project_id: projectIdField,
+  job_id: artifactJobField,
+  artifact_path: artifactPathField,
+  patterns: patternList.describe(PATTERNS_DESCRIPTION),
+  before: contextLines('before'),
+  after: contextLines('after'),
+  max_matches: maxMatchesField,
+  invert: invertField,
+  start_line: z
+    .number()
+    .int()
+    .min(0)
+    .optional()
+    .describe(
+      'First line to search (0-based); pass resume_from from a truncated result. The first 20 MiB of the file are searched',
+    ),
+});
+
 const GetArtifactFileSchema = z.object({
   action: z
     .literal('artifact_file')
@@ -512,22 +553,8 @@ const GetArtifactFileSchema = z.object({
       'Read one artifact file as bounded UTF-8 text; inspect job metadata to choose its path',
     ),
   project_id: projectIdField,
-  job_id: numericId.describe('The ID of the job that uploaded artifacts:paths'),
-  artifact_path: z
-    .string()
-    .min(1)
-    .max(4096)
-    .refine((path) => {
-      try {
-        encodeArtifactPath(path);
-        return true;
-      } catch {
-        return false;
-      }
-    }, 'Expected a relative artifact file path without traversal')
-    .describe(
-      'Relative path within artifacts:paths, such as reports/test-results.txt; reports-only uploads are not archive entries',
-    ),
+  job_id: artifactJobField,
+  artifact_path: artifactPathField,
   byte_offset: z
     .number()
     .int()
@@ -559,6 +586,7 @@ export const BrowsePipelinesSchema = z.discriminatedUnion('action', [
   GetJobLogsSchema,
   GrepJobLogsSchema,
   GetArtifactFileSchema,
+  GrepArtifactFileSchema,
 ]);
 
 // ============================================================================

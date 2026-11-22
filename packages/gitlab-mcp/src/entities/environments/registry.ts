@@ -24,6 +24,7 @@ export const environmentsToolRegistry: ToolRegistry = new Map<string, EnhancedTo
     'browse_environments',
     {
       name: 'browse_environments',
+      projectableActions: ['list', 'list_deployments'],
       description:
         'Inspect project environments and their deployments. Actions: list (environments filtered by state/name), get (single environment with its last deployment), list_deployments (deployment history, filterable by environment and status). Related: manage_environment to create, update, stop, or delete environments and update deployment status.',
       inputSchema: z.toJSONSchema(BrowseEnvironmentsSchema),

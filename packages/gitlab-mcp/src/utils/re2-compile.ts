@@ -16,7 +16,8 @@ export interface PatternMatcher {
 
 const NO_MATCH: readonly number[] = Object.freeze([]);
 
-function checkCallerPattern(pattern: string, index: number): RE2JS {
+/** Compile one caller pattern within the length and program size limits. */
+export function compileCallerPattern(pattern: string, index: number): RE2JS {
   if (pattern.length === 0) throw new PatternError(index, 'pattern is empty');
   if (pattern.length > MAX_PATTERN_LENGTH)
     throw new PatternError(index, `pattern exceeds ${MAX_PATTERN_LENGTH} characters`);
@@ -68,7 +69,7 @@ export function compilePatterns(
 ): PatternMatcher {
   if (patterns.length > MAX_PATTERNS)
     throw new PatternError(MAX_PATTERNS, `at most ${MAX_PATTERNS} patterns are accepted`);
-  const compiled = patterns.map((pattern, index) => checkCallerPattern(pattern, index));
+  const compiled = patterns.map((pattern, index) => compileCallerPattern(pattern, index));
   const sources = patterns.concat(trusted);
   if (sources.length === 0) throw new Error('No patterns to compile');
   if (sources.length === 1) {

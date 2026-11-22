@@ -273,6 +273,7 @@ export const runnersToolRegistry: ToolRegistry = new Map<string, EnhancedToolDef
     'browse_runners',
     {
       name: 'browse_runners',
+      projectableActions: ['list_all', 'list_owned', 'list_project', 'list_group', 'list_jobs'],
       description:
         "Inspect CI runners. Actions: list_all (every runner on the instance - admin), list_owned (the current user's runners), list_project / list_group (runners available to a project/group), get (single runner by ID), list_jobs (jobs a runner has executed). Related: manage_runner to register, update, pause/resume, or delete runners.",
       inputSchema: z.toJSONSchema(BrowseRunnersSchema),

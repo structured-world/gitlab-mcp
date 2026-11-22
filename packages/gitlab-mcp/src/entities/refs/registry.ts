@@ -24,6 +24,12 @@ export const refsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
     'browse_refs',
     {
       name: 'browse_refs',
+      projectableActions: [
+        'list_branches',
+        'list_tags',
+        'list_protected_branches',
+        'list_protected_tags',
+      ],
       description:
         'Inspect branches, tags, and their protection rules. Actions: list_branches, get_branch, list_tags, get_tag, list_protected_branches, get_protected_branch, list_protected_tags (protection details and access levels). Related: manage_ref to create/delete/protect, browse_commits for commit history.',
       inputSchema: z.toJSONSchema(BrowseRefsSchema),

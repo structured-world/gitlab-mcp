@@ -79,6 +79,7 @@ export const vulnerabilitiesToolRegistry: ToolRegistry = new Map<string, Enhance
     'browse_vulnerabilities',
     {
       name: 'browse_vulnerabilities',
+      projectableActions: ['list'],
       description:
         'Inspect security vulnerabilities (Ultimate). Actions: list (a project, a group, or the whole instance when neither id is given; filter by state, severity, report_type), get (a single vulnerability by ID with full detail). Related: manage_vulnerability to dismiss, confirm, resolve, or revert findings.',
       inputSchema: z.toJSONSchema(BrowseVulnerabilitiesSchema),

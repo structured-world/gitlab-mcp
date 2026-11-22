@@ -386,6 +386,7 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
     'browse_work_items',
     {
       name: 'browse_work_items',
+      projectableActions: ['list', 'list_discussions'],
       description:
         'Find and inspect issues, epics, tasks, and other work items. Actions: list (filter by type/state), get (details by ID or namespace+iid), list_discussions (paginated comments, replies, and system notes). Related: manage_work_item to create/update/delete.',
       inputSchema: z.toJSONSchema(BrowseWorkItemsSchema),

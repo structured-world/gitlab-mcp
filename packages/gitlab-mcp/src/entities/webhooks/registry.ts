@@ -33,6 +33,7 @@ export const webhooksToolRegistry: ToolRegistry = new Map<string, EnhancedToolDe
     'browse_webhooks',
     {
       name: 'browse_webhooks',
+      projectableActions: ['list'],
       description:
         'List and inspect webhook configurations for projects or groups. Actions: list (all webhooks with event types and status), get (webhook details by ID). Related: manage_webhook to create/update/delete/test.',
       inputSchema: z.toJSONSchema(BrowseWebhooksSchema),

@@ -41,6 +41,13 @@ import {
 import { getSchemaMode } from './utils/schema-utils';
 import { formatToolResult, errorToolResult } from './utils/tool-result';
 import {
+  checkProjection,
+  JMESPATH_ARGUMENT,
+  ProjectionError,
+  type Projection,
+} from './utils/jmespath-projection';
+import { applyProjection } from './utils/jmespath-projection-worker';
+import {
   APP_PANEL_SECURITY_SCHEMES,
   OAUTH_SECURITY_SCHEMES,
   resourceScopeRejection,
@@ -780,6 +787,66 @@ async function prepareScopedCall(
   };
 }
 
+/**
+ * The call prepared to run: its projection taken off and compiled, then its arguments held
+ * to the caller's settings. The projection belongs to the call, not to the tool: it is
+ * removed before the settings, scope emulation or the handler see the arguments, and
+ * applied once to the final result, as a scoped call may run the tool many times to build it.
+ */
+async function prepareCall(
+  toolName: string,
+  args: Record<string, unknown> | undefined,
+  configured: EffectivePolicy,
+  registryManager: import('./registry-manager').RegistryManager,
+  expired: () => boolean,
+): Promise<{
+  rejection: CallToolResult | null;
+  args: Record<string, unknown>;
+  policy: EffectivePolicy;
+  projection?: Projection;
+}> {
+  const taken = takeProjection(toolName, args, registryManager);
+  if ('rejection' in taken) return { rejection: taken.rejection, args: {}, policy: configured };
+  const prepared = await prepareScopedCall(
+    toolName,
+    taken.args ?? {},
+    configured,
+    registryManager,
+    expired,
+  );
+  return { ...prepared, projection: taken.projection };
+}
+
+/** The tool result, projected when the call asked for a projection. */
+function withProjection(result: unknown, projection: Projection | undefined): unknown {
+  return projection ? applyProjection(projection, result) : result;
+}
+
+/**
+ * The call's arguments without `jmespath`, and its compiled projection. An expression that
+ * does not compile, or an action that does not accept one, is refused before any request.
+ */
+function takeProjection(
+  toolName: string,
+  args: Record<string, unknown> | undefined,
+  registryManager: import('./registry-manager').RegistryManager,
+):
+  | { args: Record<string, unknown> | undefined; projection?: Projection }
+  | { rejection: CallToolResult } {
+  if (!args || !Object.hasOwn(args, JMESPATH_ARGUMENT)) return { args };
+  const { [JMESPATH_ARGUMENT]: expression, ...rest } = args;
+  const action = typeof args.action === 'string' ? args.action : undefined;
+  const refuse = (message: string): { rejection: CallToolResult } => {
+    recordEarlyReturnError(toolName, action, message);
+    return { rejection: errorToolResult({ error: message }) };
+  };
+  const call = action ? `${toolName} ${action}` : toolName;
+  if (!registryManager.acceptsProjection(toolName, action))
+    return refuse(`'${call}' does not accept '${JMESPATH_ARGUMENT}'; list and search actions do.`);
+  const checked = checkProjection(expression);
+  return 'refusal' in checked ? refuse(checked.refusal) : { args: rest, projection: checked };
+}
+
 /** A refusal for a call the given policy does not allow, or null when it may run. */
 function settingsRejection(
   toolName: string,
@@ -872,7 +939,9 @@ function throwDispatchError(
   // 4xx (e.g. 404 "project not found") which don't indicate connection problems.
   // classifyError returns 'permanent' for 4xx like 400/403/404, 'transient' for network issues,
   // and 'auth' for authentication errors like 401; only 'transient' and 'auth' are reported here.
-  if (!timedOut && error instanceof Error) {
+  // A projection fails on this server, after GitLab answered; its evaluator's "timed out"
+  // would otherwise read as a transient connection error.
+  if (!timedOut && error instanceof Error && !(error instanceof ProjectionError)) {
     const category = classifyError(error);
     if (category === 'transient' || category === 'auth') {
       healthMonitor.reportError(instanceUrl, error);
@@ -1271,21 +1340,21 @@ export async function setupHandlers(server: Server): Promise<void> {
       const connectionManager = ConnectionManager.getInstance();
       const healthMonitor = HealthMonitor.getInstance();
       const toolName = request.params.name;
-      let toolArguments = request.params.arguments;
+      const { RegistryManager: CallRegistry } = await import('./registry-manager');
 
       // The caller's settings, checked before anything reaches GitLab. A call is refused
       // when they cannot be read: allowing it could bypass a restriction.
-      const { RegistryManager: CallRegistry } = await import('./registry-manager');
       const configuration = await getConfigurationService().resolve(caller);
-      const prepared = await prepareScopedCall(
+      const prepared = await prepareCall(
         toolName,
-        toolArguments ?? {},
+        request.params.arguments,
         configuration.policy,
         CallRegistry.getInstance(),
         timedOut,
       );
       if (prepared.rejection) return prepared.rejection;
-      toolArguments = prepared.args;
+      const { projection } = prepared;
+      let toolArguments = prepared.args;
 
       // Early return: instance unreachable for non-context tools
       // (isInstanceReachable treats untracked URLs as reachable before HealthMonitor.initialize)
@@ -1394,7 +1463,7 @@ export async function setupHandlers(server: Server): Promise<void> {
           healthMonitor.reportSuccess(effectiveInstanceUrl);
         }
 
-        return formatToolResult(result, definition);
+        return formatToolResult(await withProjection(result, projection), definition);
       } catch (error) {
         throwDispatchError(error, toolName, effectiveInstanceUrl, healthMonitor, timedOut());
       }

@@ -21,6 +21,7 @@ export const labelsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefi
     'browse_labels',
     {
       name: 'browse_labels',
+      projectableActions: ['list'],
       description:
         'List and inspect project or group labels. Actions: list (all labels with search filtering), get (single label by ID or name). Related: manage_label to create/update/delete.',
       inputSchema: z.toJSONSchema(BrowseLabelsSchema),

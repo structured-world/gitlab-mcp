@@ -21,6 +21,7 @@ export const wikiToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
     'browse_wiki',
     {
       name: 'browse_wiki',
+      projectableActions: ['list'],
       description:
         'Read wiki pages in projects or groups. Actions: list (all pages with metadata), get (page content by slug). Related: manage_wiki to create/update/delete.',
       inputSchema: z.toJSONSchema(BrowseWikiSchema),

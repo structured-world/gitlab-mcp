@@ -12,14 +12,30 @@ import { BrowseWorkItemsSchema } from '../../src/entities/workitems/schema-reado
 import { ManageWorkItemSchema } from '../../src/entities/workitems/schema';
 import { BrowsePipelinesSchema } from '../../src/entities/pipelines/schema-readonly';
 import { BrowseDuoSessionsSchema, ManageDuoSessionSchema } from '../../src/entities/duo/schema';
+import { RegistryManager } from '../../src/registry-manager';
+import { compileProjection, JMESPATH_ARGUMENT } from '../../src/utils/jmespath-projection';
+import type { ZodType } from 'zod';
 
-const schemas = {
-  'gitlab-setup': [ManageContextSchema],
-  'gitlab-discovery': [ManageContextSchema, BrowseProjectsSchema],
-  'gitlab-review': [BrowseMergeRequestsSchema, BrowseMrDiscussionsSchema, ManageMrDiscussionSchema],
-  'gitlab-work-items': [BrowseWorkItemsSchema, ManageWorkItemSchema],
-  'gitlab-ci': [BrowsePipelinesSchema],
-  'gitlab-duo': [BrowseDuoSessionsSchema, ManageDuoSessionSchema],
+const schemas: Record<string, Array<[string, ZodType]>> = {
+  'gitlab-setup': [['manage_context', ManageContextSchema]],
+  'gitlab-discovery': [
+    ['manage_context', ManageContextSchema],
+    ['browse_projects', BrowseProjectsSchema],
+  ],
+  'gitlab-review': [
+    ['browse_merge_requests', BrowseMergeRequestsSchema],
+    ['browse_mr_discussions', BrowseMrDiscussionsSchema],
+    ['manage_mr_discussion', ManageMrDiscussionSchema],
+  ],
+  'gitlab-work-items': [
+    ['browse_work_items', BrowseWorkItemsSchema],
+    ['manage_work_item', ManageWorkItemSchema],
+  ],
+  'gitlab-ci': [['browse_pipelines', BrowsePipelinesSchema]],
+  'gitlab-duo': [
+    ['browse_duo_sessions', BrowseDuoSessionsSchema],
+    ['manage_duo_session', ManageDuoSessionSchema],
+  ],
 };
 
 describe('portable installed skills', () => {
@@ -45,12 +61,23 @@ describe('portable installed skills', () => {
     );
     expect(examples.length).toBeGreaterThan(0);
     for (const example of examples) {
-      const parsed = candidates
-        .map((schema) => schema.safeParse(example))
-        .find((result) => result.success);
-      expect(parsed?.success).toBe(true);
-      if (parsed?.success) {
-        for (const key of Object.keys(example)) expect(parsed.data).toHaveProperty(key);
+      // A projection is taken off the call before the tool's schema reads it, so it is
+      // checked against the actions that accept it and compiled instead.
+      const { [JMESPATH_ARGUMENT]: projection, ...toolArgs } = example as Record<string, unknown>;
+      const match = candidates
+        .map(([tool, schema]) => ({ tool, parsed: schema.safeParse(toolArgs) }))
+        .find(({ parsed }) => parsed.success);
+      expect(match?.parsed.success).toBe(true);
+      if (match?.parsed.success) {
+        for (const key of Object.keys(toolArgs)) expect(match.parsed.data).toHaveProperty(key);
+        if (projection !== undefined) {
+          expect({ tool: match.tool, action: toolArgs.action, accepts: true }).toEqual({
+            tool: match.tool,
+            action: toolArgs.action,
+            accepts: RegistryManager.getInstance().acceptsProjection(match.tool, toolArgs.action),
+          });
+          expect(() => compileProjection(String(projection))).not.toThrow();
+        }
       }
     }
   });

@@ -23,6 +23,7 @@ export const milestonesToolRegistry: ToolRegistry = new Map<string, EnhancedTool
     'browse_milestones',
     {
       name: 'browse_milestones',
+      projectableActions: ['list', 'issues', 'merge_requests'],
       description:
         'Track milestone progress with associated issues and MRs. Actions: list (filter by state/title/search), get (milestone details), issues (items in milestone), merge_requests (MRs targeting milestone), burndown (chart data for sprint tracking). Related: manage_milestone to create/update.',
       inputSchema: z.toJSONSchema(BrowseMilestonesSchema),

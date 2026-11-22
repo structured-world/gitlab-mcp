@@ -26,6 +26,7 @@ export const deployKeysToolRegistry: ToolRegistry = new Map<string, EnhancedTool
     'browse_deploy_keys',
     {
       name: 'browse_deploy_keys',
+      projectableActions: ['list'],
       description:
         'List and inspect deploy keys (SSH keys granting repo access to CI/automation). Actions: list (a project’s keys, or all instance keys when project_id is omitted — admin only), get (a single project key by ID). Related: manage_deploy_key to add/enable/update/delete.',
       inputSchema: z.toJSONSchema(BrowseDeployKeysSchema),

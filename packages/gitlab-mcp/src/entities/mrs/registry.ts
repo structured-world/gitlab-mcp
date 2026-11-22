@@ -190,6 +190,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
     'browse_merge_requests',
     {
       name: 'browse_merge_requests',
+      projectableActions: ['list', 'closing_issues', 'diffs', 'compare', 'versions'],
       description:
         'Find and inspect merge requests. Actions: list (filter by state/author/reviewer/labels/branch), get (MR details by IID or source branch), closing_issues (one page of native issues that close on merge), diffs (file-level changes with inline suggestions), compare (diff between any two refs); diffs and compare take line_patterns to return only matching changed lines with positions for comments, versions (list diff versions from pushes), version (get specific version with diffs). Related: manage_merge_request to create/update/merge.',
       inputSchema: z.toJSONSchema(BrowseMergeRequestsSchema),
@@ -394,6 +395,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
     'browse_mr_discussions',
     {
       name: 'browse_mr_discussions',
+      projectableActions: ['list', 'drafts'],
       description:
         'Read discussion threads and draft review notes on merge requests. Actions: list (all threads with resolution status), drafts (unpublished draft notes), draft (single draft details). Related: manage_mr_discussion to comment, manage_draft_notes to create drafts.',
       inputSchema: z.toJSONSchema(BrowseMrDiscussionsSchema),

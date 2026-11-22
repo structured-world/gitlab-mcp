@@ -14,6 +14,7 @@ import {
   declaredArgumentNames,
   getSchemaMode,
   withoutSchemaActions,
+  addActionParameter,
 } from '../../../src/utils/schema-utils';
 
 // Mock config module
@@ -1046,5 +1047,60 @@ describe('schema-utils', () => {
       };
       expect(withoutSchemaActions('browse_wiki', listed, new Set())).toBe(listed);
     });
+  });
+});
+
+describe('addActionParameter', () => {
+  const property = { type: 'string', description: 'Projection.' };
+  const union = {
+    oneOf: [
+      { type: 'object', properties: { action: { const: 'list' } }, required: ['action'] },
+      { type: 'object', properties: { action: { const: 'get' } }, required: ['action'] },
+    ],
+  };
+
+  it('adds the parameter to the named branches only, without making it required', () => {
+    const result = addActionParameter(union, ['list'], 'jmespath', property);
+    expect(result.oneOf?.[0].properties?.jmespath).toEqual(property);
+    expect(result.oneOf?.[0].required).toEqual(['action']);
+    expect(result.oneOf?.[1].properties).not.toHaveProperty('jmespath');
+    // The registry's shared source schema must not change.
+    expect(union.oneOf[0].properties).not.toHaveProperty('jmespath');
+  });
+
+  it('recognizes an action given as a one-value enum and skips a branch without properties', () => {
+    const mixed = {
+      oneOf: [{ type: 'object', properties: { action: { enum: ['jobs'] } } }, { type: 'object' }],
+    };
+    const result = addActionParameter(mixed, ['jobs'], 'jmespath', property);
+    expect(result.oneOf?.[0].properties?.jmespath).toEqual(property);
+    expect(result.oneOf?.[1]).toEqual({ type: 'object' });
+  });
+
+  it('returns the same schema when no action is named or none is present', () => {
+    expect(addActionParameter(union, [], 'jmespath', property)).toBe(union);
+    expect(addActionParameter(union, ['diff'], 'jmespath', property)).toBe(union);
+  });
+
+  it('names the accepting actions in a flat schema where only some accept it', () => {
+    const flat = {
+      type: 'object',
+      properties: { action: { type: 'string', enum: ['list', 'get', 'jobs'] } },
+    };
+    const result = addActionParameter(flat, ['list', 'jobs'], 'jmespath', property);
+    expect(result.properties?.jmespath.description).toBe("Projection. Only for 'list', 'jobs'.");
+    expect(flat.properties).not.toHaveProperty('jmespath');
+  });
+
+  it('leaves a flat schema without an action enum unchanged', () => {
+    const plain = { type: 'object', properties: { project_id: { type: 'string' } } };
+    expect(addActionParameter(plain, ['list'], 'jmespath', property)).toBe(plain);
+  });
+
+  it('keeps the description of a flat schema where every action accepts it', () => {
+    const flat = { type: 'object', properties: { action: { type: 'string', enum: ['list'] } } };
+    const result = addActionParameter(flat, ['list'], 'jmespath', property);
+    expect(result.properties?.jmespath.description).toBe('Projection.');
+    expect(addActionParameter(flat, ['get'], 'jmespath', property)).toBe(flat);
   });
 });

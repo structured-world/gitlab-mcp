@@ -29,7 +29,7 @@ const PipelineResponseSchema = z.object({
  */
 async function createPipelineAndAssert(
   helper: IntegrationTestHelper,
-  params: unknown,
+  params: { project_id: string },
   label: string,
 ): Promise<void> {
   // No error swallowing: beforeAll re-seeds a valid spec:inputs .gitlab-ci.yml and
@@ -40,8 +40,15 @@ async function createPipelineAndAssert(
   const pipeline = PipelineResponseSchema.parse(
     await helper.executeTool('manage_pipeline', params),
   );
-  expect(pipeline.ref).toBe('main');
   console.log(`✅ Created pipeline with ${label}: ${pipeline.id} (status: ${pipeline.status})`);
+  // Only creation is under test. Left to run, these jobs queue on the shared runner ahead
+  // of the suites that wait for their own pipelines to finish within a deadline.
+  await helper.executeTool('manage_pipeline', {
+    action: 'cancel',
+    project_id: params.project_id,
+    pipeline_id: String(pipeline.id),
+  });
+  expect(pipeline.ref).toBe('main');
 }
 
 describe('manage_pipeline - GitLab Integration (CQRS)', () => {

@@ -51,6 +51,7 @@ export const jobTokenScopeToolRegistry: ToolRegistry = new Map<string, EnhancedT
     'browse_job_token_scope',
     {
       name: 'browse_job_token_scope',
+      projectableActions: ['list_projects', 'list_groups'],
       description:
         'Inspect a project CI/CD job token inbound access scope. Actions: get (the inbound/outbound scope toggles), list_projects (projects allowed to reach this project via CI_JOB_TOKEN), list_groups (groups on the allowlist). Related: manage_job_token_scope to change the allowlist.',
       inputSchema: z.toJSONSchema(BrowseJobTokenScopeSchema),

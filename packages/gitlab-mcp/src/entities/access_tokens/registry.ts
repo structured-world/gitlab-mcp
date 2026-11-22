@@ -100,6 +100,7 @@ export const accessTokensToolRegistry: ToolRegistry = new Map<string, EnhancedTo
     'browse_access_tokens',
     {
       name: 'browse_access_tokens',
+      projectableActions: ['list_personal', 'list_project', 'list_group'],
       description:
         "Inspect access tokens (CI/automation credentials). Actions: list_personal (the current user's PATs; admins may filter by user_id), list_project / list_group (a project's or group's tokens), get (a single token by ID - pass project_id or group_id for project/group tokens, neither for personal). Related: manage_access_token to create, rotate, or revoke.",
       inputSchema: z.toJSONSchema(BrowseAccessTokensSchema),

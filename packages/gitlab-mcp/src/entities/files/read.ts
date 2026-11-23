@@ -49,9 +49,8 @@ export async function readRepositoryFile(
   const response = await enhancedFetch(url);
   if (!response.ok) {
     const details = await response.text().catch(() => '');
-    throw new Error(
-      `GitLab API error: ${response.status} ${response.statusText}${details ? ` - ${details}` : ''}`,
-    );
+    const suffix = details ? ' - ' + details : '';
+    throw new Error(`GitLab API error: ${response.status} ${response.statusText}${suffix}`);
   }
   if (maxBytes !== undefined) {
     const reported = Number(

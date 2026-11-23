@@ -6,7 +6,7 @@ export const EDIT_MAX_EDITS = 50;
 const DIFF_CONTEXT_LINES = 3;
 /** Most UTF-8 bytes of diff returned; hunks past it are dropped and the diff marked truncated. */
 const DIFF_MAX_BYTES = 64 * 1024;
-const NO_NEWLINE_MARKER = '\\ No newline at end of file';
+const NO_NEWLINE_MARKER = String.raw`\ No newline at end of file`;
 
 /** One requested replacement. */
 export interface TextEdit {
@@ -105,7 +105,7 @@ function locate(text: string, edits: readonly TextEdit[]): Match[] {
 function lineStarts(text: string): number[] {
   const starts = [0];
   for (let at = text.indexOf('\n'); at !== -1; at = text.indexOf('\n', at + 1)) starts.push(at + 1);
-  if (starts[starts.length - 1] !== text.length) starts.push(text.length);
+  if (starts.at(-1) !== text.length) starts.push(text.length);
   return starts;
 }
 
@@ -238,18 +238,11 @@ function unifiedDiff(
  */
 export function applyEdits(path: string, text: string, edits: readonly TextEdit[]): EditResult {
   const matches = locate(text, edits);
-  // The result's size follows from the matches alone; new_text has no length bound, so an
-  // oversized result is refused before it is built.
-  const growth = edits.map(
-    (edit) => Buffer.byteLength(edit.new_text) - Buffer.byteLength(edit.old_text),
-  );
-  let size = Buffer.byteLength(text);
-  for (const match of matches) size += growth[match.index];
-  if (size > EDIT_MAX_FILE_BYTES) throw new EditTooLargeError(size, EDIT_MAX_FILE_BYTES);
+  assertResultSize(text, edits, matches);
   const replacements = edits.map(() => 0);
   const oldStarts = lineStarts(text);
   const pieces: string[] = [];
-  const spans: Array<{ fromLine: number; toLine: number; delta: number }> = [];
+  const spans: Span[] = [];
   let cursor = 0;
   let delta = 0;
   for (const match of matches) {
@@ -259,17 +252,48 @@ export function applyEdits(path: string, text: string, edits: readonly TextEdit[
     // The whole lines the match touches; matches sharing a line become one change.
     const fromLine = lineOf(oldStarts, match.start);
     const toLine = lineOf(oldStarts, match.end - 1) + 1;
-    const previous = spans.at(-1);
-    if (previous && fromLine < previous.toLine) previous.toLine = Math.max(previous.toLine, toLine);
-    else spans.push({ fromLine, toLine, delta });
+    let span = spans.at(-1);
+    if (span && fromLine < span.toLine) span.toLine = Math.max(span.toLine, toLine);
+    else {
+      span = { fromLine, toLine, delta };
+      spans.push(span);
+    }
     delta += match.replacement.length - (match.end - match.start);
-    spans[spans.length - 1].delta = delta;
+    span.delta = delta;
   }
   pieces.push(text.slice(cursor));
   const after = pieces.join('');
+  const changes = mapChanges(spans, oldStarts, after);
+  const { diff, truncated } = unifiedDiff(path, text, after, changes);
+  return { text: after, replacements, diff, diff_truncated: truncated };
+}
+
+/** Old lines [fromLine, toLine) the matches touch, and the character shift once they end. */
+interface Span {
+  fromLine: number;
+  toLine: number;
+  delta: number;
+}
+
+/**
+ * The result's size follows from the matches alone; new_text has no length bound, so an
+ * oversized result is refused before it is built.
+ */
+function assertResultSize(text: string, edits: readonly TextEdit[], matches: readonly Match[]) {
+  const growth = edits.map(
+    (edit) => Buffer.byteLength(edit.new_text) - Buffer.byteLength(edit.old_text),
+  );
+  let size = Buffer.byteLength(text);
+  for (const match of matches) size += growth[match.index];
+  if (size > EDIT_MAX_FILE_BYTES) throw new EditTooLargeError(size, EDIT_MAX_FILE_BYTES);
+}
+
+/**
+ * Map each span's old line range to the new text through the character shift before and
+ * after it; the lines outside the matches are unchanged.
+ */
+function mapChanges(spans: readonly Span[], oldStarts: readonly number[], after: string): Change[] {
   const newStarts = lineStarts(after);
-  // Map each change's old line range to the new text through the character shift before
-  // and after it; the lines outside the matches are unchanged.
   const changes: Change[] = [];
   let shiftBefore = 0;
   for (let i = 0; i < spans.length; i++) {
@@ -297,8 +321,7 @@ export function applyEdits(path: string, text: string, edits: readonly TextEdit[
     });
     shiftBefore = shiftAfter;
   }
-  const { diff, truncated } = unifiedDiff(path, text, after, changes);
-  return { text: after, replacements, diff, diff_truncated: truncated };
+  return changes;
 }
 
 /** Git LFS pointer files start with this line (Git LFS specification, v1). */

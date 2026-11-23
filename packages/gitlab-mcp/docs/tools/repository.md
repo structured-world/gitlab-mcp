@@ -16,7 +16,7 @@ File browsing, commits, branches, tags, and repository management.
 | Tool | Type | Purpose |
 |------|------|---------|
 | `browse_files` | Query | Directory tree and file content |
-| `manage_files` | Command | Create, update, upload files |
+| `manage_files` | Command | Create, update, edit in place, upload files |
 | `browse_commits` | Query | Commit history, details, diffs |
 | `browse_refs` | Query | Branches, tags, protection rules |
 | `manage_ref` | Command | Create/delete/protect branches and tags |
@@ -31,7 +31,7 @@ File browsing, commits, branches, tags, and repository management.
 | Action | Description |
 |--------|-------------|
 | `tree` | List files and folders in a directory |
-| `content` | Read file contents as UTF-8 text or base64 binary, with encoding and byte size |
+| `content` | Read file contents as UTF-8 text or base64 binary, with encoding, byte size and the file version (last_commit_id, blob_id, content_sha256) |
 | `download_attachment` | Download a file attachment from issues/MRs |
 <!-- @autogen:end -->
 
@@ -68,8 +68,13 @@ File browsing, commits, branches, tags, and repository management.
 
 :::
 
-The `content` action returns `file_path`, `ref`, `content`, `encoding`, `size`, and
-`content_type`. Valid UTF-8 is returned as text with `encoding: "utf8"`; other bytes
+The `content` action returns `file_path`, `ref`, `content`, `encoding`, `size`,
+`content_type`, and the file's version: `last_commit_id` (the last commit that changed
+the file at that ref), `blob_id` and `content_sha256`, read from the same response. Pass
+`last_commit_id` to `manage_files` as `expected_last_commit_id` (`edit`) or
+`last_commit_id` (`single`) so a write is refused if the file changed since it was read,
+even after the conversation was summarized. Valid UTF-8 is returned as text with
+`encoding: "utf8"`; other bytes
 are returned losslessly as base64 with `encoding: "base64"`. Decode `content` using
 the declared encoding, regardless of the MIME type. `size` is the original byte
 count, including any UTF-8 BOM. Text keeps the existing behavior of removing a
@@ -83,6 +88,7 @@ always returns base64.
 |--------|-------------|
 | `single` | Create or update a single file |
 | `batch` | Commit multiple files atomically |
+| `edit` | Edit an existing text file in place by replacing exact fragments; returns the unified diff and the new last_commit_id |
 | `upload` | Upload a file as markdown attachment |
 <!-- @autogen:end -->
 
@@ -118,7 +124,46 @@ always returns base64.
 }
 ```
 
+```json [Edit in place]
+{
+  "action": "edit",
+  "project_id": "my-org/deploy",
+  "file_path": "chart/values.yaml",
+  "branch": "raise-cpu",
+  "start_branch": "main",
+  "commit_message": "Raise API CPU limit",
+  "expected_last_commit_id": "2695effb5807a22ff3d138d593fd856244e155e7",
+  "edits": [{ "old_text": "    cpu: 500m", "new_text": "    cpu: 750m" }],
+  "dry_run": true
+}
+```
+
 :::
+
+#### Editing a file in place
+
+`edit` changes an existing text file without sending it whole: each item of `edits` names
+an exact `old_text` and its `new_text`, so unrelated lines cannot be dropped or rewritten.
+
+- Every edit is located in the original file, byte for byte: whitespace, indentation, line
+  endings (LF or CRLF), a byte order mark and the final newline stay as they are. An
+  `old_text` must occur exactly once unless `replace_all` is set. A missing or ambiguous
+  match, overlapping edits and an edit that changes nothing fail the whole call with the
+  edit's index, and nothing is committed. Up to 50 edits are applied per call.
+- The file is read once from `start_branch` (or `branch`). If `expected_last_commit_id` is
+  given and the file changed since that version, the edit is refused before anything is
+  written, with the current `last_commit_id` in the error. A commit id that is not the
+  file's own last commit is accepted when the file did not change after it.
+- The commit is made with the version just read, so GitLab refuses it if the file changed
+  between the read and the write; that refusal is reported as a conflict to read the file
+  again.
+- `dry_run` returns the unified diff, `blob_id` and `last_commit_id` and commits nothing.
+  A commit returns the diff, `replacements` (occurrences replaced per edit), `commit_id`
+  and the file's new `last_commit_id`, which the next edit of the same file can pass on.
+  A diff over 64 KiB is cut at a hunk boundary and marked `diff_truncated`.
+- Missing files, directories, Git LFS pointers, files that are not valid UTF-8 and files
+  over 1 MiB (before or after the edit) are refused with a reason; create, delete, move and
+  replace such files with `single` or `batch`.
 
 ## Commits
 

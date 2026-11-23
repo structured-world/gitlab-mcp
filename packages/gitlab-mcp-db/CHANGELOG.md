@@ -1,5 +1,20 @@
 # Changelog
 
+## [13.5.0](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-db-v13.4.0...gitlab-mcp-db-v13.5.0) (2026-11-23)
+
+
+### Features
+
+* **files:** edit a repository file in place with conflict refusal ([#778](https://github.com/structured-world/gitlab-mcp/issues/778)) ([8750351](https://github.com/structured-world/gitlab-mcp/commit/875035193a27893a4174df7cb207806a49f2666f))
+* **pipelines:** grep artifact files with RE2 patterns ([#774](https://github.com/structured-world/gitlab-mcp/issues/774)) ([7b88981](https://github.com/structured-world/gitlab-mcp/commit/7b88981602812de1d468df9c79dff443466a2a85))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @structured-world/gitlab-mcp bumped to 13.5.0
+
 ## [13.4.0](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-db-v13.3.1...gitlab-mcp-db-v13.4.0) (2026-11-21)
 
 

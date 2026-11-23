@@ -2,7 +2,7 @@
 
 [![npm version](https://img.shields.io/npm/v/@structured-world/gitlab-mcp)](https://www.npmjs.com/package/@structured-world/gitlab-mcp) [![npm downloads](https://img.shields.io/npm/dm/@structured-world/gitlab-mcp)](https://www.npmjs.com/package/@structured-world/gitlab-mcp) [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](./LICENSE) [![Release](https://github.com/structured-world/gitlab-mcp/workflows/Release/badge.svg)](https://github.com/structured-world/gitlab-mcp/actions) [![Coverage](https://codecov.io/gh/structured-world/gitlab-mcp/graph/badge.svg)](https://codecov.io/gh/structured-world/gitlab-mcp) [![Coverage Report](https://img.shields.io/badge/Coverage-Live%20Report-brightgreen?logo=github)](https://gitlab-mcp.sw.foundation/coverage/)
 
-Advanced GitLab MCP server: 66 tools across 27 registry groups, including 60 CQRS tools with 246 typed actions and 6 setup helpers. The tool catalog and parameters are filtered to each instance's GitLab version, tier, and token scopes, so the agent sees only what the connected instance actually supports.
+Advanced GitLab MCP server: 66 tools across 27 registry groups, including 60 CQRS tools with 246 typed actions and 6 setup helpers. The tool catalog and parameters are filtered to each instance's GitLab version, tier, and token scopes, detected through version checks and GraphQL schema introspection, so the agent sees only what the connected instance actually supports.
 
 [![Install in Claude Desktop](https://img.shields.io/badge/Claude_Desktop-Install_Extension-F97316?style=for-the-badge)](https://gitlab-mcp.sw.foundation/downloads/gitlab-mcp-13.5.0.mcpb)
 [![Set up in Codex](https://img.shields.io/badge/Codex-Setup_%26_Download-111827?style=for-the-badge)](https://gitlab-mcp.sw.foundation/guide/installation/codex#install-from-a-release)
@@ -89,6 +89,8 @@ for all setup guides.
 
 - **66 tools** across 27 registry groups: projects, merge requests, pipelines, work items, wiki, and more
 - **CQRS architecture** — `browse_*` for queries, `manage_*` for commands
+- **Token-lean reads** — an optional JMESPath expression filters and reshapes list and search results before they reach the agent; RE2 search over job logs, log sections, artifact files and MR diffs returns the matching lines instead of whole files
+- **In-place file edits** — exact-fragment replacements with a diff preview, refused when the file changed since it was read
 - **Connection resilience** — Bounded startup, auto-reconnect with exponential backoff, disconnected mode when GitLab is unreachable
 - **Multi-instance support** — Connect to GitLab.com, self-managed, and self-hosted instances with per-instance OAuth and rate limiting; one connection can link several accounts, such as a company GitLab and a personal GitLab.com account, and each chat switches between them
 - **Multiple transports** — stdio, SSE, StreamableHTTP

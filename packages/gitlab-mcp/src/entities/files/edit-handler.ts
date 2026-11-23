@@ -2,7 +2,14 @@ import * as z from 'zod';
 import { gitlab } from '../../utils/gitlab-api';
 import { normalizeProjectId } from '../../utils/projectIdentifier';
 import { parseGitLabApiError } from '../../utils/error-handler';
-import { applyEdits, EDIT_MAX_FILE_BYTES, EditError, isLfsPointer, type TextEdit } from './edit';
+import {
+  applyEdits,
+  EDIT_MAX_FILE_BYTES,
+  EditError,
+  EditTooLargeError,
+  isLfsPointer,
+  type TextEdit,
+} from './edit';
 import { FileTooLargeError, readRepositoryFile } from './read';
 
 /** The edit action's arguments, as the tool schema validated them. */
@@ -108,13 +115,10 @@ export async function editRepositoryFile(input: EditFileInput) {
     edited = applyEdits(input.file_path, file.text, input.edits);
   } catch (error) {
     if (error instanceof EditError) throw refuse(`${error.message}; nothing was committed`);
+    if (error instanceof EditTooLargeError)
+      throw refuse(`${error.message}; replace it with action single`);
     throw error;
   }
-  const size = Buffer.byteLength(edited.text);
-  if (size > EDIT_MAX_FILE_BYTES)
-    throw refuse(
-      `the edited file would be ${size} bytes, over the ${EDIT_MAX_FILE_BYTES}-byte limit; replace it with action single`,
-    );
 
   const summary = {
     file_path: input.file_path,

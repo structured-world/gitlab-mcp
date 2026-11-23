@@ -4,8 +4,9 @@ export const EDIT_MAX_FILE_BYTES = 1024 * 1024;
 export const EDIT_MAX_EDITS = 50;
 /** Unchanged lines shown around each change in the diff. */
 const DIFF_CONTEXT_LINES = 3;
-/** Most characters of diff returned; hunks past it are dropped and the diff marked truncated. */
-const DIFF_MAX_CHARS = 64 * 1024;
+/** Most UTF-8 bytes of diff returned; hunks past it are dropped and the diff marked truncated. */
+const DIFF_MAX_BYTES = 64 * 1024;
+const NO_NEWLINE_MARKER = '\\ No newline at end of file';
 
 /** One requested replacement. */
 export interface TextEdit {
@@ -25,6 +26,17 @@ export class EditError extends Error {
   }
 }
 
+/** Edits whose result would exceed the file size limit; nothing of the result was built. */
+export class EditTooLargeError extends Error {
+  constructor(
+    readonly size: number,
+    readonly limit: number,
+  ) {
+    super(`the edited file would be ${size} bytes, over the ${limit}-byte limit`);
+    this.name = 'EditTooLargeError';
+  }
+}
+
 /** One located occurrence of an edit's old text in the original file. */
 interface Match {
   index: number;
@@ -41,11 +53,13 @@ export interface EditResult {
   diff_truncated: boolean;
 }
 
-/** Every occurrence of `needle` in `text`, without overlapping occurrences. */
+/**
+ * Every start of `needle` in `text`, overlapping ones included: "aa" occurs twice in "aaa",
+ * so an edit naming it is ambiguous.
+ */
 function occurrences(text: string, needle: string): number[] {
   const found: number[] = [];
-  for (let at = text.indexOf(needle); at !== -1; at = text.indexOf(needle, at + needle.length))
-    found.push(at);
+  for (let at = text.indexOf(needle); at !== -1; at = text.indexOf(needle, at + 1)) found.push(at);
   return found;
 }
 
@@ -67,8 +81,14 @@ function locate(text: string, edits: readonly TextEdit[]): Match[] {
         index,
         `old_text occurs ${found.length} times; add surrounding text to make it unique, or set replace_all`,
       );
-    for (const start of found)
-      matches.push({ index, start, end: start + edit.old_text.length, replacement: edit.new_text });
+    // replace_all takes the occurrences left to right, as String.prototype.replaceAll does,
+    // skipping those that overlap one already taken.
+    let taken = 0;
+    for (const start of found) {
+      if (start < taken) continue;
+      taken = start + edit.old_text.length;
+      matches.push({ index, start, end: taken, replacement: edit.new_text });
+    }
   });
   matches.sort((a, b) => a.start - b.start);
   for (let i = 1; i < matches.length; i++) {
@@ -114,21 +134,40 @@ interface Change {
   newTo: number;
 }
 
-/** The lines `from` to `to` (exclusive) of a text, each prefixed, with the EOF marker. */
-function diffLines(
+/** Diff lines being written and their UTF-8 size, each line's newline included. */
+interface DiffOutput {
+  lines: string[];
+  bytes: number;
+}
+
+/** Append one line; false, without appending, once the diff would exceed its byte limit. */
+function appendLine(out: DiffOutput, line: string): boolean {
+  const bytes = out.bytes + Buffer.byteLength(line) + 1;
+  if (bytes > DIFF_MAX_BYTES) return false;
+  out.lines.push(line);
+  out.bytes = bytes;
+  return true;
+}
+
+/**
+ * Append lines `from` to `to` (exclusive) of a text, each prefixed, with the EOF marker.
+ * Lines go in one at a time, so a change spanning any number of lines stops at the limit.
+ */
+function appendLines(
+  out: DiffOutput,
   text: string,
   starts: readonly number[],
   from: number,
   to: number,
   prefix: string,
-): string[] {
-  const lines: string[] = [];
+): boolean {
   for (let line = from; line < to; line++) {
     const raw = text.slice(starts[line], starts[line + 1]);
-    if (raw.endsWith('\n')) lines.push(prefix + raw.slice(0, -1));
-    else lines.push(prefix + raw, '\\ No newline at end of file');
+    if (raw.endsWith('\n')) {
+      if (!appendLine(out, prefix + raw.slice(0, -1))) return false;
+    } else if (!appendLine(out, prefix + raw) || !appendLine(out, NO_NEWLINE_MARKER)) return false;
   }
-  return lines;
+  return true;
 }
 
 /** Unified diff hunk header; an empty range starts at the line before it (`-0,0` at the top). */
@@ -150,8 +189,10 @@ function unifiedDiff(
   const oldStarts = lineStarts(before);
   const newStarts = lineStarts(after);
   const oldCount = oldStarts.length - 1;
-  const parts = [`--- a/${path}`, `+++ b/${path}`];
-  let size = parts.join('\n').length;
+  // The diff is its lines joined by newlines plus a final one: each line costs its bytes + 1.
+  const out: DiffOutput = { lines: [], bytes: 0 };
+  appendLine(out, `--- a/${path}`);
+  appendLine(out, `+++ b/${path}`);
   let truncated = false;
   for (let first = 0; first < changes.length;) {
     let last = first;
@@ -164,36 +205,47 @@ function unifiedDiff(
     const tail = Math.min(DIFF_CONTEXT_LINES, oldCount - changes[last].oldTo);
     const oldFrom = changes[first].oldFrom - head;
     const newFrom = changes[first].newFrom - head;
-    const lines = diffLines(before, oldStarts, oldFrom, changes[first].oldFrom, ' ');
-    for (let i = first; i <= last; i++) {
-      const change = changes[i];
-      lines.push(...diffLines(before, oldStarts, change.oldFrom, change.oldTo, '-'));
-      lines.push(...diffLines(after, newStarts, change.newFrom, change.newTo, '+'));
-      const next = i < last ? changes[i + 1].oldFrom : change.oldTo + tail;
-      lines.push(...diffLines(before, oldStarts, change.oldTo, next, ' '));
-    }
     const oldLength = changes[last].oldTo + tail - oldFrom;
     const newLength = changes[last].newTo + tail - newFrom;
-    const hunk = [`@@ -${range(oldFrom, oldLength)} +${range(newFrom, newLength)} @@`, ...lines];
-    const hunkSize = hunk.join('\n').length + 1;
-    if (size + hunkSize > DIFF_MAX_CHARS) {
+    // A hunk goes in whole or not at all: one that crosses the limit is rolled back.
+    const mark = { length: out.lines.length, bytes: out.bytes };
+    let fits =
+      appendLine(out, `@@ -${range(oldFrom, oldLength)} +${range(newFrom, newLength)} @@`) &&
+      appendLines(out, before, oldStarts, oldFrom, changes[first].oldFrom, ' ');
+    for (let i = first; fits && i <= last; i++) {
+      const change = changes[i];
+      const next = i < last ? changes[i + 1].oldFrom : change.oldTo + tail;
+      fits =
+        appendLines(out, before, oldStarts, change.oldFrom, change.oldTo, '-') &&
+        appendLines(out, after, newStarts, change.newFrom, change.newTo, '+') &&
+        appendLines(out, before, oldStarts, change.oldTo, next, ' ');
+    }
+    if (!fits) {
+      out.lines.length = mark.length;
+      out.bytes = mark.bytes;
       truncated = true;
       break;
     }
-    parts.push(...hunk);
-    size += hunkSize;
     first = last + 1;
   }
-  return { diff: `${parts.join('\n')}\n`, truncated };
+  return { diff: `${out.lines.join('\n')}\n`, truncated };
 }
 
 /**
  * Apply edits to a file's text. Every edit is located in the original text; the text
  * between matches is copied as it is, so line endings, indentation and the final newline
- * stay byte for byte.
+ * stay byte for byte. A result over {@link EDIT_MAX_FILE_BYTES} throws EditTooLargeError.
  */
 export function applyEdits(path: string, text: string, edits: readonly TextEdit[]): EditResult {
   const matches = locate(text, edits);
+  // The result's size follows from the matches alone; new_text has no length bound, so an
+  // oversized result is refused before it is built.
+  const growth = edits.map(
+    (edit) => Buffer.byteLength(edit.new_text) - Buffer.byteLength(edit.old_text),
+  );
+  let size = Buffer.byteLength(text);
+  for (const match of matches) size += growth[match.index];
+  if (size > EDIT_MAX_FILE_BYTES) throw new EditTooLargeError(size, EDIT_MAX_FILE_BYTES);
   const replacements = edits.map(() => 0);
   const oldStarts = lineStarts(text);
   const pieces: string[] = [];
@@ -228,7 +280,8 @@ export function applyEdits(path: string, text: string, edits: readonly TextEdit[
     // own: the change then takes that line too, and any later change starting on it.
     for (;;) {
       const newEnd = oldStarts[toLine] + shiftAfter;
-      if (newEnd >= after.length || after[newEnd - 1] === '\n') break;
+      // The change ends on a line start: the text's start or end, or just past a newline.
+      if (newEnd === 0 || newEnd >= after.length || after[newEnd - 1] === '\n') break;
       toLine++;
       while (i + 1 < spans.length && spans[i + 1].fromLine < toLine) {
         i++;

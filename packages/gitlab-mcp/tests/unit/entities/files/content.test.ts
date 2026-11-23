@@ -97,6 +97,20 @@ describe('browse_files content encoding', () => {
     });
   });
 
+  // GitLab rejects a blank ref; an empty one reads the default branch, as an omitted one does.
+  it('reads the default branch for an empty ref', async () => {
+    mockEnhancedFetch.mockResolvedValueOnce(new Response('a'));
+    await filesToolRegistry.get('browse_files')!.handler({
+      action: 'content',
+      project_id: 'test/project',
+      file_path: 'example.txt',
+      ref: '',
+    });
+    expect(mockEnhancedFetch.mock.calls[0][0]).toBe(
+      'https://gitlab.example.com/api/v4/projects/test%2Fproject/repository/files/example.txt/raw',
+    );
+  });
+
   // A failed body read is an I/O error, never a successful binary response.
   it('propagates response body failures', async () => {
     const failure = new TypeError('Response body failed');

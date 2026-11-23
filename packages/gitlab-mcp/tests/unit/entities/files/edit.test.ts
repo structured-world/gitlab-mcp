@@ -1,4 +1,10 @@
-import { applyEdits, EditError, isLfsPointer } from '../../../../src/entities/files/edit';
+import {
+  applyEdits,
+  EDIT_MAX_FILE_BYTES,
+  EditError,
+  EditTooLargeError,
+  isLfsPointer,
+} from '../../../../src/entities/files/edit';
 
 /**
  * Apply a unified diff to a text, independently of the code under test: each hunk's context
@@ -132,6 +138,57 @@ describe('applyEdits', () => {
     expect(refused([{ old_text: '', new_text: 'x' }])).toEqual([0, 'edit 0: old_text is empty']);
   });
 
+  it('refuses a fragment whose occurrences overlap, and replaces them left to right with replace_all', () => {
+    // "aa" starts at offsets 0 and 1 of "aaa": the edit is ambiguous without replace_all.
+    expect(() => applyEdits('f.txt', 'aaa', [{ old_text: 'aa', new_text: 'x' }])).toThrow(
+      'edit 0: old_text occurs 2 times',
+    );
+    const all = applyEdits('f.txt', 'aaa', [{ old_text: 'aa', new_text: 'x', replace_all: true }]);
+    expect(all.text).toBe('aaa'.replaceAll('aa', 'x'));
+    expect(all.replacements).toEqual([1]);
+  });
+
+  it('refuses a result over the size limit before building it', () => {
+    // 1000 matches each growing to 2000 bytes would be a 2 MB file.
+    expect(() =>
+      applyEdits('f.txt', 'a'.repeat(1000), [
+        { old_text: 'a', new_text: 'x'.repeat(2000), replace_all: true },
+      ]),
+    ).toThrow(new EditTooLargeError(2_000_000, EDIT_MAX_FILE_BYTES));
+  });
+
+  it('counts the result size in UTF-8 bytes', () => {
+    // 600000 two-byte characters are 1.2 MB though the string is 600000 units long.
+    expect(() =>
+      applyEdits('f.txt', 'a'.repeat(600_000), [
+        { old_text: 'a', new_text: 'é', replace_all: true },
+      ]),
+    ).toThrow(EditTooLargeError);
+  });
+
+  it('builds a truncated diff for a change spanning a huge number of lines', () => {
+    // Every one of 140000 lines is removed: far more than a call can take as arguments.
+    const text = 'a\n'.repeat(140_000);
+    const result = applyEdits('f.txt', text, [{ old_text: text, new_text: 'x\n' }]);
+    expect(result.text).toBe('x\n');
+    expect(result.diff_truncated).toBe(true);
+    expect(result.diff).toBe('--- a/f.txt\n+++ b/f.txt\n');
+  });
+
+  it('holds the diff to its limit in UTF-8 bytes, final newline included', () => {
+    // Changes 8 lines apart get a hunk each, about 100 bytes but 60 characters long.
+    const text = `${'é'.repeat(20)}\n${'x\n'.repeat(7)}`.repeat(1000);
+    const result = applyEdits('f.txt', text, [{ old_text: 'é', new_text: 'ê', replace_all: true }]);
+    expect(result.diff_truncated).toBe(true);
+    expect(Buffer.byteLength(result.diff)).toBeLessThanOrEqual(64 * 1024);
+    expect(Buffer.byteLength(result.diff)).toBeGreaterThan(60 * 1024);
+  });
+
+  it('keeps an unchanged line out of a change that deletes the first line', () => {
+    const result = applyEdits('f.txt', 'a\nb\n', [{ old_text: 'a\n', new_text: '' }]);
+    expect(result.diff).toBe('--- a/f.txt\n+++ b/f.txt\n@@ -1,2 +1,1 @@\n-a\n b\n');
+  });
+
   it('describes a replacement that joins or splits lines correctly', () => {
     for (const [text, oldText, newText] of [
       ['a\nb\nc\n', 'a\n', 'x'],
@@ -177,7 +234,7 @@ describe('applyEdits', () => {
     ]);
     expect(result.replacements).toEqual([3000]);
     expect(result.diff_truncated).toBe(true);
-    expect(result.diff.length).toBeLessThanOrEqual(64 * 1024 + 1);
+    expect(Buffer.byteLength(result.diff)).toBeLessThanOrEqual(64 * 1024);
     expect(result.text).not.toContain('x'.repeat(40));
   });
 

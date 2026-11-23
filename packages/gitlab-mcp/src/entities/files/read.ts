@@ -33,7 +33,8 @@ function header(response: Response, name: string): string | null {
 }
 
 /**
- * Read a file's raw bytes at `ref` (the default branch when omitted) with the version GitLab
+ * Read a file's raw bytes at `ref` (the default branch when omitted or empty, as GitLab
+ * rejects a blank ref) with the version GitLab
  * sends in its `X-Gitlab-*` headers. With `maxBytes`, a larger file is refused from its
  * reported size before its body is read.
  */
@@ -43,7 +44,7 @@ export async function readRepositoryFile(
   ref: string | undefined,
   maxBytes?: number,
 ): Promise<RepositoryFile> {
-  const query = ref === undefined ? '' : `?${new URLSearchParams({ ref }).toString()}`;
+  const query = ref ? `?${new URLSearchParams({ ref }).toString()}` : '';
   const url = `${getGitLabBaseUrl()}/api/v4/projects/${normalizeProjectId(projectId)}/repository/files/${encodeURIComponent(filePath)}/raw${query}`;
   const response = await enhancedFetch(url);
   if (!response.ok) {

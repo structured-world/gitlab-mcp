@@ -4,6 +4,16 @@
 
 * exempt stdio session from idle timeout cleanup ([#363](https://github.com/structured-world/gitlab-mcp/issues/363)) ([ca563bd](https://github.com/structured-world/gitlab-mcp/commit/ca563bda9aa969d5d7680d3d89c2c72f32344838)), closes [#361](https://github.com/structured-world/gitlab-mcp/issues/361)
 
+## [13.5.0](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-v13.4.0...gitlab-mcp-v13.5.0) (2026-11-23)
+
+
+### Features
+
+* **files:** edit a repository file in place with conflict refusal ([#778](https://github.com/structured-world/gitlab-mcp/issues/778)) ([8750351](https://github.com/structured-world/gitlab-mcp/commit/875035193a27893a4174df7cb207806a49f2666f))
+* **mrs:** filter diff lines with RE2 patterns ([#776](https://github.com/structured-world/gitlab-mcp/issues/776)) ([245f54a](https://github.com/structured-world/gitlab-mcp/commit/245f54ac00d7c2be18459af7dacbe012cf1ae579))
+* **pipelines:** grep artifact files with RE2 patterns ([#774](https://github.com/structured-world/gitlab-mcp/issues/774)) ([7b88981](https://github.com/structured-world/gitlab-mcp/commit/7b88981602812de1d468df9c79dff443466a2a85))
+* **registry:** project read results with JMESPath ([#777](https://github.com/structured-world/gitlab-mcp/issues/777)) ([e447158](https://github.com/structured-world/gitlab-mcp/commit/e447158a685f7f84bf90031c056633ba0c2a4f64))
+
 ## [13.4.0](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-v13.3.1...gitlab-mcp-v13.4.0) (2026-11-21)
 
 

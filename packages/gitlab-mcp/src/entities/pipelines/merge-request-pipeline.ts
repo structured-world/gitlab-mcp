@@ -22,7 +22,66 @@ const CreatedPipelineSchema = z.looseObject({
   web_url: z.string(),
 });
 
+type Attempt = { pipeline: unknown } | { refused: GitLabApiError };
+
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** The 405 with the reason GitLab does not give: the bare status reads like a wrong verb. */
+function refusal(error: GitLabApiError, mergeRequestIid: string, reason: string): GitLabApiError {
+  return new GitLabApiError(
+    error.status,
+    error.details,
+    `${error.message} - GitLab cannot create a pipeline for merge request !${mergeRequestIid}: ${reason}`,
+    error.retryAfterSeconds,
+  );
+}
+
+/** One creation request. A 405 is returned, not thrown: it is the only answer worth a second try. */
+async function tryCreate(mergeRequest: string, mergeRequestIid: string): Promise<Attempt> {
+  let answer: unknown;
+  try {
+    answer = await gitlab.post(`${mergeRequest}/pipelines`);
+  } catch (error) {
+    if (error instanceof GitLabApiError && error.status === 405) return { refused: error };
+    throw error;
+  }
+  const created = CreatedPipelineSchema.safeParse(answer);
+  if (!created.success) {
+    throw new Error(
+      `GitLab accepted the request for merge request !${mergeRequestIid} but did not return a pipeline; one may have been created, check browse_pipelines before another attempt`,
+    );
+  }
+  return { pipeline: created.data };
+}
+
+/** Resolve once the merge request has a diff; throw when it does not get one in time. */
+async function waitForDiff(
+  mergeRequest: string,
+  mergeRequestIid: string,
+  refused: GitLabApiError,
+): Promise<void> {
+  const deadline = Date.now() + DIFF_WAIT_MS;
+  for (;;) {
+    const state = MergeRequestDiffStateSchema.safeParse(await gitlab.get(mergeRequest));
+    if (!state.success) {
+      throw refusal(
+        refused,
+        mergeRequestIid,
+        'GitLab returned an unexpected merge request while waiting for its diff',
+      );
+    }
+    if (state.data.changes_count !== null) return;
+    if (Date.now() + DIFF_POLL_MS > deadline) {
+      throw refusal(
+        refused,
+        mergeRequestIid,
+        `its diff is still being prepared after ${DIFF_WAIT_MS / 1000} s; try again later`,
+      );
+    }
+    // Each poll depends on the time passed since the previous one, so they cannot run together.
+    await sleep(DIFF_POLL_MS);
+  }
+}
 
 /**
  * Run a pipeline for a merge request (source `merge_request_event`).
@@ -41,54 +100,13 @@ export async function createMergeRequestPipeline(
   mergeRequestIid: string,
 ): Promise<unknown> {
   const mergeRequest = `projects/${normalizeProjectId(projectId)}/merge_requests/${encodeApiSegment(mergeRequestIid)}`;
-  const create = async (): Promise<unknown> => {
-    const created = CreatedPipelineSchema.safeParse(await gitlab.post(`${mergeRequest}/pipelines`));
-    if (!created.success) {
-      throw new Error(
-        `GitLab accepted the request for merge request !${mergeRequestIid} but did not return a pipeline; one may have been created, check browse_pipelines before another attempt`,
-      );
-    }
-    return created.data;
-  };
-  const isRefusal = (error: unknown): error is GitLabApiError =>
-    error instanceof GitLabApiError && error.status === 405;
-  const refusal = (error: GitLabApiError, reason: string): GitLabApiError =>
-    new GitLabApiError(
-      error.status,
-      error.details,
-      `${error.message} - GitLab cannot create a pipeline for merge request !${mergeRequestIid}: ${reason}`,
-      error.retryAfterSeconds,
-    );
 
-  try {
-    return await create();
-  } catch (error) {
-    if (!isRefusal(error)) throw error;
+  const first = await tryCreate(mergeRequest, mergeRequestIid);
+  if ('pipeline' in first) return first.pipeline;
 
-    const deadline = Date.now() + DIFF_WAIT_MS;
-    for (;;) {
-      const state = MergeRequestDiffStateSchema.safeParse(await gitlab.get(mergeRequest));
-      if (!state.success) {
-        throw refusal(
-          error,
-          'GitLab returned an unexpected merge request while waiting for its diff',
-        );
-      }
-      if (state.data.changes_count !== null) break;
-      if (Date.now() + DIFF_POLL_MS > deadline) {
-        throw refusal(
-          error,
-          `its diff is still being prepared after ${DIFF_WAIT_MS / 1000} s; try again later`,
-        );
-      }
-      await sleep(DIFF_POLL_MS);
-    }
+  await waitForDiff(mergeRequest, mergeRequestIid, first.refused);
 
-    try {
-      return await create();
-    } catch (secondError) {
-      if (!isRefusal(secondError)) throw secondError;
-      throw refusal(secondError, 'it has no commits to build');
-    }
-  }
+  const second = await tryCreate(mergeRequest, mergeRequestIid);
+  if ('pipeline' in second) return second.pipeline;
+  throw refusal(second.refused, mergeRequestIid, 'it has no commits to build');
 }

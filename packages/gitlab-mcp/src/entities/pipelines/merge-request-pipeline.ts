@@ -37,10 +37,10 @@ function refusal(error: GitLabApiError, mergeRequestIid: string, reason: string)
 }
 
 /** One creation request. A 405 is returned, not thrown: it is the only answer worth a second try. */
-async function tryCreate(mergeRequest: string, mergeRequestIid: string): Promise<Attempt> {
+async function tryCreate(pipelinesPath: string, mergeRequestIid: string): Promise<Attempt> {
   let answer: unknown;
   try {
-    answer = await gitlab.post(`${mergeRequest}/pipelines`);
+    answer = await gitlab.post(pipelinesPath);
   } catch (error) {
     if (error instanceof GitLabApiError && error.status === 405) return { refused: error };
     throw error;
@@ -101,12 +101,14 @@ export async function createMergeRequestPipeline(
 ): Promise<unknown> {
   const mergeRequest = `projects/${normalizeProjectId(projectId)}/merge_requests/${encodeApiSegment(mergeRequestIid)}`;
 
-  const first = await tryCreate(mergeRequest, mergeRequestIid);
+  const pipelines = `${mergeRequest}/pipelines`;
+
+  const first = await tryCreate(pipelines, mergeRequestIid);
   if ('pipeline' in first) return first.pipeline;
 
   await waitForDiff(mergeRequest, mergeRequestIid, first.refused);
 
-  const second = await tryCreate(mergeRequest, mergeRequestIid);
+  const second = await tryCreate(pipelines, mergeRequestIid);
   if ('pipeline' in second) return second.pipeline;
   throw refusal(second.refused, mergeRequestIid, 'it has no commits to build');
 }

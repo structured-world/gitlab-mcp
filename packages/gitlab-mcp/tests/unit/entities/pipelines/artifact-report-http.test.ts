@@ -26,6 +26,7 @@ const second = Buffer.from('<testsuite name="second">\n<failure>later</failure>\
 const sast = Buffer.from(
   `{"version":"15.0.0","vulnerabilities":[${'"finding",'.repeat(40)}"last"]}\n`,
 );
+const archiveEntry = Buffer.from('{"entry":"from the archive"}\n');
 // 64 MiB of text in about 64 KiB of gzip.
 const bomb = gzipSync(Buffer.alloc(64 * 1024 * 1024, 65));
 
@@ -78,6 +79,16 @@ const source = createServer((request, response) => {
   record('source', request);
   const url = new URL(request.url!, 'http://fixture');
   const job = url.pathname.match(/\/jobs\/(\d+)/)![1];
+  if (url.pathname.includes('/artifacts/')) {
+    // An archive entry, served as the byte range asked for.
+    const [, first, last] = request.headers.range!.match(/^bytes=(\d+)-(\d+)$/)!;
+    const end = Math.min(Number(last), archiveEntry.length - 1);
+    response.writeHead(206, {
+      'Content-Range': `bytes ${first}-${end}/${archiveEntry.length}`,
+    });
+    response.end(archiveEntry.subarray(Number(first), end + 1));
+    return;
+  }
   if (!url.pathname.endsWith('/artifacts')) {
     response.setHeader('Content-Type', 'application/json');
     response.end(JSON.stringify({ web_url: `${sourceUrl}/test/project/-/jobs/${job}` }));
@@ -430,12 +441,19 @@ describe('artifact_grep on a report', () => {
 
 // The archive path is unchanged: an entry is still requested by path, as a byte range.
 it('keeps reading an archive entry by path', async () => {
-  await invoke({
-    action: 'artifact_file',
-    project_id: 'test/project',
-    job_id: '43',
+  await expect(
+    invoke({
+      action: 'artifact_file',
+      project_id: 'test/project',
+      job_id: '43',
+      artifact_path: 'reports/result.json',
+    }),
+  ).resolves.toMatchObject({
     artifact_path: 'reports/result.json',
-  }).catch(() => undefined);
+    text: archiveEntry.toString(),
+    total_bytes: archiveEntry.length,
+    complete: true,
+  });
   expect(downloads()).toMatchObject([
     {
       path: '/api/v4/projects/test%2Fproject/jobs/43/artifacts/reports/result.json',

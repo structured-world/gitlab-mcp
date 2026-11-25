@@ -157,6 +157,15 @@ describe('instances older than the report type parameter', () => {
   });
 });
 
+// A successful answer without a body (204) is not an empty report: there is nothing to read.
+it('fails when the report download has no body', async () => {
+  mockFetch.mockResolvedValueOnce(new Response(null, { status: 204 }));
+
+  await expect(
+    tool.handler({ action: 'artifact_file', ...base, report_type: 'junit' }),
+  ).rejects.toThrow('Artifact response has no readable body');
+});
+
 // Clients reading the flat JSON Schema see the selector on both actions, with neither required.
 it('publishes report_type next to an optional artifact_path', () => {
   const schema = tool.inputSchema as {

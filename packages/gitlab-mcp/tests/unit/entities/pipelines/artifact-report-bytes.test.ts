@@ -116,6 +116,25 @@ describe('reportBytes', () => {
     await expect(text(await reportBytes(body))).rejects.toMatchObject({ code: 'UND_ERR_SOCKET' });
   });
 
+  // A failure that carries no error code, or is not an object at all, is not taken for a
+  // compression fault either.
+  it.each([new Error('plain failure'), 'aborted'])(
+    'keeps the failure %p raised while inflating',
+    async (failure) => {
+      const stored = gzipSync(Buffer.alloc(256 * 1024, 65));
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(stored.subarray(0, 64));
+        },
+        pull(controller) {
+          controller.error(failure);
+        },
+      });
+      const outcome = await text(await reportBytes(body)).catch((error: unknown) => error);
+      expect(outcome).toBe(failure);
+    },
+  );
+
   // Truncated gzip is a compression fault and is named as one.
   it('reports truncated gzip as invalid compression', async () => {
     const stored = gzipSync(Buffer.alloc(256 * 1024, 65));

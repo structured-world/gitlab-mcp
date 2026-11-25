@@ -605,8 +605,10 @@ results pipelines, GitLab creates one.
   call starts a new pipeline, so a call whose outcome is unknown (a timeout) should be
   followed by `browse_pipelines` before another attempt.
 - A merge request created a moment ago has no diff yet. The call keeps asking GitLab for
-  it for up to 30 seconds, the duration of the requests themselves not counted; a merge
-  request that still has no commits to build is reported as such.
+  it within a 30-second window that starts at the refusal and includes the time the
+  requests take; only a request already sent when the window ends may finish after it, and
+  its answer is still used. A merge request that still has no commits to build is reported
+  as such.
 - If the CI configuration has no job for merge request pipelines, GitLab's error is
   returned. A branch pipeline is never started instead.
 

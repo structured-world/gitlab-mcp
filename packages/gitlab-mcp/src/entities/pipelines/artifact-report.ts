@@ -114,11 +114,19 @@ export async function reportBytes(
     { highWaterMark: 0 },
   );
   // RFC 1952 section 2.3.1: a gzip member starts with the bytes 1f 8b.
-  return first[0] === 0x1f && first[1] === 0x8b ? inflated(stored) : stored;
+  return first[0] === 0x1f && first[1] === 0x8b
+    ? inflated(stored, (reason) => reader.cancel(reason))
+    : stored;
 }
 
-/** Inflate gzip members one after another, as the runner writes one per collected file. */
-function inflated(stored: ReadableStream<Uint8Array>): ReadableStream<Uint8Array> {
+/**
+ * Inflate gzip members one after another, as the runner writes one per collected file.
+ * `stop` ends the download when the reader abandons the report.
+ */
+function inflated(
+  stored: ReadableStream<Uint8Array>,
+  stop: (reason: unknown) => Promise<void>,
+): ReadableStream<Uint8Array> {
   const gunzip = createGunzip();
   // The failure reaches the reader through the iterator below.
   pipeline(Readable.fromWeb(stored as never), gunzip, () => undefined);
@@ -141,8 +149,10 @@ function inflated(stored: ReadableStream<Uint8Array>): ReadableStream<Uint8Array
           );
         }
       },
-      cancel() {
+      cancel(reason) {
         gunzip.destroy();
+        // Stopped here, not left to the pipeline's teardown, so it is done when cancel returns.
+        return stop(reason);
       },
     },
     { highWaterMark: 0 },

@@ -3,7 +3,13 @@ import { ARTIFACT_MAX_BYTES, ARTIFACT_MAX_OFFSET } from './artifact-path';
 export class ArtifactReadError extends Error {
   constructor(
     readonly reason:
-      'not_text' | 'invalid_offset' | 'window_limit' | 'unsupported_encoding' | 'invalid_range',
+      | 'not_text'
+      | 'invalid_offset'
+      | 'window_limit'
+      | 'unsupported_encoding'
+      | 'invalid_range'
+      | 'invalid_compression'
+      | 'report_type_unsupported',
     message: string,
   ) {
     super(message);

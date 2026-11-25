@@ -8,8 +8,10 @@ import {
   artifactFailure,
   artifactFileUrl,
   artifactResponse,
+  artifactTarget,
   assertDownloadStatus,
   discardUnreadBody,
+  reportResponse,
   type ArtifactTarget,
 } from './artifact';
 import type { BrowsePipelinesInput } from './schema-readonly';
@@ -27,13 +29,14 @@ export type ArtifactGrepResult = ArtifactTarget & LineGrepResult;
  * is refused as artifact_file refuses it.
  */
 export async function grepArtifactFile(input: ArtifactGrepInput): Promise<ArtifactGrepResult> {
-  const target: ArtifactTarget = {
-    project_id: input.project_id,
-    job_id: input.job_id,
-    artifact_path: input.artifact_path,
+  const target = artifactTarget(input);
+  // Assigned inside the open callback, which runs only once the patterns compiled. A report
+  // adds its decoded form, which then holds the download's reader.
+  const download: { response?: Response; decoded?: Response } = {};
+  const release = async (): Promise<void> => {
+    if (download.decoded) await discardUnreadBody(download.decoded);
+    if (download.response) await discardUnreadBody(download.response);
   };
-  // Assigned inside the open callback, which runs only once the patterns compiled.
-  const download: { response?: Response } = {};
   try {
     const result = await grepStream(
       {
@@ -50,30 +53,45 @@ export async function grepArtifactFile(input: ArtifactGrepInput): Promise<Artifa
         maxBytes: ARTIFACT_GREP_MAX_BYTES,
         requireText: true,
       },
-      async () => {
-        // One byte past the limit shows whether the file continues beyond it.
-        const { response, external } = await artifactResponse(
-          artifactFileUrl(target),
-          0,
-          ARTIFACT_GREP_MAX_BYTES,
-        );
-        download.response = response;
-        assertDownloadStatus(response, external, target, 'artifact_grep');
-        assertTextResponse(response);
-        if (response.status === 416) return emptyFile(response);
-        if (response.status !== 206) return response.body;
-        const length = assertLeadingRange(response.headers.get('content-range'));
-        return response.body && exactLength(response.body, length);
-      },
+      () => ('report_type' in target ? openReport(target, download) : openEntry(target, download)),
     );
     return { ...target, ...result };
   } catch (error) {
-    if (download.response && error instanceof ArtifactReadError)
-      await discardUnreadBody(download.response);
+    if (error instanceof ArtifactReadError) await release();
     throw await artifactFailure(error, target, 'artifact_grep');
   } finally {
-    if (download.response) await discardUnreadBody(download.response);
+    await release();
   }
+}
+
+/** A report is searched as its own bytes, read from the first one; the search stops the transfer at its limit. */
+async function openReport(
+  target: ArtifactTarget,
+  download: { response?: Response; decoded?: Response },
+): Promise<ReadableStream<Uint8Array> | null> {
+  const { response, external } = await artifactResponse(artifactFileUrl(target));
+  download.response = response;
+  assertDownloadStatus(response, external, target, 'artifact_grep');
+  download.decoded = await reportResponse(response);
+  return download.decoded.body;
+}
+
+async function openEntry(
+  target: ArtifactTarget,
+  download: { response?: Response },
+): Promise<ReadableStream<Uint8Array> | null> {
+  // One byte past the limit shows whether the file continues beyond it.
+  const { response, external } = await artifactResponse(artifactFileUrl(target), [
+    0,
+    ARTIFACT_GREP_MAX_BYTES,
+  ]);
+  download.response = response;
+  assertDownloadStatus(response, external, target, 'artifact_grep');
+  assertTextResponse(response);
+  if (response.status === 416) return emptyFile(response);
+  if (response.status !== 206) return response.body;
+  const length = assertLeadingRange(response.headers.get('content-range'));
+  return response.body && exactLength(response.body, length);
 }
 
 /**

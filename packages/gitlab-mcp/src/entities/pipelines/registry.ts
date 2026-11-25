@@ -12,6 +12,7 @@ import { assertActionAllowed, assertDefined } from '../utils';
 import { createMergeRequestPipeline } from './merge-request-pipeline';
 import { readTracePage, TRACE_PAGE_BYTES } from './trace';
 import { readArtifactFile } from './artifact';
+import { REPORT_TYPE_MIN_VERSION } from './artifact-report';
 import { grepArtifactFile } from './artifact-grep';
 import { grepStream } from './line-grep-worker';
 import { openTrace } from './trace-open';
@@ -35,9 +36,12 @@ export const pipelinesToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
       name: 'browse_pipelines',
       projectableActions: ['list', 'jobs', 'triggers'],
       description:
-        "Monitor CI/CD pipelines and read job logs or individual artifact files. Actions: list (filter by status/ref/source/username), get (pipeline details), jobs (list pipeline jobs), triggers (bridge/trigger jobs), job (single job details), log_sections (sections of a job log such as step_script, with line ranges and durations), logs (job console output; section reads within one section), log_grep (RE2 search over a whole job log with context, or within one section; with pipeline_id instead of job_id, searches the failed jobs of a pipeline and its child pipelines in one call, grouped per job; preset 'failures' finds errors without a pattern), artifact_file (bounded UTF-8 text with byte continuation), artifact_grep (RE2 search over one text artifact file such as a test report, with context, line numbers and byte offsets for artifact_file). Related: manage_pipeline to trigger/retry/cancel pipelines and play/retry/cancel individual jobs.",
+        "Monitor CI/CD pipelines and read job logs or individual artifact files. Actions: list (filter by status/ref/source/username), get (pipeline details), jobs (list pipeline jobs), triggers (bridge/trigger jobs), job (single job details), log_sections (sections of a job log such as step_script, with line ranges and durations), logs (job console output; section reads within one section), log_grep (RE2 search over a whole job log with context, or within one section; with pipeline_id instead of job_id, searches the failed jobs of a pipeline and its child pipelines in one call, grouped per job; preset 'failures' finds errors without a pattern), artifact_file (bounded UTF-8 text with byte continuation; an archive entry by artifact_path, or a report uploaded through artifacts:reports, such as JUnit XML, by report_type), artifact_grep (RE2 search over one such text artifact file, with context, line numbers and byte offsets for artifact_file). Related: manage_pipeline to trigger/retry/cancel pipelines and play/retry/cancel individual jobs.",
       inputSchema: z.toJSONSchema(BrowsePipelinesSchema),
-      requirements: { default: { tier: 'free' } },
+      requirements: {
+        default: { tier: 'free' },
+        parameters: { report_type: { tier: 'free', minVersion: REPORT_TYPE_MIN_VERSION } },
+      },
       gate: { envVar: 'USE_PIPELINE', defaultValue: true },
       handler: async (args: unknown): Promise<unknown> => {
         const input = BrowsePipelinesSchema.parse(args);

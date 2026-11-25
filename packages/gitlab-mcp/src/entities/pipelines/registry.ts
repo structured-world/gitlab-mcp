@@ -8,7 +8,8 @@ import { enhancedFetch } from '../../utils/fetch';
 import { getGitLabBaseUrl } from '../../utils/gitlab-base-url';
 import { logError } from '../../logger';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
-import { assertActionAllowed } from '../utils';
+import { assertActionAllowed, assertDefined } from '../utils';
+import { createMergeRequestPipeline } from './merge-request-pipeline';
 import { readTracePage, TRACE_PAGE_BYTES } from './trace';
 import { readArtifactFile } from './artifact';
 import { grepArtifactFile } from './artifact-grep';
@@ -212,7 +213,7 @@ export const pipelinesToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
     {
       name: 'manage_pipeline',
       description:
-        "Trigger, retry, or cancel CI/CD pipelines and individual jobs. Pipeline actions: create (run pipeline on ref with variables or typed inputs), retry (re-run failed jobs), cancel (stop running pipeline). Job actions: play_job (trigger a manual/delayed job with variables), retry_job (re-run a single job), cancel_job (stop a running job). Related: browse_pipelines actions 'job'/'logs' for job details.",
+        "Trigger, retry, or cancel CI/CD pipelines and individual jobs. Pipeline actions: create (run a pipeline on a branch/tag ref with variables or typed inputs, or a merge request pipeline with merge_request_iid), retry (re-run failed jobs), cancel (stop running pipeline). Job actions: play_job (trigger a manual/delayed job with variables), retry_job (re-run a single job), cancel_job (stop a running job). Related: browse_pipelines actions 'job'/'logs' for job details.",
       inputSchema: z.toJSONSchema(ManagePipelineSchema),
       requirements: {
         default: { tier: 'free' },
@@ -226,8 +227,13 @@ export const pipelinesToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
 
         switch (input.action) {
           case 'create': {
-            // TypeScript knows: input has ref (required), variables (optional), inputs (optional)
-            const { project_id, ref, variables, inputs } = input;
+            const { project_id, ref, merge_request_iid, variables, inputs } = input;
+
+            if (merge_request_iid !== undefined) {
+              return createMergeRequestPipeline(project_id, merge_request_iid);
+            }
+            // The schema guarantees ref whenever merge_request_iid is absent.
+            assertDefined(ref, 'ref');
 
             // Custom handling - ref in query, variables/inputs in body with detailed error handling
             const queryParams = new URLSearchParams();

@@ -500,14 +500,14 @@ Trigger and control pipeline execution.
 
 <!-- @autogen:tool manage_pipeline -->
 
-| Action       | Description                          |
-| ------------ | ------------------------------------ |
-| `create`     | Trigger a new pipeline on branch/tag |
-| `retry`      | Re-run a failed/canceled pipeline    |
-| `cancel`     | Stop a running pipeline              |
-| `play_job`   | Trigger a manual job                 |
-| `retry_job`  | Re-run a failed/canceled job         |
-| `cancel_job` | Stop a running job                   |
+| Action       | Description                                                                                                   |
+| ------------ | ------------------------------------------------------------------------------------------------------------- |
+| `create`     | Trigger a new pipeline: on a branch/tag (ref) or for a merge request (merge_request_iid). Exactly one target. |
+| `retry`      | Re-run a failed/canceled pipeline                                                                             |
+| `cancel`     | Stop a running pipeline                                                                                       |
+| `play_job`   | Trigger a manual job                                                                                          |
+| `retry_job`  | Re-run a failed/canceled job                                                                                  |
+| `cancel_job` | Stop a running job                                                                                            |
 
 <!-- @autogen:end -->
 
@@ -521,6 +521,14 @@ Trigger and control pipeline execution.
   "project_id": "my-org/api",
   "ref": "main",
   "variables": [{ "key": "DEPLOY_ENV", "value": "staging" }]
+}
+```
+
+```json [Merge request pipeline]
+{
+  "action": "create",
+  "project_id": "my-org/api",
+  "merge_request_iid": "42"
 }
 ```
 
@@ -579,6 +587,27 @@ Trigger and control pipeline execution.
 ```
 
 :::
+
+### Merge Request Pipelines
+
+`create` takes exactly one target. With `ref` it runs a branch or tag pipeline. With
+`merge_request_iid` it runs a pipeline for that merge request: its source is
+`merge_request_event`, so jobs with `rules: - if: $CI_PIPELINE_SOURCE == "merge_request_event"`
+run, which a branch pipeline of the same branch never does. When the project enables merged
+results pipelines, GitLab creates one.
+
+- `project_id` is the project the merge request belongs to. For a merge request from a
+  fork that is the target project; GitLab decides whether the pipeline runs there or in the
+  fork, under its own permission rules, and the returned `ref` and `project_id` say where.
+- `ref`, `variables` and `inputs` cannot be combined with `merge_request_iid`: the request
+  is rejected rather than run without them.
+- The result is the created pipeline (`id`, `status`, `ref`, `source`, `web_url`). Each
+  call starts a new pipeline, so a call whose outcome is unknown (a timeout) should be
+  followed by `browse_pipelines` before another attempt.
+- A merge request created a moment ago has no diff yet. The call waits up to 30 seconds
+  for it; a merge request that still has no commits to build is reported as such.
+- If the CI configuration has no job for merge request pipelines, GitLab's error is
+  returned. A branch pipeline is never started instead.
 
 ### Pipeline Inputs (GitLab 17.10+)
 

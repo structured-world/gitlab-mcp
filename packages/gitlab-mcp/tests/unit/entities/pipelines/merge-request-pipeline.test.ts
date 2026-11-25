@@ -248,6 +248,54 @@ describe('manage_pipeline create - merge request pipeline (HTTP contract)', () =
     }
   });
 
+  // A merge request answer without changes_count says nothing about the diff. Reading it as
+  // "ready" would repeat the creation at once and blame a merge request that has commits.
+  it.each([{}, { changes_count: 3 }, 'not an object'])(
+    'does not treat a merge request answer %j as a ready diff',
+    async (answer) => {
+      refused();
+      mockOk(answer);
+
+      await expect(
+        handler({ action: 'create', project_id: '1', merge_request_iid: '7' }),
+      ).rejects.toThrow('GitLab returned an unexpected merge request while waiting for its diff');
+      expect(requestedUrls()).toEqual([`${mergeRequestUrl}/pipelines`, mergeRequestUrl]);
+    },
+  );
+
+  // A 2xx without a pipeline in it leaves the outcome unknown: the error says so and the
+  // creation is not repeated, on the first attempt or on the one after the wait.
+  it('reports an unknown outcome when the created pipeline is not in the answer', async () => {
+    mockOk({ message: 'accepted' });
+
+    await expect(
+      handler({ action: 'create', project_id: '1', merge_request_iid: '7' }),
+    ).rejects.toThrow(
+      'GitLab accepted the request for merge request !7 but did not return a pipeline; one may have been created, check browse_pipelines before another attempt',
+    );
+    expect(mockEnhancedFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports an unknown outcome for the attempt made after the wait as well', async () => {
+    refused();
+    mockOk({ changes_count: '1' });
+    mockOk({ id: 'ninety-one' });
+
+    await expect(
+      handler({ action: 'create', project_id: '1', merge_request_iid: '7' }),
+    ).rejects.toThrow('did not return a pipeline');
+    expect(requestedUrls().filter((url) => url.endsWith('/pipelines'))).toHaveLength(2);
+  });
+
+  // Fields GitLab adds beyond the checked ones reach the caller untouched.
+  it('keeps pipeline fields it does not check', async () => {
+    mockOk({ ...pipeline, detailed_status: { text: 'created' } });
+
+    await expect(
+      handler({ action: 'create', project_id: '1', merge_request_iid: '7' }),
+    ).resolves.toMatchObject({ detailed_status: { text: 'created' }, sha: 'abc123' });
+  });
+
   // A failure of the second attempt other than a refusal is GitLab's answer, passed on as is.
   it('passes on a different failure of the attempt made after the wait', async () => {
     refused();
@@ -311,7 +359,12 @@ describe('manage_pipeline create - profile restrictions', () => {
     jest
       .spyOn(config, 'isActionDenied')
       .mockImplementation((tool, action) => tool === 'manage_pipeline' && action === 'retry');
-    mockOk({ id: 1, status: 'created', ref: 'refs/merge-requests/7/head' });
+    mockOk({
+      id: 1,
+      status: 'created',
+      ref: 'refs/merge-requests/7/head',
+      web_url: 'https://gitlab.example.com/group/project/-/pipelines/1',
+    });
 
     await expect(
       handler({ action: 'create', project_id: '1', merge_request_iid: '7' }),

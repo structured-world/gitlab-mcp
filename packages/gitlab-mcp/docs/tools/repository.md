@@ -102,7 +102,8 @@ does. `end_line` alone reads from line 1, `start_line` alone reads to the end of
 file. A range past the end returns empty `content` with `total_lines`. One call returns
 at most 2000 lines and 64 KiB; a longer range is cut at a line boundary with
 `truncated: true`, and a single line longer than 64 KiB is cut to it on a character
-boundary with `line_cut: true`. A file that is not UTF-8 text is refused for a ranged
+boundary with `line_cut: true`; the rest of that line is not returned by a ranged read,
+since `next_line` starts at the following line. A file that is not UTF-8 text is refused for a ranged
 read; read it whole to get base64.
 
 ### manage_files

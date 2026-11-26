@@ -553,7 +553,33 @@ interface WorkItemListConnection {
   };
 }
 
-type WorkItemListVars = {
+/**
+ * Server-side filters of `workItems`: each key is the GraphQL argument and its variable,
+ * the value its variable type. GitLab applies them before paginating.
+ */
+export const WORK_ITEM_LIST_FILTERS = {
+  search: 'String',
+  authorUsername: 'String',
+  assigneeUsernames: '[String!]',
+  labelName: '[String!]',
+  milestoneTitle: '[String!]',
+  parentIds: '[WorkItemID!]',
+  sort: 'WorkItemSort',
+} as const;
+
+export type WorkItemListFilter = keyof typeof WORK_ITEM_LIST_FILTERS;
+
+export type WorkItemListFilterValues = {
+  search?: string;
+  authorUsername?: string;
+  assigneeUsernames?: string[];
+  labelName?: string[];
+  milestoneTitle?: string[];
+  parentIds?: string[];
+  sort?: string;
+};
+
+type WorkItemListVars = WorkItemListFilterValues & {
   namespacePath: string;
   types?: string[];
   /** IssuableState; omitted for every state. */
@@ -653,71 +679,65 @@ const WORK_ITEM_LIST_CONNECTION = `
         }
 `;
 
-export const GET_NAMESPACE_WORK_ITEMS: TypedDocumentNode<
-  {
+interface WorkItemListResults {
+  namespace: {
     namespace: {
       __typename: string;
       fullPath: string;
       workItems?: WorkItemListConnection | null;
     } | null;
-  },
-  WorkItemListVars
-> = gql`
-  query GetNamespaceWorkItems(
-    $namespacePath: ID!
-    $types: [IssueType!]
-    $state: IssuableState
-    $first: Int
-    $after: String
-  ) {
-    namespace(fullPath: $namespacePath) {
-      __typename
-      fullPath
-      workItems(types: $types, state: $state, first: $first, after: $after) {
-        ${WORK_ITEM_LIST_CONNECTION}
-      }
-    }
-  }
-`;
+  };
+  project: { project: { workItems: WorkItemListConnection | null } | null };
+  group: { group: { workItems: WorkItemListConnection | null } | null };
+}
 
-// Fallbacks for instances without Namespace.workItems (GitLab 18.1).
-export const LIST_PROJECT_WORK_ITEMS: TypedDocumentNode<
-  { project: { workItems: WorkItemListConnection | null } | null },
-  WorkItemListVars
-> = gql`
-  query ListProjectWorkItems(
-    $namespacePath: ID!
-    $types: [IssueType!]
-    $state: IssuableState
-    $first: Int
-    $after: String
-  ) {
-    project(fullPath: $namespacePath) {
-      workItems(types: $types, state: $state, first: $first, after: $after) {
-        ${WORK_ITEM_LIST_CONNECTION}
-      }
-    }
-  }
-`;
+/**
+ * Field the listing starts from: the namespace query, or its project/group fallbacks for
+ * instances without Namespace.workItems (GitLab 18.1).
+ */
+export type WorkItemListOwner = keyof WorkItemListResults;
 
-export const LIST_GROUP_WORK_ITEMS: TypedDocumentNode<
-  { group: { workItems: WorkItemListConnection | null } | null },
-  WorkItemListVars
-> = gql`
-  query ListGroupWorkItems(
-    $namespacePath: ID!
-    $types: [IssueType!]
-    $state: IssuableState
-    $first: Int
-    $after: String
-  ) {
-    group(fullPath: $namespacePath) {
-      workItems(types: $types, state: $state, first: $first, after: $after) {
-        ${WORK_ITEM_LIST_CONNECTION}
+const LIST_OPERATION_NAMES: Record<WorkItemListOwner, string> = {
+  namespace: 'GetNamespaceWorkItems',
+  project: 'ListProjectWorkItems',
+  group: 'ListGroupWorkItems',
+};
+
+const listQueries = new Map<string, TypedDocumentNode<unknown, WorkItemListVars>>();
+
+/**
+ * Listing query carrying only the requested filter arguments: GitLab rejects the whole
+ * query for an argument its schema lacks, so an unused filter never appears in it. One
+ * document per combination, so the schema adaptation cached per document is reused.
+ */
+export function workItemListQuery<O extends WorkItemListOwner>(
+  owner: O,
+  filters: readonly WorkItemListFilter[],
+): TypedDocumentNode<WorkItemListResults[O], WorkItemListVars> {
+  const used = (Object.keys(WORK_ITEM_LIST_FILTERS) as WorkItemListFilter[]).filter((name) =>
+    filters.includes(name),
+  );
+  const key = `${owner}:${used.join(',')}`;
+  let query = listQueries.get(key);
+  if (!query) {
+    const variables = used.map((name) => ` $${name}: ${WORK_ITEM_LIST_FILTERS[name]}`).join('');
+    const args = used.map((name) => `, ${name}: $${name}`).join('');
+    query = gql(`
+      query ${LIST_OPERATION_NAMES[owner]}(
+        $namespacePath: ID! $types: [IssueType!] $state: IssuableState $first: Int $after: String${variables}
+      ) {
+        ${owner}(fullPath: $namespacePath) {
+          ${owner === 'namespace' ? '__typename fullPath' : ''}
+          workItems(types: $types, state: $state, first: $first, after: $after${args}) {
+            ${WORK_ITEM_LIST_CONNECTION}
+          }
+        }
       }
-    }
+    `);
+    listQueries.set(key, query);
   }
-`;
+  return query as TypedDocumentNode<WorkItemListResults[O], WorkItemListVars>;
+}
 
 export const GET_WORK_ITEMS: TypedDocumentNode<
   { group: { workItems: { nodes: WorkItem[] } } },
@@ -1961,17 +1981,37 @@ export const TIMELOG_DELETE: TypedDocumentNode<
   }
 `;
 
-export const GET_WORK_ITEM_TYPES: TypedDocumentNode<
-  { namespace: { workItemTypes: { nodes: { id: string; name: string }[] } } },
-  { namespacePath: string }
-> = gql`
-  query GetWorkItemTypes($namespacePath: ID!) {
-    namespace(fullPath: $namespacePath) {
-      workItemTypes {
+export interface WorkItemTypeNode {
+  id: string;
+  name: string;
+  /** Widgets the type supports in the namespace; absent before GitLab 16.7. */
+  widgetDefinitions?: Array<{ type: string }> | null;
+}
+
+type WorkItemTypesConnection = { nodes: WorkItemTypeNode[] | null } | null;
+
+/** `withWidgets` selects each type's widget list, which only type discovery needs. */
+type WorkItemTypesVars = { namespacePath: string; withWidgets: boolean };
+
+// Each type's selection; widgetDefinitions is dropped on instances older than 16.7.
+const WORK_ITEM_TYPE_FIELDS = `
         nodes {
           id
           name
+          widgetDefinitions @include(if: $withWidgets) @optional {
+            type
+          }
         }
+`;
+
+export const GET_WORK_ITEM_TYPES: TypedDocumentNode<
+  { namespace: { workItemTypes: WorkItemTypesConnection } | null },
+  WorkItemTypesVars
+> = gql`
+  query GetWorkItemTypes($namespacePath: ID!, $withWidgets: Boolean!) {
+    namespace(fullPath: $namespacePath) {
+      workItemTypes {
+        ${WORK_ITEM_TYPE_FIELDS}
       }
     }
   }
@@ -1980,26 +2020,20 @@ export const GET_WORK_ITEM_TYPES: TypedDocumentNode<
 // Fallback for instances without Namespace.workItemTypes (GitLab 17.2).
 export const GET_PROJECT_OR_GROUP_WORK_ITEM_TYPES: TypedDocumentNode<
   {
-    project: { workItemTypes: { nodes: { id: string; name: string }[] } } | null;
-    group: { workItemTypes: { nodes: { id: string; name: string }[] } } | null;
+    project: { workItemTypes: WorkItemTypesConnection } | null;
+    group: { workItemTypes: WorkItemTypesConnection } | null;
   },
-  { namespacePath: string }
+  WorkItemTypesVars
 > = gql`
-  query GetProjectOrGroupWorkItemTypes($namespacePath: ID!) {
+  query GetProjectOrGroupWorkItemTypes($namespacePath: ID!, $withWidgets: Boolean!) {
     project(fullPath: $namespacePath) {
       workItemTypes {
-        nodes {
-          id
-          name
-        }
+        ${WORK_ITEM_TYPE_FIELDS}
       }
     }
     group(fullPath: $namespacePath) {
       workItemTypes {
-        nodes {
-          id
-          name
-        }
+        ${WORK_ITEM_TYPE_FIELDS}
       }
     }
   }

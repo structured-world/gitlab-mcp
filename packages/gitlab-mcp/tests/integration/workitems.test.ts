@@ -281,7 +281,7 @@ describe('Work Items Integration - Using Handler Functions', () => {
 
         // 🚨 CRITICAL: Get work item types using internal utility function
         console.log('🔍 Getting Epic work item type using internal utility function...');
-        const workItemTypes = await getWorkItemTypes(testGroupPath);
+        const workItemTypes = (await getWorkItemTypes(testGroupPath)) ?? [];
 
         const epicType = workItemTypes.find((t: any) => t.name === 'Epic');
 

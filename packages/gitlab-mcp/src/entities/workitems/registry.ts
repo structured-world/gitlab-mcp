@@ -9,6 +9,7 @@ import { assertActionAllowed } from '../utils';
 import { getWorkItemTypes } from '../../utils/workItemTypes';
 import {
   cleanWorkItemResponse,
+  extractSimpleId,
   toGid,
   toGids,
   type GitLabWorkItem,
@@ -86,9 +87,41 @@ function assertUpdatableWidgets(input: object, verb: 'set' | 'update'): void {
   }
 }
 
+/** Tool parameter behind each server-side list filter, named in refusals. */
+const LIST_FILTER_PARAMETER: Readonly<Record<WorkItemListFilter, string>> = {
+  search: 'search',
+  authorUsername: 'author_username',
+  assigneeUsernames: 'assignee_usernames',
+  labelName: 'label_names',
+  milestoneTitle: 'milestone_titles',
+  parentIds: 'parent_ids',
+  sort: 'sort',
+};
+
+/**
+ * Refuse filters this instance's `workItems` field lacks: dropping one would return
+ * items it was meant to exclude, and filtering after GitLab paginated would leave
+ * pages short while more matches exist.
+ */
+function assertListFilters(
+  typeName: 'Namespace' | 'Project' | 'Group',
+  filters: readonly WorkItemListFilter[],
+  scope: string,
+): void {
+  const unsupported = filters.filter((name) => !graphqlSupports(typeName, 'workItems', name));
+  if (unsupported.length > 0) {
+    throw new Error(
+      `This GitLab instance cannot filter ${scope}work items by ${unsupported
+        .map((name) => LIST_FILTER_PARAMETER[name])
+        .join(', ')}`,
+    );
+  }
+}
+
 /**
  * List a namespace's work items: the namespace-level query when the instance has
- * it, otherwise the project listing, then the group one.
+ * it, otherwise the project listing, then the group one. Filters go into the query,
+ * so GitLab applies them before paginating.
  */
 async function listWorkItems(
   client: GraphQLClient,
@@ -99,18 +132,45 @@ async function listWorkItems(
     first: number;
     after?: string;
   },
+  filterValues: WorkItemListFilterValues,
 ) {
+  const filters = (Object.keys(LIST_FILTER_PARAMETER) as WorkItemListFilter[]).filter(
+    (name) => filterValues[name] !== undefined,
+  );
+  const variables = { ...vars, ...filterValues };
+
   if (graphqlSupports('Namespace', 'workItems')) {
-    return (await client.request(GET_NAMESPACE_WORK_ITEMS, vars)).namespace?.workItems ?? null;
+    assertListFilters('Namespace', filters, '');
+    const query = workItemListQuery('namespace', filters);
+    return (await client.request(query, variables)).namespace?.workItems ?? null;
   }
-  const { project } = await client.request(LIST_PROJECT_WORK_ITEMS, vars);
+  assertListFilters('Project', filters, '');
+  const { project } = await client.request(workItemListQuery('project', filters), variables);
   if (project) return project.workItems;
   if (!graphqlSupports('Group', 'workItems')) {
     throw new Error(
       `"${vars.namespacePath}" is not a project, and this GitLab instance cannot list group-level work items`,
     );
   }
-  return (await client.request(LIST_GROUP_WORK_ITEMS, vars)).group?.workItems ?? null;
+  assertListFilters('Group', filters, 'group ');
+  const query = workItemListQuery('group', filters);
+  return (await client.request(query, variables)).group?.workItems ?? null;
+}
+
+/** A namespace's work item types with the widgets each supports, when the instance says. */
+async function listWorkItemTypes(namespace: string) {
+  const types = await getWorkItemTypes(namespace, { withWidgets: true });
+  if (types === null) {
+    throw new Error(`Namespace "${namespace}" was not found or is not accessible`);
+  }
+  return {
+    namespace,
+    types: types.map(({ id, name, widgetDefinitions }) => ({
+      id: extractSimpleId(id),
+      name,
+      ...(widgetDefinitions && { widgets: widgetDefinitions.map(({ type }) => type) }),
+    })),
+  };
 }
 
 /** Find a work item by namespace path + IID, falling back like listWorkItems. */
@@ -133,9 +193,9 @@ async function getWorkItemByIid(
 import {
   CREATE_WORK_ITEM_WITH_WIDGETS,
   WorkItemCreateInput,
-  GET_NAMESPACE_WORK_ITEMS,
-  LIST_PROJECT_WORK_ITEMS,
-  LIST_GROUP_WORK_ITEMS,
+  workItemListQuery,
+  type WorkItemListFilter,
+  type WorkItemListFilterValues,
   GET_WORK_ITEM,
   GET_WORK_ITEM_BY_IID,
   GET_PROJECT_WORK_ITEM_BY_IID,
@@ -374,7 +434,7 @@ const simplifyWorkItem = (
 /**
  * Work items tools registry - 2 CQRS tools replacing 5 individual tools
  *
- * browse_work_items (Query): list, get, list_discussions
+ * browse_work_items (Query): list, get, list_discussions, list_types
  * manage_work_item (Command): create, update, delete, delete_timelog, add_link, remove_link
  */
 export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinition>([
@@ -388,11 +448,21 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
       name: 'browse_work_items',
       projectableActions: ['list', 'list_discussions'],
       description:
-        'Find and inspect issues, epics, tasks, and other work items. Actions: list (filter by type/state), get (details by ID or namespace+iid), list_discussions (paginated comments, replies, and system notes). Related: manage_work_item to create/update/delete.',
+        'Find and inspect issues, epics, tasks, and other work items. Actions: list (filter by type, state, text, author, assignees, labels, milestones or parent, applied by GitLab before paging; sort), get (details by ID or namespace+iid), list_discussions (paginated comments, replies, and system notes), list_types (work item types of a namespace and the widgets each supports). Related: manage_work_item to create/update/delete.',
       inputSchema: z.toJSONSchema(BrowseWorkItemsSchema),
       // Queries adapt to the instance schema (unknown widget fragments dropped,
-      // project/group fallbacks for the namespace-level queries).
-      requirements: { default: { tier: 'free' } },
+      // project/group fallbacks for the namespace-level queries). The list filters
+      // below first appeared on workItems in these releases; the handler also checks
+      // the instance schema, since the namespace, project and group fields differ.
+      requirements: {
+        default: { tier: 'free' },
+        parameters: {
+          assignee_usernames: { tier: 'free', minVersion: '17.2' },
+          label_names: { tier: 'free', minVersion: '17.2' },
+          milestone_titles: { tier: 'free', minVersion: '17.2' },
+          parent_ids: { tier: 'free', minVersion: '18.1' },
+        },
+      },
       gate: { envVar: 'USE_WORKITEMS', defaultValue: true },
       handler: async (args: unknown): Promise<unknown> => {
         const input = BrowseWorkItemsSchema.parse(args);
@@ -401,9 +471,17 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
 
         switch (input.action) {
           case 'list': {
-            // TypeScript knows: input has namespace (required), types, state, first, after, simple (optional)
             const { namespace, types, state, first, after, simple } = input;
             const namespacePath = namespace;
+            const filterValues: WorkItemListFilterValues = {
+              search: input.search,
+              authorUsername: input.author_username,
+              assigneeUsernames: input.assignee_usernames,
+              labelName: input.label_names,
+              milestoneTitle: input.milestone_titles,
+              parentIds: input.parent_ids && toGids(input.parent_ids, 'WorkItem'),
+              sort: input.sort,
+            };
 
             // Get GraphQL client from ConnectionManager
             const connectionManager = ConnectionManager.getInstance();
@@ -428,7 +506,7 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
               first: first || 20,
               after,
             };
-            const workItemsData = await listWorkItems(client, listVars);
+            const workItemsData = await listWorkItems(client, listVars, filterValues);
             const pageInfo = {
               hasNextPage: workItemsData?.pageInfo?.hasNextPage ?? false,
               endCursor: workItemsData?.pageInfo?.endCursor ?? null,
@@ -452,6 +530,9 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
             const client = ConnectionManager.getInstance().getClient(getGitLabApiUrlFromContext());
             return listWorkItemDiscussions(client, input);
           }
+
+          case 'list_types':
+            return listWorkItemTypes(input.namespace);
 
           case 'get': {
             // TypeScript knows: input has either (namespace + iid) or (id)
@@ -609,7 +690,7 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
             const client = connectionManager.getClient(getGitLabApiUrlFromContext());
 
             // Convert simple type name to work item type GID
-            const workItemTypes = await getWorkItemTypes(namespacePath);
+            const workItemTypes = (await getWorkItemTypes(namespacePath)) ?? [];
             const workItemTypeObj = workItemTypes.find(
               (t: WorkItemType) =>
                 t.name.toUpperCase().replace(/\s+/g, '_') ===

@@ -36,6 +36,7 @@ GitLab work items include Issues, Epics, Tasks, Incidents, and more.
 | `list` | List work items with filtering |
 | `get` | Get single work item details |
 | `list_discussions` | Read work item comments, replies, and system notes |
+| `list_types` | List the work item types of a namespace with the widgets each supports |
 <!-- @autogen:end -->
 
 ::: code-group
@@ -48,6 +49,34 @@ GitLab work items include Issues, Epics, Tasks, Incidents, and more.
   "types": ["ISSUE"],
   "first": 20,
   "simple": true
+}
+```
+
+```json [Filter issues]
+{
+  "action": "list",
+  "namespace": "my-org/api",
+  "types": ["ISSUE"],
+  "search": "login timeout",
+  "label_names": ["bug"],
+  "assignee_usernames": ["alice"],
+  "sort": "UPDATED_DESC",
+  "first": 20
+}
+```
+
+```json [Children of an item]
+{
+  "action": "list",
+  "namespace": "my-org/api",
+  "parent_ids": ["5953"]
+}
+```
+
+```json [Types and widgets]
+{
+  "action": "list_types",
+  "namespace": "my-org/api"
 }
 ```
 
@@ -88,6 +117,30 @@ GitLab work items include Issues, Epics, Tasks, Incidents, and more.
 ```
 
 :::
+
+`list` filters on the server: GitLab applies them before paginating, so each page and
+its `hasMore` describe matching items only. Continue with `endCursor` as `after`, keeping
+the same filters and `sort`.
+
+| Parameter | Matches | GitLab |
+|-----------|---------|--------|
+| `search` | Text in the title or description | 16.0 |
+| `author_username` | Items created by the user | 16.0 |
+| `assignee_usernames` | Items assigned to all of the users | 17.2 |
+| `label_names` | Items with all of the labels | 17.2 |
+| `milestone_titles` | Items in any of the milestones | 17.2 |
+| `parent_ids` | Direct children of the items (IDs from list results) | 18.1 |
+| `sort` | `CREATED_DESC` (default), `CREATED_ASC`, `UPDATED_DESC`, `UPDATED_ASC`, `TITLE_ASC`, `TITLE_DESC` | 16.0 |
+
+The list filters take up to 100 values each. A filter the connected instance cannot
+apply is refused with its parameter name, and nothing is listed, instead of being
+dropped and returning items it would have excluded. A group namespace lists the
+group's own work items, such as epics, not those of its projects.
+
+`list_types` returns the namespace's work item types with their `id`, `name` and, on
+GitLab 16.7 and later, `widgets`: the widgets each type supports in that namespace,
+which reflect the instance's license. A namespace that does not exist or is not
+accessible is reported as an error rather than as an empty list.
 
 `list_discussions` reads user comments and system activity from the GitLab notes widget.
 Use `namespace` and `iid`, or the global `id`. Each discussion contains a `notes`

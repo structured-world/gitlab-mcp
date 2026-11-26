@@ -420,7 +420,8 @@ describe('🔄 Data Lifecycle - Complete Infrastructure Setup', () => {
 
       // Get work item types directly using utility function (not exposed as tool)
       console.log('🔍 Getting work item types for project namespace using internal utility...');
-      const projectWorkItemTypes = await getWorkItemTypes(testData.project!.path_with_namespace);
+      const projectWorkItemTypes =
+        (await getWorkItemTypes(testData.project!.path_with_namespace)) ?? [];
       console.log(
         '📋 Available project work item types:',
         projectWorkItemTypes.map((t) => `${t.name}(${t.id})`).join(', '),
@@ -632,7 +633,7 @@ describe('🔄 Data Lifecycle - Complete Infrastructure Setup', () => {
 
         // Get work item types directly using utility function (not exposed as tool)
         console.log('🔍 Getting work item types for group namespace using internal utility...');
-        const groupWorkItemTypes = await getWorkItemTypes(testData.group!.full_path);
+        const groupWorkItemTypes = (await getWorkItemTypes(testData.group!.full_path)) ?? [];
         console.log(
           '📋 Available group work item types:',
           groupWorkItemTypes.map((t) => `${t.name}(${t.id})`).join(', '),

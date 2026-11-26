@@ -43,7 +43,7 @@ export const WorkItemStateEventSchema = z
 
 // ============================================================================
 // browse_work_items - CQRS Query Tool (discriminated union schema)
-// Actions: list, get, list_discussions
+// Actions: list, get, list_discussions, list_types
 // Uses z.discriminatedUnion() for type-safe action handling.
 // Schema pipeline flattens to flat JSON Schema for AI clients that don't support oneOf.
 // ============================================================================
@@ -63,6 +63,12 @@ const namespaceField = z
   .describe("Namespace path containing the work item (e.g., 'group/project')");
 
 // --- Action: list ---
+/** Most values GitLab accepts in one list filter. */
+const FILTER_LIST_MAX = 100;
+
+const filterList = (description: string) =>
+  z.array(z.string().min(1)).min(1).max(FILTER_LIST_MAX).optional().describe(description);
+
 const ListWorkItemsSchema = z.object({
   action: z.literal('list').describe('List work items with filtering'),
   namespace: z
@@ -78,11 +84,28 @@ const ListWorkItemsSchema = z.object({
     .describe(
       'Filter by work item state. Defaults to OPEN items only. Use ["OPEN", "CLOSED"] for all items.',
     ),
+  search: z.string().min(1).optional().describe('Text to find in the title or description'),
+  author_username: z.string().min(1).optional().describe('Only items created by this username'),
+  assignee_usernames: filterList('Only items assigned to all of these usernames'),
+  label_names: filterList('Only items that have all of these labels'),
+  milestone_titles: filterList('Only items in one of these milestones, by title'),
+  parent_ids: z
+    .array(WorkItemIdSchema)
+    .min(1)
+    .max(FILTER_LIST_MAX)
+    .optional()
+    .describe('Only direct children of these work items (IDs from list results)'),
+  sort: z
+    .enum(['CREATED_DESC', 'CREATED_ASC', 'UPDATED_DESC', 'UPDATED_ASC', 'TITLE_ASC', 'TITLE_DESC'])
+    .optional()
+    .describe('Order of the results; GitLab defaults to CREATED_DESC'),
   first: z.number().optional().default(20).describe('Number of items to return'),
   after: z
     .string()
     .optional()
-    .describe('Cursor for pagination (use endCursor from previous response)'),
+    .describe(
+      'Cursor for pagination (use endCursor from previous response, with the same filters and sort)',
+    ),
   simple: z
     .boolean()
     .optional()
@@ -126,17 +149,25 @@ const ListDiscussionsSchema = z.object({
     .describe('Expected discussion ID when continuing notes'),
 });
 
+const ListTypesSchema = z.object({
+  action: z
+    .literal('list_types')
+    .describe('List the work item types of a namespace with the widgets each supports'),
+  namespace: z.string().min(1).describe('Namespace path (group or project)'),
+});
+
 // --- Discriminated union combining all actions ---
 // Base union for type narrowing
 const BrowseWorkItemsBaseSchema = z.discriminatedUnion('action', [
   ListWorkItemsSchema,
   GetWorkItemSchema,
   ListDiscussionsSchema,
+  ListTypesSchema,
 ]);
 
 // A single work item is identified by (namespace + IID) or a global ID.
 export const BrowseWorkItemsSchema = BrowseWorkItemsBaseSchema.superRefine((data, ctx) => {
-  if (data.action !== 'list') {
+  if (data.action === 'get' || data.action === 'list_discussions') {
     const hasNamespaceIid = data.namespace !== undefined && data.iid !== undefined;
     const hasId = data.id !== undefined;
 

@@ -351,6 +351,25 @@ describe('conflicts action file regions', () => {
     expect(result.files[0]).toMatchObject({ conflict_count: 0 });
   });
 
+  // A CRLF file has CRLF markers; a carriage return left on a line would hide every marker,
+  // and the file would be shown from its start instead of at its conflicts.
+  it('finds the regions of a file with CRLF and mixed line endings', async () => {
+    const content = ['l1', 'l2', ...conflicted('a.txt', 'a.txt'), 'l8', ''].join('\r\n');
+    const mixed = `${conflicted('b.txt', 'b.txt').join('\r\n')}\ntail\n`;
+    const result = await read(
+      [
+        { ourPath: 'a.txt', theirPath: 'a.txt', content },
+        { ourPath: 'b.txt', theirPath: 'b.txt', content: mixed },
+      ],
+      { context_lines: 0 },
+    );
+    expect(result.files.map((file) => file.hunks)).toEqual([
+      [{ start_line: 3, lines: conflicted('a.txt', 'a.txt') }],
+      [{ start_line: 1, lines: conflicted('b.txt', 'b.txt') }],
+    ]);
+    expect(result.files.map((file) => file.conflict_count)).toEqual([1, 1]);
+  });
+
   it('runs an unterminated region to the end of the file', async () => {
     const content = ['a', '<<<<<<< f', 'ours', '=======', 'theirs', 'tail'].join('\n');
     const result = await read([{ ourPath: 'f', theirPath: 'f', content }], { context_lines: 0 });

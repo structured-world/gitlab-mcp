@@ -34,24 +34,39 @@ async function deleteLifecycleGroup(request, apiUrl, token, saved) {
   if (response.status === 404) return 'removed';
   if (!response.ok) throw new Error(`Cannot verify cleanup group: ${response.status}`);
   const live = await response.json();
-  if (live.id !== saved.id || live.full_path !== saved.full_path || live.parent_id !== root.id) {
+  // An earlier cleanup may already have scheduled the deletion: GitLab then renames the
+  // group under the same parent and removes it asynchronously, so it is finished off here.
+  const alreadyScheduled =
+    live.id === saved.id &&
+    live.parent_id === root.id &&
+    typeof live.marked_for_deletion_on === 'string' &&
+    /^\d{4}-\d{2}-\d{2}$/.test(live.marked_for_deletion_on) &&
+    typeof live.full_path === 'string' &&
+    /^test\/[^/]+$/.test(live.full_path);
+  if (
+    !alreadyScheduled &&
+    (live.id !== saved.id || live.full_path !== saved.full_path || live.parent_id !== root.id)
+  ) {
     throw new Error('Refusing cleanup: live group does not match the suite-owned test subgroup');
   }
-  const deleted = await request(`${apiUrl}/api/v4/groups/${saved.id}`, {
-    method: 'DELETE',
-    headers,
-  });
-  if (!deleted.ok) throw new Error(`Cannot delete test lifecycle subgroup: ${deleted.status}`);
+  let scheduled = live;
+  if (!alreadyScheduled) {
+    const deleted = await request(`${apiUrl}/api/v4/groups/${saved.id}`, {
+      method: 'DELETE',
+      headers,
+    });
+    if (!deleted.ok) throw new Error(`Cannot delete test lifecycle subgroup: ${deleted.status}`);
 
-  // GitLab Groups API, "Delete a group": retention may only schedule the first
-  // deletion. Confirm with the provider's updated full_path to bypass retention.
-  // https://docs.gitlab.com/api/groups/#delete-a-group
-  const scheduledResponse = await request(`${apiUrl}/api/v4/groups/${saved.id}`, { headers });
-  if (scheduledResponse.status === 404) return 'removed';
-  if (!scheduledResponse.ok) {
-    throw new Error(`Cannot verify scheduled test subgroup: ${scheduledResponse.status}`);
+    // GitLab Groups API, "Delete a group": retention may only schedule the first
+    // deletion. Confirm with the provider's updated full_path to bypass retention.
+    // https://docs.gitlab.com/api/groups/#delete-a-group
+    const scheduledResponse = await request(`${apiUrl}/api/v4/groups/${saved.id}`, { headers });
+    if (scheduledResponse.status === 404) return 'removed';
+    if (!scheduledResponse.ok) {
+      throw new Error(`Cannot verify scheduled test subgroup: ${scheduledResponse.status}`);
+    }
+    scheduled = await scheduledResponse.json();
   }
-  const scheduled = await scheduledResponse.json();
   if (
     scheduled.id !== saved.id ||
     scheduled.parent_id !== root.id ||
@@ -131,7 +146,7 @@ async function listLifecycleGroups(request, apiUrl, token) {
   const headers = { Authorization: `Bearer ${token}` };
   const groups = [];
   // Pages are read one after another: each names the next in its x-next-page header.
-  for (let page = 1; page > 0; ) {
+  for (let page = 1; page > 0;) {
     const response = await request(
       `${apiUrl}/api/v4/groups/${root.id}/subgroups?search=lifecycle-test&per_page=100&page=${page}`,
       { headers },

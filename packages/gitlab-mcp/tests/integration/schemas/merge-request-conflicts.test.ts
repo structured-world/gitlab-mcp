@@ -39,6 +39,18 @@ describe('merge request conflicts - GitLab integration', () => {
   const conflicting = `conflicts-source-${id}`;
   const clean = `conflicts-clean-${id}`;
   const mergeRequests: string[] = [];
+  // Only what was created is removed, so a setup that failed halfway still cleans up.
+  const branches: string[] = [];
+
+  const branchFrom = async (branch: string, ref: string): Promise<void> => {
+    await helper.executeTool('manage_ref', {
+      action: 'create_branch',
+      project_id: projectId,
+      branch,
+      ref,
+    });
+    branches.push(branch);
+  };
 
   const commit = (branch: string, files: { file_path: string; content: string }[]) =>
     helper.executeTool('manage_files', {
@@ -95,21 +107,9 @@ describe('merge request conflicts - GitLab integration', () => {
     helper = new IntegrationTestHelper();
     await helper.initialize();
 
-    await helper.executeTool('manage_ref', {
-      action: 'create_branch',
-      project_id: projectId,
-      branch: target,
-      ref: 'main',
-    });
+    await branchFrom(target, 'main');
     await commit(target, [{ file_path: 'conflict.txt', content: BASE }]);
-    for (const branch of [conflicting, clean]) {
-      await helper.executeTool('manage_ref', {
-        action: 'create_branch',
-        project_id: projectId,
-        branch,
-        ref: target,
-      });
-    }
+    for (const branch of [conflicting, clean]) await branchFrom(branch, target);
     // Both sides change the same line: a genuine text conflict.
     await commit(conflicting, [
       { file_path: 'conflict.txt', content: 'line one\nsource side\nline three\n' },
@@ -121,22 +121,36 @@ describe('merge request conflicts - GitLab integration', () => {
     await commit(clean, [{ file_path: 'unrelated.txt', content: 'independent\n' }]);
   });
 
+  // Every cleanup call runs even when one fails; the failures are reported together.
   afterAll(async () => {
-    for (const iid of mergeRequests) {
-      await helper.executeTool('manage_merge_request', {
-        action: 'update',
-        project_id: projectId,
-        merge_request_iid: iid,
-        state_event: 'close',
-      });
+    const calls = [
+      ...mergeRequests.map(
+        (iid) => () =>
+          helper.executeTool('manage_merge_request', {
+            action: 'update',
+            project_id: projectId,
+            merge_request_iid: iid,
+            state_event: 'close',
+          }),
+      ),
+      ...branches.reverse().map(
+        (branch) => () =>
+          helper.executeTool('manage_ref', {
+            action: 'delete_branch',
+            project_id: projectId,
+            branch,
+          }),
+      ),
+    ];
+    const failures: unknown[] = [];
+    for (const call of calls) {
+      try {
+        await call();
+      } catch (error) {
+        failures.push(error);
+      }
     }
-    for (const branch of [conflicting, clean, target]) {
-      await helper.executeTool('manage_ref', {
-        action: 'delete_branch',
-        project_id: projectId,
-        branch,
-      });
-    }
+    if (failures.length > 0) throw new AggregateError(failures, 'Conflict fixture cleanup failed');
   });
 
   it('returns the conflict region of a genuine text conflict', async () => {

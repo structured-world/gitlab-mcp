@@ -21,9 +21,11 @@ const PipelineGrep = z.object({
   jobs_skipped: z.array(z.object({ job_id: z.string(), reason: z.string() })),
   resume: z.null(),
 });
-// Counted from the start of the test, leaving room for the search and cleanup within
-// the 10-minute test limit.
-const PIPELINE_WAIT_MS = 6 * 60_000;
+// Counted from the start of the test. A shared runner under load can take many minutes
+// to pick up and finish the three jobs, so the test's own limit leaves room after the
+// wait for the search and the cancel.
+const PIPELINE_WAIT_MS = 15 * 60_000;
+const TEST_TIMEOUT_MS = PIPELINE_WAIT_MS + 5 * 60_000;
 
 // Parent jobs run only for API pipelines, so creating the branch starts nothing. The
 // depend trigger waits for its child, so the parent pipeline ends after that failure; the
@@ -64,6 +66,8 @@ describe('pipeline log search - GitLab integration', () => {
   let helper: IntegrationTestHelper;
   let projectId: string;
   const branch = `log-grep-pipeline-${randomUUID()}`;
+  // Set once the branch exists, so a setup that failed earlier leaves nothing to delete.
+  let branchCreated = false;
 
   beforeAll(async () => {
     const project = getTestData().project;
@@ -79,6 +83,7 @@ describe('pipeline log search - GitLab integration', () => {
       branch,
       ref: 'main',
     });
+    branchCreated = true;
     await helper.executeTool('manage_files', {
       action: 'batch',
       project_id: projectId,
@@ -94,6 +99,7 @@ describe('pipeline log search - GitLab integration', () => {
   });
 
   afterAll(async () => {
+    if (!branchCreated) return;
     await helper.executeTool('manage_ref', {
       action: 'delete_branch',
       project_id: projectId,
@@ -103,76 +109,80 @@ describe('pipeline log search - GitLab integration', () => {
 
   // One call finds the failure of the pipeline's own job and of its child pipelines' jobs,
   // including the child of a trigger job that succeeded.
-  it('returns failed jobs of the pipeline and of its child pipelines', async () => {
-    const deadline = Date.now() + PIPELINE_WAIT_MS;
-    let pipelineId: string | undefined;
-    let finished = false;
-    try {
-      pipelineId = Pipeline.parse(
-        await helper.executeTool('manage_pipeline', {
-          action: 'create',
-          project_id: projectId,
-          ref: branch,
-        }),
-      ).id;
-      while (Date.now() < deadline && !finished) {
-        const pipeline = Pipeline.parse(
-          await helper.executeTool('browse_pipelines', {
-            action: 'get',
+  it(
+    'returns failed jobs of the pipeline and of its child pipelines',
+    async () => {
+      const deadline = Date.now() + PIPELINE_WAIT_MS;
+      let pipelineId: string | undefined;
+      let finished = false;
+      try {
+        pipelineId = Pipeline.parse(
+          await helper.executeTool('manage_pipeline', {
+            action: 'create',
             project_id: projectId,
-            pipeline_id: pipelineId,
+            ref: branch,
           }),
-        );
-        if (['success', 'canceled', 'skipped'].includes(pipeline.status))
-          throw new Error(`Pipeline fixture ended with status ${pipeline.status}`);
-        finished = pipeline.status === 'failed';
-        if (!finished) await delay(2000);
-      }
-      if (!finished)
-        throw new Error(`Pipeline fixture did not finish within ${PIPELINE_WAIT_MS / 1000} s`);
+        ).id;
+        while (Date.now() < deadline && !finished) {
+          const pipeline = Pipeline.parse(
+            await helper.executeTool('browse_pipelines', {
+              action: 'get',
+              project_id: projectId,
+              pipeline_id: pipelineId,
+            }),
+          );
+          if (['success', 'canceled', 'skipped'].includes(pipeline.status))
+            throw new Error(`Pipeline fixture ended with status ${pipeline.status}`);
+          finished = pipeline.status === 'failed';
+          if (!finished) await delay(2000);
+        }
+        if (!finished)
+          throw new Error(`Pipeline fixture did not finish within ${PIPELINE_WAIT_MS / 1000} s`);
 
-      // The default-strategy child may still be running when the parent pipeline ends.
-      const search = async () =>
-        PipelineGrep.parse(
-          await helper.executeTool('browse_pipelines', {
-            action: 'log_grep',
-            project_id: projectId,
-            pipeline_id: pipelineId,
-            patterns: ['^grep fixture (parent|child|default child) failed$'],
-            before: 0,
-            after: 0,
-          }),
-        );
-      let result = await search();
-      while (result.jobs.length < FIXTURE_JOBS.length && Date.now() < deadline) {
-        await delay(2000);
-        result = await search();
-      }
+        // The default-strategy child may still be running when the parent pipeline ends.
+        const search = async () =>
+          PipelineGrep.parse(
+            await helper.executeTool('browse_pipelines', {
+              action: 'log_grep',
+              project_id: projectId,
+              pipeline_id: pipelineId,
+              patterns: ['^grep fixture (parent|child|default child) failed$'],
+              before: 0,
+              after: 0,
+            }),
+          );
+        let result = await search();
+        while (result.jobs.length < FIXTURE_JOBS.length && Date.now() < deadline) {
+          await delay(2000);
+          result = await search();
+        }
 
-      const byName = new Map(result.jobs.map((job) => [job.name, job]));
-      expect([...byName.keys()].sort()).toEqual(FIXTURE_JOBS);
-      const defaultChild = byName.get('default-child-fails')!;
-      expect(defaultChild).toMatchObject({ status: 'failed', match_count: 1 });
-      expect(defaultChild.pipeline_id).not.toBe(pipelineId);
-      expect(byName.get('parent-fails')).toMatchObject({
-        status: 'failed',
-        failure_reason: 'script_failure',
-        pipeline_id: pipelineId,
-        match_count: 1,
-      });
-      const child = byName.get('child-fails')!;
-      expect(child).toMatchObject({ status: 'failed', match_count: 1 });
-      expect(child.pipeline_id).not.toBe(pipelineId);
-      expect(child.hunks[0].lines).toEqual(['grep fixture child failed']);
-      expect(result.jobs_skipped).toEqual([]);
-    } finally {
-      if (pipelineId !== undefined && !finished) {
-        await helper.executeTool('manage_pipeline', {
-          action: 'cancel',
-          project_id: projectId,
+        const byName = new Map(result.jobs.map((job) => [job.name, job]));
+        expect([...byName.keys()].sort()).toEqual(FIXTURE_JOBS);
+        const defaultChild = byName.get('default-child-fails')!;
+        expect(defaultChild).toMatchObject({ status: 'failed', match_count: 1 });
+        expect(defaultChild.pipeline_id).not.toBe(pipelineId);
+        expect(byName.get('parent-fails')).toMatchObject({
+          status: 'failed',
+          failure_reason: 'script_failure',
           pipeline_id: pipelineId,
+          match_count: 1,
         });
+        const child = byName.get('child-fails')!;
+        expect(child).toMatchObject({ status: 'failed', match_count: 1 });
+        expect(child.pipeline_id).not.toBe(pipelineId);
+        expect(child.hunks[0].lines).toEqual(['grep fixture child failed']);
+        expect(result.jobs_skipped).toEqual([]);
+      } finally {
+        if (pipelineId !== undefined && !finished) {
+          await helper.executeTool('manage_pipeline', {
+            action: 'cancel',
+            project_id: projectId,
+            pipeline_id: pipelineId,
+          });
+        }
       }
-    }
-  });
+    },
+    TEST_TIMEOUT_MS,
+  );
 });

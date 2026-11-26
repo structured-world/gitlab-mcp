@@ -221,6 +221,29 @@ describe('Integration namespace boundary', () => {
     expect(request).not.toHaveBeenCalled();
   });
 
+  // An earlier cleanup scheduled the deletion and GitLab renamed the group, but removing it
+  // is asynchronous; the same group must be finished off, not refused as a stranger.
+  it('permanently removes its group already scheduled for deletion by an earlier cleanup', async () => {
+    const scheduled = {
+      ...group,
+      full_path: `${group.full_path}-deletion_scheduled-91`,
+      marked_for_deletion_on: '2026-11-26',
+    };
+    request
+      .mockResolvedValueOnce(ok(root))
+      .mockResolvedValueOnce(ok(scheduled))
+      .mockResolvedValueOnce({ ok: true, status: 202 });
+    await expect(deleteLifecycleGroup(request, apiUrl, token, group)).resolves.toBe(
+      'permanent_removal_accepted',
+    );
+    expect(request).toHaveBeenCalledTimes(3);
+    expect(request).toHaveBeenLastCalledWith(`${apiUrl}/api/v4/groups/${group.id}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ full_path: scheduled.full_path, permanently_remove: true }),
+    });
+  });
+
   it('refuses deletion when the live group no longer matches the saved fixture', async () => {
     request.mockResolvedValueOnce(ok(root));
     request.mockResolvedValueOnce(ok({ ...group, parent_id: 4 }));

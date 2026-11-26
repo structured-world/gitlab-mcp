@@ -117,6 +117,8 @@ export async function readMergeRequestConflicts(
     fullPath,
     iid: input.merge_request_iid,
   });
+  // The server enforces the schema's types (list members non-null, content a nullable string),
+  // and a type violation arrives as an error the client throws, so no second schema checks it.
   const mr = result.project?.mergeRequest;
   if (!mr) {
     throw new Error(
@@ -174,8 +176,9 @@ async function statusOf(
       }
       return 'has_conflicts';
     default:
-      // GraphQL reads never start the mergeability check; the REST read of the merge request
-      // does (lib/api/entities/merge_request_basic.rb, merge_status).
+      // GraphQL reads never start the mergeability check; the REST read of one merge request
+      // does (lib/api/entities/merge_request_basic.rb, merge_status). Only list endpoints skip it
+      // unless with_merge_status_recheck is set; the single read passes no skip option.
       await gitlab.get(
         `projects/${normalizeProjectId(input.project_id)}/merge_requests/${encodeApiSegment(input.merge_request_iid)}`,
       );
@@ -198,7 +201,8 @@ function viewFiles(files: ConflictFile[], context: number): ConflictFileView[] {
       view.content_unavailable = true;
       return view;
     }
-    const lines = file.content.split('\n');
+    // A CRLF file has CRLF markers, so the carriage return goes with the line break.
+    const lines = file.content.split(/\r?\n/);
     if (lines.at(-1) === '') lines.pop();
     const blocks = conflictBlocks(lines, file);
     view.conflict_count = blocks.length;

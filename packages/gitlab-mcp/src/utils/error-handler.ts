@@ -142,7 +142,10 @@ export interface ArtifactReadRefusal extends StructuredError {
   reason: string;
   project_id: string;
   job_id: string;
-  artifact_path: string;
+  /** The archive entry that was read; absent when a report was read by type. */
+  artifact_path?: string;
+  /** The report that was read by type; absent for an archive entry. */
+  report_type?: string;
   artifact_view_url?: string;
   http_status?: number;
   max_window_bytes: number;

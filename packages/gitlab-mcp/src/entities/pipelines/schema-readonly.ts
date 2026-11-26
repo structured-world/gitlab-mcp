@@ -6,6 +6,7 @@ import {
   ARTIFACT_MAX_OFFSET,
   encodeArtifactPath,
 } from './artifact-path';
+import { REPORT_TYPES, REPORT_TYPE_MIN_VERSION } from './artifact-report';
 import { patternList, PATTERNS_DESCRIPTION } from '../line-patterns';
 import { MAX_SECTION_NAME } from './log-sections';
 
@@ -502,7 +503,27 @@ const GrepJobLogsSchema = z
     }
   });
 
-const artifactJobField = numericId.describe('The ID of the job that uploaded artifacts:paths');
+const artifactJobField = numericId.describe('The ID of the job that uploaded the artifacts');
+const reportTypeField = z
+  .enum(REPORT_TYPES)
+  .optional()
+  .describe(
+    `Read a report the job uploaded through artifacts:reports, by its type (for example junit or sast), instead of an archive entry (GitLab ${REPORT_TYPE_MIN_VERSION}+). Give it instead of artifact_path. Offsets and limits count the report's own bytes, after decompression`,
+  );
+
+/** A call reads one file: an archive entry by path, or a report by type. */
+function requireOneArtifactSelector(
+  input: { artifact_path?: string; report_type?: string },
+  context: z.RefinementCtx,
+): void {
+  if ((input.artifact_path === undefined) === (input.report_type === undefined))
+    context.addIssue({
+      code: 'custom',
+      path: [input.artifact_path === undefined ? 'artifact_path' : 'report_type'],
+      message: 'Give exactly one of artifact_path or report_type',
+    });
+}
+
 const artifactPathField = z
   .string()
   .min(1)
@@ -515,62 +536,69 @@ const artifactPathField = z
       return false;
     }
   }, 'Expected a relative artifact file path without traversal')
+  .optional()
   .describe(
-    'Relative path within artifacts:paths, such as reports/test-results.txt; reports-only uploads are not archive entries',
+    'Relative path within artifacts:paths, such as reports/test-results.txt. A file uploaded only through artifacts:reports is not an archive entry: read it with report_type instead',
   );
 
-const GrepArtifactFileSchema = z.object({
-  action: z
-    .literal('artifact_grep')
-    .describe(
-      'Search one text artifact file (test reports, JUnit XML, coverage or tool output) with RE2 patterns; returns matching lines with context, absolute line numbers and the byte offset of each hunk for artifact_file',
-    ),
-  project_id: projectIdField,
-  job_id: artifactJobField,
-  artifact_path: artifactPathField,
-  patterns: patternList.describe(PATTERNS_DESCRIPTION),
-  before: contextLines('before'),
-  after: contextLines('after'),
-  max_matches: maxMatchesField,
-  invert: invertField,
-  start_line: z
-    .number()
-    .int()
-    .min(0)
-    .optional()
-    .describe(
-      'First line to search (0-based); pass resume_from from a truncated result. The first 20 MiB of the file are searched',
-    ),
-});
+const GrepArtifactFileSchema = z
+  .object({
+    action: z
+      .literal('artifact_grep')
+      .describe(
+        'Search one text artifact file (an archive entry by path, or a report such as JUnit XML by type) with RE2 patterns; returns matching lines with context, absolute line numbers and the byte offset of each hunk for artifact_file',
+      ),
+    project_id: projectIdField,
+    job_id: artifactJobField,
+    artifact_path: artifactPathField,
+    report_type: reportTypeField,
+    patterns: patternList.describe(PATTERNS_DESCRIPTION),
+    before: contextLines('before'),
+    after: contextLines('after'),
+    max_matches: maxMatchesField,
+    invert: invertField,
+    start_line: z
+      .number()
+      .int()
+      .min(0)
+      .optional()
+      .describe(
+        'First line to search (0-based); pass resume_from from a truncated result. The first 20 MiB of the file are searched',
+      ),
+  })
+  .superRefine(requireOneArtifactSelector);
 
-const GetArtifactFileSchema = z.object({
-  action: z
-    .literal('artifact_file')
-    .describe(
-      'Read one artifact file as bounded UTF-8 text; inspect job metadata to choose its path',
-    ),
-  project_id: projectIdField,
-  job_id: artifactJobField,
-  artifact_path: artifactPathField,
-  byte_offset: z
-    .number()
-    .int()
-    .min(0)
-    .max(ARTIFACT_MAX_OFFSET)
-    .default(0)
-    .describe(
-      'Source byte offset (default: 0, max: 20 MiB); use next_byte_offset to preserve UTF-8 boundaries',
-    ),
-  byte_limit: z
-    .number()
-    .int()
-    .min(1)
-    .max(ARTIFACT_MAX_BYTES)
-    .default(ARTIFACT_DEFAULT_BYTES)
-    .describe(
-      'Maximum source bytes returned (default: 64 KiB, max: 1 MiB). An undersized window cannot split a UTF-8 character',
-    ),
-});
+const GetArtifactFileSchema = z
+  .object({
+    action: z
+      .literal('artifact_file')
+      .describe(
+        'Read one artifact file as bounded UTF-8 text: an archive entry by path, or a report such as JUnit XML by type',
+      ),
+    project_id: projectIdField,
+    job_id: artifactJobField,
+    artifact_path: artifactPathField,
+    report_type: reportTypeField,
+    byte_offset: z
+      .number()
+      .int()
+      .min(0)
+      .max(ARTIFACT_MAX_OFFSET)
+      .default(0)
+      .describe(
+        'Source byte offset (default: 0, max: 20 MiB); use next_byte_offset to preserve UTF-8 boundaries',
+      ),
+    byte_limit: z
+      .number()
+      .int()
+      .min(1)
+      .max(ARTIFACT_MAX_BYTES)
+      .default(ARTIFACT_DEFAULT_BYTES)
+      .describe(
+        'Maximum source bytes returned (default: 64 KiB, max: 1 MiB). An undersized window cannot split a UTF-8 character',
+      ),
+  })
+  .superRefine(requireOneArtifactSelector);
 
 // --- Discriminated union combining all actions ---
 export const BrowsePipelinesSchema = z.discriminatedUnion('action', [

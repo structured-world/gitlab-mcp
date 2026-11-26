@@ -30,18 +30,18 @@ View pipeline status, job details, console output, and individual artifact files
 
 <!-- @autogen:tool browse_pipelines -->
 
-| Action          | Description                                                                                                                                                                                                       |
-| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `list`          | List pipelines with filtering                                                                                                                                                                                     |
-| `get`           | Get single pipeline details                                                                                                                                                                                       |
-| `jobs`          | List jobs in a pipeline                                                                                                                                                                                           |
-| `triggers`      | List bridge/trigger jobs in a pipeline                                                                                                                                                                            |
-| `job`           | Get single job details                                                                                                                                                                                            |
-| `log_sections`  | List the sections of a job log (runner steps such as step_script, and custom sections) with line ranges and durations                                                                                             |
-| `logs`          | Read job logs with bounded memory and explicit byte truncation                                                                                                                                                    |
-| `log_grep`      | Search a whole job log, or the logs of a pipeline's failed jobs, with RE2 patterns; returns matching lines with context and absolute line numbers                                                                 |
-| `artifact_file` | Read one artifact file as bounded UTF-8 text; inspect job metadata to choose its path                                                                                                                             |
-| `artifact_grep` | Search one text artifact file (test reports, JUnit XML, coverage or tool output) with RE2 patterns; returns matching lines with context, absolute line numbers and the byte offset of each hunk for artifact_file |
+| Action          | Description                                                                                                                                                                                                                      |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `list`          | List pipelines with filtering                                                                                                                                                                                                    |
+| `get`           | Get single pipeline details                                                                                                                                                                                                      |
+| `jobs`          | List jobs in a pipeline                                                                                                                                                                                                          |
+| `triggers`      | List bridge/trigger jobs in a pipeline                                                                                                                                                                                           |
+| `job`           | Get single job details                                                                                                                                                                                                           |
+| `log_sections`  | List the sections of a job log (runner steps such as step_script, and custom sections) with line ranges and durations                                                                                                            |
+| `logs`          | Read job logs with bounded memory and explicit byte truncation                                                                                                                                                                   |
+| `log_grep`      | Search a whole job log, or the logs of a pipeline's failed jobs, with RE2 patterns; returns matching lines with context and absolute line numbers                                                                                |
+| `artifact_file` | Read one artifact file as bounded UTF-8 text: an archive entry by path, or a report such as JUnit XML by type                                                                                                                    |
+| `artifact_grep` | Search one text artifact file (an archive entry by path, or a report such as JUnit XML by type) with RE2 patterns; returns matching lines with context, absolute line numbers and the byte offset of each hunk for artifact_file |
 
 <!-- @autogen:end -->
 
@@ -389,8 +389,9 @@ cannot be listed this time stays in `resume` instead of being reported as
 Use `artifact_file` to read a known path uploaded through `artifacts:paths` on
 GitLab 16.0 or later, including Free instances. The action uses the selected
 connection, its credentials, read permissions and project restrictions. It does
-not download the artifacts archive or list its entries. A reports-only upload
-does not necessarily provide a downloadable archive entry.
+not download the artifacts archive or list its entries. A file uploaded only
+through `artifacts:reports` is not an archive entry: read it by type, see
+[Report Artifacts](#report-artifacts).
 
 ```json
 {
@@ -441,6 +442,49 @@ without asking to reauthenticate a valid GitLab account.
 Redirects are bounded, signed query strings are omitted from diagnostics, and
 credentials are never forwarded or reinjected after leaving the GitLab origin.
 
+### Report Artifacts
+
+A report collected through `artifacts:reports` (JUnit XML, SAST and other security
+reports, code quality, coverage and so on) is stored by GitLab as its own file,
+outside the `artifacts:paths` archive. Read or search it with `report_type` in place
+of `artifact_path`, in `artifact_file` and `artifact_grep` alike. This needs GitLab
+**19.4** or later; on an older instance the parameter is not offered and reading an
+archive entry by `artifact_path` works as before.
+
+```json
+{
+  "action": "artifact_file",
+  "project_id": "my-org/api",
+  "job_id": "5678",
+  "report_type": "junit"
+}
+```
+
+`report_type` is one of `junit`, `cobertura`, `jacoco`, `codequality`, `sast`,
+`secret_detection`, `dependency_scanning`, `container_scanning`,
+`cluster_image_scanning`, `dast`, `api_fuzzing`, `sarif`, `license_scanning`,
+`cyclonedx`, `accessibility`, `performance`, `browser_performance`,
+`load_performance`, `metrics`, `dotenv`, `requirements` and `requirements_v2`. Give
+exactly one of `artifact_path` or `report_type`. The result carries `report_type`
+instead of `artifact_path`; the other fields, limits and continuation rules are
+those of an archive entry.
+
+GitLab stores some reports compressed (JUnit among them, one gzip member per
+collected file). The report is decompressed while it is read, and every offset and
+limit counts the report's own bytes: `byte_offset`, `byte_limit`, `total_bytes`, the
+20 MiB reach of a search and a hunk's `byte_offset`. No more is decompressed than the
+window or the search reads, so a small stored file cannot expand past those limits.
+A compressed report is transferred from its first byte on every call; a report
+GitLab stores uncompressed is requested as a byte range past the first window.
+
+A report the job did not upload, an expired one and a job that is not accessible
+all answer with GitLab's 404, named as a missing report; a denial keeps its status.
+None of them is an empty result. A damaged or truncated compressed report is refused
+with `ARTIFACT_READ_REFUSED` and reason `invalid_compression`. If GitLab answers
+with the artifacts archive, as a release before 19.4 does, the reason is
+`report_type_unsupported`. A binary report is refused as `not_text` with the
+browser download of that report as `artifact_view_url`.
+
 ### Artifact File Search
 
 `artifact_grep` searches one text artifact file, such as a test report, JUnit XML,
@@ -490,7 +534,8 @@ line feed, form feed, carriage return or escape, or invalid UTF-8 anywhere in th
 searched part fails the call with `ARTIFACT_READ_REFUSED` and reason `not_text`,
 with a GitLab `artifact_view_url`, even when matches were already found. Binary media
 types and compressed responses are refused before any byte is searched. Other
-refusals and GitLab errors are those of `artifact_file`.
+refusals and GitLab errors are those of `artifact_file`. A report is searched by
+`report_type` instead of `artifact_path`, see [Report Artifacts](#report-artifacts).
 
 ## manage_pipeline
 

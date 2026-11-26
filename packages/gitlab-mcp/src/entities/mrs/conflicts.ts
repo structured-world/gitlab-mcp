@@ -206,12 +206,8 @@ function viewFiles(files: ConflictFile[], context: number): ConflictFileView[] {
     if (lines.at(-1) === '') lines.pop();
     const blocks = conflictBlocks(lines, file);
     view.conflict_count = blocks.length;
-    // A file without markers (a tree conflict) is shown from its start.
-    let ranges: [number, number][] = [];
-    if (blocks.length > 0) ranges = mergeRanges(blocks, context, lines.length);
-    else if (lines.length > 0) ranges = [[0, lines.length - 1]];
     let cut = 0;
-    for (const [first, last] of ranges) {
+    for (const [first, last] of shownRanges(blocks, context, lines.length)) {
       if (budget <= 0) {
         view.hunks_omitted++;
         continue;
@@ -259,6 +255,16 @@ function conflictBlocks(lines: string[], file: ConflictFile): [number, number][]
   }
   if (start !== -1) blocks.push([start, lines.length - 1]);
   return blocks;
+}
+
+/** Line ranges to show; a file without markers (a tree conflict) is shown from its start. */
+function shownRanges(
+  blocks: [number, number][],
+  context: number,
+  total: number,
+): [number, number][] {
+  if (blocks.length > 0) return mergeRanges(blocks, context, total);
+  return total > 0 ? [[0, total - 1]] : [];
 }
 
 /** Widen each region by `context` lines and join regions whose context touches. */

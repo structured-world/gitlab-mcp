@@ -34,6 +34,7 @@ Find and inspect merge requests.
 | `get` | Get single MR by IID or branch name |
 | `closing_issues` | Read one page of visible issues GitLab would close on merge; does not close issues |
 | `diffs` | Get file changes/diffs for an MR |
+| `conflicts` | Read why an MR cannot merge: GitLab's conflict status and, for each conflicting file, its paths and the regions between conflict markers; reads only, never resolves |
 | `compare` | Compare two branches or commits |
 | `versions` | List all diff versions of an MR (each push creates a version) |
 | `version` | Get specific MR diff version with file changes |
@@ -77,6 +78,15 @@ Find and inspect merge requests.
   "merge_request_iid": "42",
   "line_patterns": ["console\\.log", "(?i)todo"],
   "exclude_lockfiles": true
+}
+```
+
+```json [Read conflicts]
+{
+  "action": "conflicts",
+  "project_id": "my-org/api",
+  "merge_request_iid": "42",
+  "context_lines": 3
 }
 ```
 
@@ -160,6 +170,33 @@ in `not_scanned` with a `reason`:
 
 GitLab's own `overflow` (`diffs`) and `compare_timeout` (`compare`) stay in the
 result: when true, GitLab stopped listing files, so later files were not searched.
+
+### Merge Conflicts
+
+`conflicts` (GitLab 19.4+) reads why a merge request cannot merge, as GitLab computes
+it: a normal diff does not show conflicts, and nothing here is resolved, rebased or
+written. `status` says what GitLab reports, with a `reason`:
+
+| `status` | Meaning |
+|----------|---------|
+| `has_conflicts` | Conflicts; `files` lists the conflicting files |
+| `no_conflicts` | The merge request can be merged without conflicts |
+| `unchecked` | GitLab has not checked mergeability yet; the read asks it to (it does so for users who can update the merge request), so read again shortly |
+| `branch_missing` | The source or target branch is missing, or the diff is incomplete |
+| `no_push_access` | GitLab returns conflict files only to users who can push to the source branch |
+| `files_unavailable` | Conflicts, but GitLab could not return the files (binary, or a side of the conflict is missing) |
+| `source_outside_scope` | The source branch is in a fork outside the allowed projects; its contents are not returned |
+
+Each file has `our_path` (source branch), `their_path` (target branch),
+`conflict_count` and `hunks`: the regions from GitLab's `<<<<<<< our_path` marker to
+its `>>>>>>> their_path` marker with `context_lines` around them (default 3, max 20),
+each with the `start_line` of its first line in the file. A file without markers, such
+as a deletion on one side, is shown from its first line; a file GitLab sent without
+text has `content_unavailable`. All regions of one call share a 64 KiB budget and lines
+are cut at 2000 characters (`long_lines_cut`): every conflicting file is still listed,
+and regions left out are counted in `hunks_omitted`, with `truncated` set on the
+result. `file_path` returns one file by its source or target path, while `files_total`
+counts them all.
 
 ## manage_merge_request
 

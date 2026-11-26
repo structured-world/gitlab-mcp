@@ -17,6 +17,7 @@ import { encodeApiSegment } from '../../utils/api-path';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
 import { assertActionAllowed } from '../utils';
 import { diffLineFilter, parseDiffFiles, searchDiffLines } from '../diff-lines';
+import { CONFLICTS_MIN_VERSION, readMergeRequestConflicts } from './conflicts';
 
 /**
  * Response shape for MR status check before merge.
@@ -192,12 +193,17 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
       name: 'browse_merge_requests',
       projectableActions: ['list', 'closing_issues', 'diffs', 'compare', 'versions'],
       description:
-        'Find and inspect merge requests. Actions: list (filter by state/author/reviewer/labels/branch), get (MR details by IID or source branch), closing_issues (one page of native issues that close on merge), diffs (file-level changes with inline suggestions), compare (diff between any two refs); diffs and compare take line_patterns to return only matching changed lines with positions for comments, versions (list diff versions from pushes), version (get specific version with diffs). Related: manage_merge_request to create/update/merge.',
+        "Find and inspect merge requests. Actions: list (filter by state/author/reviewer/labels/branch), get (MR details by IID or source branch), closing_issues (one page of native issues that close on merge), diffs (file-level changes with inline suggestions), conflicts (GitLab's conflict status and the conflicting files' marker regions of an MR that cannot merge; read-only), compare (diff between any two refs); diffs and compare take line_patterns to return only matching changed lines with positions for comments, versions (list diff versions from pushes), version (get specific version with diffs). Related: manage_merge_request to create/update/merge.",
       inputSchema: z.toJSONSchema(BrowseMergeRequestsSchema),
       requirements: {
         default: { tier: 'free' },
         actions: {
           approvals: { tier: 'premium', notes: 'MR approvals' },
+          conflicts: {
+            tier: 'free',
+            minVersion: CONFLICTS_MIN_VERSION,
+            notes: 'MergeRequest.conflictStatus and conflictFiles',
+          },
         },
       },
       gate: { envVar: 'USE_MRS', defaultValue: true },
@@ -333,6 +339,9 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
 
             return response;
           }
+
+          case 'conflicts':
+            return readMergeRequestConflicts(input);
 
           case 'compare': {
             // TypeScript knows: input has project_id (required), from (required), to (required)

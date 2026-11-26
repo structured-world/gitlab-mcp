@@ -4,7 +4,7 @@ import { diffLineFilterFields } from '../line-patterns';
 
 // ============================================================================
 // browse_merge_requests - CQRS Query Tool (discriminated union schema)
-// Actions: list, get, closing_issues, diffs, compare, versions, version
+// Actions: list, get, closing_issues, diffs, conflicts, compare, versions, version
 // Uses z.discriminatedUnion() for type-safe action handling.
 // Schema pipeline flattens to flat JSON Schema for AI clients that don't support oneOf.
 // ============================================================================
@@ -210,6 +210,31 @@ const DiffsMergeRequestSchema = z
   })
   .passthrough();
 
+// --- Action: conflicts ---
+const ConflictsMergeRequestSchema = z
+  .object({
+    action: z
+      .literal('conflicts')
+      .describe(
+        "Read why an MR cannot merge: GitLab's conflict status and, for each conflicting file, its paths and the regions between conflict markers; reads only, never resolves",
+      ),
+    project_id: projectIdField,
+    merge_request_iid: mergeRequestIidField,
+    file_path: z
+      .string()
+      .min(1)
+      .optional()
+      .describe('Return only the conflicting file with this source or target path'),
+    context_lines: z
+      .number()
+      .int()
+      .min(0)
+      .max(20)
+      .optional()
+      .describe('Unchanged lines shown around each conflict region (default: 3)'),
+  })
+  .passthrough();
+
 // --- Action: compare ---
 // Note: .passthrough() preserves unknown fields for superRefine validation
 const CompareMergeRequestSchema = z
@@ -259,6 +284,7 @@ const BrowseMergeRequestsBaseSchema = z.discriminatedUnion('action', [
   GetMergeRequestByIidSchema,
   ClosingIssuesSchema,
   DiffsMergeRequestSchema,
+  ConflictsMergeRequestSchema,
   CompareMergeRequestSchema,
   ListMergeRequestVersionsSchema,
   GetMergeRequestVersionSchema,
@@ -304,6 +330,7 @@ const compareOnlyFields = ['from', 'to', 'straight'];
 const getOnlyFields = ['merge_request_iid', 'branch_name'];
 const versionOnlyFields = ['version_id'];
 const diffsOnlyFields = ['exclude_patterns', 'exclude_lockfiles', 'exclude_generated'];
+const conflictsOnlyFields = ['file_path', 'context_lines'];
 const diffLineFields = Object.keys(diffLineFilterFields);
 // Fields from get/diffs actions that are invalid for versions/version actions
 // - branch_name: get-only
@@ -416,6 +443,18 @@ export const BrowseMergeRequestsSchema = BrowseMergeRequestsBaseSchema.refine(
     }
   }
 
+  if (data.action !== 'conflicts') {
+    for (const field of conflictsOnlyFields) {
+      if (field in input && input[field] !== undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `'${field}' is only valid for 'conflicts' action`,
+          path: [field],
+        });
+      }
+    }
+  }
+
   if (data.action !== 'diffs' && data.action !== 'compare') {
     for (const field of diffLineFields) {
       if (field in input && input[field] !== undefined) {
@@ -429,7 +468,12 @@ export const BrowseMergeRequestsSchema = BrowseMergeRequestsBaseSchema.refine(
   }
 
   // Check for get/diffs shared fields used in versions/version actions
-  if (data.action === 'versions' || data.action === 'version' || data.action === 'closing_issues') {
+  if (
+    data.action === 'versions' ||
+    data.action === 'version' ||
+    data.action === 'closing_issues' ||
+    data.action === 'conflicts'
+  ) {
     for (const field of fieldsInvalidForVersionActions) {
       if (field in input && input[field] !== undefined) {
         ctx.addIssue({

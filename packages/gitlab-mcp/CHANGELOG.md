@@ -4,6 +4,16 @@
 
 * exempt stdio session from idle timeout cleanup ([#363](https://github.com/structured-world/gitlab-mcp/issues/363)) ([ca563bd](https://github.com/structured-world/gitlab-mcp/commit/ca563bda9aa969d5d7680d3d89c2c72f32344838)), closes [#361](https://github.com/structured-world/gitlab-mcp/issues/361)
 
+## [13.6.0](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-v13.5.0...gitlab-mcp-v13.6.0) (2026-11-26)
+
+
+### Features
+
+* **files:** read a line range of a repository file ([#801](https://github.com/structured-world/gitlab-mcp/issues/801)) ([18a7d72](https://github.com/structured-world/gitlab-mcp/commit/18a7d72350ada81bb86d1aff181d7b2548d09f65))
+* **mrs:** read conflicting files for a merge request ([#800](https://github.com/structured-world/gitlab-mcp/issues/800)) ([f88c263](https://github.com/structured-world/gitlab-mcp/commit/f88c2635d3f0538bab200d8dc37494c3188703a3))
+* **pipelines:** read report artifacts by type ([#798](https://github.com/structured-world/gitlab-mcp/issues/798)) ([b7405b0](https://github.com/structured-world/gitlab-mcp/commit/b7405b023aaaa5b7664eb6b70adfccf037b374fd))
+* **pipelines:** run a merge request pipeline ([#796](https://github.com/structured-world/gitlab-mcp/issues/796)) ([0335732](https://github.com/structured-world/gitlab-mcp/commit/0335732bcffea626024e95a326d5e1c09c6e31aa))
+
 ## [13.5.0](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-v13.4.0...gitlab-mcp-v13.5.0) (2026-11-23)
 
 

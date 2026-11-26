@@ -149,6 +149,88 @@ describe('browse_files content encoding', () => {
     },
   );
 
+  // A ranged read returns the lines with the version a later edit pins, from one request.
+  it('returns a line range with the file version', async () => {
+    mockEnhancedFetch.mockResolvedValueOnce(
+      new Response('a: 1\r\nb: 2\r\nc: 3\r\n', {
+        headers: {
+          'content-type': 'text/plain',
+          'x-gitlab-last-commit-id': 'c0ffee',
+          'x-gitlab-blob-id': 'b10b',
+          'x-gitlab-content-sha256': '5ha',
+        },
+      }),
+    );
+    await expect(
+      filesToolRegistry.get('browse_files')!.handler({
+        action: 'content',
+        project_id: 'test/project',
+        file_path: 'values.yaml',
+        ref: 'main',
+        start_line: 2,
+        end_line: 2,
+      }),
+    ).resolves.toEqual({
+      file_path: 'values.yaml',
+      ref: 'main',
+      size: 18,
+      encoding: 'utf8',
+      content_type: 'text/plain',
+      content: 'b: 2\r\n',
+      start_line: 2,
+      end_line: 2,
+      total_lines: 3,
+      next_line: 3,
+      last_commit_id: 'c0ffee',
+      blob_id: 'b10b',
+      content_sha256: '5ha',
+    });
+  });
+
+  // end_line alone reads from the first line.
+  it('reads from line 1 when only end_line is given', async () => {
+    mockEnhancedFetch.mockResolvedValueOnce(new Response('a\nb\nc\n'));
+    await expect(
+      filesToolRegistry.get('browse_files')!.handler({
+        action: 'content',
+        project_id: 'test/project',
+        file_path: 'example.txt',
+        end_line: 2,
+      }),
+    ).resolves.toMatchObject({ content: 'a\nb\n', start_line: 1, end_line: 2, next_line: 3 });
+  });
+
+  // A ranged read of binary bytes is refused with the reason, not answered with a base64 slice.
+  it('refuses a ranged read of a file that is not UTF-8', async () => {
+    mockEnhancedFetch.mockResolvedValueOnce(new Response(Buffer.from([0x25, 0xff, 0x0a])));
+    await expect(
+      filesToolRegistry.get('browse_files')!.handler({
+        action: 'content',
+        project_id: 'test/project',
+        file_path: 'report.pdf',
+        start_line: 1,
+      }),
+    ).rejects.toThrow('browse_files content: the file is not valid UTF-8 text');
+  });
+
+  // Invalid ranges are refused before any request.
+  it.each([
+    ['start after end', { start_line: 5, end_line: 4 }],
+    ['zero start', { start_line: 0 }],
+    ['negative end', { end_line: -1 }],
+    ['fractional start', { start_line: 1.5 }],
+  ])('refuses %s', async (_name, range) => {
+    await expect(
+      filesToolRegistry.get('browse_files')!.handler({
+        action: 'content',
+        project_id: 'test/project',
+        file_path: 'example.txt',
+        ...range,
+      }),
+    ).rejects.toThrow();
+    expect(mockEnhancedFetch).not.toHaveBeenCalled();
+  });
+
   // Preserve the existing MIME default when GitLab omits Content-Type.
   it('uses the existing text content type when the header is missing', async () => {
     mockEnhancedFetch.mockResolvedValueOnce(new Response(new Uint8Array([0x61])));

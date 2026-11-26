@@ -11,6 +11,12 @@ const Content = z.object({
   blob_id: z.string(),
   content_sha256: z.string(),
 });
+const Ranged = Content.extend({
+  start_line: z.number(),
+  end_line: z.number().nullable(),
+  total_lines: z.number(),
+  next_line: z.number().nullable(),
+});
 const EditResult = z.object({
   replacements: z.array(z.number()),
   diff: z.string(),
@@ -154,5 +160,54 @@ describe('manage_files edit - GitLab integration', () => {
     const content = (await read()).content;
     expect(content).toContain('# concurrent change');
     expect(content).toContain('suspend: false');
+  });
+
+  // A ranged read returns the stored lines (the CRLF line keeps its CR) with the same version
+  // as a whole read, so an edit can be pinned to it without reading the whole file.
+  it('reads a line range whose version pins an edit', async () => {
+    const whole = await read();
+    const lines = whole.content.split(/(?<=\n)/);
+    const ranged = Ranged.parse(
+      await helper.executeTool('browse_files', {
+        action: 'content',
+        project_id: projectId,
+        file_path: FILE,
+        ref: branch,
+        start_line: 4,
+        end_line: 5,
+      }),
+    );
+    expect(ranged).toMatchObject({
+      content: lines.slice(3, 5).join(''),
+      start_line: 4,
+      end_line: 5,
+      total_lines: lines.length,
+      next_line: 6,
+      last_commit_id: whole.last_commit_id,
+      blob_id: whole.blob_id,
+      content_sha256: whole.content_sha256,
+    });
+    expect(ranged.content).toContain('\r\n');
+
+    const result = await edit({
+      edits: [{ old_text: 'memory: 1Gi', new_text: 'memory: 2Gi' }],
+      expected_last_commit_id: ranged.last_commit_id,
+    });
+    expect(result.replacements).toEqual([1]);
+    expect((await read()).content).toContain('memory: 2Gi');
+  });
+
+  // A range past the end is an empty selection that still reports the line count.
+  it('returns an empty selection past the end of the file', async () => {
+    const total = (await read()).content.split(/(?<=\n)/).length;
+    await expect(
+      helper.executeTool('browse_files', {
+        action: 'content',
+        project_id: projectId,
+        file_path: FILE,
+        ref: branch,
+        start_line: total + 10,
+      }),
+    ).resolves.toMatchObject({ content: '', end_line: null, total_lines: total, next_line: null });
   });
 });

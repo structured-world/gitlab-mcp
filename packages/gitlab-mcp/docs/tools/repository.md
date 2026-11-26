@@ -31,7 +31,7 @@ File browsing, commits, branches, tags, and repository management.
 | Action | Description |
 |--------|-------------|
 | `tree` | List files and folders in a directory |
-| `content` | Read file contents as UTF-8 text or base64 binary, with encoding, byte size and the file version (last_commit_id, blob_id, content_sha256) |
+| `content` | Read file contents as UTF-8 text or base64 binary, with encoding, byte size and the file version (last_commit_id, blob_id, content_sha256); start_line/end_line read only a line range of a text file |
 | `download_attachment` | Download a file attachment from issues/MRs |
 <!-- @autogen:end -->
 
@@ -53,6 +53,17 @@ File browsing, commits, branches, tags, and repository management.
   "project_id": "my-org/api",
   "file_path": "src/config.ts",
   "ref": "main"
+}
+```
+
+```json [Read lines]
+{
+  "action": "content",
+  "project_id": "my-org/api",
+  "file_path": ".gitlab-ci.yml",
+  "ref": "main",
+  "start_line": 120,
+  "end_line": 180
 }
 ```
 
@@ -80,6 +91,20 @@ the declared encoding, regardless of the MIME type. `size` is the original byte
 count, including any UTF-8 BOM. Text keeps the existing behavior of removing a
 leading UTF-8 BOM. Uploaded attachments still use `download_attachment`, which
 always returns base64.
+
+With `start_line` and/or `end_line` (1-based, inclusive), `content` returns only those
+lines of a UTF-8 text file: `content` holds them exactly as stored, each with its own
+`\n` or `\r\n` ending and no newline added after a last line that has none. The result
+adds `start_line`, `end_line` (the last line returned, `null` when none), `total_lines`
+and `next_line` (where to continue, `null` at the end of the file), and keeps `size`
+and the version fields, so a ranged read can pin a later edit just as a whole read
+does. `end_line` alone reads from line 1, `start_line` alone reads to the end of the
+file. A range past the end returns empty `content` with `total_lines`. One call returns
+at most 2000 lines and 64 KiB; a longer range is cut at a line boundary with
+`truncated: true`, and a single line longer than 64 KiB is cut to it on a character
+boundary with `line_cut: true`; the rest of that line is not returned by a ranged read,
+since `next_line` starts at the following line. A file that is not UTF-8 text is refused for a ranged
+read; read it whole to get base64.
 
 ### manage_files
 

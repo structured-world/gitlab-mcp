@@ -39,6 +39,62 @@ function charStart(bytes: Buffer, index: number): number {
   return at;
 }
 
+// A newline byte never occurs inside a multibyte UTF-8 character, so lines are found on the
+// bytes without decoding the whole file.
+
+/** Offset just past the line that starts at byte `at`: after its `\n`, or the end of the file. */
+function lineEnd(bytes: Buffer, at: number): number {
+  const newline = bytes.indexOf(NEWLINE, at);
+  return newline === -1 ? bytes.length : newline + 1;
+}
+
+/** Skip up to `count` lines from the start; `lines` is fewer than `count` when the file ends first. */
+function skipLines(bytes: Buffer, count: number): { at: number; lines: number } {
+  let at = 0;
+  let lines = 0;
+  while (lines < count && at < bytes.length) {
+    at = lineEnd(bytes, at);
+    lines++;
+  }
+  return { at, lines };
+}
+
+/** Number of lines from byte `from` to the end of the file. */
+function countLines(bytes: Buffer, from: number): number {
+  let lines = 0;
+  for (let at = from; at < bytes.length; at = lineEnd(bytes, at)) lines++;
+  return lines;
+}
+
+interface Taken {
+  /** Offset just past the selected text. */
+  lastByte: number;
+  lastLine: number;
+  /** Offset of the first line not yet counted. */
+  rest: number;
+  cut: boolean;
+}
+
+/**
+ * Take whole lines from `firstLine` (starting at byte `from`) up to `lastWanted` while they fit
+ * the byte cap; a first line longer than the cap is cut to it on a character boundary.
+ */
+function takeLines(bytes: Buffer, from: number, firstLine: number, lastWanted: number): Taken {
+  let at = from;
+  let line = firstLine - 1;
+  while (at < bytes.length && line < lastWanted) {
+    const next = lineEnd(bytes, at);
+    if (next - from > RANGE_MAX_BYTES) {
+      if (line >= firstLine) break;
+      const lastByte = charStart(bytes, from + RANGE_MAX_BYTES);
+      return { lastByte, lastLine: firstLine, rest: next, cut: true };
+    }
+    line++;
+    at = next;
+  }
+  return { lastByte: at, lastLine: line, rest: at, cut: false };
+}
+
 /**
  * Select lines `start`..`end` (1-based, inclusive; `end` omitted reads to the end of the file)
  * of a file's bytes, as Git stores them: a line ends after `\n`, so `\r\n` stays in the text, and
@@ -46,51 +102,26 @@ function charStart(bytes: Buffer, index: number): number {
  */
 export function selectLines(bytes: Buffer, start: number, end?: number): LineSelection {
   if (!isUtf8(bytes)) throw new NotTextError();
-  const lastWanted = Math.min(end ?? Number.POSITIVE_INFINITY, start + RANGE_MAX_LINES - 1);
-  let firstByte = -1;
-  let lastByte = -1;
-  let lastLine = 0;
-  let stopped = false;
-  let cut = false;
-  let line = 0;
-  // A newline byte never occurs inside a multibyte UTF-8 character, so lines are found on the
-  // bytes without decoding the whole file.
-  for (let at = 0; at < bytes.length;) {
-    const newline = bytes.indexOf(NEWLINE, at);
-    const next = newline === -1 ? bytes.length : newline + 1;
-    line++;
-    if (line === start) firstByte = at;
-    if (!stopped && line >= start && line <= lastWanted) {
-      if (next - firstByte <= RANGE_MAX_BYTES) {
-        lastByte = next;
-        lastLine = line;
-      } else {
-        if (lastLine === 0) {
-          lastByte = charStart(bytes, firstByte + RANGE_MAX_BYTES);
-          lastLine = line;
-          cut = true;
-        }
-        stopped = true;
-      }
-    }
-    at = next;
+  const skipped = skipLines(bytes, start - 1);
+  if (skipped.at >= bytes.length) {
+    const total = skipped.lines;
+    return { content: '', start_line: start, end_line: null, total_lines: total, next_line: null };
   }
 
-  const total = line;
-  if (lastLine === 0)
-    return { content: '', start_line: start, end_line: null, total_lines: total, next_line: null };
-  let from = firstByte;
+  const lastWanted = Math.min(end ?? Number.POSITIVE_INFINITY, start + RANGE_MAX_LINES - 1);
+  const taken = takeLines(bytes, skipped.at, start, lastWanted);
+  const total = taken.lastLine + countLines(bytes, taken.rest);
   // A whole read drops a leading byte order mark, so line 1 does too.
-  if (from === 0 && bytes.subarray(0, BOM.length).equals(BOM)) from = BOM.length;
-  const content = bytes.toString('utf8', from, lastByte);
+  const hasBom = skipped.at === 0 && bytes.subarray(0, BOM.length).equals(BOM);
+  const from = hasBom ? BOM.length : skipped.at;
   const requestedLast = Math.min(end ?? total, total);
   return {
-    content,
+    content: bytes.toString('utf8', from, taken.lastByte),
     start_line: start,
-    end_line: lastLine,
+    end_line: taken.lastLine,
     total_lines: total,
-    next_line: lastLine < total ? lastLine + 1 : null,
-    ...((cut || lastLine < requestedLast) && { truncated: true }),
-    ...(cut && { line_cut: true }),
+    next_line: taken.lastLine < total ? taken.lastLine + 1 : null,
+    ...((taken.cut || taken.lastLine < requestedLast) && { truncated: true }),
+    ...(taken.cut && { line_cut: true }),
   };
 }

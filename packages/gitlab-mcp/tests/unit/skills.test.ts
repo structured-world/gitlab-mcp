@@ -12,6 +12,7 @@ import { BrowseWorkItemsSchema } from '../../src/entities/workitems/schema-reado
 import { ManageWorkItemSchema } from '../../src/entities/workitems/schema';
 import { BrowsePipelinesSchema } from '../../src/entities/pipelines/schema-readonly';
 import { ManageFilesSchema } from '../../src/entities/files/schema';
+import { BrowseFilesSchema } from '../../src/entities/files/schema-readonly';
 import { BrowseDuoSessionsSchema, ManageDuoSessionSchema } from '../../src/entities/duo/schema';
 import { RegistryManager } from '../../src/registry-manager';
 import { compileProjection, JMESPATH_ARGUMENT } from '../../src/utils/jmespath-projection';
@@ -27,6 +28,7 @@ const schemas: Record<string, Array<[string, ZodType]>> = {
     ['browse_merge_requests', BrowseMergeRequestsSchema],
     ['browse_mr_discussions', BrowseMrDiscussionsSchema],
     ['manage_mr_discussion', ManageMrDiscussionSchema],
+    ['browse_files', BrowseFilesSchema],
   ],
   'gitlab-work-items': [
     ['browse_work_items', BrowseWorkItemsSchema],
@@ -35,6 +37,7 @@ const schemas: Record<string, Array<[string, ZodType]>> = {
   'gitlab-ci': [
     ['browse_pipelines', BrowsePipelinesSchema],
     ['manage_files', ManageFilesSchema],
+    ['browse_files', BrowseFilesSchema],
   ],
   'gitlab-duo': [
     ['browse_duo_sessions', BrowseDuoSessionsSchema],

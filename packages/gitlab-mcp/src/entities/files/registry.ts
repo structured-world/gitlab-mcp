@@ -12,6 +12,7 @@ import { assertActionAllowed } from '../utils';
 import { parseGitLabApiError } from '../../utils/error-handler';
 import { editRepositoryFile } from './edit-handler';
 import { readRepositoryFile } from './read';
+import { NotTextError, selectLines } from './line-range';
 
 /**
  * Files tools registry - 2 CQRS tools replacing 5 individual tools
@@ -30,7 +31,7 @@ export const filesToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefin
       name: 'browse_files',
       projectableActions: ['tree'],
       description:
-        'Explore project file structure and read source code. Actions: tree (list directory contents with recursive depth control), content (read file at specific ref/branch; UTF-8 text or base64 for binary data, with encoding, byte size and the last_commit_id an edit can pass back), download_attachment (get uploaded file by secret+filename). Related: manage_files to create/update files.',
+        'Explore project file structure and read source code. Actions: tree (list directory contents with recursive depth control), content (read file at specific ref/branch; UTF-8 text or base64 for binary data, with encoding, byte size and the last_commit_id an edit can pass back; start_line/end_line read only a line range of a text file), download_attachment (get uploaded file by secret+filename). Related: manage_files to create/update files.',
       inputSchema: z.toJSONSchema(BrowseFilesSchema),
       // Downloading an upload by secret + filename landed in GitLab 17.4.
       requirements: {
@@ -63,6 +64,30 @@ export const filesToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefin
             // tied to a later edit or update at no extra request.
             const file = await readRepositoryFile(input.project_id, input.file_path, input.ref);
             const bytes = file.bytes;
+            const version = {
+              last_commit_id: file.last_commit_id,
+              blob_id: file.blob_id,
+              content_sha256: file.content_sha256,
+            };
+            if (input.start_line !== undefined || input.end_line !== undefined) {
+              let selection;
+              try {
+                selection = selectLines(bytes, input.start_line ?? 1, input.end_line);
+              } catch (error) {
+                if (error instanceof NotTextError)
+                  throw new Error(`browse_files content: ${error.message}`, { cause: error });
+                throw error;
+              }
+              return {
+                file_path: input.file_path,
+                ref: input.ref ?? 'HEAD',
+                size: bytes.byteLength,
+                encoding: 'utf8',
+                content_type: file.content_type,
+                ...selection,
+                ...version,
+              };
+            }
             let content: string;
             let encoding: 'utf8' | 'base64';
             try {
@@ -88,9 +113,7 @@ export const filesToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefin
               content,
               encoding,
               content_type: file.content_type,
-              last_commit_id: file.last_commit_id,
-              blob_id: file.blob_id,
-              content_sha256: file.content_sha256,
+              ...version,
             };
           }
 

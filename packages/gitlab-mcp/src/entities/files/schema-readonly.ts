@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { flexibleBoolean, requiredId, paginationFields } from '../utils';
+import { RANGE_MAX_BYTES, RANGE_MAX_LINES } from './line-range';
 
 // ============================================================================
 // Response schemas for GitLab file API responses
@@ -63,16 +64,38 @@ const TreeActionSchema = z.object({
 });
 
 // --- Action: content ---
-const ContentActionSchema = z.object({
-  action: z
-    .literal('content')
-    .describe(
-      'Read file contents as UTF-8 text or base64 binary, with encoding, byte size and the file version (last_commit_id, blob_id, content_sha256)',
+const lineField = (role: string) => z.number().int().min(1).optional().describe(role);
+
+const ContentActionSchema = z
+  .object({
+    action: z
+      .literal('content')
+      .describe(
+        'Read file contents as UTF-8 text or base64 binary, with encoding, byte size and the file version (last_commit_id, blob_id, content_sha256); start_line/end_line read only a line range of a text file',
+      ),
+    project_id: projectIdField,
+    ref: refField,
+    file_path: z.string().describe('Path to the file to read'),
+    start_line: lineField(
+      `First line to read (1-based); with end_line or alone, reads only that range of a UTF-8 text file. At most ${RANGE_MAX_LINES} lines and ${RANGE_MAX_BYTES / 1024} KiB are returned per call; continue from next_line`,
     ),
-  project_id: projectIdField,
-  ref: refField,
-  file_path: z.string().describe('Path to the file to read'),
-});
+    end_line: lineField(
+      'Last line to read (1-based, inclusive, not before start_line); alone it reads from line 1',
+    ),
+  })
+  // Kept out of the JSON Schema: the flat mode merges action branches into one object.
+  .superRefine((input, context) => {
+    if (
+      input.start_line !== undefined &&
+      input.end_line !== undefined &&
+      input.start_line > input.end_line
+    )
+      context.addIssue({
+        code: 'custom',
+        path: ['end_line'],
+        message: 'end_line must not be before start_line',
+      });
+  });
 
 // --- Action: download_attachment ---
 const DownloadAttachmentActionSchema = z.object({

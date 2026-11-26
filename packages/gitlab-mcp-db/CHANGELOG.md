@@ -1,5 +1,19 @@
 # Changelog
 
+## [13.6.0](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-db-v13.5.0...gitlab-mcp-db-v13.6.0) (2026-11-26)
+
+
+### Features
+
+* **mrs:** read conflicting files for a merge request ([#800](https://github.com/structured-world/gitlab-mcp/issues/800)) ([f88c263](https://github.com/structured-world/gitlab-mcp/commit/f88c2635d3f0538bab200d8dc37494c3188703a3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @structured-world/gitlab-mcp bumped to 13.6.0
+
 ## [13.5.0](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-db-v13.4.0...gitlab-mcp-db-v13.5.0) (2026-11-23)
 
 

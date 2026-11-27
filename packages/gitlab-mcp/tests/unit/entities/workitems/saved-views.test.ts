@@ -42,11 +42,23 @@ jest.mock('../../../../src/entities/instance-version', () => {
 });
 
 // The working scope and the operator's project list of the running call.
-const reach = { descendants: true, outside: new Set<string>() };
+const reach = {
+  descendants: true,
+  outside: new Set<string>(),
+  checked: [] as Array<[string, string]>,
+};
 jest.mock('../../../../src/configuration/call-scope', () => ({
-  namespaceInCallScope: async (path: string) => !reach.outside.has(path),
+  namespaceInCallScope: async (path: string, kind: string) => {
+    reach.checked.push([path, kind]);
+    return !reach.outside.has(`${kind}:${path}`);
+  },
   descendantsInCallScope: () => reach.descendants,
 }));
+
+/** GitLab's answer to the namespace kind lookup of a view's group filter. */
+const namespaceKind = (typename: string | null) => ({
+  namespace: typename ? { __typename: typename, fullPath: 'x' } : null,
+});
 
 const browse = () => workitemsToolRegistry.get('browse_work_items')!;
 
@@ -102,6 +114,7 @@ beforeEach(() => {
   schemaKnown = true;
   reach.descendants = true;
   reach.outside.clear();
+  reach.checked = [];
 });
 
 describe('planViewQuery', () => {
@@ -500,6 +513,7 @@ describe('browse_work_items get_saved_view', () => {
     // The types read with the view belong to the view's namespace, not the scoped group.
     mockRequest
       .mockResolvedValueOnce(viewResponse(view({ filters: { fullPath: 'grp/sub' } })))
+      .mockResolvedValueOnce(namespaceKind('Group'))
       .mockResolvedValueOnce({
         namespace: {
           workItemTypes: {
@@ -518,15 +532,29 @@ describe('browse_work_items get_saved_view', () => {
       view_id: '42',
     })) as { namespace: string };
 
-    expect(mockRequest.mock.calls[1]).toEqual([
+    expect(mockRequest.mock.calls[1][1]).toEqual({ namespacePath: 'grp/sub' });
+    expect(reach.checked).toEqual([['grp/sub', 'group']]);
+    expect(mockRequest.mock.calls[2]).toEqual([
       GET_FILTERABLE_WORK_ITEM_TYPES,
       { namespacePath: 'grp/sub' },
     ]);
-    expect(mockRequest.mock.calls[2][1]).toMatchObject({
+    expect(mockRequest.mock.calls[3][1]).toMatchObject({
       namespacePath: 'grp/sub',
       workItemTypeIds: ['gid://gitlab/WorkItems::Type/8'],
     });
     expect(result.namespace).toBe('grp/sub');
+  });
+
+  it('checks a filtered project as a project', async () => {
+    mockRequest
+      .mockResolvedValueOnce(viewResponse(view({ filters: { fullPath: 'grp/app' } })))
+      .mockResolvedValueOnce(namespaceKind('Namespace'))
+      .mockResolvedValueOnce({ namespace: { workItemTypes: { nodes: allFilterable } } })
+      .mockResolvedValueOnce(itemsPage([]));
+
+    await browse().handler({ action: 'get_saved_view', namespace: 'grp', view_id: '42' });
+
+    expect(reach.checked).toEqual([['grp/app', 'project']]);
   });
 
   it('reports a view that is missing or not visible without guessing which', async () => {
@@ -598,12 +626,24 @@ describe('saved view results that must not pass for the view', () => {
     // would read as "no matches".
     mockRequest
       .mockResolvedValueOnce(viewResponse(view({ filters: { fullPath: 'grp/private' } })))
+      .mockResolvedValueOnce(namespaceKind('Namespace'))
       .mockResolvedValueOnce({ namespace: { workItemTypes: { nodes: allFilterable } } })
       .mockResolvedValueOnce({ namespace: null });
 
     await expect(read()).rejects.toThrow(
       'Saved view 42 lists work items of "grp/private", which was not found or is not accessible',
     );
+  });
+
+  it('reports a filtered namespace GitLab does not show before reading items', async () => {
+    mockRequest
+      .mockResolvedValueOnce(viewResponse(view({ filters: { fullPath: 'grp/hidden' } })))
+      .mockResolvedValueOnce(namespaceKind(null));
+
+    await expect(read()).rejects.toThrow(
+      'Saved view 42 lists work items of "grp/hidden", which was not found or is not accessible',
+    );
+    expect(mockRequest).toHaveBeenCalledTimes(2);
   });
 
   it('keeps an empty page of a reachable namespace as an empty result', async () => {
@@ -657,13 +697,15 @@ describe('saved view results that must not pass for the view', () => {
   it('refuses a view that lists a namespace outside the call scope', async () => {
     // The call named "grp"; the view's group filter reaches "elsewhere", which the working
     // scope or the operator's project list does not cover.
-    reach.outside.add('elsewhere');
-    mockRequest.mockResolvedValueOnce(viewResponse(view({ filters: { fullPath: 'elsewhere' } })));
+    reach.outside.add('group:elsewhere');
+    mockRequest
+      .mockResolvedValueOnce(viewResponse(view({ filters: { fullPath: 'elsewhere' } })))
+      .mockResolvedValueOnce(namespaceKind('Group'));
 
     await expect(read()).rejects.toThrow(
       'Saved view 42 lists work items of "elsewhere", outside the projects and groups this call may read',
     );
-    expect(mockRequest).toHaveBeenCalledTimes(1);
+    expect(mockRequest).toHaveBeenCalledTimes(2);
   });
 
   it('keeps to the group itself when its descendants are outside the call scope', async () => {

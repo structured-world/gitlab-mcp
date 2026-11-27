@@ -45,21 +45,26 @@ export async function projectInCallScope(projectId: string): Promise<boolean> {
 }
 
 /**
- * Whether the running call may list work items of the project or group at this path.
- * The operator's list names projects only, so under it a group is never allowed; a path
- * it does not name literally is looked up for the ID it may name instead.
+ * Whether the running call may list work items of the group or project at this path,
+ * held to the rule for its kind: a subgroup's path looks like that of a project directly
+ * in its parent. The operator's list names projects only, so under it a group is never
+ * allowed; a project it does not name literally is looked up for the ID it may name.
  */
-export async function namespaceInCallScope(path: string): Promise<boolean> {
+export async function namespaceInCallScope(
+  path: string,
+  kind: 'group' | 'project',
+): Promise<boolean> {
   const working = storage.getStore();
-  if (working?.hasRestrictions() && !working.isAllowed(path) && !working.isGroupAllowed(path)) {
-    return false;
+  if (working?.hasRestrictions()) {
+    const allowed = kind === 'group' ? working.isGroupAllowed(path) : working.isAllowed(path);
+    if (!allowed) return false;
   }
   const operator = GITLAB_ALLOWED_PROJECT_IDS.map((entry) =>
     canonicalProjectPath(entry).toLowerCase(),
   );
-  if (operator.length === 0 || operator.includes(canonicalProjectPath(path).toLowerCase())) {
-    return true;
-  }
+  if (operator.length === 0) return true;
+  if (kind === 'group') return false;
+  if (operator.includes(canonicalProjectPath(path).toLowerCase())) return true;
   try {
     const project = await gitlab.get<{ id?: unknown }>(`projects/${encodeURIComponent(path)}`);
     return operator.includes(String(project.id));

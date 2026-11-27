@@ -10,7 +10,7 @@ import {
   type SavedViewExtras,
   type SavedViewNode,
 } from '../../graphql/savedViews';
-import type { WorkItem } from '../../graphql/workItems';
+import { GET_NAMESPACE_TYPE, type WorkItem } from '../../graphql/workItems';
 import { graphqlConfirms, graphqlSupports } from '../instance-version';
 import { descendantsInCallScope, namespaceInCallScope } from '../../configuration/call-scope';
 import { extractSimpleId } from '../../utils/idConversion';
@@ -339,21 +339,37 @@ async function readView(client: GraphQLClient, input: GetSavedViewInput, extras:
   return { view, namespace };
 }
 
+/** A filtered namespace the reader cannot see, which an empty page would hide. */
+const inaccessible = (input: GetSavedViewInput, path: string) =>
+  new Error(
+    `Saved view ${input.view_id} lists work items of "${path}", which was not found or is not accessible`,
+  );
+
 /**
  * Holds the plan to what the call may read: a namespace the view's group filter reaches
- * beyond the one the call named is refused when the call may not read it, and the
- * descendants of a group are left out when they are not all in scope. True when the
- * plan was narrowed.
+ * beyond the one the call named is refused when the call may not read it, checked as
+ * the group or project it is, and the descendants of a group are left out when they are
+ * not all in scope. `namedIsGroup` is the kind of the namespace the call named. True
+ * when the plan was narrowed.
  */
 async function keepToCallScope(
+  client: GraphQLClient,
   plan: ViewQueryPlan,
   input: GetSavedViewInput,
-  isGroup: boolean,
+  namedIsGroup: boolean,
 ): Promise<boolean> {
-  if (plan.namespacePath !== input.namespace && !(await namespaceInCallScope(plan.namespacePath))) {
-    throw new Error(
-      `Saved view ${input.view_id} lists work items of "${plan.namespacePath}", outside the projects and groups this call may read`,
-    );
+  let isGroup = namedIsGroup;
+  if (plan.namespacePath !== input.namespace) {
+    const { namespace } = await client.request(GET_NAMESPACE_TYPE, {
+      namespacePath: plan.namespacePath,
+    });
+    if (!namespace) throw inaccessible(input, plan.namespacePath);
+    isGroup = namespace.__typename === 'Group';
+    if (!(await namespaceInCallScope(plan.namespacePath, isGroup ? 'group' : 'project'))) {
+      throw new Error(
+        `Saved view ${input.view_id} lists work items of "${plan.namespacePath}", outside the projects and groups this call may read`,
+      );
+    }
   }
   if (!isGroup || plan.args.includeDescendants !== true) return false;
   if (descendantsInCallScope(plan.namespacePath)) return false;
@@ -414,11 +430,7 @@ async function readItems(client: GraphQLClient, plan: ViewQueryPlan, input: GetS
     ...plan.args,
   });
   const items = data.namespace?.workItems;
-  if (!items) {
-    throw new Error(
-      `Saved view ${input.view_id} lists work items of "${plan.namespacePath}", which was not found or is not accessible`,
-    );
-  }
+  if (!items) throw inaccessible(input, plan.namespacePath);
   return items;
 }
 
@@ -433,11 +445,7 @@ export async function getSavedView(
   const filters = view.filters ?? {};
   const plan = planViewQuery(input.namespace, filters, view.sort);
   const sameNamespace = plan.namespacePath === input.namespace;
-  const narrowed = await keepToCallScope(
-    plan,
-    input,
-    !sameNamespace || namespace.__typename === 'Group',
-  );
+  const narrowed = await keepToCallScope(client, plan, input, namespace.__typename === 'Group');
 
   let typesApplied = true;
   if (filters.types === undefined && filters.workItemTypeIds === undefined) {

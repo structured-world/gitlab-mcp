@@ -80,33 +80,48 @@ describe('projectInCallScope', () => {
 // to the working scope and the operator's project list.
 describe('namespaceInCallScope', () => {
   it('allows any namespace without restrictions, without a GitLab lookup', async () => {
-    expect(await namespaceInCallScope('other')).toBe(true);
+    expect(await namespaceInCallScope('other', 'group')).toBe(true);
     expect(read).not.toHaveBeenCalled();
   });
 
-  it('checks the working scope as a group or a project path', async () => {
+  it('checks the working scope by the kind of namespace', async () => {
     const scope = new ScopeEnforcer({ group: 'team' });
-    expect(await runInCallScope(scope, () => namespaceInCallScope('team/sub'))).toBe(true);
-    expect(await runInCallScope(scope, () => namespaceInCallScope('team/app'))).toBe(true);
-    expect(await runInCallScope(scope, () => namespaceInCallScope('other'))).toBe(false);
+    expect(await runInCallScope(scope, () => namespaceInCallScope('team/sub', 'group'))).toBe(true);
+    expect(await runInCallScope(scope, () => namespaceInCallScope('team/app', 'project'))).toBe(
+      true,
+    );
+    expect(await runInCallScope(scope, () => namespaceInCallScope('other', 'group'))).toBe(false);
+  });
+
+  it('refuses a subgroup under a group scope without subgroups', async () => {
+    // The path of a subgroup looks like that of a project directly in the group; checked
+    // as a project it would pass.
+    const direct = new ScopeEnforcer({ group: 'team', includeSubgroups: false });
+    expect(await runInCallScope(direct, () => namespaceInCallScope('team/sub', 'group'))).toBe(
+      false,
+    );
+    expect(await runInCallScope(direct, () => namespaceInCallScope('team/app', 'project'))).toBe(
+      true,
+    );
   });
 
   it('allows a project the operator lists by path without a lookup', async () => {
     allow('Team/App');
-    expect(await namespaceInCallScope('team/app')).toBe(true);
+    expect(await namespaceInCallScope('team/app', 'project')).toBe(true);
     expect(read).not.toHaveBeenCalled();
   });
 
   it('looks up the ID of a path for an operator list of IDs', async () => {
     allow('71');
-    expect(await namespaceInCallScope('team/app')).toBe(true);
-    expect(await namespaceInCallScope('other/secret')).toBe(false);
+    expect(await namespaceInCallScope('team/app', 'project')).toBe(true);
+    expect(await namespaceInCallScope('other/secret', 'project')).toBe(false);
   });
 
-  it('refuses a group or an unknown path under an operator list', async () => {
+  it('refuses a group under an operator list, without a lookup', async () => {
     // The operator lists projects; a group is not one of them.
-    allow('71');
-    expect(await namespaceInCallScope('team')).toBe(false);
+    allow('team/app');
+    expect(await namespaceInCallScope('team/app', 'group')).toBe(false);
+    expect(read).not.toHaveBeenCalled();
   });
 });
 

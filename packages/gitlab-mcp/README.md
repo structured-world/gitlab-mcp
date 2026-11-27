@@ -104,7 +104,7 @@ for all setup guides.
 
 GitLab exposes hundreds of API operations. Giving each its own MCP tool floods an
 agent's context; a thin API wrapper pushes that complexity back onto the agent. This
-server takes a third path: 60 CQRS tools expose 247 typed
+server takes a third path: 60 CQRS tools expose 248 typed
 actions, with 6 additional helpers for account, connection and settings work.
 The complete catalog contains 66 tools across 27 registry groups.
 This total includes core and account/context tools. Settings expose a different

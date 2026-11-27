@@ -145,7 +145,7 @@ async function readListRoute(
         .join(', ')}`,
     );
   }
-  const query = workItemListQuery(owner, native);
+  const query = workItemListQuery(owner, native, { itemCursors: missing.length > 0 });
   const fetchPage = async (first: number, after?: string): Promise<ListConnection | null> => {
     const data: Record<string, { workItems?: ListConnection | null } | null> = await client.request(
       query,
@@ -496,13 +496,16 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
           case 'list': {
             const { namespace, types, state, first, after, simple } = input;
             const namespacePath = namespace;
+            // GitLab compares the count of matched label titles with the count given, so a
+            // repeated value would match nothing; repeats never change the meaning.
+            const unique = (values?: string[]) => values && [...new Set(values)];
             const filterValues: WorkItemListFilterValues = {
               search: input.search,
               authorUsername: input.author_username,
-              assigneeUsernames: input.assignee_usernames,
-              labelName: input.label_names,
-              milestoneTitle: input.milestone_titles,
-              parentIds: input.parent_ids && toGids(input.parent_ids, 'WorkItem'),
+              assigneeUsernames: unique(input.assignee_usernames),
+              labelName: unique(input.label_names),
+              milestoneTitle: unique(input.milestone_titles),
+              parentIds: unique(input.parent_ids && toGids(input.parent_ids, 'WorkItem')),
               sort: input.sort,
             };
 
@@ -542,18 +545,26 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
             });
 
             // A locally filtered page stops after a bounded read; say so when it is short
-            // with more to read, so a short page is not taken for the end.
-            const scanned =
-              workItemsData && 'scanned' in workItemsData ? workItemsData.scanned : undefined;
-            const short =
-              scanned !== undefined && pageInfo.hasNextPage && finalResults.length < listVars.first;
+            // with more to read, so a short page is not taken for the end. Name the items
+            // it could not decide, so their absence is not taken for a miss.
+            const notes: string[] = [];
+            if (workItemsData && 'scanned' in workItemsData) {
+              if (pageInfo.hasNextPage && finalResults.length < listVars.first) {
+                notes.push(
+                  `This GitLab instance cannot apply every filter before paging, so ${workItemsData.scanned} work items were checked without filling the page; pass endCursor to continue.`,
+                );
+              }
+              if (workItemsData.unverified > 0) {
+                notes.push(
+                  `${workItemsData.unverified} work items have more labels or assignees than one page holds and could not be checked, so they are not listed.`,
+                );
+              }
+            }
             return {
               items: finalResults,
               hasMore: pageInfo.hasNextPage ?? false,
               endCursor: pageInfo.endCursor ?? null,
-              ...(short && {
-                note: `This GitLab instance cannot apply every filter before paging, so ${scanned} work items were checked without filling the page; pass endCursor to continue.`,
-              }),
+              ...(notes.length > 0 && { note: notes.join(' ') }),
             };
           }
 

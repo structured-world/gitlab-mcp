@@ -25,25 +25,50 @@ export const SCAN_PAGE_LIMIT = 10;
 
 export interface ListConnection {
   nodes: WorkItem[];
+  /** Per-item cursors; requested only when the listing filters locally. */
+  edges?: Array<{ cursor: string }>;
   pageInfo: { hasNextPage: boolean; endCursor?: string | null };
 }
 
 export interface ScanResult extends ListConnection {
   /** Upstream items examined; reported when the page stays short with more to read. */
   scanned: number;
+  /** Items left out because the deciding labels or assignees were beyond their first page. */
+  unverified: number;
+}
+
+/** A first page of a widget connection, and whether GitLab holds more of it. */
+interface WidgetPage<T> {
+  nodes?: T[];
+  pageInfo?: { hasNextPage: boolean };
 }
 
 /** Widget fields the local filters read; the listing selection requests all of them. */
 interface FilterableWidget {
   type: string;
-  assignees?: { nodes?: Array<{ username: string }> };
-  labels?: { nodes?: Array<{ title: string }> };
+  assignees?: WidgetPage<{ username: string }>;
+  labels?: WidgetPage<{ title: string }>;
   milestone?: { title: string } | null;
   parent?: { id: string } | null;
 }
 
+/** Outcome of one check; `unknown` when the deciding values are not in the listing. */
+type Verdict = 'match' | 'miss' | 'unknown';
+
+export type LocalListMatcher = (item: WorkItem) => Verdict;
+
 const widget = (item: WorkItem, type: string): FilterableWidget | undefined =>
   (item.widgets as FilterableWidget[] | undefined)?.find((w) => w.type === type);
+
+/**
+ * Every wanted value is among the listed ones. A connection's first page is not the whole
+ * set: when a value is absent there and GitLab has more, the item cannot be decided.
+ */
+function containsAll(wanted: readonly string[], page: WidgetPage<string> | undefined): Verdict {
+  const have = new Set(page?.nodes);
+  if (wanted.every((value) => have.has(value))) return 'match';
+  return page?.pageInfo?.hasNextPage ? 'unknown' : 'miss';
+}
 
 /**
  * Predicate with GitLab's semantics for each filter: every listed assignee and label,
@@ -52,152 +77,128 @@ const widget = (item: WorkItem, type: string): FilterableWidget | undefined =>
  */
 export function localListMatcher(
   values: Pick<WorkItemListFilterValues, LocalListFilter>,
-): (item: WorkItem) => boolean {
-  const checks: Array<(item: WorkItem) => boolean> = [];
+): LocalListMatcher {
+  const checks: Array<(item: WorkItem) => Verdict> = [];
   if (values.assigneeUsernames) {
     const wanted = values.assigneeUsernames.map((u) => u.toLowerCase());
     checks.push((item) => {
-      const have = new Set(
-        widget(item, 'ASSIGNEES')?.assignees?.nodes?.map((u) => u.username.toLowerCase()),
-      );
-      return wanted.every((u) => have.has(u));
+      const assignees = widget(item, 'ASSIGNEES')?.assignees;
+      return containsAll(wanted, {
+        nodes: assignees?.nodes?.map((u) => u.username.toLowerCase()),
+        pageInfo: assignees?.pageInfo,
+      });
     });
   }
   if (values.labelName) {
     const wanted = values.labelName;
     checks.push((item) => {
-      const have = new Set(widget(item, 'LABELS')?.labels?.nodes?.map((l) => l.title));
-      return wanted.every((title) => have.has(title));
+      const labels = widget(item, 'LABELS')?.labels;
+      return containsAll(wanted, {
+        nodes: labels?.nodes?.map((l) => l.title),
+        pageInfo: labels?.pageInfo,
+      });
     });
   }
   if (values.milestoneTitle) {
     const wanted = new Set(values.milestoneTitle);
     checks.push((item) => {
       const title = widget(item, 'MILESTONE')?.milestone?.title;
-      return title !== undefined && wanted.has(title);
+      return title !== undefined && wanted.has(title) ? 'match' : 'miss';
     });
   }
   if (values.parentIds) {
     const wanted = new Set(values.parentIds);
     checks.push((item) => {
       const id = widget(item, 'HIERARCHY')?.parent?.id;
-      return id !== undefined && wanted.has(id);
+      return id !== undefined && wanted.has(id) ? 'match' : 'miss';
     });
   }
-  return (item) => checks.every((check) => check(item));
-}
-
-const CURSOR_PREFIX = 'scan:';
-
-interface ScanPosition {
-  /** Upstream cursor of the page holding the next item; absent for the first page. */
-  after?: string;
-  /** Items of that page already returned. */
-  skip: number;
-}
-
-/**
- * A page can end inside an upstream page, so the cursor carries the upstream cursor
- * plus how many of its items were already returned. A plain GitLab cursor starts at
- * the beginning of its page.
- */
-function encodeCursor({ after, skip }: ScanPosition): string {
-  return CURSOR_PREFIX + Buffer.from(JSON.stringify({ after, skip })).toString('base64url');
-}
-
-function decodeCursor(cursor: string | undefined): ScanPosition {
-  if (!cursor?.startsWith(CURSOR_PREFIX)) return { after: cursor, skip: 0 };
-  try {
-    const raw: unknown = JSON.parse(
-      Buffer.from(cursor.slice(CURSOR_PREFIX.length), 'base64url').toString('utf8'),
-    );
-    if (raw && typeof raw === 'object') {
-      const { after, skip } = raw as Record<string, unknown>;
-      if (
-        (after === undefined || typeof after === 'string') &&
-        Number.isInteger(skip) &&
-        (skip as number) >= 0 &&
-        (skip as number) < SCAN_PAGE_SIZE
-      ) {
-        return { after, skip: skip as number };
-      }
+  return (item) => {
+    let verdict: Verdict = 'match';
+    for (const check of checks) {
+      const result = check(item);
+      if (result === 'miss') return 'miss';
+      if (result === 'unknown') verdict = 'unknown';
     }
-  } catch {
-    // Reported below with the other malformed cursors.
+    return verdict;
+  };
+}
+
+/** A cursor GitLab must supply to continue; its absence breaks connection paging. */
+function requireCursor(cursor: string | null | undefined, previous?: string): string {
+  if (!cursor || cursor === previous) {
+    throw new Error('GitLab returned a work item page without a cursor to continue from');
   }
-  throw new Error('Invalid "after" cursor: pass the endCursor returned by the previous page');
+  return cursor;
 }
 
 /**
- * Append the matching items of one upstream page, from `skip`, until `nodes` holds
- * `first`. Returns the index of the item that filled the page, or -1.
+ * Append the matching items of one upstream page until `nodes` holds `first`. Returns
+ * the index of the item that filled the page (-1 if none) and the undecidable items.
  */
 function collectMatches(
   upstream: WorkItem[],
-  skip: number,
-  matches: (item: WorkItem) => boolean,
+  matcher: LocalListMatcher,
   first: number,
   nodes: WorkItem[],
-): number {
-  for (let i = skip; i < upstream.length; i++) {
-    if (matches(upstream[i]) && nodes.push(upstream[i]) === first) return i;
+): { filled: number; unverified: number } {
+  let unverified = 0;
+  for (let i = 0; i < upstream.length; i++) {
+    const verdict = matcher(upstream[i]);
+    if (verdict === 'unknown') unverified++;
+    if (verdict === 'match' && nodes.push(upstream[i]) === first) return { filled: i, unverified };
   }
-  return -1;
+  return { filled: -1, unverified };
 }
 
-/** Paging info of a page filled at `index` of the upstream page read from `position`. */
-function filledPageInfo(
-  connection: ListConnection,
-  position: ScanPosition,
-  index: number,
-): ListConnection['pageInfo'] {
-  if (index + 1 < connection.nodes.length) {
-    return {
-      hasNextPage: true,
-      endCursor: encodeCursor({ after: position.after, skip: index + 1 }),
-    };
+/**
+ * Paging info of a page filled at `index`: more follows when the upstream page or
+ * GitLab has more, and the next call resumes after that item from its own cursor.
+ */
+function filledPageInfo(connection: ListConnection, index: number): ListConnection['pageInfo'] {
+  if (index + 1 === connection.nodes.length && !connection.pageInfo.hasNextPage) {
+    return { hasNextPage: false, endCursor: null };
   }
-  const { hasNextPage, endCursor } = connection.pageInfo;
-  return { hasNextPage, endCursor: hasNextPage ? endCursor : null };
+  return { hasNextPage: true, endCursor: requireCursor(connection.edges?.[index]?.cursor) };
 }
 
 /**
  * Fill a page of `first` matching items by reading upstream pages in order and keeping
- * the items `matches` accepts. Reading stops after SCAN_PAGE_LIMIT upstream pages, so a
+ * the items `matcher` accepts. Reading stops after SCAN_PAGE_LIMIT upstream pages, so a
  * sparse match costs a bounded number of requests per call; the short page then carries
- * a cursor to continue. Returns null when the first upstream request finds no owner.
+ * a cursor to continue. Every returned cursor is GitLab's own, so a continuation resumes
+ * after the last returned item even when items before it have changed. Returns null when
+ * the first upstream request finds no owner.
  */
 export async function scanWorkItems(
   fetchPage: (first: number, after?: string) => Promise<ListConnection | null>,
-  matches: (item: WorkItem) => boolean,
+  matcher: LocalListMatcher,
   first: number,
   after: string | undefined,
 ): Promise<ScanResult | null> {
-  let position = decodeCursor(after);
+  let cursor = after;
   const nodes: WorkItem[] = [];
   let scanned = 0;
-  for (let page = 0; page < SCAN_PAGE_LIMIT; page++) {
-    const connection = await fetchPage(SCAN_PAGE_SIZE, position.after);
-    // The owner disappeared between requests: nothing further can be read.
-    if (!connection) {
-      if (page === 0) return null;
-      return { nodes, pageInfo: { hasNextPage: false, endCursor: null }, scanned };
-    }
-    const filled = collectMatches(connection.nodes, position.skip, matches, first, nodes);
-    if (filled >= 0) {
-      scanned += filled + 1 - position.skip;
-      return { nodes, pageInfo: filledPageInfo(connection, position, filled), scanned };
-    }
-    scanned += Math.max(0, connection.nodes.length - position.skip);
-    const { hasNextPage, endCursor } = connection.pageInfo;
-    if (!hasNextPage || !endCursor) {
-      return { nodes, pageInfo: { hasNextPage: false, endCursor: null }, scanned };
-    }
-    position = { after: endCursor, skip: 0 };
-  }
-  return {
+  let unverified = 0;
+  const end = () => ({
     nodes,
-    pageInfo: { hasNextPage: true, endCursor: encodeCursor(position) },
+    pageInfo: { hasNextPage: false, endCursor: null },
     scanned,
-  };
+    unverified,
+  });
+  for (let page = 0; page < SCAN_PAGE_LIMIT; page++) {
+    const connection = await fetchPage(SCAN_PAGE_SIZE, cursor);
+    // The owner disappeared between requests: nothing further can be read.
+    if (!connection) return page === 0 ? null : end();
+    const collected = collectMatches(connection.nodes, matcher, first, nodes);
+    unverified += collected.unverified;
+    if (collected.filled >= 0) {
+      scanned += collected.filled + 1;
+      return { nodes, pageInfo: filledPageInfo(connection, collected.filled), scanned, unverified };
+    }
+    scanned += connection.nodes.length;
+    if (!connection.pageInfo.hasNextPage) return end();
+    cursor = requireCursor(connection.pageInfo.endCursor, cursor);
+  }
+  return { nodes, pageInfo: { hasNextPage: true, endCursor: cursor }, scanned, unverified };
 }

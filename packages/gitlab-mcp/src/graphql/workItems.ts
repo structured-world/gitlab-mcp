@@ -547,6 +547,7 @@ export const GET_NAMESPACE_TYPE: TypedDocumentNode<
 
 interface WorkItemListConnection {
   nodes: WorkItem[];
+  edges?: Array<{ cursor: string }>;
   pageInfo: {
     hasNextPage: boolean;
     endCursor?: string;
@@ -617,6 +618,9 @@ const WORK_ITEM_LIST_CONNECTION = `
                   webUrl
                   avatarUrl
                 }
+                pageInfo {
+                  hasNextPage
+                }
               }
             }
             ... on WorkItemWidgetLabels {
@@ -628,6 +632,9 @@ const WORK_ITEM_LIST_CONNECTION = `
                   color
                   textColor
                   description
+                }
+                pageInfo {
+                  hasNextPage
                 }
               }
             }
@@ -707,17 +714,20 @@ const listQueries = new Map<string, TypedDocumentNode<unknown, WorkItemListVars>
 
 /**
  * Listing query carrying only the requested filter arguments: GitLab rejects the whole
- * query for an argument its schema lacks, so an unused filter never appears in it. One
- * document per combination, so the schema adaptation cached per document is reused.
+ * query for an argument its schema lacks, so an unused filter never appears in it.
+ * `itemCursors` also selects each item's cursor, for a listing that resumes after an
+ * item inside a page. One document per combination, so the schema adaptation cached
+ * per document is reused.
  */
 export function workItemListQuery<O extends WorkItemListOwner>(
   owner: O,
   filters: readonly WorkItemListFilter[],
+  { itemCursors = false }: { itemCursors?: boolean } = {},
 ): TypedDocumentNode<WorkItemListResults[O], WorkItemListVars> {
   const used = (Object.keys(WORK_ITEM_LIST_FILTERS) as WorkItemListFilter[]).filter((name) =>
     filters.includes(name),
   );
-  const key = `${owner}:${used.join(',')}`;
+  const key = `${owner}:${used.join(',')}${itemCursors ? ':cursors' : ''}`;
   let query = listQueries.get(key);
   if (!query) {
     const variables = used.map((name) => ` $${name}: ${WORK_ITEM_LIST_FILTERS[name]}`).join('');
@@ -729,6 +739,7 @@ export function workItemListQuery<O extends WorkItemListOwner>(
         ${owner}(fullPath: $namespacePath) {
           ${owner === 'namespace' ? '__typename fullPath' : ''}
           workItems(types: $types, state: $state, first: $first, after: $after${args}) {
+            ${itemCursors ? 'edges { cursor }' : ''}
             ${WORK_ITEM_LIST_CONNECTION}
           }
         }

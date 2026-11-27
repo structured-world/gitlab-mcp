@@ -136,8 +136,11 @@ Every filter works from GitLab 16.0. On an older instance, the assignee, label,
 milestone and parent filters are applied by the server while it reads GitLab's pages in
 order, with the same matching rules. Such a call reads at most 1,000 work items; when
 the page is still short, the result has `hasMore: true` and a `note`, and `endCursor`
-continues the search. A filter that cannot be applied either way is refused with its
-parameter name, and nothing is listed. The list filters take up to 100 values each.
+continues the search. An item whose deciding labels or assignees are beyond the first
+100 GitLab lists for it is left out and counted in the `note`. A filter that cannot be
+applied either way is refused with its parameter name, and nothing is listed. The list
+filters take up to 100 values each; `label_names` does not accept `None` or `Any`,
+which GitLab reads as "no labels" and "any label" rather than as titles.
 A group namespace lists the group's own work items, such as epics, not those of its
 projects.
 

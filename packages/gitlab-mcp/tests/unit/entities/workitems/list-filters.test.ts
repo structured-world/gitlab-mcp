@@ -14,6 +14,7 @@ import {
   GET_PROJECT_OR_GROUP_WORK_ITEM_TYPES,
   GET_WORK_ITEM_TYPES,
   workItemListQuery,
+  type WorkItemListFilter,
 } from '../../../../src/graphql/workItems';
 
 const GET_NAMESPACE_WORK_ITEMS = workItemListQuery('namespace', []);
@@ -218,6 +219,9 @@ describe('browse_work_items list filters applied locally', () => {
     labels?: string[];
     milestone?: string;
     parent?: string;
+    /** GitLab holds more labels or assignees than the listed first page. */
+    moreLabels?: boolean;
+    moreAssignees?: boolean;
   };
   const item = (iid: string, w: Widgets = {}) => ({
     id: `gid://gitlab/WorkItem/${iid}`,
@@ -227,18 +231,38 @@ describe('browse_work_items list filters applied locally', () => {
     widgets: [
       {
         type: 'ASSIGNEES',
-        assignees: { nodes: (w.assignees ?? []).map((username) => ({ username })) },
+        assignees: {
+          nodes: (w.assignees ?? []).map((username) => ({ username })),
+          pageInfo: { hasNextPage: w.moreAssignees ?? false },
+        },
       },
-      { type: 'LABELS', labels: { nodes: (w.labels ?? []).map((title) => ({ title })) } },
+      {
+        type: 'LABELS',
+        labels: {
+          nodes: (w.labels ?? []).map((title) => ({ title })),
+          pageInfo: { hasNextPage: w.moreLabels ?? false },
+        },
+      },
       { type: 'MILESTONE', milestone: w.milestone ? { title: w.milestone } : null },
       { type: 'HIERARCHY', parent: w.parent ? { id: `gid://gitlab/WorkItem/${w.parent}` } : null },
     ],
   });
+  /** An upstream page with GitLab's per-item cursors, `cur-<iid>`. */
   const upstream = (
     nodes: ReturnType<typeof item>[],
     hasNextPage = false,
     endCursor: string | null = null,
-  ) => ({ namespace: { workItems: { nodes, pageInfo: { hasNextPage, endCursor } } } });
+  ) => ({
+    namespace: {
+      workItems: {
+        nodes,
+        edges: nodes.map((n) => ({ cursor: `cur-${n.iid}` })),
+        pageInfo: { hasNextPage, endCursor },
+      },
+    },
+  });
+  const scanQuery = (owner: 'namespace' | 'project' | 'group', filters: WorkItemListFilter[]) =>
+    workItemListQuery(owner, filters, { itemCursors: true });
   type ListResult = {
     items: Array<{ iid: string }>;
     hasMore: boolean;
@@ -260,7 +284,7 @@ describe('browse_work_items list filters applied locally', () => {
 
     const [document, variables] = mockRequest.mock.calls[0];
     // The query the schema would reject for labelName is never sent.
-    expect(document).toBe(workItemListQuery('namespace', ['search']));
+    expect(document).toBe(scanQuery('namespace', ['search']));
     expect(variables).toMatchObject({ search: 'x', first: 100 });
     expect(result.items.map((i) => i.iid)).toEqual(['1', '3']);
     expect(result).toMatchObject({ hasMore: false, endCursor: null });
@@ -280,26 +304,27 @@ describe('browse_work_items list filters applied locally', () => {
     expect(result.hasMore).toBe(false);
   });
 
-  it('continues inside an upstream page from the returned cursor without repeating items', async () => {
+  it('resumes after the last returned item from its own GitLab cursor', async () => {
     missing.add('Namespace.workItems.parentIds');
-    const nodes = [
-      item('1', { parent: '9' }),
-      item('2', { parent: '9' }),
-      item('3', { parent: '9' }),
-    ];
-    mockRequest
-      .mockResolvedValueOnce(upstream(nodes, true, 'c1'))
-      .mockResolvedValueOnce(upstream(nodes, true, 'c1'))
-      .mockResolvedValueOnce(upstream([item('4', { parent: '9' })]));
+    mockRequest.mockResolvedValueOnce(
+      upstream(
+        [item('1', { parent: '9' }), item('2', { parent: '9' }), item('3', { parent: '9' })],
+        true,
+        'c1',
+      ),
+    );
 
     const first = await list({ parent_ids: ['9'], first: 2, after: 'start' });
     expect(first.items.map((i) => i.iid)).toEqual(['1', '2']);
-    expect(first.hasMore).toBe(true);
+    expect(first).toMatchObject({ hasMore: true, endCursor: 'cur-2' });
 
+    // GitLab resumes after item 2 even if item 1 has left the list meanwhile, so the
+    // continuation cannot pass over item 3 the way a position within the page would.
+    mockRequest.mockResolvedValueOnce(
+      upstream([item('3', { parent: '9' }), item('4', { parent: '9' })]),
+    );
     const second = await list({ parent_ids: ['9'], first: 2, after: first.endCursor });
-    // The same upstream page is re-read from its own cursor and its first two items skipped.
-    expect(mockRequest.mock.calls[1][1].after).toBe('start');
-    expect(mockRequest.mock.calls[2][1].after).toBe('c1');
+    expect(mockRequest.mock.calls[1][1].after).toBe('cur-2');
     expect(second.items.map((i) => i.iid)).toEqual(['3', '4']);
     expect(second.hasMore).toBe(false);
   });
@@ -353,8 +378,43 @@ describe('browse_work_items list filters applied locally', () => {
       parent_ids: ['8', '9'],
     });
 
-    expect(mockRequest.mock.calls[0][0]).toBe(workItemListQuery('namespace', []));
+    expect(mockRequest.mock.calls[0][0]).toBe(scanQuery('namespace', []));
     expect(result.items.map((i) => i.iid)).toEqual(['match']);
+  });
+
+  it('reports items whose deciding labels or assignees are beyond the first page', async () => {
+    missing.add('Namespace.workItems.labelName');
+    missing.add('Namespace.workItems.assigneeUsernames');
+    mockRequest.mockResolvedValueOnce(
+      upstream([
+        // Every wanted value is on the first page: decided without the rest.
+        item('listed', { labels: ['bug'], assignees: ['bob'], moreLabels: true }),
+        item('label-unseen', { labels: ['ui'], assignees: ['bob'], moreLabels: true }),
+        item('assignee-unseen', { labels: ['bug'], assignees: ['amy'], moreAssignees: true }),
+        // A miss on one filter decides the item whatever the other cannot see.
+        item('assignee-miss', { labels: ['ui'], assignees: ['amy'], moreLabels: true }),
+        item('complete-miss', { labels: ['ui'], assignees: ['bob'] }),
+      ]),
+    );
+
+    const result = await list({ label_names: ['bug'], assignee_usernames: ['bob'] });
+
+    expect(result.items.map((i) => i.iid)).toEqual(['listed']);
+    expect(result.note).toBe(
+      '2 work items have more labels or assignees than one page holds and could not be checked, so they are not listed.',
+    );
+  });
+
+  it('sends each repeated filter value once', async () => {
+    // GitLab matches nothing when a label title repeats, though the meaning is the same.
+    mockRequest.mockResolvedValueOnce({ namespace: { workItems: page(['1']) } });
+
+    await list({ label_names: ['bug', 'bug'], assignee_usernames: ['bob', 'bob'] });
+
+    expect(mockRequest.mock.calls[0][1]).toMatchObject({
+      labelName: ['bug'],
+      assigneeUsernames: ['bob'],
+    });
   });
 
   it('applies missing filters on the project and group fallbacks', async () => {
@@ -372,25 +432,33 @@ describe('browse_work_items list filters applied locally', () => {
 
     const result = await list({ namespace: 'grp', label_names: ['bug'] });
 
-    expect(mockRequest.mock.calls[0][0]).toBe(workItemListQuery('project', []));
-    expect(mockRequest.mock.calls[1][0]).toBe(workItemListQuery('group', []));
+    expect(mockRequest.mock.calls[0][0]).toBe(scanQuery('project', []));
+    expect(mockRequest.mock.calls[1][0]).toBe(scanQuery('group', []));
     expect(result.items.map((i) => i.iid)).toEqual(['5']);
   });
 
-  const scanCursor = (payload: unknown) =>
-    `scan:${Buffer.from(JSON.stringify(payload)).toString('base64url')}`;
-
-  // A forged or corrupted cursor must not turn into an arbitrary upstream position.
+  // A page that claims more without a way to reach it must not end the listing early,
+  // loop over the same page, or hand back a continuation that cannot be followed.
   it.each([
-    ['not JSON', 'scan:not-json'],
-    ['not an object', scanCursor(5)],
-    ['a skip past the page', scanCursor({ after: 'c1', skip: 100 })],
-    ['a negative skip', scanCursor({ skip: -1 })],
-    ['a non-string upstream cursor', scanCursor({ after: 7, skip: 0 })],
-  ])('rejects a cursor that is %s', async (_label, after) => {
+    ['without an end cursor', upstream([item('1')], true, null), undefined],
+    ['with the cursor it was asked for', upstream([item('1')], true, 'same'), 'same'],
+  ])('fails on an upstream page that has more %s', async (_label, response, after) => {
     missing.add('Namespace.workItems.labelName');
-    await expect(list({ label_names: ['bug'], after })).rejects.toThrow('Invalid "after" cursor');
-    expect(mockRequest).not.toHaveBeenCalled();
+    mockRequest.mockResolvedValueOnce(response);
+    await expect(list({ label_names: ['bug'], after })).rejects.toThrow(
+      'GitLab returned a work item page without a cursor to continue from',
+    );
+  });
+
+  it('fails when a page fills before the end without the item cursors', async () => {
+    missing.add('Namespace.workItems.labelName');
+    const response = upstream([item('1', { labels: ['bug'] }), item('2')]);
+    delete (response.namespace.workItems as { edges?: unknown }).edges;
+    mockRequest.mockResolvedValueOnce(response);
+
+    await expect(list({ label_names: ['bug'], first: 1 })).rejects.toThrow(
+      'GitLab returned a work item page without a cursor to continue from',
+    );
   });
 
   it('ends the listing when the page fills on the last upstream item', async () => {
@@ -402,7 +470,7 @@ describe('browse_work_items list filters applied locally', () => {
     expect(result).toMatchObject({ items: [{ iid: '2' }], hasMore: false, endCursor: null });
   });
 
-  it('continues from the upstream cursor when the page fills on an upstream page end', async () => {
+  it('continues after the last item when the page fills on an upstream page end', async () => {
     missing.add('Namespace.workItems.labelName');
     mockRequest.mockResolvedValueOnce(
       upstream([item('1'), item('2', { labels: ['bug'] })], true, 'c1'),
@@ -410,8 +478,7 @@ describe('browse_work_items list filters applied locally', () => {
 
     const result = await list({ label_names: ['bug'], first: 1 });
 
-    // A plain GitLab cursor: the next call starts at the following upstream page.
-    expect(result).toMatchObject({ items: [{ iid: '2' }], hasMore: true, endCursor: 'c1' });
+    expect(result).toMatchObject({ items: [{ iid: '2' }], hasMore: true, endCursor: 'cur-2' });
   });
 
   it('stops with what it found when the namespace disappears between pages', async () => {
@@ -450,6 +517,12 @@ describe('browse_work_items list filter validation', () => {
     ['an empty username in a list', { assignee_usernames: [''] }],
     ['more than 100 labels', { label_names: Array.from({ length: 101 }, (_, i) => `l${i}`) }],
     ['an unknown sort', { sort: 'PRIORITY_ASC' }],
+    // GitLab reads these as "no labels" / "any label", not as titles.
+    ['the label "None"', { label_names: ['bug', 'None'] }],
+    ['the label "any" in any case', { label_names: ['aNy'] }],
+    // GraphQL Int rejects a fraction on the native path; the local path must agree.
+    ['a fractional page size', { first: 1.5 }],
+    ['a page size of zero', { first: 0 }],
   ])('rejects %s', (_label, extra) => {
     expect(parse(extra).success).toBe(false);
   });

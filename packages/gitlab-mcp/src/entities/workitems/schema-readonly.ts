@@ -87,7 +87,21 @@ const ListWorkItemsSchema = z.object({
   search: z.string().min(1).optional().describe('Text to find in the title or description'),
   author_username: z.string().min(1).optional().describe('Only items created by this username'),
   assignee_usernames: filterList('Only items assigned to all of these usernames'),
-  label_names: filterList('Only items that have all of these labels'),
+  // GitLab reads "None" and "Any" (any case) as "no labels" and "any label", not as
+  // titles, so they cannot ask for a label of that name.
+  label_names: z
+    .array(
+      z
+        .string()
+        .min(1)
+        .refine((title) => !/^(none|any)$/i.test(title), {
+          message: '"None" and "Any" are not accepted as label titles',
+        }),
+    )
+    .min(1)
+    .max(FILTER_LIST_MAX)
+    .optional()
+    .describe('Only items that have all of these labels'),
   milestone_titles: filterList('Only items in one of these milestones, by title'),
   parent_ids: z
     .array(WorkItemIdSchema)
@@ -99,7 +113,7 @@ const ListWorkItemsSchema = z.object({
     .enum(['CREATED_DESC', 'CREATED_ASC', 'UPDATED_DESC', 'UPDATED_ASC', 'TITLE_ASC', 'TITLE_DESC'])
     .optional()
     .describe('Order of the results; GitLab defaults to CREATED_DESC'),
-  first: z.number().optional().default(20).describe('Number of items to return'),
+  first: z.number().int().min(1).optional().default(20).describe('Number of items to return'),
   after: z
     .string()
     .optional()

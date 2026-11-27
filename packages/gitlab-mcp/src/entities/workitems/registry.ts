@@ -3,12 +3,21 @@ import { BrowseWorkItemsSchema } from './schema-readonly';
 import { ManageWorkItemSchema } from './schema';
 import { reorderWorkItem } from './reorder';
 import { listWorkItemDiscussions } from './discussions';
+import {
+  isLocalListFilter,
+  localListMatcher,
+  scanWorkItems,
+  type ListConnection,
+  type LocalListFilter,
+  type ScanResult,
+} from './list-scan';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
 import { ConnectionManager } from '../../services/ConnectionManager';
 import { assertActionAllowed } from '../utils';
 import { getWorkItemTypes } from '../../utils/workItemTypes';
 import {
   cleanWorkItemResponse,
+  extractSimpleId,
   toGid,
   toGids,
   type GitLabWorkItem,
@@ -86,31 +95,147 @@ function assertUpdatableWidgets(input: object, verb: 'set' | 'update'): void {
   }
 }
 
+/** Tool parameter behind each server-side list filter, named in refusals. */
+const LIST_FILTER_PARAMETER: Readonly<Record<WorkItemListFilter, string>> = {
+  search: 'search',
+  authorUsername: 'author_username',
+  assigneeUsernames: 'assignee_usernames',
+  labelName: 'label_names',
+  milestoneTitle: 'milestone_titles',
+  parentIds: 'parent_ids',
+  sort: 'sort',
+};
+
+type ListVars = {
+  namespacePath: string;
+  types?: string[];
+  state?: 'opened' | 'closed';
+  first: number;
+  after?: string;
+};
+
+/** GraphQL type whose `workItems` field each listing route queries. */
+const LIST_OWNER_TYPE = {
+  namespace: 'Namespace',
+  project: 'Project',
+  group: 'Group',
+} as const;
+
+/** A listing page, and the requested assignees GitLab could not resolve, if checked. */
+type ListRead = (ScanResult | ListConnection) & { unresolvedAssignees?: string[] };
+
+/**
+ * Requested assignees GitLab cannot resolve. Its assignee filter drops such usernames
+ * and requires only the rest, so two or more names need this check to keep the "all of
+ * them" meaning; a single unknown name already matches nothing, and a single value may
+ * be a group handle that GitLab expands to its members.
+ */
+async function findUnresolvedUsernames(
+  client: GraphQLClient,
+  usernames: readonly string[],
+): Promise<string[]> {
+  if (usernames.length < 2) return [];
+  const data = await client.request(FIND_USERS_BY_USERNAME, {
+    usernames: [...usernames],
+    first: usernames.length,
+  });
+  const known = new Set(data.users?.nodes.map((u) => u.username.toLowerCase()));
+  return usernames.filter((name) => !known.has(name.toLowerCase()));
+}
+
+/**
+ * Read one listing route. Filters its `workItems` field accepts go into the query, so
+ * GitLab applies them before paginating; assignee, label, milestone and parent filters
+ * it lacks are applied to the listed widgets while reading upstream pages in order.
+ * A missing filter that cannot be evaluated locally is refused: dropping it would
+ * return the items it was meant to exclude. Null when the owner does not exist.
+ */
+async function readListRoute(
+  client: GraphQLClient,
+  owner: 'namespace' | 'project' | 'group',
+  vars: ListVars,
+  filterValues: WorkItemListFilterValues,
+  filters: readonly WorkItemListFilter[],
+  unresolvedAssignees: () => Promise<string[]>,
+): Promise<ListRead | null> {
+  const typeName = LIST_OWNER_TYPE[owner];
+  const native = filters.filter((name) => graphqlSupports(typeName, 'workItems', name));
+  const missing = filters.filter((name) => !native.includes(name));
+  const refused = missing.filter((name) => !isLocalListFilter(name));
+  if (refused.length > 0) {
+    throw new Error(
+      `This GitLab instance cannot filter ${owner === 'group' ? 'group ' : ''}work items by ${refused
+        .map((name) => LIST_FILTER_PARAMETER[name])
+        .join(', ')}`,
+    );
+  }
+  const local: Pick<WorkItemListFilterValues, LocalListFilter> = Object.fromEntries(
+    missing.filter(isLocalListFilter).map((name) => [name, filterValues[name]]),
+  );
+  // GitLab narrows by the usernames it resolves; when one is unknown the full condition
+  // is checked on the listed assignees, where an existing user hidden from the lookup
+  // (a banned one, for a non-admin) still counts.
+  const unresolved = native.includes('assigneeUsernames') ? await unresolvedAssignees() : [];
+  if (unresolved.length > 0) local.assigneeUsernames = filterValues.assigneeUsernames;
+  const scan = Object.keys(local).length > 0;
+  const query = workItemListQuery(owner, native, { itemCursors: scan });
+  const fetchPage = async (first: number, after?: string): Promise<ListConnection | null> => {
+    const data: Record<string, { workItems?: ListConnection | null } | null> = await client.request(
+      query,
+      { ...vars, ...filterValues, first, after },
+    );
+    const found = data[owner];
+    return found ? (found.workItems ?? { nodes: [], pageInfo: { hasNextPage: false } }) : null;
+  };
+  const result = scan
+    ? await scanWorkItems(fetchPage, localListMatcher(local), vars.first, vars.after)
+    : await fetchPage(vars.first, vars.after);
+  return result && unresolved.length > 0 ? { ...result, unresolvedAssignees: unresolved } : result;
+}
+
 /**
  * List a namespace's work items: the namespace-level query when the instance has
  * it, otherwise the project listing, then the group one.
  */
 async function listWorkItems(
   client: GraphQLClient,
-  vars: {
-    namespacePath: string;
-    types?: string[];
-    state?: 'opened' | 'closed';
-    first: number;
-    after?: string;
-  },
-) {
-  if (graphqlSupports('Namespace', 'workItems')) {
-    return (await client.request(GET_NAMESPACE_WORK_ITEMS, vars)).namespace?.workItems ?? null;
-  }
-  const { project } = await client.request(LIST_PROJECT_WORK_ITEMS, vars);
-  if (project) return project.workItems;
+  vars: ListVars,
+  filterValues: WorkItemListFilterValues,
+): Promise<ListRead | null> {
+  const filters = (Object.keys(LIST_FILTER_PARAMETER) as WorkItemListFilter[]).filter(
+    (name) => filterValues[name] !== undefined,
+  );
+  // Looked up once, by the first route that sends the assignee filter to GitLab.
+  let lookup: Promise<string[]> | undefined;
+  const unresolved = () =>
+    (lookup ??= findUnresolvedUsernames(client, filterValues.assigneeUsernames ?? []));
+  const read = (owner: 'namespace' | 'project' | 'group') =>
+    readListRoute(client, owner, vars, filterValues, filters, unresolved);
+  if (graphqlSupports('Namespace', 'workItems')) return read('namespace');
+  const project = await read('project');
+  if (project) return project;
   if (!graphqlSupports('Group', 'workItems')) {
     throw new Error(
       `"${vars.namespacePath}" is not a project, and this GitLab instance cannot list group-level work items`,
     );
   }
-  return (await client.request(LIST_GROUP_WORK_ITEMS, vars)).group?.workItems ?? null;
+  return read('group');
+}
+
+/** A namespace's work item types with the widgets each supports, when the instance says. */
+async function listWorkItemTypes(namespace: string) {
+  const types = await getWorkItemTypes(namespace, { withWidgets: true });
+  if (types === null) {
+    throw new Error(`Namespace "${namespace}" was not found or is not accessible`);
+  }
+  return {
+    namespace,
+    types: types.map(({ id, name, widgetDefinitions }) => ({
+      id: extractSimpleId(id),
+      name,
+      ...(widgetDefinitions && { widgets: widgetDefinitions.map(({ type }) => type) }),
+    })),
+  };
 }
 
 /** Find a work item by namespace path + IID, falling back like listWorkItems. */
@@ -132,10 +257,11 @@ async function getWorkItemByIid(
 
 import {
   CREATE_WORK_ITEM_WITH_WIDGETS,
+  FIND_USERS_BY_USERNAME,
   WorkItemCreateInput,
-  GET_NAMESPACE_WORK_ITEMS,
-  LIST_PROJECT_WORK_ITEMS,
-  LIST_GROUP_WORK_ITEMS,
+  workItemListQuery,
+  type WorkItemListFilter,
+  type WorkItemListFilterValues,
   GET_WORK_ITEM,
   GET_WORK_ITEM_BY_IID,
   GET_PROJECT_WORK_ITEM_BY_IID,
@@ -374,7 +500,7 @@ const simplifyWorkItem = (
 /**
  * Work items tools registry - 2 CQRS tools replacing 5 individual tools
  *
- * browse_work_items (Query): list, get, list_discussions
+ * browse_work_items (Query): list, get, list_discussions, list_types
  * manage_work_item (Command): create, update, delete, delete_timelog, add_link, remove_link
  */
 export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinition>([
@@ -388,11 +514,15 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
       name: 'browse_work_items',
       projectableActions: ['list', 'list_discussions'],
       description:
-        'Find and inspect issues, epics, tasks, and other work items. Actions: list (filter by type/state), get (details by ID or namespace+iid), list_discussions (paginated comments, replies, and system notes). Related: manage_work_item to create/update/delete.',
+        'Find and inspect issues, epics, tasks, and other work items. Actions: list (filter by type, state, text, author, assignees, labels, milestones or parent, applied before paging; sort), get (details by ID or namespace+iid), list_discussions (paginated comments, replies, and system notes), list_types (work item types of a namespace and the widgets each supports). Related: manage_work_item to create/update/delete.',
       inputSchema: z.toJSONSchema(BrowseWorkItemsSchema),
       // Queries adapt to the instance schema (unknown widget fragments dropped,
-      // project/group fallbacks for the namespace-level queries).
-      requirements: { default: { tier: 'free' } },
+      // project/group fallbacks for the namespace-level queries). Every list filter
+      // works from 16.0: assignee, label, milestone and parent filters missing from
+      // an older workItems field are applied to the listed widgets instead.
+      requirements: {
+        default: { tier: 'free' },
+      },
       gate: { envVar: 'USE_WORKITEMS', defaultValue: true },
       handler: async (args: unknown): Promise<unknown> => {
         const input = BrowseWorkItemsSchema.parse(args);
@@ -401,9 +531,20 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
 
         switch (input.action) {
           case 'list': {
-            // TypeScript knows: input has namespace (required), types, state, first, after, simple (optional)
             const { namespace, types, state, first, after, simple } = input;
             const namespacePath = namespace;
+            // GitLab compares the count of matched label titles with the count given, so a
+            // repeated value would match nothing; repeats never change the meaning.
+            const unique = (values?: string[]) => values && [...new Set(values)];
+            const filterValues: WorkItemListFilterValues = {
+              search: input.search,
+              authorUsername: input.author_username,
+              assigneeUsernames: unique(input.assignee_usernames),
+              labelName: unique(input.label_names),
+              milestoneTitle: unique(input.milestone_titles),
+              parentIds: unique(input.parent_ids && toGids(input.parent_ids, 'WorkItem')),
+              sort: input.sort,
+            };
 
             // Get GraphQL client from ConnectionManager
             const connectionManager = ConnectionManager.getInstance();
@@ -428,7 +569,7 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
               first: first || 20,
               after,
             };
-            const workItemsData = await listWorkItems(client, listVars);
+            const workItemsData = await listWorkItems(client, listVars, filterValues);
             const pageInfo = {
               hasNextPage: workItemsData?.pageInfo?.hasNextPage ?? false,
               endCursor: workItemsData?.pageInfo?.endCursor ?? null,
@@ -440,11 +581,32 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
               return simplifyWorkItem(cleanedItem as GraphQLWorkItem, simple);
             });
 
-            // Return object with items and server-side pagination info
+            // A locally filtered page stops after a bounded read; say so when it is short
+            // with more to read, so a short page is not taken for the end. Name the items
+            // it could not decide, so their absence is not taken for a miss.
+            const notes: string[] = [];
+            if (workItemsData?.unresolvedAssignees) {
+              notes.push(
+                `GitLab found no user named ${workItemsData.unresolvedAssignees.join(', ')} and ignores such usernames, so each work item was checked to be assigned to every requested user.`,
+              );
+            }
+            if (workItemsData && 'scanned' in workItemsData) {
+              if (pageInfo.hasNextPage && finalResults.length < listVars.first) {
+                notes.push(
+                  `This GitLab instance cannot apply every filter before paging, so ${workItemsData.scanned} work items were checked without filling the page; pass endCursor to continue.`,
+                );
+              }
+              if (workItemsData.unverified > 0) {
+                notes.push(
+                  `${workItemsData.unverified} work items could not be checked because GitLab did not list all of their labels, assignees, milestone or parent, so they are not listed.`,
+                );
+              }
+            }
             return {
               items: finalResults,
               hasMore: pageInfo.hasNextPage ?? false,
               endCursor: pageInfo.endCursor ?? null,
+              ...(notes.length > 0 && { note: notes.join(' ') }),
             };
           }
 
@@ -452,6 +614,9 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
             const client = ConnectionManager.getInstance().getClient(getGitLabApiUrlFromContext());
             return listWorkItemDiscussions(client, input);
           }
+
+          case 'list_types':
+            return listWorkItemTypes(input.namespace);
 
           case 'get': {
             // TypeScript knows: input has either (namespace + iid) or (id)
@@ -610,6 +775,9 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
 
             // Convert simple type name to work item type GID
             const workItemTypes = await getWorkItemTypes(namespacePath);
+            if (workItemTypes === null) {
+              throw new Error(`Namespace "${namespacePath}" was not found or is not accessible`);
+            }
             const workItemTypeObj = workItemTypes.find(
               (t: WorkItemType) =>
                 t.name.toUpperCase().replace(/\s+/g, '_') ===

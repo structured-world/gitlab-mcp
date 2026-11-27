@@ -49,7 +49,7 @@ describe('workItemTypes utils', () => {
 
       expect(mockClient.request).toHaveBeenCalledWith(
         'GET_PROJECT_OR_GROUP_WORK_ITEM_TYPES_QUERY',
-        { namespacePath: 'grp/proj' },
+        { namespacePath: 'grp/proj', withWidgets: false },
       );
       expect(result).toEqual(types);
     });
@@ -62,9 +62,30 @@ describe('workItemTypes utils', () => {
       expect(await getWorkItemTypes('grp')).toEqual(types);
     });
 
-    it('returns no types when the path is neither', async () => {
+    // A project without readable types is an empty list, not a missing namespace.
+    it('returns an empty list when the project has no type connection', async () => {
+      mockClient.request.mockResolvedValue({ project: { workItemTypes: null } });
+      expect(await getWorkItemTypes('grp/proj')).toEqual([]);
+    });
+
+    // Not found differs from a namespace with no types: discovery reports it.
+    it('returns null when the path is neither', async () => {
       mockClient.request.mockResolvedValue({ project: null, group: null });
-      expect(await getWorkItemTypes('missing')).toEqual([]);
+      expect(await getWorkItemTypes('missing')).toBeNull();
+    });
+  });
+
+  describe('getWorkItemTypes with widgets', () => {
+    // Only type discovery asks for each type's widgets; a create lookup does not pay for them.
+    it('asks for widget definitions only when requested', async () => {
+      mockClient.request.mockResolvedValue({ namespace: { workItemTypes: { nodes: [] } } });
+
+      await getWorkItemTypes('grp', { withWidgets: true });
+
+      expect(mockClient.request).toHaveBeenCalledWith('GET_WORK_ITEM_TYPES_QUERY', {
+        namespacePath: 'grp',
+        withWidgets: true,
+      });
     });
   });
 
@@ -88,18 +109,19 @@ describe('workItemTypes utils', () => {
 
       expect(mockClient.request).toHaveBeenCalledWith('GET_WORK_ITEM_TYPES_QUERY', {
         namespacePath: 'test-namespace',
+        withWidgets: false,
       });
       expect(result).toEqual(mockWorkItemTypes);
     });
 
-    it('should return empty array when namespace is null', async () => {
+    it('should return null when the namespace is not found', async () => {
       mockClient.request.mockResolvedValue({
         namespace: null,
       });
 
       const result = await getWorkItemTypes('non-existent-namespace');
 
-      expect(result).toEqual([]);
+      expect(result).toBeNull();
     });
 
     it('should return empty array when workItemTypes is null', async () => {

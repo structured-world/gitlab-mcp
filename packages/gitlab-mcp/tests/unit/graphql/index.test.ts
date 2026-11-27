@@ -7,7 +7,7 @@ describe('GraphQL index exports', () => {
   });
 
   it('should export workItems constants', () => {
-    expect(graphqlIndex.GET_NAMESPACE_WORK_ITEMS).toBeDefined();
+    expect(graphqlIndex.workItemListQuery).toBeDefined();
     expect(graphqlIndex.GET_PROJECT_WORK_ITEMS).toBeDefined();
     expect(graphqlIndex.CREATE_WORK_ITEM).toBeDefined();
     expect(graphqlIndex.UPDATE_WORK_ITEM).toBeDefined();

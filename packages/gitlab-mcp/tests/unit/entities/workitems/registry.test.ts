@@ -1316,6 +1316,25 @@ describe('Workitems Registry - CQRS Tools', () => {
         ).rejects.toThrow('Work item type "INCIDENT" not found in namespace "test-group"');
       });
 
+      // A missing namespace is named as such, not as a type with no available types.
+      it('reports a namespace it cannot find before looking up the type', async () => {
+        const { getWorkItemTypes } = jest.requireMock<{ getWorkItemTypes: jest.Mock }>(
+          '../../../../src/utils/workItemTypes',
+        );
+        getWorkItemTypes.mockResolvedValueOnce(null);
+        const tool = workitemsToolRegistry.get('manage_work_item');
+
+        await expect(
+          tool?.handler({
+            action: 'create',
+            namespace: 'missing-group',
+            workItemType: 'ISSUE',
+            title: 'Test',
+          }),
+        ).rejects.toThrow('Namespace "missing-group" was not found or is not accessible');
+        expect(mockClient.request).not.toHaveBeenCalled();
+      });
+
       it('should handle GraphQL errors in create action', async () => {
         mockClient.request.mockResolvedValueOnce({
           workItemCreate: {

@@ -8,12 +8,14 @@
 import { workitemsToolRegistry } from '../../../../src/entities/workitems/registry';
 import {
   GET_GROUP_WORK_ITEM_BY_IID,
-  GET_NAMESPACE_WORK_ITEMS,
   GET_PROJECT_WORK_ITEM_BY_IID,
-  LIST_GROUP_WORK_ITEMS,
-  LIST_PROJECT_WORK_ITEMS,
   UPDATE_WORK_ITEM,
+  workItemListQuery,
 } from '../../../../src/graphql/workItems';
+
+const GET_NAMESPACE_WORK_ITEMS = workItemListQuery('namespace', []);
+const LIST_PROJECT_WORK_ITEMS = workItemListQuery('project', []);
+const LIST_GROUP_WORK_ITEMS = workItemListQuery('group', []);
 
 const mockRequest = jest.fn();
 jest.mock('../../../../src/services/ConnectionManager', () => ({

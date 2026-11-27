@@ -377,12 +377,61 @@ describe('browse_work_items list filters applied locally', () => {
     expect(result.items.map((i) => i.iid)).toEqual(['5']);
   });
 
-  it('rejects a cursor it did not issue', async () => {
+  const scanCursor = (payload: unknown) =>
+    `scan:${Buffer.from(JSON.stringify(payload)).toString('base64url')}`;
+
+  // A forged or corrupted cursor must not turn into an arbitrary upstream position.
+  it.each([
+    ['not JSON', 'scan:not-json'],
+    ['not an object', scanCursor(5)],
+    ['a skip past the page', scanCursor({ after: 'c1', skip: 100 })],
+    ['a negative skip', scanCursor({ skip: -1 })],
+    ['a non-string upstream cursor', scanCursor({ after: 7, skip: 0 })],
+  ])('rejects a cursor that is %s', async (_label, after) => {
     missing.add('Namespace.workItems.labelName');
-    await expect(list({ label_names: ['bug'], after: 'scan:not-json' })).rejects.toThrow(
-      'Invalid "after" cursor',
-    );
+    await expect(list({ label_names: ['bug'], after })).rejects.toThrow('Invalid "after" cursor');
     expect(mockRequest).not.toHaveBeenCalled();
+  });
+
+  it('ends the listing when the page fills on the last upstream item', async () => {
+    missing.add('Namespace.workItems.labelName');
+    mockRequest.mockResolvedValueOnce(upstream([item('1'), item('2', { labels: ['bug'] })]));
+
+    const result = await list({ label_names: ['bug'], first: 1 });
+
+    expect(result).toMatchObject({ items: [{ iid: '2' }], hasMore: false, endCursor: null });
+  });
+
+  it('continues from the upstream cursor when the page fills on an upstream page end', async () => {
+    missing.add('Namespace.workItems.labelName');
+    mockRequest.mockResolvedValueOnce(
+      upstream([item('1'), item('2', { labels: ['bug'] })], true, 'c1'),
+    );
+
+    const result = await list({ label_names: ['bug'], first: 1 });
+
+    // A plain GitLab cursor: the next call starts at the following upstream page.
+    expect(result).toMatchObject({ items: [{ iid: '2' }], hasMore: true, endCursor: 'c1' });
+  });
+
+  it('stops with what it found when the namespace disappears between pages', async () => {
+    missing.add('Namespace.workItems.labelName');
+    mockRequest
+      .mockResolvedValueOnce(upstream([item('1', { labels: ['bug'] })], true, 'c1'))
+      .mockResolvedValueOnce({ namespace: null });
+
+    const result = await list({ label_names: ['bug'] });
+
+    expect(result).toMatchObject({ items: [{ iid: '1' }], hasMore: false, endCursor: null });
+  });
+
+  it('treats a namespace without a readable work item connection as empty', async () => {
+    missing.add('Namespace.workItems.labelName');
+    mockRequest.mockResolvedValueOnce({ namespace: { workItems: null } });
+
+    const result = await list({ label_names: ['bug'] });
+
+    expect(result).toMatchObject({ items: [], hasMore: false, endCursor: null });
   });
 
   it('keeps the filters visible to every supported GitLab version', () => {

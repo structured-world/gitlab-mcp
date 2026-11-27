@@ -62,6 +62,12 @@ describe('workItemTypes utils', () => {
       expect(await getWorkItemTypes('grp')).toEqual(types);
     });
 
+    // A project without readable types is an empty list, not a missing namespace.
+    it('returns an empty list when the project has no type connection', async () => {
+      mockClient.request.mockResolvedValue({ project: { workItemTypes: null } });
+      expect(await getWorkItemTypes('grp/proj')).toEqual([]);
+    });
+
     // Not found differs from a namespace with no types: discovery reports it.
     it('returns null when the path is neither', async () => {
       mockClient.request.mockResolvedValue({ project: null, group: null });

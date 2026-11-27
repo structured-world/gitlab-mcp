@@ -155,8 +155,10 @@ async function readListRoute(
     return found ? (found.workItems ?? { nodes: [], pageInfo: { hasNextPage: false } }) : null;
   };
   if (missing.length === 0) return fetchPage(vars.first, vars.after);
-  const local = missing.filter(isLocalListFilter);
-  return scanWorkItems(fetchPage, localListMatcher(filterValues, local), vars.first, vars.after);
+  const local = Object.fromEntries(
+    missing.filter(isLocalListFilter).map((name) => [name, filterValues[name]]),
+  );
+  return scanWorkItems(fetchPage, localListMatcher(local), vars.first, vars.after);
 }
 
 /**
@@ -719,7 +721,10 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
             const client = connectionManager.getClient(getGitLabApiUrlFromContext());
 
             // Convert simple type name to work item type GID
-            const workItemTypes = (await getWorkItemTypes(namespacePath)) ?? [];
+            const workItemTypes = await getWorkItemTypes(namespacePath);
+            if (workItemTypes === null) {
+              throw new Error(`Namespace "${namespacePath}" was not found or is not accessible`);
+            }
             const workItemTypeObj = workItemTypes.find(
               (t: WorkItemType) =>
                 t.name.toUpperCase().replace(/\s+/g, '_') ===

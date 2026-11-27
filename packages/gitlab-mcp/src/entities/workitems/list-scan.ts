@@ -51,43 +51,39 @@ const widget = (item: WorkItem, type: string): FilterableWidget | undefined =>
  * as GitLab resolves them; label and milestone titles exactly.
  */
 export function localListMatcher(
-  values: WorkItemListFilterValues,
-  filters: readonly LocalListFilter[],
+  values: Pick<WorkItemListFilterValues, LocalListFilter>,
 ): (item: WorkItem) => boolean {
-  const checks = filters.map((name): ((item: WorkItem) => boolean) => {
-    switch (name) {
-      case 'assigneeUsernames': {
-        const wanted = (values.assigneeUsernames ?? []).map((u) => u.toLowerCase());
-        return (item) => {
-          const have = new Set(
-            widget(item, 'ASSIGNEES')?.assignees?.nodes?.map((u) => u.username.toLowerCase()),
-          );
-          return wanted.every((u) => have.has(u));
-        };
-      }
-      case 'labelName': {
-        const wanted = values.labelName ?? [];
-        return (item) => {
-          const have = new Set(widget(item, 'LABELS')?.labels?.nodes?.map((l) => l.title));
-          return wanted.every((title) => have.has(title));
-        };
-      }
-      case 'milestoneTitle': {
-        const wanted = new Set(values.milestoneTitle);
-        return (item) => {
-          const title = widget(item, 'MILESTONE')?.milestone?.title;
-          return title !== undefined && wanted.has(title);
-        };
-      }
-      case 'parentIds': {
-        const wanted = new Set(values.parentIds);
-        return (item) => {
-          const id = widget(item, 'HIERARCHY')?.parent?.id;
-          return id !== undefined && wanted.has(id);
-        };
-      }
-    }
-  });
+  const checks: Array<(item: WorkItem) => boolean> = [];
+  if (values.assigneeUsernames) {
+    const wanted = values.assigneeUsernames.map((u) => u.toLowerCase());
+    checks.push((item) => {
+      const have = new Set(
+        widget(item, 'ASSIGNEES')?.assignees?.nodes?.map((u) => u.username.toLowerCase()),
+      );
+      return wanted.every((u) => have.has(u));
+    });
+  }
+  if (values.labelName) {
+    const wanted = values.labelName;
+    checks.push((item) => {
+      const have = new Set(widget(item, 'LABELS')?.labels?.nodes?.map((l) => l.title));
+      return wanted.every((title) => have.has(title));
+    });
+  }
+  if (values.milestoneTitle) {
+    const wanted = new Set(values.milestoneTitle);
+    checks.push((item) => {
+      const title = widget(item, 'MILESTONE')?.milestone?.title;
+      return title !== undefined && wanted.has(title);
+    });
+  }
+  if (values.parentIds) {
+    const wanted = new Set(values.parentIds);
+    checks.push((item) => {
+      const id = widget(item, 'HIERARCHY')?.parent?.id;
+      return id !== undefined && wanted.has(id);
+    });
+  }
   return (item) => checks.every((check) => check(item));
 }
 

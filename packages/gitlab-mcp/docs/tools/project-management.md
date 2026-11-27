@@ -122,8 +122,8 @@ GitLab work items include Issues, Epics, Tasks, Incidents, and more.
 its `hasMore` describe matching items only. Continue with `endCursor` as `after`, keeping
 the same filters and `sort`.
 
-| Parameter | Matches | GitLab |
-|-----------|---------|--------|
+| Parameter | Matches | Applied by GitLab from |
+|-----------|---------|------------------------|
 | `search` | Text in the title or description | 16.0 |
 | `author_username` | Items created by the user | 16.0 |
 | `assignee_usernames` | Items assigned to all of the users | 17.2 |
@@ -132,10 +132,14 @@ the same filters and `sort`.
 | `parent_ids` | Direct children of the items (IDs from list results) | 18.1 |
 | `sort` | `CREATED_DESC` (default), `CREATED_ASC`, `UPDATED_DESC`, `UPDATED_ASC`, `TITLE_ASC`, `TITLE_DESC` | 16.0 |
 
-The list filters take up to 100 values each. A filter the connected instance cannot
-apply is refused with its parameter name, and nothing is listed, instead of being
-dropped and returning items it would have excluded. A group namespace lists the
-group's own work items, such as epics, not those of its projects.
+Every filter works from GitLab 16.0. On an older instance, the assignee, label,
+milestone and parent filters are applied by the server while it reads GitLab's pages in
+order, with the same matching rules. Such a call reads at most 1,000 work items; when
+the page is still short, the result has `hasMore: true` and a `note`, and `endCursor`
+continues the search. A filter that cannot be applied either way is refused with its
+parameter name, and nothing is listed. The list filters take up to 100 values each.
+A group namespace lists the group's own work items, such as epics, not those of its
+projects.
 
 `list_types` returns the namespace's work item types with their `id`, `name` and, on
 GitLab 16.7 and later, `widgets`: the widgets each type supports in that namespace,

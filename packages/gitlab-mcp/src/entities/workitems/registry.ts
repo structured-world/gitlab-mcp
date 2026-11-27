@@ -3,6 +3,13 @@ import { BrowseWorkItemsSchema } from './schema-readonly';
 import { ManageWorkItemSchema } from './schema';
 import { reorderWorkItem } from './reorder';
 import { listWorkItemDiscussions } from './discussions';
+import {
+  isLocalListFilter,
+  localListMatcher,
+  scanWorkItems,
+  type ListConnection,
+  type ScanResult,
+} from './list-scan';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
 import { ConnectionManager } from '../../services/ConnectionManager';
 import { assertActionAllowed } from '../utils';
@@ -98,63 +105,76 @@ const LIST_FILTER_PARAMETER: Readonly<Record<WorkItemListFilter, string>> = {
   sort: 'sort',
 };
 
+type ListVars = {
+  namespacePath: string;
+  types?: string[];
+  state?: 'opened' | 'closed';
+  first: number;
+  after?: string;
+};
+
 /**
- * Refuse filters this instance's `workItems` field lacks: dropping one would return
- * items it was meant to exclude, and filtering after GitLab paginated would leave
- * pages short while more matches exist.
+ * Read one listing route. Filters its `workItems` field accepts go into the query, so
+ * GitLab applies them before paginating; assignee, label, milestone and parent filters
+ * it lacks are applied to the listed widgets while reading upstream pages in order.
+ * A missing filter that cannot be evaluated locally is refused: dropping it would
+ * return the items it was meant to exclude. Null when the owner does not exist.
  */
-function assertListFilters(
-  typeName: 'Namespace' | 'Project' | 'Group',
+async function readListRoute(
+  client: GraphQLClient,
+  owner: 'namespace' | 'project' | 'group',
+  vars: ListVars,
+  filterValues: WorkItemListFilterValues,
   filters: readonly WorkItemListFilter[],
-  scope: string,
-): void {
-  const unsupported = filters.filter((name) => !graphqlSupports(typeName, 'workItems', name));
-  if (unsupported.length > 0) {
+): Promise<ScanResult | ListConnection | null> {
+  const typeName = owner === 'namespace' ? 'Namespace' : owner === 'project' ? 'Project' : 'Group';
+  const native = filters.filter((name) => graphqlSupports(typeName, 'workItems', name));
+  const missing = filters.filter((name) => !native.includes(name));
+  const refused = missing.filter((name) => !isLocalListFilter(name));
+  if (refused.length > 0) {
     throw new Error(
-      `This GitLab instance cannot filter ${scope}work items by ${unsupported
+      `This GitLab instance cannot filter ${owner === 'group' ? 'group ' : ''}work items by ${refused
         .map((name) => LIST_FILTER_PARAMETER[name])
         .join(', ')}`,
     );
   }
+  const query = workItemListQuery(owner, native);
+  const fetchPage = async (first: number, after?: string): Promise<ListConnection | null> => {
+    const data: Record<string, { workItems?: ListConnection | null } | null> = await client.request(
+      query,
+      { ...vars, ...filterValues, first, after },
+    );
+    const found = data[owner];
+    return found ? (found.workItems ?? { nodes: [], pageInfo: { hasNextPage: false } }) : null;
+  };
+  if (missing.length === 0) return fetchPage(vars.first, vars.after);
+  const local = missing.filter(isLocalListFilter);
+  return scanWorkItems(fetchPage, localListMatcher(filterValues, local), vars.first, vars.after);
 }
 
 /**
  * List a namespace's work items: the namespace-level query when the instance has
- * it, otherwise the project listing, then the group one. Filters go into the query,
- * so GitLab applies them before paginating.
+ * it, otherwise the project listing, then the group one.
  */
 async function listWorkItems(
   client: GraphQLClient,
-  vars: {
-    namespacePath: string;
-    types?: string[];
-    state?: 'opened' | 'closed';
-    first: number;
-    after?: string;
-  },
+  vars: ListVars,
   filterValues: WorkItemListFilterValues,
-) {
+): Promise<ScanResult | ListConnection | null> {
   const filters = (Object.keys(LIST_FILTER_PARAMETER) as WorkItemListFilter[]).filter(
     (name) => filterValues[name] !== undefined,
   );
-  const variables = { ...vars, ...filterValues };
-
   if (graphqlSupports('Namespace', 'workItems')) {
-    assertListFilters('Namespace', filters, '');
-    const query = workItemListQuery('namespace', filters);
-    return (await client.request(query, variables)).namespace?.workItems ?? null;
+    return readListRoute(client, 'namespace', vars, filterValues, filters);
   }
-  assertListFilters('Project', filters, '');
-  const { project } = await client.request(workItemListQuery('project', filters), variables);
-  if (project) return project.workItems;
+  const project = await readListRoute(client, 'project', vars, filterValues, filters);
+  if (project) return project;
   if (!graphqlSupports('Group', 'workItems')) {
     throw new Error(
       `"${vars.namespacePath}" is not a project, and this GitLab instance cannot list group-level work items`,
     );
   }
-  assertListFilters('Group', filters, 'group ');
-  const query = workItemListQuery('group', filters);
-  return (await client.request(query, variables)).group?.workItems ?? null;
+  return readListRoute(client, 'group', vars, filterValues, filters);
 }
 
 /** A namespace's work item types with the widgets each supports, when the instance says. */
@@ -448,20 +468,14 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
       name: 'browse_work_items',
       projectableActions: ['list', 'list_discussions'],
       description:
-        'Find and inspect issues, epics, tasks, and other work items. Actions: list (filter by type, state, text, author, assignees, labels, milestones or parent, applied by GitLab before paging; sort), get (details by ID or namespace+iid), list_discussions (paginated comments, replies, and system notes), list_types (work item types of a namespace and the widgets each supports). Related: manage_work_item to create/update/delete.',
+        'Find and inspect issues, epics, tasks, and other work items. Actions: list (filter by type, state, text, author, assignees, labels, milestones or parent, applied before paging; sort), get (details by ID or namespace+iid), list_discussions (paginated comments, replies, and system notes), list_types (work item types of a namespace and the widgets each supports). Related: manage_work_item to create/update/delete.',
       inputSchema: z.toJSONSchema(BrowseWorkItemsSchema),
       // Queries adapt to the instance schema (unknown widget fragments dropped,
-      // project/group fallbacks for the namespace-level queries). The list filters
-      // below first appeared on workItems in these releases; the handler also checks
-      // the instance schema, since the namespace, project and group fields differ.
+      // project/group fallbacks for the namespace-level queries). Every list filter
+      // works from 16.0: assignee, label, milestone and parent filters missing from
+      // an older workItems field are applied to the listed widgets instead.
       requirements: {
         default: { tier: 'free' },
-        parameters: {
-          assignee_usernames: { tier: 'free', minVersion: '17.2' },
-          label_names: { tier: 'free', minVersion: '17.2' },
-          milestone_titles: { tier: 'free', minVersion: '17.2' },
-          parent_ids: { tier: 'free', minVersion: '18.1' },
-        },
       },
       gate: { envVar: 'USE_WORKITEMS', defaultValue: true },
       handler: async (args: unknown): Promise<unknown> => {
@@ -518,11 +532,19 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
               return simplifyWorkItem(cleanedItem as GraphQLWorkItem, simple);
             });
 
-            // Return object with items and server-side pagination info
+            // A locally filtered page stops after a bounded read; say so when it is short
+            // with more to read, so a short page is not taken for the end.
+            const scanned =
+              workItemsData && 'scanned' in workItemsData ? workItemsData.scanned : undefined;
+            const short =
+              scanned !== undefined && pageInfo.hasNextPage && finalResults.length < listVars.first;
             return {
               items: finalResults,
               hasMore: pageInfo.hasNextPage ?? false,
               endCursor: pageInfo.endCursor ?? null,
+              ...(short && {
+                note: `This GitLab instance cannot apply every filter before paging, so ${scanned} work items were checked without filling the page; pass endCursor to continue.`,
+              }),
             };
           }
 

@@ -113,6 +113,13 @@ type ListVars = {
   after?: string;
 };
 
+/** GraphQL type whose `workItems` field each listing route queries. */
+const LIST_OWNER_TYPE = {
+  namespace: 'Namespace',
+  project: 'Project',
+  group: 'Group',
+} as const;
+
 /**
  * Read one listing route. Filters its `workItems` field accepts go into the query, so
  * GitLab applies them before paginating; assignee, label, milestone and parent filters
@@ -127,7 +134,7 @@ async function readListRoute(
   filterValues: WorkItemListFilterValues,
   filters: readonly WorkItemListFilter[],
 ): Promise<ScanResult | ListConnection | null> {
-  const typeName = owner === 'namespace' ? 'Namespace' : owner === 'project' ? 'Project' : 'Group';
+  const typeName = LIST_OWNER_TYPE[owner];
   const native = filters.filter((name) => graphqlSupports(typeName, 'workItems', name));
   const missing = filters.filter((name) => !native.includes(name));
   const refused = missing.filter((name) => !isLocalListFilter(name));

@@ -133,6 +133,39 @@ function decodeCursor(cursor: string | undefined): ScanPosition {
 }
 
 /**
+ * Append the matching items of one upstream page, from `skip`, until `nodes` holds
+ * `first`. Returns the index of the item that filled the page, or -1.
+ */
+function collectMatches(
+  upstream: WorkItem[],
+  skip: number,
+  matches: (item: WorkItem) => boolean,
+  first: number,
+  nodes: WorkItem[],
+): number {
+  for (let i = skip; i < upstream.length; i++) {
+    if (matches(upstream[i]) && nodes.push(upstream[i]) === first) return i;
+  }
+  return -1;
+}
+
+/** Paging info of a page filled at `index` of the upstream page read from `position`. */
+function filledPageInfo(
+  connection: ListConnection,
+  position: ScanPosition,
+  index: number,
+): ListConnection['pageInfo'] {
+  if (index + 1 < connection.nodes.length) {
+    return {
+      hasNextPage: true,
+      endCursor: encodeCursor({ after: position.after, skip: index + 1 }),
+    };
+  }
+  const { hasNextPage, endCursor } = connection.pageInfo;
+  return { hasNextPage, endCursor: hasNextPage ? endCursor : null };
+}
+
+/**
  * Fill a page of `first` matching items by reading upstream pages in order and keeping
  * the items `matches` accepts. Reading stops after SCAN_PAGE_LIMIT upstream pages, so a
  * sparse match costs a bounded number of requests per call; the short page then carries
@@ -151,31 +184,20 @@ export async function scanWorkItems(
     const connection = await fetchPage(SCAN_PAGE_SIZE, position.after);
     // The owner disappeared between requests: nothing further can be read.
     if (!connection) {
-      return page === 0
-        ? null
-        : { nodes, pageInfo: { hasNextPage: false, endCursor: null }, scanned };
-    }
-    const upstream = connection.nodes;
-    for (let i = position.skip; i < upstream.length; i++) {
-      scanned++;
-      if (!matches(upstream[i])) continue;
-      nodes.push(upstream[i]);
-      if (nodes.length < first) continue;
-      if (i + 1 < upstream.length) {
-        const endCursor = encodeCursor({ after: position.after, skip: i + 1 });
-        return { nodes, pageInfo: { hasNextPage: true, endCursor }, scanned };
-      }
-      const { hasNextPage, endCursor } = connection.pageInfo;
-      return {
-        nodes,
-        pageInfo: { hasNextPage, endCursor: hasNextPage ? endCursor : null },
-        scanned,
-      };
-    }
-    if (!connection.pageInfo.hasNextPage || !connection.pageInfo.endCursor) {
+      if (page === 0) return null;
       return { nodes, pageInfo: { hasNextPage: false, endCursor: null }, scanned };
     }
-    position = { after: connection.pageInfo.endCursor, skip: 0 };
+    const filled = collectMatches(connection.nodes, position.skip, matches, first, nodes);
+    if (filled >= 0) {
+      scanned += filled + 1 - position.skip;
+      return { nodes, pageInfo: filledPageInfo(connection, position, filled), scanned };
+    }
+    scanned += Math.max(0, connection.nodes.length - position.skip);
+    const { hasNextPage, endCursor } = connection.pageInfo;
+    if (!hasNextPage || !endCursor) {
+      return { nodes, pageInfo: { hasNextPage: false, endCursor: null }, scanned };
+    }
+    position = { after: endCursor, skip: 0 };
   }
   return {
     nodes,

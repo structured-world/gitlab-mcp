@@ -399,6 +399,35 @@ describe('ScopeEnforcer', () => {
     });
   });
 
+  // Whether a group's whole tree may be listed, such as a saved view's descendants.
+  describe('coversSubgroupsOf()', () => {
+    it('covers every subtree without restrictions', () => {
+      expect(new ScopeEnforcer({}).coversSubgroupsOf('any')).toBe(true);
+    });
+
+    it('covers a group and its subgroups under a group scope with subgroups', () => {
+      const enforcer = new ScopeEnforcer({ groups: ['team'] });
+      expect(enforcer.coversSubgroupsOf('team')).toBe(true);
+      expect(enforcer.coversSubgroupsOf('team/sub')).toBe(true);
+      expect(enforcer.coversSubgroupsOf('other')).toBe(false);
+      expect(enforcer.coversSubgroupsOf('teams')).toBe(false);
+    });
+
+    it('covers no subtree under a group scope without subgroups', () => {
+      const enforcer = new ScopeEnforcer({ group: 'team', includeSubgroups: false });
+      expect(enforcer.coversSubgroupsOf('team')).toBe(false);
+    });
+
+    it('covers a subtree under the namespace, and none under a project scope', () => {
+      expect(new ScopeEnforcer({ namespace: 'team' }).coversSubgroupsOf('team/sub')).toBe(true);
+      expect(new ScopeEnforcer({ project: 'team/app' }).coversSubgroupsOf('team/app')).toBe(false);
+    });
+
+    it('refuses a path it cannot read', () => {
+      expect(new ScopeEnforcer({ group: 'team' }).coversSubgroupsOf('')).toBe(false);
+    });
+  });
+
   describe('getScope()', () => {
     it('should return the scope configuration', () => {
       const scope = { project: 'myteam/backend', namespace: 'myteam' };

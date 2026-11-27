@@ -47,6 +47,21 @@ export function graphqlSupports(typeName: string, fieldName?: string, argName?: 
   return !argName || field.args.has(argName);
 }
 
+/**
+ * Whether the instance's schema is known and has the type and field. Unlike
+ * graphqlSupports it is false without a schema, for a field a query may select only
+ * when it surely exists.
+ */
+export function graphqlConfirms(typeName: string, fieldName: string): boolean {
+  let index;
+  try {
+    index = ConnectionManager.getInstance().getSchemaInfo(getGitLabApiUrlFromContext()).fieldIndex;
+  } catch {
+    return false;
+  }
+  return index?.get(typeName)?.has(fieldName) ?? false;
+}
+
 /** Throw a clear error when the instance is older than `minVersion` for `feature`. */
 export function assertInstanceAtLeast(minVersion: string, feature: string): void {
   if (!instanceAtLeast(minVersion)) {

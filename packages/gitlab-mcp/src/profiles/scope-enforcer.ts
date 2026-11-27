@@ -320,6 +320,23 @@ export class ScopeEnforcer {
     }
   }
 
+  /**
+   * Whether every subgroup of the group, and every project in them, is in scope: the
+   * group lies under the scope's namespace, or under one of its groups with subgroups.
+   */
+  coversSubgroupsOf(groupPath: string): boolean {
+    if (!this.hasRestrictions()) return true;
+    let normalized: string;
+    try {
+      normalized = normalizeProjectPath(groupPath);
+    } catch {
+      return false;
+    }
+    const under = (root: string) => normalized === root || normalized.startsWith(`${root}/`);
+    if (this.namespace && under(this.namespace)) return true;
+    return this.includeSubgroups && [...this.allowedGroupsSet].some(under);
+  }
+
   /** Whether the scope lists this numeric id itself, as a project or a group it may name. */
   listsId(id: string, kind: NumericTargetKind): boolean {
     return (

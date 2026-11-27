@@ -187,8 +187,12 @@ view filters by state, and the types the list offers by default (GitLab 18.10+) 
 the view names types. `exact: false` means the items may differ from the view:
 `unappliedFilters` names filters this instance cannot apply, `filterWarnings` passes
 on GitLab's report of filter values that no longer exist (such as a deleted label),
-and `note` explains each case. A view that does not exist and one you cannot see are
-reported the same way.
+and `note` explains each case; a view without a sort of its own is also inexact, as
+GitLab's list would use your sort preference. A view that does not exist and one you
+cannot see are reported the same way. A view that filters on a group or project you
+cannot read, or one outside the working scope or the projects the server may read, is
+an error rather than an empty page. When the working scope does not include a group's
+subgroups, only the group's own work items are listed and the result is inexact.
 
 `list_discussions` reads user comments and system activity from the GitLab notes widget.
 Use `namespace` and `iid`, or the global `id`. Each discussion contains a `notes`

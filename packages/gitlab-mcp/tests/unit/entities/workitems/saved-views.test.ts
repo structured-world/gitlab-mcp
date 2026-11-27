@@ -12,10 +12,13 @@ import { BrowseWorkItemsSchema } from '../../../../src/entities/workitems/schema
 import { planViewQuery, savedViewGid } from '../../../../src/entities/workitems/saved-views';
 import {
   GET_FILTERABLE_WORK_ITEM_TYPES,
-  GET_SAVED_VIEW,
-  LIST_SAVED_VIEWS,
+  getSavedViewQuery,
+  listSavedViewsQuery,
   savedViewItemsQuery,
 } from '../../../../src/graphql/savedViews';
+
+/** Every newer view field confirmed, as on a current instance with a known schema. */
+const ALL_EXTRAS = { isPrivate: true, updatedAt: true, author: true, filterableTypes: true };
 
 const mockRequest = jest.fn();
 jest.mock('../../../../src/services/ConnectionManager', () => ({
@@ -25,11 +28,24 @@ jest.mock('../../../../src/services/ConnectionManager', () => ({
 // Schema of the simulated instance: "Type.field" or "Type.field.arg" keys it lacks.
 // For an input object the field is an input field, for an enum a value.
 const missing = new Set<string>();
-jest.mock('../../../../src/entities/instance-version', () => ({
-  graphqlSupports: (type: string, field?: string, arg?: string) =>
+// Whether the schema is known at all; without it nothing can be confirmed.
+let schemaKnown = true;
+jest.mock('../../../../src/entities/instance-version', () => {
+  const supports = (type: string, field?: string, arg?: string) =>
     !missing.has(type) &&
     !missing.has(`${type}.${field}`) &&
-    !(arg && missing.has(`${type}.${field}.${arg}`)),
+    !(arg && missing.has(`${type}.${field}.${arg}`));
+  return {
+    graphqlSupports: supports,
+    graphqlConfirms: (type: string, field: string) => schemaKnown && supports(type, field),
+  };
+});
+
+// The working scope and the operator's project list of the running call.
+const reach = { descendants: true, outside: new Set<string>() };
+jest.mock('../../../../src/configuration/call-scope', () => ({
+  namespaceInCallScope: async (path: string) => !reach.outside.has(path),
+  descendantsInCallScope: () => reach.descendants,
 }));
 
 const browse = () => workitemsToolRegistry.get('browse_work_items')!;
@@ -74,6 +90,7 @@ const viewResponse = (
   types: Array<{ id: string; isFilterableListView?: boolean }> = allFilterable,
 ) => ({
   namespace: {
+    __typename: 'Group',
     workItemTypes: { nodes: types },
     savedViews: { nodes: read ? [read] : [] },
   },
@@ -82,6 +99,9 @@ const viewResponse = (
 beforeEach(() => {
   mockRequest.mockReset();
   missing.clear();
+  schemaKnown = true;
+  reach.descendants = true;
+  reach.outside.clear();
 });
 
 describe('planViewQuery', () => {
@@ -280,7 +300,7 @@ describe('browse_work_items list_saved_views', () => {
     };
 
     const [document, variables] = mockRequest.mock.calls[0];
-    expect(document).toBe(LIST_SAVED_VIEWS);
+    expect(document).toBe(listSavedViewsQuery(ALL_EXTRAS));
     expect(variables).toEqual({
       namespacePath: 'grp',
       search: 'bugs',
@@ -341,7 +361,7 @@ describe('browse_work_items get_saved_view', () => {
     };
 
     expect(mockRequest.mock.calls[0]).toEqual([
-      GET_SAVED_VIEW,
+      getSavedViewQuery(ALL_EXTRAS),
       { namespacePath: 'grp', id: VIEW_GID },
     ]);
     // The namespace's types came with the view, so no request is spent on them.
@@ -460,7 +480,7 @@ describe('browse_work_items get_saved_view', () => {
     expect(result.filterWarnings).toEqual(warnings);
   });
 
-  it("says the order is GitLab's default when the view has no sort", async () => {
+  it("says the order is GitLab's default, not the view's, when the view has no sort", async () => {
     mockRequest
       .mockResolvedValueOnce(viewResponse(view({ sort: null })))
       .mockResolvedValueOnce(itemsPage(['5']));
@@ -472,7 +492,7 @@ describe('browse_work_items get_saved_view', () => {
     })) as { exact: boolean; note: string };
 
     expect(mockRequest.mock.calls[1][1]).not.toHaveProperty('sort');
-    expect(result.exact).toBe(true);
+    expect(result.exact).toBe(false);
     expect(result.note).toContain('your sort preference');
   });
 
@@ -534,6 +554,207 @@ describe('browse_work_items get_saved_view', () => {
       }),
     ).rejects.toThrow('is not a saved view ID');
     expect(mockRequest).not.toHaveBeenCalled();
+  });
+});
+
+describe('saved view results that must not pass for the view', () => {
+  const read = (overrides: Record<string, unknown> = {}) =>
+    browse().handler({ action: 'get_saved_view', namespace: 'grp', view_id: '42', ...overrides });
+
+  it('sends relative date units under their enum names and reports a unit it cannot send', () => {
+    // A nested enum sent as stored would fail the whole query.
+    missing.add('WorkItemRelativeDateUnit.FORTNIGHT');
+    const plan = planViewQuery(
+      'grp',
+      {
+        relativeDateFilters: {
+          createdAfter: { amount: -7, unit: 'day' },
+          updatedAfter: { amount: -1, unit: 'fortnight' },
+        },
+      },
+      null,
+    );
+
+    expect(plan.args.relativeDateFilters).toEqual({ createdAfter: { amount: -7, unit: 'DAY' } });
+    expect(plan.unapplied).toEqual(['relativeDateFilters.updatedAfter']);
+  });
+
+  it('does not take a missing type list for every type being offered', async () => {
+    // No list from GitLab says nothing about its defaults, so the result cannot be exact.
+    mockRequest
+      .mockResolvedValueOnce({
+        namespace: { __typename: 'Group', workItemTypes: null, savedViews: { nodes: [view()] } },
+      })
+      .mockResolvedValueOnce(itemsPage(['5']));
+
+    const result = (await read()) as { exact: boolean; note: string };
+
+    expect(result.exact).toBe(false);
+    expect(result.note).toContain('items of every type are included');
+  });
+
+  it('reports a scoped namespace whose items the reader cannot see', async () => {
+    // A shared view may filter on a project its reader has no access to; an empty page
+    // would read as "no matches".
+    mockRequest
+      .mockResolvedValueOnce(viewResponse(view({ filters: { fullPath: 'grp/private' } })))
+      .mockResolvedValueOnce({ namespace: { workItemTypes: { nodes: allFilterable } } })
+      .mockResolvedValueOnce({ namespace: null });
+
+    await expect(read()).rejects.toThrow(
+      'Saved view 42 lists work items of "grp/private", which was not found or is not accessible',
+    );
+  });
+
+  it('keeps an empty page of a reachable namespace as an empty result', async () => {
+    mockRequest.mockResolvedValueOnce(viewResponse(view())).mockResolvedValueOnce(itemsPage([]));
+
+    const result = (await read()) as { items: unknown[]; exact: boolean };
+    expect(result.items).toEqual([]);
+    expect(result.exact).toBe(true);
+  });
+
+  it('marks the result inexact when the view has no sort', async () => {
+    // GitLab's list would use the reader's sort preference, which may differ.
+    mockRequest
+      .mockResolvedValueOnce(viewResponse(view({ sort: null })))
+      .mockResolvedValueOnce(itemsPage(['5']));
+
+    expect(((await read()) as { exact: boolean }).exact).toBe(false);
+  });
+
+  it('selects only the view fields GitLab 18.9 has when the schema is unknown', async () => {
+    // Without introspection nothing can be dropped, so a newer field would fail the query.
+    schemaKnown = false;
+    mockRequest
+      .mockResolvedValueOnce({
+        namespace: { savedViews: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } } },
+      })
+      .mockResolvedValueOnce(viewResponse(view()))
+      .mockResolvedValueOnce(itemsPage([]));
+
+    await browse().handler({ action: 'list_saved_views', namespace: 'grp' });
+    await read();
+
+    for (const call of mockRequest.mock.calls.slice(0, 2)) {
+      const printed = print(call[0] as Parameters<typeof print>[0]);
+      expect(printed).toContain('private');
+      expect(printed).not.toMatch(/isPrivate|updatedAt|author/);
+    }
+  });
+
+  it('selects the newer view fields when the schema confirms them', async () => {
+    mockRequest.mockResolvedValueOnce({
+      namespace: { savedViews: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } } },
+    });
+
+    await browse().handler({ action: 'list_saved_views', namespace: 'grp' });
+
+    const printed = print(mockRequest.mock.calls[0][0] as Parameters<typeof print>[0]);
+    expect(printed).toMatch(/isPrivate[\s\S]*updatedAt[\s\S]*author/);
+  });
+
+  it('refuses a view that lists a namespace outside the call scope', async () => {
+    // The call named "grp"; the view's group filter reaches "elsewhere", which the working
+    // scope or the operator's project list does not cover.
+    reach.outside.add('elsewhere');
+    mockRequest.mockResolvedValueOnce(viewResponse(view({ filters: { fullPath: 'elsewhere' } })));
+
+    await expect(read()).rejects.toThrow(
+      'Saved view 42 lists work items of "elsewhere", outside the projects and groups this call may read',
+    );
+    expect(mockRequest).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps to the group itself when its descendants are outside the call scope', async () => {
+    // A group scope without its subgroups: the view's default descendant expansion would
+    // list items of subgroup projects.
+    reach.descendants = false;
+    mockRequest.mockResolvedValueOnce(viewResponse(view())).mockResolvedValueOnce(itemsPage(['5']));
+
+    const result = (await read()) as { exact: boolean; note: string };
+
+    expect(mockRequest.mock.calls[1][1]).toMatchObject({ includeDescendants: false });
+    expect(result.exact).toBe(false);
+    expect(result.note).toContain('outside the working scope');
+  });
+});
+
+describe('saved view edge cases', () => {
+  const read = (overrides: Record<string, unknown> = {}) =>
+    browse().handler({ action: 'get_saved_view', namespace: 'grp', view_id: '42', ...overrides });
+
+  it('checks each entry of a list of input filters on its own', () => {
+    // A custom field filter is a list of inputs; a field one entry lacks is named by index.
+    missing.add('WorkItemWidgetCustomFieldFilterInputType.textValue');
+    const plan = planViewQuery(
+      'grp',
+      {
+        customField: [
+          { customFieldId: 'gid://gitlab/Issuables::CustomField/1', selectedOptionIds: ['o1'] },
+          { customFieldId: 'gid://gitlab/Issuables::CustomField/2', textValue: 'x' },
+        ],
+      },
+      null,
+    );
+
+    expect(plan.args.customField).toEqual([
+      { customFieldId: 'gid://gitlab/Issuables::CustomField/1', selectedOptionIds: ['o1'] },
+      { customFieldId: 'gid://gitlab/Issuables::CustomField/2' },
+    ]);
+    expect(plan.unapplied).toEqual(['customField[1].textValue']);
+  });
+
+  it('says the default order is used when the instance cannot sort as the view does', async () => {
+    missing.add('WorkItemSort.STATUS_ASC');
+    mockRequest
+      .mockResolvedValueOnce(viewResponse(view({ sort: 'STATUS_ASC' })))
+      .mockResolvedValueOnce(itemsPage(['5']));
+
+    const result = (await read()) as { exact: boolean; note: string; unappliedFilters: string[] };
+
+    expect(result.exact).toBe(false);
+    expect(result.unappliedFilters).toEqual(['sort']);
+    expect(result.note).toContain('cannot sort by STATUS_ASC');
+    expect(result.note).not.toContain('cannot apply');
+  });
+
+  it('does not narrow a project, which has no descendants to keep out', async () => {
+    // GitLab ignores includeDescendants for a project, so a scope without subgroups
+    // changes nothing and the result stays exact.
+    reach.descendants = false;
+    mockRequest
+      .mockResolvedValueOnce({
+        namespace: {
+          __typename: 'Project',
+          workItemTypes: { nodes: allFilterable },
+          savedViews: { nodes: [view()] },
+        },
+      })
+      .mockResolvedValueOnce(itemsPage(['5']));
+
+    const result = (await read({ namespace: 'grp/app' })) as { exact: boolean };
+
+    expect(mockRequest.mock.calls[1][1]).toMatchObject({ includeDescendants: true });
+    expect(result.exact).toBe(true);
+  });
+
+  it('reads a view without filters, warnings or author', async () => {
+    mockRequest
+      .mockResolvedValueOnce(
+        viewResponse(
+          view({ filters: null, filterWarnings: null, author: null, updatedAt: '2026-11-27' }),
+        ),
+      )
+      .mockResolvedValueOnce(itemsPage([]));
+
+    const result = (await read()) as {
+      view: { filters: unknown; author: unknown; updatedAt: string };
+      exact: boolean;
+    };
+
+    expect(result.view).toMatchObject({ filters: {}, author: null, updatedAt: '2026-11-27' });
+    expect(result.exact).toBe(true);
   });
 });
 

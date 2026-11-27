@@ -1,16 +1,18 @@
 import type { GraphQLClient } from '../../graphql/client';
 import {
   GET_FILTERABLE_WORK_ITEM_TYPES,
-  GET_SAVED_VIEW,
-  LIST_SAVED_VIEWS,
   SAVED_VIEW_ARG_TYPES,
+  getSavedViewQuery,
+  listSavedViewsQuery,
   savedViewItemsQuery,
   type FilterableTypes,
   type SavedViewDetail,
+  type SavedViewExtras,
   type SavedViewNode,
 } from '../../graphql/savedViews';
 import type { WorkItem } from '../../graphql/workItems';
-import { graphqlSupports } from '../instance-version';
+import { graphqlConfirms, graphqlSupports } from '../instance-version';
+import { descendantsInCallScope, namespaceInCallScope } from '../../configuration/call-scope';
 import { extractSimpleId } from '../../utils/idConversion';
 
 const SAVED_VIEW_GID_PREFIX = 'gid://gitlab/WorkItems::SavedViews::SavedView/';
@@ -45,6 +47,8 @@ const ENUM_FILTERS: Readonly<Record<string, EnumRule>> = {
   iterationWildcardId: { enum: 'IterationWildcardId', name: upper },
   weightWildcardId: { enum: 'WeightWildcardId', name: upper },
   parentWildcardId: { enum: 'WorkItemParentWildcardId', name: upper },
+  // GitLab stores relative date units by name already; converting keeps any other form safe.
+  unit: { enum: 'WorkItemRelativeDateUnit', name: upper },
 };
 
 const NEGATED_ENUM_FILTERS: Readonly<Record<string, EnumRule>> = {
@@ -54,6 +58,8 @@ const NEGATED_ENUM_FILTERS: Readonly<Record<string, EnumRule>> = {
 
 /** Named type under the list and non-null wrappers of a variable type. */
 const baseType = (type: string): string => type.replace(/[[\]!]/g, '');
+
+const isList = (type: string): boolean => type.startsWith('[');
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -78,8 +84,23 @@ function enumValue(field: string, value: unknown, parent?: string): unknown {
 }
 
 /**
+ * A value inside an input object field, such as a relative date's amount and unit, with
+ * its enum values converted; undefined when one of them cannot be sent.
+ */
+function nestedValue(value: unknown, field: string, parent: string): unknown {
+  if (!isPlainObject(value)) return enumValue(field, value, parent);
+  const kept: Record<string, unknown> = {};
+  for (const [inner, raw] of Object.entries(value)) {
+    const converted = nestedValue(raw, inner, field);
+    if (converted === undefined) return undefined;
+    kept[inner] = converted;
+  }
+  return kept;
+}
+
+/**
  * The fields of an input object filter the instance accepts, with enum values
- * converted. Fields it lacks are reported by their path and left out.
+ * converted. Fields it lacks or cannot take are reported by their path and left out.
  */
 function inputValue(
   type: string,
@@ -90,11 +111,32 @@ function inputValue(
   const kept: Record<string, unknown> = {};
   for (const [field, raw] of Object.entries(value)) {
     if (raw === null || raw === undefined) continue;
-    const converted = graphqlSupports(type, field) ? enumValue(field, raw, path) : undefined;
+    const converted = graphqlSupports(type, field) ? nestedValue(raw, field, path) : undefined;
     if (converted === undefined) unapplied.push(`${path}.${field}`);
     else kept[field] = converted;
   }
   return kept;
+}
+
+/**
+ * The value of one `workItems` argument, or undefined when it cannot be sent. GitLab
+ * stores a lone author as a string and several as a list, for an argument taking one.
+ */
+function argValue(field: string, type: string, stored: unknown, unapplied: string[]): unknown {
+  const raw: unknown =
+    !isList(type) && Array.isArray(stored) && stored.length === 1
+      ? (stored as unknown[])[0]
+      : stored;
+  if (Array.isArray(raw)) {
+    if (!isList(type)) return undefined;
+    if (raw.length > 0 && raw.every(isPlainObject)) {
+      return raw.map((one, i) => inputValue(baseType(type), one, `${field}[${i}]`, unapplied));
+    }
+    return enumValue(field, raw);
+  }
+  if (!isPlainObject(raw)) return enumValue(field, raw);
+  const kept = inputValue(baseType(type), raw, field, unapplied);
+  return Object.keys(kept).length > 0 ? kept : undefined;
 }
 
 /** How a saved view's items are read: where, with which arguments, and what was left out. */
@@ -103,6 +145,22 @@ export interface ViewQueryPlan {
   args: Record<string, unknown>;
   /** Filters (by path, such as `not.types`) this instance cannot apply; omitting them broadens the result. */
   unapplied: string[];
+}
+
+/** Adds one stored filter to the plan; an unsendable one of the view is reported. */
+function planField(plan: ViewQueryPlan, field: string, stored: unknown, fromView: boolean): void {
+  // An empty input object (`not: {}`) filters nothing.
+  if (stored === null || stored === undefined) return;
+  if (isPlainObject(stored) && Object.keys(stored).length === 0) return;
+  const type = SAVED_VIEW_ARG_TYPES[field];
+  const value =
+    type && graphqlSupports('Namespace', 'workItems', field)
+      ? argValue(field, type, stored, plan.unapplied)
+      : undefined;
+  if (value !== undefined) plan.args[field] = value;
+  else if (fromView && !plan.unapplied.some((path) => path.startsWith(`${field}.`))) {
+    plan.unapplied.push(field);
+  }
 }
 
 /**
@@ -122,45 +180,16 @@ export function planViewQuery(
   const defaults: Record<string, unknown> = scoped
     ? { includeDescendants: false, excludeProjects: true }
     : { includeDescendants: true };
-  const args: Record<string, unknown> = {};
-  const unapplied: string[] = [];
-
-  const apply = (field: string, stored: unknown, fromView: boolean) => {
-    // An empty input object (`not: {}`) filters nothing.
-    if (stored === null || stored === undefined) return;
-    if (isPlainObject(stored) && Object.keys(stored).length === 0) return;
-    const type = SAVED_VIEW_ARG_TYPES[field];
-    // GitLab stores a lone author as a string and several as a list, for an argument
-    // that takes one.
-    const raw: unknown =
-      type && !type.startsWith('[') && Array.isArray(stored) && stored.length === 1
-        ? (stored as unknown[])[0]
-        : stored;
-    let value: unknown;
-    if (type && graphqlSupports('Namespace', 'workItems', field)) {
-      if (!type.startsWith('[') && Array.isArray(raw)) {
-        value = undefined;
-      } else if (Array.isArray(raw) && raw.length > 0 && raw.every(isPlainObject)) {
-        value = raw.map((one, i) => inputValue(baseType(type), one, `${field}[${i}]`, unapplied));
-      } else if (isPlainObject(raw)) {
-        value = inputValue(baseType(type), raw, field, unapplied);
-        if (Object.keys(value as object).length === 0) value = undefined;
-      } else {
-        value = enumValue(field, raw);
-      }
-    }
-    if (value !== undefined) args[field] = value;
-    else if (fromView && !unapplied.some((path) => path.startsWith(`${field}.`))) {
-      unapplied.push(field);
-    }
+  const plan: ViewQueryPlan = {
+    namespacePath: scoped ? fullPath : namespacePath,
+    args: {},
+    unapplied: [],
   };
-
   for (const [field, raw] of Object.entries({ ...defaults, ...stored })) {
-    apply(field, raw, field in stored);
+    planField(plan, field, raw, field in stored);
   }
-  if (sort) apply('sort', sort, true);
-
-  return { namespacePath: scoped ? fullPath : namespacePath, args, unapplied };
+  if (sort) planField(plan, 'sort', sort, true);
+  return plan;
 }
 
 /**
@@ -182,6 +211,16 @@ function assertSavedViewsAvailable(): void {
   if (!graphqlSupports('Namespace', 'savedViews')) {
     throw new Error('This GitLab instance has no saved work item views');
   }
+}
+
+/** The view fields newer than GitLab 18.9 that this instance's schema confirms. */
+function savedViewExtras(): SavedViewExtras {
+  return {
+    isPrivate: graphqlConfirms('WorkItemSavedViewType', 'isPrivate'),
+    updatedAt: graphqlConfirms('WorkItemSavedViewType', 'updatedAt'),
+    author: graphqlConfirms('WorkItemSavedViewType', 'author'),
+    filterableTypes: graphqlConfirms('WorkItemType', 'isFilterableListView'),
+  };
 }
 
 /** A view as the tools return it: numeric ID, visibility under one name. */
@@ -211,7 +250,7 @@ export async function listSavedViews(
   },
 ) {
   assertSavedViewsAvailable();
-  const { namespace } = await client.request(LIST_SAVED_VIEWS, {
+  const { namespace } = await client.request(listSavedViewsQuery(savedViewExtras()), {
     namespacePath: input.namespace,
     search: input.search,
     subscribedOnly: input.subscribed_only,
@@ -233,24 +272,28 @@ export async function listSavedViews(
 /**
  * IDs of the types GitLab's list offers by default in the namespace, when the instance
  * says which those are. Undefined when it does not; an empty list when every type is
- * offered, so no restriction is needed. `known` are the types already read for it.
+ * offered, so no restriction is needed. `known` holds the types already read for it.
  */
 async function defaultTypeIds(
   client: GraphQLClient,
   namespacePath: string,
-  known: FilterableTypes | null | undefined,
+  known: { types: FilterableTypes | null | undefined } | undefined,
 ): Promise<string[] | undefined> {
   if (
-    !graphqlSupports('WorkItemType', 'isFilterableListView') ||
+    !graphqlConfirms('WorkItemType', 'isFilterableListView') ||
     !graphqlSupports('Namespace', 'workItems', 'workItemTypeIds')
   ) {
     return undefined;
   }
-  const types =
-    known?.nodes ??
-    (await client.request(GET_FILTERABLE_WORK_ITEM_TYPES, { namespacePath })).namespace
-      ?.workItemTypes?.nodes ??
-    [];
+  const read =
+    known ??
+    ({
+      types: (await client.request(GET_FILTERABLE_WORK_ITEM_TYPES, { namespacePath })).namespace
+        ?.workItemTypes,
+    } as const);
+  const types = read.types?.nodes;
+  // No list from GitLab says nothing about its defaults.
+  if (!types) return undefined;
   return types.every((t) => t.isFilterableListView)
     ? []
     : types.filter((t) => t.isFilterableListView).map((t) => t.id);
@@ -266,23 +309,23 @@ export interface SavedViewRead {
   items: WorkItem[];
   hasMore: boolean;
   endCursor: string | null;
-  /** False when a filter, the view's sort or the list's default types could not be applied. */
+  /**
+   * False when a filter, the view's sort, the list's default types or the view's whole
+   * reach could not be applied.
+   */
   exact: boolean;
   unappliedFilters?: string[];
   filterWarnings?: Array<{ field: string; message: string }>;
   note?: string;
 }
 
-/** Read one saved view and a page of the items it shows. */
-export async function getSavedView(
-  client: GraphQLClient,
-  input: { namespace: string; view_id: string; first: number; after?: string },
-): Promise<SavedViewRead> {
-  assertSavedViewsAvailable();
-  const id = savedViewGid(input.view_id);
-  const { namespace } = await client.request(GET_SAVED_VIEW, {
+type GetSavedViewInput = { namespace: string; view_id: string; first: number; after?: string };
+
+/** The view and, when GitLab says which its list offers, its namespace's types. */
+async function readView(client: GraphQLClient, input: GetSavedViewInput, extras: SavedViewExtras) {
+  const { namespace } = await client.request(getSavedViewQuery(extras), {
     namespacePath: input.namespace,
-    id,
+    id: savedViewGid(input.view_id),
   });
   if (!namespace) {
     throw new Error(`Namespace "${input.namespace}" was not found or is not accessible`);
@@ -293,65 +336,128 @@ export async function getSavedView(
       `Saved view ${input.view_id} was not found in "${input.namespace}" or is not visible to you`,
     );
   }
+  return { view, namespace };
+}
 
-  const filters = view.filters ?? {};
-  const plan = planViewQuery(input.namespace, filters, view.sort);
+/**
+ * Holds the plan to what the call may read: a namespace the view's group filter reaches
+ * beyond the one the call named is refused when the call may not read it, and the
+ * descendants of a group are left out when they are not all in scope. True when the
+ * plan was narrowed.
+ */
+async function keepToCallScope(
+  plan: ViewQueryPlan,
+  input: GetSavedViewInput,
+  isGroup: boolean,
+): Promise<boolean> {
+  if (plan.namespacePath !== input.namespace && !(await namespaceInCallScope(plan.namespacePath))) {
+    throw new Error(
+      `Saved view ${input.view_id} lists work items of "${plan.namespacePath}", outside the projects and groups this call may read`,
+    );
+  }
+  if (!isGroup || plan.args.includeDescendants !== true) return false;
+  if (descendantsInCallScope(plan.namespacePath)) return false;
+  plan.args.includeDescendants = false;
+  return true;
+}
+
+/** Why the result may differ from what the view shows, one sentence per reason. */
+function resultNotes(
+  view: SavedViewDetail,
+  plan: ViewQueryPlan,
+  typesApplied: boolean,
+  narrowed: boolean,
+): string[] {
   const notes: string[] = [];
-  let typesApplied = true;
-  if (filters.types === undefined && filters.workItemTypeIds === undefined) {
-    const known =
-      plan.namespacePath === input.namespace ? (namespace.workItemTypes ?? undefined) : undefined;
-    const ids = await defaultTypeIds(client, plan.namespacePath, known);
-    if (ids === undefined) {
-      typesApplied = false;
-      notes.push(
-        'This GitLab instance does not say which work item types its list shows by default, so items of every type are included.',
-      );
-    } else if (ids.length > 0) {
-      plan.args.workItemTypeIds = ids;
-    }
+  if (!typesApplied) {
+    notes.push(
+      'This GitLab instance does not say which work item types its list shows by default, so items of every type are included.',
+    );
+  }
+  if (narrowed) {
+    notes.push(
+      `Subgroups and projects of "${plan.namespacePath}" are outside the working scope, so only the group's own work items are listed.`,
+    );
   }
   if (!view.sort) {
     notes.push(
       "The view has no sort of its own; GitLab's default order is used, where its list would use your sort preference.",
     );
   }
-  const unappliedFilters = plan.unapplied.filter((path) => path !== 'sort');
-  if (unappliedFilters.length > 0) {
+  const filters = plan.unapplied.filter((path) => path !== 'sort');
+  if (filters.length > 0) {
     notes.push(
-      `This GitLab instance cannot apply ${unappliedFilters.join(', ')}, so the items may include some the view excludes.`,
+      `This GitLab instance cannot apply ${filters.join(', ')}, so the items may include some the view excludes.`,
     );
   }
   if (plan.unapplied.includes('sort')) {
     notes.push(`This GitLab instance cannot sort by ${view.sort}, so its default order is used.`);
   }
-  const warnings = view.filterWarnings ?? [];
-  if (warnings.length > 0) {
+  if ((view.filterWarnings ?? []).length > 0) {
     notes.push(
       'GitLab dropped filter values that no longer exist (see filterWarnings), so the items may include some the view excluded.',
     );
   }
+  return notes;
+}
 
-  const query = savedViewItemsQuery(Object.keys(plan.args));
-  const data = await client.request(query, {
+/**
+ * A page of the planned listing. A namespace the reader cannot see is an error: a shared
+ * view may filter on a project only its author can read, and an empty page would read as
+ * "no matches".
+ */
+async function readItems(client: GraphQLClient, plan: ViewQueryPlan, input: GetSavedViewInput) {
+  const data = await client.request(savedViewItemsQuery(Object.keys(plan.args)), {
     namespacePath: plan.namespacePath,
     first: input.first,
     after: input.after,
     ...plan.args,
   });
   const items = data.namespace?.workItems;
+  if (!items) {
+    throw new Error(
+      `Saved view ${input.view_id} lists work items of "${plan.namespacePath}", which was not found or is not accessible`,
+    );
+  }
+  return items;
+}
 
+/** Read one saved view and a page of the items it shows. */
+export async function getSavedView(
+  client: GraphQLClient,
+  input: GetSavedViewInput,
+): Promise<SavedViewRead> {
+  assertSavedViewsAvailable();
+  const extras = savedViewExtras();
+  const { view, namespace } = await readView(client, input, extras);
+  const filters = view.filters ?? {};
+  const plan = planViewQuery(input.namespace, filters, view.sort);
+  const sameNamespace = plan.namespacePath === input.namespace;
+  const narrowed = await keepToCallScope(
+    plan,
+    input,
+    !sameNamespace || namespace.__typename === 'Group',
+  );
+
+  let typesApplied = true;
+  if (filters.types === undefined && filters.workItemTypeIds === undefined) {
+    const known =
+      sameNamespace && extras.filterableTypes ? { types: namespace.workItemTypes } : undefined;
+    const ids = await defaultTypeIds(client, plan.namespacePath, known);
+    if (ids === undefined) typesApplied = false;
+    else if (ids.length > 0) plan.args.workItemTypeIds = ids;
+  }
+
+  const items = await readItems(client, plan, input);
+  const warnings = view.filterWarnings ?? [];
+  const notes = resultNotes(view, plan, typesApplied, narrowed);
   return {
-    view: {
-      ...presentView(view),
-      filters,
-      displaySettings: view.displaySettings,
-    },
+    view: { ...presentView(view), filters, displaySettings: view.displaySettings },
     namespace: plan.namespacePath,
-    items: items?.nodes ?? [],
-    hasMore: items?.pageInfo.hasNextPage ?? false,
-    endCursor: items?.pageInfo.endCursor ?? null,
-    exact: plan.unapplied.length === 0 && warnings.length === 0 && typesApplied,
+    items: items.nodes,
+    hasMore: items.pageInfo.hasNextPage,
+    endCursor: items.pageInfo.endCursor ?? null,
+    exact: notes.length === 0,
     ...(plan.unapplied.length > 0 && { unappliedFilters: plan.unapplied }),
     ...(warnings.length > 0 && { filterWarnings: warnings }),
     ...(notes.length > 0 && { note: notes.join(' ') }),

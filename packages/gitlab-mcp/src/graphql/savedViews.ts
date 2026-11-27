@@ -30,95 +30,144 @@ interface SavedViewConnection<T> {
   pageInfo: { hasNextPage: boolean; endCursor: string | null };
 }
 
-const SAVED_VIEW_FIELDS = `
-  id
-  name
-  description
-  private @optional
-  isPrivate @optional
-  subscribed
-  sort
-  shareUrl
-  updatedAt @optional
-  author @optional {
-    username
-  }
-`;
+/**
+ * Fields of a saved view newer than GitLab 18.9, the first release with saved views.
+ * A query selects each only when the instance's schema confirms it: without a schema
+ * an unknown field would fail the whole query on 18.9.
+ */
+export interface SavedViewExtras {
+  /** `isPrivate` replaces `private` (18.10); `private` alone is read otherwise. */
+  isPrivate: boolean;
+  updatedAt: boolean;
+  author: boolean;
+  /** Types carry whether GitLab's list offers them by default (18.10). */
+  filterableTypes: boolean;
+}
 
-export const LIST_SAVED_VIEWS: TypedDocumentNode<
-  { namespace: { savedViews: SavedViewConnection<SavedViewNode> | null } | null },
-  {
-    namespacePath: string;
-    search?: string;
-    subscribedOnly?: boolean;
-    first: number;
-    after?: string;
-  }
-> = gql`
-  query ListSavedViews(
-    $namespacePath: ID!
-    $search: String
-    $subscribedOnly: Boolean
-    $first: Int
-    $after: String
-  ) {
-    namespace(fullPath: $namespacePath) {
-      savedViews(search: $search, subscribedOnly: $subscribedOnly, first: $first, after: $after) {
-        nodes {
-          ${SAVED_VIEW_FIELDS}
-        }
-        pageInfo {
-          hasNextPage
-          endCursor
+const savedViewFields = (extras: SavedViewExtras): string =>
+  [
+    'id',
+    'name',
+    'description',
+    // Deprecated in 18.10; dropped by the schema adaptation once an instance removes it.
+    'private @optional',
+    extras.isPrivate && 'isPrivate',
+    'subscribed',
+    'sort',
+    'shareUrl',
+    extras.updatedAt && 'updatedAt',
+    extras.author && 'author { username }',
+  ]
+    .filter(Boolean)
+    .join('\n');
+
+const extrasKey = (extras: SavedViewExtras): string =>
+  (Object.keys(extras) as Array<keyof SavedViewExtras>).filter((key) => extras[key]).join(',');
+
+type ListSavedViewsVars = {
+  namespacePath: string;
+  search?: string;
+  subscribedOnly?: boolean;
+  first: number;
+  after?: string;
+};
+type ListSavedViewsResult = {
+  namespace: { savedViews: SavedViewConnection<SavedViewNode> | null } | null;
+};
+
+const listQueries = new Map<string, TypedDocumentNode<ListSavedViewsResult, ListSavedViewsVars>>();
+
+/** The saved views of a namespace, with the view fields the instance has. */
+export function listSavedViewsQuery(
+  extras: SavedViewExtras,
+): TypedDocumentNode<ListSavedViewsResult, ListSavedViewsVars> {
+  const key = extrasKey(extras);
+  let query = listQueries.get(key);
+  if (!query) {
+    query = gql(`
+      query ListSavedViews(
+        $namespacePath: ID!
+        $search: String
+        $subscribedOnly: Boolean
+        $first: Int
+        $after: String
+      ) {
+        namespace(fullPath: $namespacePath) {
+          savedViews(search: $search, subscribedOnly: $subscribedOnly, first: $first, after: $after) {
+            nodes {
+              ${savedViewFields(extras)}
+            }
+            pageInfo {
+              hasNextPage
+              endCursor
+            }
+          }
         }
       }
-    }
+    `);
+    listQueries.set(key, query);
   }
-`;
+  return query;
+}
 
 /** Work item types with whether GitLab's list offers each by default (GitLab 18.10+). */
 export interface FilterableTypes {
   nodes: Array<{ id: string; isFilterableListView?: boolean }>;
 }
 
-// GitLab resolves filters and filterWarnings for one saved view per request. The
-// namespace's types come along, so the list's default types need no second request
-// when the view lists that namespace.
-export const GET_SAVED_VIEW: TypedDocumentNode<
-  {
-    namespace: {
-      savedViews: SavedViewConnection<SavedViewDetail> | null;
-      workItemTypes?: FilterableTypes | null;
-    } | null;
-  },
-  { namespacePath: string; id: string }
-> = gql`
-  query GetSavedView($namespacePath: ID!, $id: WorkItemsSavedViewsSavedViewID!) {
-    namespace(fullPath: $namespacePath) {
-      workItemTypes @optional {
-        nodes {
-          id
-          isFilterableListView @optional
-        }
-      }
-      savedViews(id: $id, first: 1) {
-        nodes {
-          ${SAVED_VIEW_FIELDS}
-          filters
-          filterWarnings {
-            field
-            message
+type GetSavedViewResult = {
+  namespace: {
+    /** `Group` for a group; a project's descendants are not a thing to keep to a scope. */
+    __typename?: string;
+    savedViews: SavedViewConnection<SavedViewDetail> | null;
+    workItemTypes?: FilterableTypes | null;
+  } | null;
+};
+type GetSavedViewVars = { namespacePath: string; id: string };
+
+const getQueries = new Map<string, TypedDocumentNode<GetSavedViewResult, GetSavedViewVars>>();
+
+/**
+ * One saved view with its filters, which GitLab resolves for one view per request. The
+ * namespace's types come along where GitLab says which its list offers, so the list's
+ * default types need no second request when the view lists that namespace.
+ */
+export function getSavedViewQuery(
+  extras: SavedViewExtras,
+): TypedDocumentNode<GetSavedViewResult, GetSavedViewVars> {
+  const key = extrasKey(extras);
+  let query = getQueries.get(key);
+  if (!query) {
+    const types = extras.filterableTypes
+      ? 'workItemTypes { nodes { id isFilterableListView } }'
+      : '';
+    query = gql(`
+      query GetSavedView($namespacePath: ID!, $id: WorkItemsSavedViewsSavedViewID!) {
+        namespace(fullPath: $namespacePath) {
+          __typename
+          ${types}
+          savedViews(id: $id, first: 1) {
+            nodes {
+              ${savedViewFields(extras)}
+              filters
+              filterWarnings {
+                field
+                message
+              }
+              displaySettings
+            }
+            pageInfo {
+              hasNextPage
+              endCursor
+            }
           }
-          displaySettings
-        }
-        pageInfo {
-          hasNextPage
-          endCursor
         }
       }
-    }
+    `);
+    getQueries.set(key, query);
   }
-`;
+  return query;
+}
 
 /** The types GitLab's list offers in a group a view scopes to. */
 export const GET_FILTERABLE_WORK_ITEM_TYPES: TypedDocumentNode<

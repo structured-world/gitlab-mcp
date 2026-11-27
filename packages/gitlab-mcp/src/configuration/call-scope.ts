@@ -9,6 +9,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import { GITLAB_ALLOWED_PROJECT_IDS } from '../config';
 import type { ScopeEnforcer } from '../profiles/scope-enforcer';
 import { canonicalProjectPath } from '../utils/api-path';
+import { gitlab } from '../utils/gitlab-api';
 import { withTargetPaths } from './scope-ids';
 
 const storage = new AsyncLocalStorage<ScopeEnforcer | undefined>();
@@ -41,4 +42,38 @@ export async function projectInCallScope(projectId: string): Promise<boolean> {
   if (checkOperator && !operator.includes(canonicalProjectPath(resolved).toLowerCase()))
     return false;
   return !checkWorking || working.isAllowed(resolved);
+}
+
+/**
+ * Whether the running call may list work items of the project or group at this path.
+ * The operator's list names projects only, so under it a group is never allowed; a path
+ * it does not name literally is looked up for the ID it may name instead.
+ */
+export async function namespaceInCallScope(path: string): Promise<boolean> {
+  const working = storage.getStore();
+  if (working?.hasRestrictions() && !working.isAllowed(path) && !working.isGroupAllowed(path)) {
+    return false;
+  }
+  const operator = GITLAB_ALLOWED_PROJECT_IDS.map((entry) =>
+    canonicalProjectPath(entry).toLowerCase(),
+  );
+  if (operator.length === 0 || operator.includes(canonicalProjectPath(path).toLowerCase())) {
+    return true;
+  }
+  try {
+    const project = await gitlab.get<{ id?: unknown }>(`projects/${encodeURIComponent(path)}`);
+    return operator.includes(String(project.id));
+  } catch {
+    // A group, or a project GitLab does not show, is not one the operator listed.
+    return false;
+  }
+}
+
+/**
+ * Whether the running call may also list work items of every group and project below
+ * the namespace at this path. The operator's list names projects only, which have none.
+ */
+export function descendantsInCallScope(path: string): boolean {
+  if (GITLAB_ALLOWED_PROJECT_IDS.length > 0) return false;
+  return storage.getStore()?.coversSubgroupsOf(path) ?? true;
 }

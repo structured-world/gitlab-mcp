@@ -137,7 +137,10 @@ milestone and parent filters are applied by the server while it reads GitLab's p
 order, with the same matching rules. Such a call reads at most 1,000 work items; when
 the page is still short, the result has `hasMore: true` and a `note`, and `endCursor`
 continues the search. An item whose deciding labels or assignees are beyond the first
-100 GitLab lists for it is left out and counted in the `note`. A filter that cannot be
+100 GitLab lists for it, or whose type lists no widget for a filter, is left out and
+counted in the `note`. Where GitLab applies the assignee filter itself, it ignores a
+username it cannot resolve, so when one of several is unknown each item is also checked
+against all of them, and the `note` names the unknown ones. A filter that cannot be
 applied either way is refused with its parameter name, and nothing is listed. The list
 filters take up to 100 values each; `label_names` does not accept `None` or `Any`,
 which GitLab reads as "no labels" and "any label" rather than as titles.

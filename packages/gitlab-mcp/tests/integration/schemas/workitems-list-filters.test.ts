@@ -145,6 +145,20 @@ describe('browse_work_items server-side list filters', () => {
     expect(nobody.items).toEqual([]);
   });
 
+  it('requires every assignee even when one username does not exist', async () => {
+    // GitLab drops an unknown username from its assignee filter and would return the item
+    // assigned to the known user alone; the listing must keep the all-assignees meaning.
+    const ghost = `${token}-ghost`;
+    const result = (await list({
+      namespace: projectPath,
+      search: token,
+      assignee_usernames: [username, ghost],
+    })) as ListResult & { note?: string };
+
+    expect(result.items).toEqual([]);
+    expect(result.note).toContain(`GitLab found no user named ${ghost}`);
+  });
+
   it('filters by label', async () => {
     if (!labelName) {
       console.log('  Skipping: the test project has no label');

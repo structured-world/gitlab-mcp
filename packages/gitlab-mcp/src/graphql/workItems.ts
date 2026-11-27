@@ -750,6 +750,20 @@ export function workItemListQuery<O extends WorkItemListOwner>(
   return query as TypedDocumentNode<WorkItemListResults[O], WorkItemListVars>;
 }
 
+/** Users the requester can see among the given usernames, matched case-insensitively. */
+export const FIND_USERS_BY_USERNAME: TypedDocumentNode<
+  { users: { nodes: Array<{ username: string }> } | null },
+  { usernames: string[]; first: number }
+> = gql`
+  query FindUsersByUsername($usernames: [String!], $first: Int) {
+    users(usernames: $usernames, first: $first) {
+      nodes {
+        username
+      }
+    }
+  }
+`;
+
 export const GET_WORK_ITEMS: TypedDocumentNode<
   { group: { workItems: { nodes: WorkItem[] } } },
   { groupPath: string; types?: string[]; first?: number; after?: string }

@@ -33,7 +33,7 @@ export interface ListConnection {
 export interface ScanResult extends ListConnection {
   /** Upstream items examined; reported when the page stays short with more to read. */
   scanned: number;
-  /** Items left out because the deciding labels or assignees were beyond their first page. */
+  /** Items left out because the listing did not show the values that decide them. */
   unverified: number;
 }
 
@@ -71,6 +71,18 @@ function containsAll(wanted: readonly string[], page: WidgetPage<string> | undef
 }
 
 /**
+ * A check on one widget. GitLab filters on the stored assignees, labels, milestone and
+ * parent link rather than on the type's widgets, and an item can hold values its type
+ * lists no widget for (an incident's labels before 17.x), so a missing widget is `unknown`.
+ */
+const onWidget =
+  (type: string, check: (w: FilterableWidget) => Verdict) =>
+  (item: WorkItem): Verdict => {
+    const found = widget(item, type);
+    return found ? check(found) : 'unknown';
+  };
+
+/**
  * Predicate with GitLab's semantics for each filter: every listed assignee and label,
  * any listed milestone, any listed direct parent. Usernames compare case-insensitively,
  * as GitLab resolves them; label and milestone titles exactly.
@@ -81,37 +93,39 @@ export function localListMatcher(
   const checks: Array<(item: WorkItem) => Verdict> = [];
   if (values.assigneeUsernames) {
     const wanted = values.assigneeUsernames.map((u) => u.toLowerCase());
-    checks.push((item) => {
-      const assignees = widget(item, 'ASSIGNEES')?.assignees;
-      return containsAll(wanted, {
-        nodes: assignees?.nodes?.map((u) => u.username.toLowerCase()),
-        pageInfo: assignees?.pageInfo,
-      });
-    });
+    checks.push(
+      onWidget('ASSIGNEES', ({ assignees }) =>
+        containsAll(wanted, {
+          nodes: assignees?.nodes?.map((u) => u.username.toLowerCase()),
+          pageInfo: assignees?.pageInfo,
+        }),
+      ),
+    );
   }
   if (values.labelName) {
     const wanted = values.labelName;
-    checks.push((item) => {
-      const labels = widget(item, 'LABELS')?.labels;
-      return containsAll(wanted, {
-        nodes: labels?.nodes?.map((l) => l.title),
-        pageInfo: labels?.pageInfo,
-      });
-    });
+    checks.push(
+      onWidget('LABELS', ({ labels }) =>
+        containsAll(wanted, {
+          nodes: labels?.nodes?.map((l) => l.title),
+          pageInfo: labels?.pageInfo,
+        }),
+      ),
+    );
   }
   if (values.milestoneTitle) {
     const wanted = new Set(values.milestoneTitle);
-    checks.push((item) => {
-      const title = widget(item, 'MILESTONE')?.milestone?.title;
-      return title !== undefined && wanted.has(title) ? 'match' : 'miss';
-    });
+    checks.push(
+      onWidget('MILESTONE', ({ milestone }) =>
+        milestone && wanted.has(milestone.title) ? 'match' : 'miss',
+      ),
+    );
   }
   if (values.parentIds) {
     const wanted = new Set(values.parentIds);
-    checks.push((item) => {
-      const id = widget(item, 'HIERARCHY')?.parent?.id;
-      return id !== undefined && wanted.has(id) ? 'match' : 'miss';
-    });
+    checks.push(
+      onWidget('HIERARCHY', ({ parent }) => (parent && wanted.has(parent.id) ? 'match' : 'miss')),
+    );
   }
   return (item) => {
     let verdict: Verdict = 'match';

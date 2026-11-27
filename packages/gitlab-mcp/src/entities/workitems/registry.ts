@@ -8,6 +8,7 @@ import {
   localListMatcher,
   scanWorkItems,
   type ListConnection,
+  type LocalListFilter,
   type ScanResult,
 } from './list-scan';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
@@ -120,6 +121,28 @@ const LIST_OWNER_TYPE = {
   group: 'Group',
 } as const;
 
+/** A listing page, and the requested assignees GitLab could not resolve, if checked. */
+type ListRead = (ScanResult | ListConnection) & { unresolvedAssignees?: string[] };
+
+/**
+ * Requested assignees GitLab cannot resolve. Its assignee filter drops such usernames
+ * and requires only the rest, so two or more names need this check to keep the "all of
+ * them" meaning; a single unknown name already matches nothing, and a single value may
+ * be a group handle that GitLab expands to its members.
+ */
+async function findUnresolvedUsernames(
+  client: GraphQLClient,
+  usernames: readonly string[],
+): Promise<string[]> {
+  if (usernames.length < 2) return [];
+  const data = await client.request(FIND_USERS_BY_USERNAME, {
+    usernames: [...usernames],
+    first: usernames.length,
+  });
+  const known = new Set(data.users?.nodes.map((u) => u.username.toLowerCase()));
+  return usernames.filter((name) => !known.has(name.toLowerCase()));
+}
+
 /**
  * Read one listing route. Filters its `workItems` field accepts go into the query, so
  * GitLab applies them before paginating; assignee, label, milestone and parent filters
@@ -133,7 +156,8 @@ async function readListRoute(
   vars: ListVars,
   filterValues: WorkItemListFilterValues,
   filters: readonly WorkItemListFilter[],
-): Promise<ScanResult | ListConnection | null> {
+  unresolvedAssignees: () => Promise<string[]>,
+): Promise<ListRead | null> {
   const typeName = LIST_OWNER_TYPE[owner];
   const native = filters.filter((name) => graphqlSupports(typeName, 'workItems', name));
   const missing = filters.filter((name) => !native.includes(name));
@@ -145,7 +169,16 @@ async function readListRoute(
         .join(', ')}`,
     );
   }
-  const query = workItemListQuery(owner, native, { itemCursors: missing.length > 0 });
+  const local: Pick<WorkItemListFilterValues, LocalListFilter> = Object.fromEntries(
+    missing.filter(isLocalListFilter).map((name) => [name, filterValues[name]]),
+  );
+  // GitLab narrows by the usernames it resolves; when one is unknown the full condition
+  // is checked on the listed assignees, where an existing user hidden from the lookup
+  // (a banned one, for a non-admin) still counts.
+  const unresolved = native.includes('assigneeUsernames') ? await unresolvedAssignees() : [];
+  if (unresolved.length > 0) local.assigneeUsernames = filterValues.assigneeUsernames;
+  const scan = Object.keys(local).length > 0;
+  const query = workItemListQuery(owner, native, { itemCursors: scan });
   const fetchPage = async (first: number, after?: string): Promise<ListConnection | null> => {
     const data: Record<string, { workItems?: ListConnection | null } | null> = await client.request(
       query,
@@ -154,11 +187,10 @@ async function readListRoute(
     const found = data[owner];
     return found ? (found.workItems ?? { nodes: [], pageInfo: { hasNextPage: false } }) : null;
   };
-  if (missing.length === 0) return fetchPage(vars.first, vars.after);
-  const local = Object.fromEntries(
-    missing.filter(isLocalListFilter).map((name) => [name, filterValues[name]]),
-  );
-  return scanWorkItems(fetchPage, localListMatcher(local), vars.first, vars.after);
+  const result = scan
+    ? await scanWorkItems(fetchPage, localListMatcher(local), vars.first, vars.after)
+    : await fetchPage(vars.first, vars.after);
+  return result && unresolved.length > 0 ? { ...result, unresolvedAssignees: unresolved } : result;
 }
 
 /**
@@ -169,21 +201,25 @@ async function listWorkItems(
   client: GraphQLClient,
   vars: ListVars,
   filterValues: WorkItemListFilterValues,
-): Promise<ScanResult | ListConnection | null> {
+): Promise<ListRead | null> {
   const filters = (Object.keys(LIST_FILTER_PARAMETER) as WorkItemListFilter[]).filter(
     (name) => filterValues[name] !== undefined,
   );
-  if (graphqlSupports('Namespace', 'workItems')) {
-    return readListRoute(client, 'namespace', vars, filterValues, filters);
-  }
-  const project = await readListRoute(client, 'project', vars, filterValues, filters);
+  // Looked up once, by the first route that sends the assignee filter to GitLab.
+  let lookup: Promise<string[]> | undefined;
+  const unresolved = () =>
+    (lookup ??= findUnresolvedUsernames(client, filterValues.assigneeUsernames ?? []));
+  const read = (owner: 'namespace' | 'project' | 'group') =>
+    readListRoute(client, owner, vars, filterValues, filters, unresolved);
+  if (graphqlSupports('Namespace', 'workItems')) return read('namespace');
+  const project = await read('project');
   if (project) return project;
   if (!graphqlSupports('Group', 'workItems')) {
     throw new Error(
       `"${vars.namespacePath}" is not a project, and this GitLab instance cannot list group-level work items`,
     );
   }
-  return readListRoute(client, 'group', vars, filterValues, filters);
+  return read('group');
 }
 
 /** A namespace's work item types with the widgets each supports, when the instance says. */
@@ -221,6 +257,7 @@ async function getWorkItemByIid(
 
 import {
   CREATE_WORK_ITEM_WITH_WIDGETS,
+  FIND_USERS_BY_USERNAME,
   WorkItemCreateInput,
   workItemListQuery,
   type WorkItemListFilter,
@@ -548,6 +585,11 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
             // with more to read, so a short page is not taken for the end. Name the items
             // it could not decide, so their absence is not taken for a miss.
             const notes: string[] = [];
+            if (workItemsData?.unresolvedAssignees) {
+              notes.push(
+                `GitLab found no user named ${workItemsData.unresolvedAssignees.join(', ')} and ignores such usernames, so each work item was checked to be assigned to every requested user.`,
+              );
+            }
             if (workItemsData && 'scanned' in workItemsData) {
               if (pageInfo.hasNextPage && finalResults.length < listVars.first) {
                 notes.push(
@@ -556,7 +598,7 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
               }
               if (workItemsData.unverified > 0) {
                 notes.push(
-                  `${workItemsData.unverified} work items have more labels or assignees than one page holds and could not be checked, so they are not listed.`,
+                  `${workItemsData.unverified} work items could not be checked because GitLab did not list all of their labels, assignees, milestone or parent, so they are not listed.`,
                 );
               }
             }

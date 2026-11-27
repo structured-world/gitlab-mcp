@@ -11,6 +11,7 @@ import type { IndexedField, SchemaFieldIndex } from '../../../../src/services/Sc
 import { workitemsToolRegistry } from '../../../../src/entities/workitems/registry';
 import { BrowseWorkItemsSchema } from '../../../../src/entities/workitems/schema-readonly';
 import {
+  FIND_USERS_BY_USERNAME,
   GET_PROJECT_OR_GROUP_WORK_ITEM_TYPES,
   GET_WORK_ITEM_TYPES,
   workItemListQuery,
@@ -78,7 +79,9 @@ describe('workItemListQuery', () => {
 
 describe('browse_work_items list filters', () => {
   it('sends every filter to GitLab with the page request', async () => {
-    mockRequest.mockResolvedValueOnce({ namespace: { workItems: page(['1']) } });
+    mockRequest
+      .mockResolvedValueOnce({ users: { nodes: [{ username: 'bob' }, { username: 'carol' }] } })
+      .mockResolvedValueOnce({ namespace: { workItems: page(['1']) } });
 
     await browse().handler({
       action: 'list',
@@ -92,7 +95,7 @@ describe('browse_work_items list filters', () => {
       sort: 'UPDATED_ASC',
     });
 
-    const [document, variables] = mockRequest.mock.calls[0];
+    const [document, variables] = mockRequest.mock.calls[1];
     expect(document).toBe(
       workItemListQuery('namespace', [
         'search',
@@ -401,7 +404,100 @@ describe('browse_work_items list filters applied locally', () => {
 
     expect(result.items.map((i) => i.iid)).toEqual(['listed']);
     expect(result.note).toBe(
-      '2 work items have more labels or assignees than one page holds and could not be checked, so they are not listed.',
+      '2 work items could not be checked because GitLab did not list all of their labels, assignees, milestone or parent, so they are not listed.',
+    );
+  });
+
+  it('reports items whose type lists no widget for a filter instead of dropping them', async () => {
+    // GitLab filters on the stored labels, assignees, milestone and parent link, not on the
+    // type's widgets: an incident on 16.x has no LABELS or MILESTONE widget yet can carry
+    // labels, so a missing widget says nothing about whether the item matches.
+    for (const name of ['assigneeUsernames', 'labelName', 'milestoneTitle', 'parentIds']) {
+      missing.add(`Namespace.workItems.${name}`);
+    }
+    const bare = (iid: string, keep: string[]) => {
+      const full = item(iid, { assignees: ['bob'], labels: ['bug'], milestone: 'v1', parent: '8' });
+      return { ...full, widgets: full.widgets.filter((w) => keep.includes(w.type)) };
+    };
+    mockRequest.mockResolvedValueOnce(
+      upstream([
+        bare('no-labels', ['ASSIGNEES', 'MILESTONE', 'HIERARCHY']),
+        bare('no-milestone', ['ASSIGNEES', 'LABELS', 'HIERARCHY']),
+        bare('no-assignees', ['LABELS', 'MILESTONE', 'HIERARCHY']),
+        bare('no-hierarchy', ['ASSIGNEES', 'LABELS', 'MILESTONE']),
+        // A present widget still decides: this item is a definite miss, not unverified.
+        item('miss'),
+        bare('match', ['ASSIGNEES', 'LABELS', 'MILESTONE', 'HIERARCHY']),
+      ]),
+    );
+
+    const result = await list({
+      assignee_usernames: ['bob'],
+      label_names: ['bug'],
+      milestone_titles: ['v1'],
+      parent_ids: ['8'],
+    });
+
+    expect(result.items.map((i) => i.iid)).toEqual(['match']);
+    expect(result.note).toBe(
+      '4 work items could not be checked because GitLab did not list all of their labels, assignees, milestone or parent, so they are not listed.',
+    );
+  });
+
+  it('rechecks every assignee when GitLab cannot resolve one of the usernames', async () => {
+    // GitLab's assignee filter drops usernames it does not resolve and requires only the
+    // rest, so bob + ghost would also return items assigned to bob alone.
+    mockRequest
+      .mockResolvedValueOnce({ users: { nodes: [{ username: 'Bob' }] } })
+      .mockResolvedValueOnce(
+        upstream([
+          item('bob-only', { assignees: ['bob'] }),
+          item('both', { assignees: ['bob', 'ghost'] }),
+        ]),
+      );
+
+    const result = await list({ assignee_usernames: ['bob', 'ghost'] });
+
+    expect(mockRequest.mock.calls[0]).toEqual([
+      FIND_USERS_BY_USERNAME,
+      { usernames: ['bob', 'ghost'], first: 2 },
+    ]);
+    const [document, variables] = mockRequest.mock.calls[1];
+    // GitLab still narrows by the users it knows; the full condition is checked on top.
+    expect(document).toBe(scanQuery('namespace', ['assigneeUsernames']));
+    expect(variables).toMatchObject({ assigneeUsernames: ['bob', 'ghost'] });
+    expect(result.items.map((i) => i.iid)).toEqual(['both']);
+    expect(result.note).toBe(
+      'GitLab found no user named ghost and ignores such usernames, so each work item was checked to be assigned to every requested user.',
+    );
+  });
+
+  it('leaves the assignee filter to GitLab when it resolves every username', async () => {
+    mockRequest
+      .mockResolvedValueOnce({ users: { nodes: [{ username: 'carol' }, { username: 'Bob' }] } })
+      .mockResolvedValueOnce(upstream([item('1', { assignees: ['bob', 'carol'] })]));
+
+    const result = await list({ assignee_usernames: ['bob', 'carol'] });
+
+    expect(mockRequest.mock.calls[1][0]).toBe(
+      workItemListQuery('namespace', ['assigneeUsernames']),
+    );
+    expect(result.items.map((i) => i.iid)).toEqual(['1']);
+    expect(result.note).toBeUndefined();
+  });
+
+  it('looks up no users for a single assignee or a locally applied assignee filter', async () => {
+    // One unknown username already matches nothing in GitLab, and the local check
+    // compares every username itself.
+    mockRequest.mockResolvedValueOnce(upstream([item('1', { assignees: ['bob'] })]));
+    await list({ assignee_usernames: ['bob'] });
+    missing.add('Namespace.workItems.assigneeUsernames');
+    mockRequest.mockResolvedValueOnce(upstream([item('2', { assignees: ['bob', 'amy'] })]));
+    await list({ assignee_usernames: ['bob', 'amy'] });
+
+    expect(mockRequest).toHaveBeenCalledTimes(2);
+    expect(mockRequest.mock.calls.map(([document]) => document)).not.toContain(
+      FIND_USERS_BY_USERNAME,
     );
   });
 

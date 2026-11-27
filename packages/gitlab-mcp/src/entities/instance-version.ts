@@ -26,7 +26,8 @@ export function currentInstance(): { version: string; tier: GitLabTier | null } 
 
 /**
  * Whether the GraphQL schema of the instance serving the current request has the
- * type, field and argument. Lets a handler pick its native query or a fallback
+ * type, field and argument; for an input object the field is an input field, for
+ * an enum it is a value. Lets a handler pick its native query or a fallback
  * from what the instance actually exposes (version, edition and feature flags
  * alike). True when the schema is not known yet (fail-open to the native path).
  */

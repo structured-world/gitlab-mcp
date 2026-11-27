@@ -28,8 +28,9 @@ export interface IndexedField {
 
 /**
  * Every type the instance's GraphQL schema declares, with its fields (output
- * types) or input fields (input objects). Types without either (unions, enums,
- * scalars) map to an empty field map so their existence can still be checked.
+ * types), input fields (input objects) or values (enums, each value an entry
+ * without type or arguments). Unions and scalars map to an empty map so their
+ * existence can still be checked.
  */
 export type SchemaFieldIndex = ReadonlyMap<string, ReadonlyMap<string, IndexedField>>;
 
@@ -76,6 +77,10 @@ function buildFieldIndex(types: IntrospectionType[]): SchemaFieldIndex {
     // Input object fields, so handlers can tell which mutation inputs exist.
     for (const inputField of type.inputFields ?? []) {
       fields.set(inputField.name, { type: '', args: new Set() });
+    }
+    // Enum values, so a value can be checked before it is sent as a variable.
+    for (const value of type.enumValues ?? []) {
+      fields.set(value.name, { type: '', args: new Set() });
     }
     index.set(type.name, fields);
   }

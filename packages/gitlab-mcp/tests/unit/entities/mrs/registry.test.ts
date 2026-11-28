@@ -3,12 +3,12 @@ import {
   getMrsReadOnlyToolNames,
   getMrsToolDefinitions,
   getFilteredMrsTools,
-  flattenPositionToFormFields,
   getMergeStatusHint,
   getSuggestedAction,
   RETRYABLE_MERGE_STATUSES,
   AUTO_MERGE_ELIGIBLE_STATUSES,
 } from '../../../../src/entities/mrs/registry';
+import { flattenPositionToFormFields } from '../../../../src/entities/mrs/position-fields';
 import {
   mrsTools,
   mrsReadOnlyTools,
@@ -202,6 +202,17 @@ describe('flattenPositionToFormFields', () => {
       'position[line_range][start]': 'line_code_1',
       'position[line_range][end]': 'line_code_2',
     });
+  });
+
+  // An absent nested field must not reach GitLab as an empty or "null" value.
+  it('should skip null and undefined nested fields', () => {
+    const body: Record<string, unknown> = {};
+
+    flattenPositionToFormFields(body, {
+      line_range: { start: null, end: undefined, type: 'new' },
+    });
+
+    expect(body).toEqual({ 'position[line_range][type]': 'new' });
   });
 
   it('should handle deeply nested objects (3 levels - line_range.start.line_code)', () => {

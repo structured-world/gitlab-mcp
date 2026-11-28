@@ -18,6 +18,8 @@ import { ToolRegistry, EnhancedToolDefinition } from '../../types';
 import { assertActionAllowed } from '../utils';
 import { diffLineFilter, parseDiffFiles, searchDiffLines } from '../diff-lines';
 import { CONFLICTS_MIN_VERSION, readMergeRequestConflicts } from './conflicts';
+import { flattenPositionToFormFields } from './position-fields';
+import { submitReview } from './review';
 
 /**
  * Response shape for MR status check before merge.
@@ -136,50 +138,12 @@ export function getSuggestedAction(isRetryable: boolean, canAutoMerge: boolean):
 }
 
 /**
- * Flattens a position object into form-encoded fields with bracket notation.
- * GitLab API expects: position[base_sha]=xxx, position[head_sha]=xxx, etc.
- * NOT: position={"base_sha":"xxx","head_sha":"xxx"}
- *
- * @see https://docs.gitlab.com/ee/api/discussions.html#create-a-new-thread-in-the-merge-request-diff
- */
-export function flattenPositionToFormFields(
-  body: Record<string, unknown>,
-  position: Record<string, unknown>,
-): void {
-  for (const [key, value] of Object.entries(position)) {
-    if (value === undefined || value === null) continue;
-
-    if (typeof value === 'object' && !Array.isArray(value)) {
-      // Handle nested objects like line_range.start, line_range.end
-      for (const [nestedKey, nestedValue] of Object.entries(value as Record<string, unknown>)) {
-        if (nestedValue === undefined || nestedValue === null) continue;
-
-        if (typeof nestedValue === 'object' && !Array.isArray(nestedValue)) {
-          // Handle deeply nested (line_range.start.line_code, etc.)
-          for (const [deepKey, deepValue] of Object.entries(
-            nestedValue as Record<string, unknown>,
-          )) {
-            if (deepValue !== undefined && deepValue !== null) {
-              body[`position[${key}][${nestedKey}][${deepKey}]`] = deepValue;
-            }
-          }
-        } else {
-          body[`position[${key}][${nestedKey}]`] = nestedValue;
-        }
-      }
-    } else {
-      body[`position[${key}]`] = value;
-    }
-  }
-}
-
-/**
  * MRS (Merge Requests) tools registry - 5 CQRS tools replacing 20 individual tools
  *
  * browse_merge_requests (Query): list, get, diffs, compare
  * browse_mr_discussions (Query): list, drafts, draft
  * manage_merge_request (Command): create, update, merge
- * manage_mr_discussion (Command): comment, thread, reply, update, apply_suggestion, apply_suggestions
+ * manage_mr_discussion (Command): comment, thread, reply, update, apply_suggestion, apply_suggestions, review
  * manage_draft_notes (Command): create, update, publish, publish_all, delete
  */
 export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinition>([
@@ -629,7 +593,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
     {
       name: 'manage_mr_discussion',
       description:
-        'Post comments, start threads, and suggest code changes on merge requests. Actions: comment (simple note), thread (line-level discussion), reply (to existing thread), update (edit note text), resolve (toggle thread resolution), suggest (code suggestion block), apply_suggestion/apply_suggestions (accept code suggestions). Related: browse_mr_discussions to read threads.',
+        'Post comments, start threads, and suggest code changes on merge requests. Actions: comment (simple note), thread (line-level discussion), reply (to existing thread), update (edit note text), resolve (toggle thread resolution), suggest (code suggestion block), apply_suggestion/apply_suggestions (accept code suggestions), review (up to 20 diff comments plus an optional summary note in one call, checked against the diff at the head you reviewed, then posted one by one as threads; reports the IDs or failure of every comment and leaves your draft notes alone). Related: browse_mr_discussions to read threads, manage_merge_request approve for an approval.',
       inputSchema: z.toJSONSchema(ManageMrDiscussionSchema),
       requirements: {
         default: { tier: 'free' },
@@ -786,6 +750,9 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
               { body, contentType: 'form' },
             );
           }
+
+          case 'review':
+            return submitReview(input);
 
           /* istanbul ignore next -- unreachable with Zod discriminatedUnion */
           default:

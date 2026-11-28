@@ -18,7 +18,7 @@ Tools for the complete merge request review workflow — browsing MRs, viewing d
 | `browse_merge_requests` | Query | List, get details, view diffs, compare branches |
 | `browse_mr_discussions` | Query | View discussion threads and draft notes |
 | `manage_merge_request` | Command | Create, update, merge, approve MRs |
-| `manage_mr_discussion` | Command | Comments, threads, replies, suggestions |
+| `manage_mr_discussion` | Command | Comments, threads, replies, suggestions, batch review |
 | `manage_draft_notes` | Command | Batch review with draft comments |
 
 ## browse_merge_requests
@@ -279,11 +279,71 @@ Add comments, suggestions, and manage discussion threads.
 | `apply_suggestions` | Batch apply multiple code suggestions |
 | `resolve` | Resolve or unresolve a discussion thread |
 | `suggest` | Create a code suggestion on a diff line |
+| `review` | Post several diff comments and an optional summary note on one MR, anchored to the reviewed head |
 <!-- @autogen:end -->
+
+### Batch Review
+
+`review` posts up to 20 diff comments and an optional `summary` note on one merge
+request in a single call. `head_sha` is the head the comments were written against
+(`diff_refs.head_sha` from `browse_merge_requests` `get`). Each comment names a `path`
+and `new_line`, `old_line` or both: an added line takes `new_line`, a removed line
+`old_line`, and an unchanged line either one (the other is filled in) or both. For a
+renamed or deleted file `path` may be the old path. `suggestion` adds a suggestion
+block for the commented line, which must exist in the new version.
+
+Before anything is written, the merge request's latest diff version must still be at
+`head_sha`, and every comment must name a line of that diff; otherwise the call is
+refused with every problem listed and nothing is published. The check reads the diff
+version GitLab shows: a push that GitLab has not turned into a new version yet, or one
+made while the review is written, is not caught, and the comments stay on the version
+that was reviewed.
+
+A line starting with `/` is refused too, since GitLab could run it as a quick action:
+an approval is `manage_merge_request` `approve`, not text in a comment. GitLab reads
+commands differently across versions, so the only exemption is a fenced block opened
+by a line starting with exactly three backticks and closed by a line of exactly three,
+with no backtick and no line starting with `~`, `<` or `>` before it. Carriage returns
+count as removed. A path such as `/usr/bin` in a `~~~` block or after inline code is
+therefore refused; put it in a ```` ``` ```` block or indent it.
+
+The comments are then posted one by one as diff threads and the summary last, each
+with its own notification. The review never touches your draft notes. This is not a
+transaction: the writes stop at the first one that does not succeed, and each comment
+and the summary report a `status`:
+
+| `status` | Meaning |
+|----------|---------|
+| `published` | GitLab created it; comments give `discussion_id` and `note_id`, the summary `note_id` |
+| `failed` | GitLab refused it; nothing was created |
+| `unknown` | The request ended without a clear answer (timeout, server error); check the discussions before resending it |
+| `not_attempted` | An earlier write did not succeed |
+
+`complete` is true when every comment and the summary were published.
 
 ### Examples
 
 ::: code-group
+
+```json [Batch review]
+{
+  "action": "review",
+  "project_id": "my-org/api",
+  "merge_request_iid": "42",
+  "head_sha": "4f8a2d0c1e9b7a6f5d4c3b2a1908f7e6d5c4b3a2",
+  "comments": [
+    { "path": "src/auth.ts", "new_line": 15, "body": "Handle the expired token here" },
+    {
+      "path": "src/auth.ts",
+      "new_line": 22,
+      "body": "Use optional chaining",
+      "suggestion": "const name = user?.name ?? 'Unknown';"
+    },
+    { "path": "src/session.ts", "old_line": 8, "body": "This check is still needed" }
+  ],
+  "summary": "Two blocking issues, one nit."
+}
+```
 
 ```json [Add comment]
 {

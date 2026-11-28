@@ -132,6 +132,12 @@ describe('namespaceInCallScope', () => {
     await expect(namespaceInCallScope('team/app', 'project')).rejects.toThrow('401');
   });
 
+  it('passes on a lookup failure that is not an Error', async () => {
+    allow('71');
+    read.mockRejectedValueOnce('connection reset');
+    await expect(namespaceInCallScope('team/app', 'project')).rejects.toBe('connection reset');
+  });
+
   it('refuses a group under an operator list, without a lookup', async () => {
     // The operator lists projects; a group is not one of them.
     allow('team/app');

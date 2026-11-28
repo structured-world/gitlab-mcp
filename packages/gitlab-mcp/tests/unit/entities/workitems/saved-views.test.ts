@@ -822,6 +822,47 @@ describe('saved view edge cases', () => {
     expect(result.view).toMatchObject({ filters: {}, author: null, updatedAt: '2026-11-27' });
     expect(result.exact).toBe(true);
   });
+
+  it('names an enum filter holding a value that is not a string instead of sending it', () => {
+    // A malformed stored value cannot be converted to an enum name; sending it would
+    // fail the whole query.
+    const plan = planViewQuery('grp', { types: [1] }, null);
+
+    expect(plan.args).not.toHaveProperty('types');
+    expect(plan.unapplied).toEqual(['types']);
+  });
+
+  it('skips empty fields inside an input filter without naming them unapplied', () => {
+    const plan = planViewQuery('grp', { not: { types: null, labelName: ['wontfix'] } }, null);
+
+    expect(plan.args.not).toEqual({ labelName: ['wontfix'] });
+    expect(plan.unapplied).toEqual([]);
+  });
+
+  it('lists a view as public when GitLab gives neither visibility field', async () => {
+    mockRequest.mockResolvedValueOnce({
+      namespace: {
+        savedViews: {
+          nodes: [{ ...view(), isPrivate: undefined }],
+          pageInfo: { hasNextPage: false, endCursor: null },
+        },
+      },
+    });
+
+    const result = (await browse().handler({ action: 'list_saved_views', namespace: 'grp' })) as {
+      views: Array<{ isPrivate: boolean }>;
+    };
+
+    expect(result.views.map((v) => v.isPrivate)).toEqual([false]);
+  });
+
+  it('returns an empty list when GitLab returns no saved views connection', async () => {
+    mockRequest.mockResolvedValueOnce({ namespace: { savedViews: null } });
+
+    const result = await browse().handler({ action: 'list_saved_views', namespace: 'grp' });
+
+    expect(result).toEqual({ namespace: 'grp', views: [], hasMore: false, endCursor: null });
+  });
 });
 
 describe('savedViewItemsQuery', () => {

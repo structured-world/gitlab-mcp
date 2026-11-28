@@ -1,18 +1,12 @@
 import { mrsToolRegistry } from '../../../../src/entities/mrs/registry';
-import { instanceAtLeast } from '../../../../src/entities/instance-version';
 import { gitlab, GitLabApiError } from '../../../../src/utils/gitlab-api';
 
 jest.mock('../../../../src/utils/gitlab-api', () => ({
   ...jest.requireActual('../../../../src/utils/gitlab-api'),
   gitlab: { get: jest.fn(), post: jest.fn(), put: jest.fn(), delete: jest.fn() },
 }));
-jest.mock('../../../../src/entities/instance-version', () => ({
-  ...jest.requireActual('../../../../src/entities/instance-version'),
-  instanceAtLeast: jest.fn(),
-}));
 
 const mockGitlab = gitlab as jest.Mocked<typeof gitlab>;
-const mockInstanceAtLeast = instanceAtLeast as jest.MockedFunction<typeof instanceAtLeast>;
 
 const HEAD = 'a'.repeat(40);
 const BASE = 'b'.repeat(40);
@@ -48,21 +42,13 @@ const EMPTY = { old_path: 'big.bin', new_path: 'big.bin', diff: '' };
 
 type Fail = (method: string, path: string) => unknown;
 
-/**
- * A stateful stand-in for the GitLab endpoints a review uses: the MR version, the
- * reviewer's pending drafts and what got published. `fail` makes one call throw.
- */
+/** A stand-in for the GitLab endpoints a review uses; `fail` makes one call throw. */
 class FakeGitLab {
   head = HEAD;
   diffs: unknown[] = [MODIFIED];
-  pending = new Map<number, Record<string, unknown>>();
-  published: number[] = [];
   threads: Array<Record<string, unknown>> = [];
   notes: Array<Record<string, unknown>> = [];
-  dropPosition = false;
-  failListing = false;
   fail: Fail = () => undefined;
-  private nextId = 1;
 
   install(): void {
     mockGitlab.get.mockImplementation(async (path: string) => {
@@ -73,28 +59,11 @@ class FakeGitLab {
         ];
       }
       if (path === `${MR}/versions/31`) return { id: 31, diffs: this.diffs };
-      if (path === `${MR}/draft_notes`) {
-        if (this.failListing) throw new Error('listing timed out');
-        return [...this.pending.keys()].map((id) => ({ id }));
-      }
       throw new Error(`unexpected GET ${path}`);
     });
     mockGitlab.post.mockImplementation(async (path: string, options?: unknown) => {
       this.check('POST', path);
       const body = (options as { body?: Record<string, unknown> } | undefined)?.body ?? {};
-      if (path === `${MR}/draft_notes`) {
-        const id = this.foreign();
-        this.pending.set(id, body);
-        const position = this.dropPosition
-          ? null
-          : { head_sha: body['position[head_sha]'] ?? null };
-        return { id, note: body.note, position };
-      }
-      if (path === `${MR}/draft_notes/bulk_publish`) {
-        this.published.push(...this.pending.keys());
-        this.pending.clear();
-        return undefined;
-      }
       if (path === `${MR}/discussions`) {
         this.threads.push(body);
         return { id: `d${this.threads.length}`, notes: [{ id: 100 + this.threads.length }] };
@@ -105,25 +74,6 @@ class FakeGitLab {
       }
       throw new Error(`unexpected POST ${path}`);
     });
-    mockGitlab.put.mockImplementation(async (path: string) => {
-      this.check('PUT', path);
-      const id = Number(/draft_notes\/(\d+)\/publish$/.exec(path)?.[1]);
-      if (!this.pending.has(id))
-        throw new GitLabApiError(404, 'Not found', 'GitLab API error: 404');
-      this.pending.delete(id);
-      this.published.push(id);
-      return undefined;
-    });
-    mockGitlab.delete.mockImplementation(async (path: string) => {
-      this.check('DELETE', path);
-      this.pending.delete(Number(/draft_notes\/(\d+)$/.exec(path)?.[1]));
-      return undefined;
-    });
-  }
-
-  /** A new ID, also used for drafts the reviewer had before the review. */
-  foreign(): number {
-    return this.nextId++;
   }
 
   private check(method: string, path: string): void {
@@ -153,16 +103,8 @@ function positionIn(body: Record<string, unknown>): Record<string, unknown> {
   );
 }
 
-/** The bodies of the drafts the review created, in order. */
-function draftBodies(): Array<Record<string, unknown>> {
-  return mockGitlab.post.mock.calls
-    .filter(([path]) => path === `${MR}/draft_notes`)
-    .map(([, options]) => (options as { body: Record<string, unknown> }).body);
-}
-
 beforeEach(() => {
   jest.clearAllMocks();
-  mockInstanceAtLeast.mockReturnValue(true);
   gl = new FakeGitLab();
   gl.install();
 });
@@ -230,16 +172,6 @@ describe('manage_mr_discussion review: checks before any write', () => {
     ).rejects.toThrow('comments[0]: old_line 9 of new.ts is not a diff line');
   });
 
-  it('accepts an unchanged line named by both its numbers', async () => {
-    const result = await review({
-      comments: [{ path: 'a.ts', old_line: 3, new_line: 3, body: 'unchanged' }],
-    });
-
-    expect(result.comments).toEqual([
-      expect.objectContaining({ old_line: 3, new_line: 3, status: 'published' }),
-    ]);
-  });
-
   it('refuses a path the side cannot tell apart', async () => {
     gl.diffs = [RENAMED, READDED];
 
@@ -300,7 +232,7 @@ describe('manage_mr_discussion review: checks before any write', () => {
 });
 
 // GitLab runs a line starting with "/" outside code as a quick action (/approve, /merge):
-// review text must never carry a verdict.
+// review text must never carry a verdict, on any supported GitLab.
 describe('manage_mr_discussion review: quick actions', () => {
   it('refuses quick actions in comments and the summary before reading GitLab', async () => {
     await expect(
@@ -314,15 +246,28 @@ describe('manage_mr_discussion review: quick actions', () => {
     expect(mockGitlab.get).not.toHaveBeenCalled();
   });
 
-  // GitLab deletes carriage returns before looking for commands: "/\rclose" is "/close".
   it.each([
-    ['a comment', { comments: [{ path: 'a.ts', new_line: 2, body: 'Review\n/\rclose' }] }],
-    [
-      'the summary',
-      { comments: [{ path: 'a.ts', new_line: 2, body: 'ok' }], summary: 'Done\n/\rmerge' },
-    ],
-  ])('refuses a command split by a carriage return in %s', async (_case, args) => {
-    await expect(review(args)).rejects.toThrow('would run as a quick action');
+    // GitLab deletes carriage returns before looking for commands: "/\rclose" is "/close".
+    ['a command split by a carriage return', 'Review\n/\rclose'],
+    // Newer GitLab reads paragraphs: a command between HTML parts still runs.
+    ['a command between HTML parts', '<!-- this is a comment -->\n\n/approve\n\n<p>\n</p>'],
+    // GitLab 16.x does not skip tilde fences.
+    ['a command in a tilde fence', 'Example:\n~~~\n/approve\n~~~'],
+    // An unclosed fence is no code block for either reader.
+    ['a command after an unclosed fence', 'Example:\n```\n/approve'],
+    // A Markdown reader ends the fence at ````, GitLab 16.x does not skip it at all.
+    ['a command after a fence closed by four backticks', '```\nx\n````\n/approve\n```'],
+    // GitLab 16.x pairs the stray backtick with the fence, which then no longer opens a block.
+    ['a command in a fence after a stray backtick', 'a `x\n```\n/approve\n```'],
+    ['a command in a fence after an HTML line', '<div>\nfoo\n```\n</div>\n/approve\n```'],
+    ['a command in a fence after a >>> quote', '>>>\n```\n>>>\n/approve\n```'],
+  ])('refuses %s in a comment and in the summary', async (_case, text) => {
+    await expect(review({ comments: [{ path: 'a.ts', new_line: 2, body: text }] })).rejects.toThrow(
+      'comments[0]: a line starting with "/" would run as a quick action',
+    );
+    await expect(
+      review({ comments: [{ path: 'a.ts', new_line: 2, body: 'ok' }], summary: text }),
+    ).rejects.toThrow('summary: a line starting with "/" would run as a quick action');
     expect(mockGitlab.get).not.toHaveBeenCalled();
   });
 
@@ -336,11 +281,11 @@ describe('manage_mr_discussion review: quick actions', () => {
     expect(mockGitlab.get).not.toHaveBeenCalled();
   });
 
-  it('accepts slashes GitLab skips: inline code, code blocks, suggestions and prose', async () => {
+  it('accepts slashes no GitLab runs: indented, mid-line, fenced code and suggestions', async () => {
     const result = await review({
       comments: [
-        { path: 'a.ts', new_line: 2, body: 'See  /usr/lib and `/approve`' },
-        { path: 'a.ts', new_line: 3, body: 'Example:\n```\n/merge\n```' },
+        { path: 'a.ts', new_line: 2, body: 'See  /usr/lib and `/approve`\n  /merge indented' },
+        { path: 'a.ts', new_line: 3, body: 'Example:\n```sh\n/merge\n```\n\nAfter /close.' },
         { path: 'a.ts', new_line: 4, body: 'Path', suggestion: '/close the gate' },
       ],
     });
@@ -355,7 +300,7 @@ describe('manage_mr_discussion review: quick actions', () => {
       ],
     });
 
-    expect(draftBodies()[0].note).toBe(
+    expect(gl.threads[0].body).toBe(
       'Use a template\n\n````suggestion:-0+0\nconst b = ```x```;\n````',
     );
   });
@@ -381,10 +326,20 @@ describe('manage_mr_discussion review: anchoring', () => {
       old_path: 'a.ts',
       new_path: 'a.ts',
     };
-    expect(draftBodies().map(positionIn)).toEqual([
+    expect(gl.threads.map(positionIn)).toEqual([
       { ...common, new_line: 2 },
       { ...common, old_line: 2 },
       { ...common, old_line: 3, new_line: 3 },
+    ]);
+  });
+
+  it('accepts an unchanged line named by both its numbers', async () => {
+    const result = await review({
+      comments: [{ path: 'a.ts', old_line: 3, new_line: 3, body: 'unchanged' }],
+    });
+
+    expect(result.comments).toEqual([
+      expect.objectContaining({ old_line: 3, new_line: 3, status: 'published' }),
     ]);
   });
 
@@ -399,7 +354,7 @@ describe('manage_mr_discussion review: anchoring', () => {
       ],
     });
 
-    expect(draftBodies().map(positionIn)).toEqual([
+    expect(gl.threads.map(positionIn)).toEqual([
       expect.objectContaining({ old_path: 'old.ts', new_path: 'new.ts', new_line: 1 }),
       expect.objectContaining({ old_path: 'old.ts', new_path: 'new.ts', old_line: 1 }),
       expect.objectContaining({ old_path: 'gone.ts', new_path: 'gone.ts', old_line: 2 }),
@@ -416,15 +371,15 @@ describe('manage_mr_discussion review: anchoring', () => {
       ],
     });
 
-    expect(draftBodies().map(positionIn)).toEqual([
+    expect(gl.threads.map(positionIn)).toEqual([
       expect.objectContaining({ old_path: 'old.ts', new_path: 'old.ts', new_line: 1 }),
       expect.objectContaining({ old_path: 'old.ts', new_path: 'new.ts', old_line: 1 }),
     ]);
   });
 });
 
-describe('manage_mr_discussion review: published through drafts', () => {
-  it('submits the comments and the summary as one review when no other draft is pending', async () => {
+describe('manage_mr_discussion review: publication', () => {
+  it('posts each comment as a diff thread, then the summary, with their IDs', async () => {
     const result = await review({
       comments: [
         { path: 'a.ts', new_line: 2, body: 'one' },
@@ -433,237 +388,15 @@ describe('manage_mr_discussion review: published through drafts', () => {
       summary: 'Looks good overall',
     });
 
-    expect(draftBodies().map((body) => body.note)).toEqual(['one', 'two', 'Looks good overall']);
-    expect(positionIn(draftBodies()[2])).toEqual({});
-    expect(mockGitlab.post).toHaveBeenCalledWith(`${MR}/draft_notes/bulk_publish`);
-    expect(mockGitlab.put).not.toHaveBeenCalled();
-    expect(gl.threads).toEqual([]);
-    expect(gl.published).toEqual([1, 2, 3]);
-    expect(result).toEqual({
-      merge_request_iid: '7',
-      head_sha: HEAD,
-      published_as: 'review',
-      complete: true,
-      comments: [
-        { index: 0, path: 'a.ts', old_line: null, new_line: 2, status: 'published' },
-        { index: 1, path: 'a.ts', old_line: 2, new_line: null, status: 'published' },
-      ],
-      summary: { status: 'published' },
-    });
-  });
-
-  // A submitted review publishes every pending draft of the reviewer; theirs must stay pending.
-  it('publishes its drafts one by one and leaves the other drafts of the reviewer pending', async () => {
-    const own = gl.foreign();
-    gl.pending.set(own, { note: 'mine, unrelated' });
-
-    const result = await review({
-      comments: [
-        { path: 'a.ts', new_line: 2, body: 'one' },
-        { path: 'a.ts', new_line: 3, body: 'two' },
-      ],
-      summary: 's',
-    });
-
-    expect(mockGitlab.post).not.toHaveBeenCalledWith(`${MR}/draft_notes/bulk_publish`);
-    expect(gl.published).toEqual([2, 3, 4]);
-    expect([...gl.pending.keys()]).toEqual([own]);
-    expect(mockGitlab.delete).not.toHaveBeenCalled();
-    expect(result).toEqual(expect.objectContaining({ published_as: 'separate', complete: true }));
-  });
-
-  it('publishes one by one when GitLab lists the pending drafts in an unexpected shape', async () => {
-    const serve = mockGitlab.get.getMockImplementation()!;
-    mockGitlab.get.mockImplementation(async (path: string, options?: unknown) =>
-      path === `${MR}/draft_notes` ? { drafts: [] } : serve(path, options as never),
-    );
-
-    const result = await review({ comments: [{ path: 'a.ts', new_line: 2, body: 'one' }] });
-
-    expect(result).toEqual(expect.objectContaining({ published_as: 'separate', complete: true }));
-  });
-
-  it('publishes one by one when GitLab does not list the pending drafts', async () => {
-    gl.failListing = true;
-
-    const result = await review({ comments: [{ path: 'a.ts', new_line: 2, body: 'one' }] });
-
-    expect(mockGitlab.post).not.toHaveBeenCalledWith(`${MR}/draft_notes/bulk_publish`);
-    expect(result).toEqual(expect.objectContaining({ published_as: 'separate', complete: true }));
-  });
-
-  it('reports drafts still pending after a submitted review failed', async () => {
-    gl.fail = (method, path) =>
-      path.endsWith('bulk_publish')
-        ? new GitLabApiError(500, 'boom', 'GitLab API error: 500')
-        : undefined;
-
-    const result = await review({
-      comments: [{ path: 'a.ts', new_line: 2, body: 'one' }],
-      summary: 's',
-    });
-
-    expect(result).toEqual(
-      expect.objectContaining({
-        published_as: 'review',
-        complete: false,
-        comments: [
-          expect.objectContaining({
-            status: 'draft',
-            draft_note_id: 1,
-            error: 'GitLab API error: 500',
-          }),
-        ],
-        summary: { status: 'draft', draft_note_id: 2, error: 'GitLab API error: 500' },
-        note: expect.stringContaining('nothing was rolled back'),
-      }),
-    );
-  });
-
-  it('reports unknown when neither the review nor the pending drafts can be read', async () => {
-    gl.fail = (method, path) => (path.endsWith('bulk_publish') ? new Error('timeout') : undefined);
-    let listings = 0;
-    const listPending = mockGitlab.get.getMockImplementation()!;
-    mockGitlab.get.mockImplementation(async (path: string, options?: unknown) => {
-      if (path === `${MR}/draft_notes` && ++listings > 1) throw new Error('timeout');
-      return listPending(path, options as never);
-    });
-
-    const result = await review({ comments: [{ path: 'a.ts', new_line: 2, body: 'one' }] });
-
-    expect(result.comments).toEqual([
-      expect.objectContaining({ status: 'unknown', draft_note_id: 1, error: 'timeout' }),
-    ]);
-  });
-
-  it('reports which drafts a failed one-by-one publication left pending', async () => {
-    gl.pending.set(gl.foreign(), { note: 'unrelated' });
-    gl.fail = (method, path) =>
-      method === 'PUT' && path.includes('/draft_notes/3/')
-        ? new GitLabApiError(500, 'boom', 'GitLab API error: 500')
-        : undefined;
-
-    const result = await review({
-      comments: [
-        { path: 'a.ts', new_line: 2, body: 'one' },
-        { path: 'a.ts', new_line: 3, body: 'two' },
-        { path: 'a.ts', new_line: 4, body: 'three' },
-      ],
-    });
-
-    expect(result.comments).toEqual([
-      expect.objectContaining({ index: 0, status: 'published' }),
-      expect.objectContaining({
-        index: 1,
-        status: 'draft',
-        draft_note_id: 3,
-        error: 'GitLab API error: 500',
-      }),
-      expect.objectContaining({ index: 2, status: 'draft', draft_note_id: 4 }),
-    ]);
-    expect(result.complete).toBe(false);
-  });
-
-  it('withdraws its drafts and publishes nothing when one cannot be created', async () => {
-    gl.fail = (method, path) =>
-      method === 'POST' && path.endsWith('/draft_notes') && gl.pending.size === 1
-        ? new GitLabApiError(400, 'bad', 'GitLab API error: 400 Bad Request')
-        : undefined;
-
-    const attempt = review({
-      comments: [
-        { path: 'a.ts', new_line: 2, body: 'one' },
-        { path: 'a.ts', new_line: 3, body: 'two' },
-      ],
-    });
-
-    await expect(attempt).rejects.toThrow(
-      'Review not posted, nothing was published:\n- comments[1]: GitLab API error: 400 Bad Request',
-    );
-    expect(mockGitlab.delete).toHaveBeenCalledWith(`${MR}/draft_notes/1`);
-    expect(gl.pending.size).toBe(0);
-    expect(gl.published).toEqual([]);
-  });
-
-  it('names the drafts it could not withdraw and the one that may exist', async () => {
-    gl.fail = (method, path) => {
-      if (method === 'DELETE') return new Error('delete timed out');
-      if (method === 'POST' && path.endsWith('/draft_notes') && gl.pending.size === 1) {
-        return new Error('create timed out');
-      }
-      return undefined;
-    };
-
-    const attempt = review({
-      comments: [{ path: 'a.ts', new_line: 2, body: 'one' }],
-      summary: 'summary',
-    });
-
-    await expect(attempt).rejects.toThrow(
-      [
-        '- summary: create timed out',
-        '- a draft for summary may exist; check your drafts',
-        '- drafts left unpublished: 1',
-      ].join('\n'),
-    );
-    expect(gl.published).toEqual([]);
-  });
-
-  it('refuses an unexpected draft answer', async () => {
-    mockGitlab.post.mockResolvedValueOnce({ unexpected: true });
-
-    await expect(
-      review({ comments: [{ path: 'a.ts', new_line: 2, body: 'one' }] }),
-    ).rejects.toThrow('comments[0]: GitLab returned an unexpected draft note');
-  });
-
-  // An instance that ignores the draft position would publish general comments instead.
-  it('posts threads instead when GitLab drops the position of a draft', async () => {
-    gl.dropPosition = true;
-
-    const result = await review({ comments: [{ path: 'a.ts', new_line: 2, body: 'one' }] });
-
-    expect(mockGitlab.delete).toHaveBeenCalledWith(`${MR}/draft_notes/1`);
-    expect(gl.published).toEqual([]);
-    expect(gl.threads).toHaveLength(1);
-    expect(result.published_as).toBe('threads');
-  });
-
-  it('refuses when GitLab drops the position and the draft cannot be withdrawn', async () => {
-    gl.dropPosition = true;
-    gl.fail = (method) => (method === 'DELETE' ? new Error('delete timed out') : undefined);
-
-    await expect(
-      review({ comments: [{ path: 'a.ts', new_line: 2, body: 'one' }] }),
-    ).rejects.toThrow('GitLab dropped the diff position of a draft; drafts left unpublished: 1');
-    expect(gl.threads).toEqual([]);
-  });
-});
-
-describe('manage_mr_discussion review: published as threads', () => {
-  beforeEach(() => mockInstanceAtLeast.mockReturnValue(false));
-
-  it('posts each comment as a diff thread, then the summary, before GitLab 16.3', async () => {
-    const result = await review({
-      comments: [
-        { path: 'a.ts', new_line: 2, body: 'one' },
-        { path: 'a.ts', old_line: 2, body: 'two' },
-      ],
-      summary: 'Looks good overall',
-    });
-
-    expect(mockInstanceAtLeast).toHaveBeenCalledWith('16.3');
     expect(mockGitlab.post.mock.calls.map(([path]) => path)).toEqual([
       `${MR}/discussions`,
       `${MR}/discussions`,
       `${MR}/notes`,
     ]);
-    expect(positionIn(gl.threads[1])).toEqual(expect.objectContaining({ old_line: 2 }));
     expect(gl.notes).toEqual([{ body: 'Looks good overall' }]);
     expect(result).toEqual({
       merge_request_iid: '7',
       head_sha: HEAD,
-      published_as: 'threads',
       complete: true,
       comments: [
         {
@@ -687,6 +420,18 @@ describe('manage_mr_discussion review: published as threads', () => {
       ],
       summary: { status: 'published', note_id: 501 },
     });
+  });
+
+  // Drafts belong to the reviewer's own pending review; a batch must not publish or touch them.
+  it('never touches the draft notes of the reviewer', async () => {
+    await review({ comments: [{ path: 'a.ts', new_line: 2, body: 'x' }], summary: 'y' });
+
+    const touched = [...mockGitlab.get.mock.calls, ...mockGitlab.post.mock.calls].map(
+      ([path]) => path,
+    );
+    expect(touched.some((path) => path.includes('draft_notes'))).toBe(false);
+    expect(mockGitlab.put).not.toHaveBeenCalled();
+    expect(mockGitlab.delete).not.toHaveBeenCalled();
   });
 
   it('stops at a refused write and reports what each write did', async () => {
@@ -717,19 +462,47 @@ describe('manage_mr_discussion review: published as threads', () => {
           expect.objectContaining({ index: 2, status: 'not_attempted' }),
         ],
         summary: { status: 'not_attempted' },
+        note: expect.stringContaining('nothing was rolled back'),
       }),
     );
+  });
+
+  // A permission refusal on the first write leaves nothing behind.
+  it('reports a forbidden first write as failed with nothing posted', async () => {
+    gl.fail = (method, path) =>
+      path.endsWith('/discussions')
+        ? new GitLabApiError(403, 'Forbidden', 'GitLab API error: 403 Forbidden')
+        : undefined;
+
+    const result = await review({
+      comments: [
+        { path: 'a.ts', new_line: 2, body: 'one' },
+        { path: 'a.ts', new_line: 3, body: 'two' },
+      ],
+    });
+
+    expect(result.comments).toEqual([
+      expect.objectContaining({ status: 'failed' }),
+      expect.objectContaining({ status: 'not_attempted' }),
+    ]);
+    expect(mockGitlab.post).toHaveBeenCalledTimes(1);
   });
 
   it.each([
     ['a timeout', new Error('GitLab API timeout after 20000ms')],
     ['a server error', new GitLabApiError(502, 'Bad Gateway', 'GitLab API error: 502 Bad Gateway')],
+    ['a failure that is not an Error', 'socket hang up'],
   ])('reports a write that ended in %s as unknown, not failed', async (_case, error) => {
     gl.fail = (method, path) => (path.endsWith('/discussions') ? error : undefined);
 
     const result = await review({ comments: [{ path: 'a.ts', new_line: 2, body: 'one' }] });
 
-    expect(result.comments).toEqual([expect.objectContaining({ status: 'unknown' })]);
+    expect(result.comments).toEqual([
+      expect.objectContaining({
+        status: 'unknown',
+        error: String((error as Error).message ?? error),
+      }),
+    ]);
     expect(result.note).toEqual(expect.stringContaining('check the merge request discussions'));
   });
 
@@ -746,16 +519,6 @@ describe('manage_mr_discussion review: published as threads', () => {
 
     expect(result.summary).toEqual({ status: 'failed', error: 'GitLab API error: 422' });
     expect(result.complete).toBe(false);
-  });
-
-  it('reports a failure that is not an Error by its text', async () => {
-    gl.fail = (method, path) => (path.endsWith('/discussions') ? 'socket hang up' : undefined);
-
-    const result = await review({ comments: [{ path: 'a.ts', new_line: 2, body: 'one' }] });
-
-    expect(result.comments).toEqual([
-      expect.objectContaining({ status: 'unknown', error: 'socket hang up' }),
-    ]);
   });
 
   it('counts a thread as published when GitLab answers without a discussion', async () => {

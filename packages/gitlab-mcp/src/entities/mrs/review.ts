@@ -3,27 +3,20 @@ import { gitlab, GitLabApiError } from '../../utils/gitlab-api';
 import { normalizeProjectId } from '../../utils/projectIdentifier';
 import { encodeApiSegment } from '../../utils/api-path';
 import { findDiffLines, parseDiffFiles, type DiffFile } from '../diff-lines';
-import { instanceAtLeast } from '../instance-version';
 import { flattenPositionToFormFields } from './position-fields';
 import type { ManageMrDiscussionInput } from './schema';
 
 type ReviewInput = Extract<ManageMrDiscussionInput, { action: 'review' }>;
 type ReviewComment = ReviewInput['comments'][number];
 
-/** First GitLab whose draft notes take a diff position (lib/api/draft_notes.rb, v16.3.0-ee). */
-export const DRAFT_POSITION_MIN_VERSION = '16.3';
-
 /**
- * published: visible on the merge request. draft: still the reviewer's unpublished draft
- * (draft_note_id), to publish or delete with manage_draft_notes. failed: GitLab refused it,
- * nothing was created. unknown: the request may or may not have taken effect.
- * not_attempted: an earlier write did not succeed.
+ * published: GitLab created it. failed: GitLab refused it, nothing was created. unknown: the
+ * request may or may not have created it. not_attempted: an earlier write did not succeed.
  */
-type WriteStatus = 'published' | 'draft' | 'failed' | 'unknown' | 'not_attempted';
+type WriteStatus = 'published' | 'failed' | 'unknown' | 'not_attempted';
 
 interface WriteResult {
   status: WriteStatus;
-  draft_note_id?: number;
   discussion_id?: string;
   note_id?: number;
   error?: string;
@@ -36,17 +29,9 @@ interface CommentResult extends WriteResult {
   new_line: number | null;
 }
 
-/**
- * review: one submitted review, a single notification. separate: drafts published one by
- * one, because the reviewer had other pending drafts a submitted review would publish too.
- * threads: comments posted directly, on an instance whose drafts take no diff position.
- */
-type PublishedAs = 'review' | 'separate' | 'threads';
-
 export interface ReviewResult {
   merge_request_iid: string;
   head_sha: string;
-  published_as: PublishedAs;
   complete: boolean;
   comments: CommentResult[];
   summary: WriteResult | null;
@@ -67,27 +52,39 @@ const DiscussionSchema = z.looseObject({
   notes: z.array(z.looseObject({ id: z.number() })).optional(),
 });
 const NoteSchema = z.looseObject({ id: z.number() });
-const DraftSchema = z.looseObject({
-  id: z.number(),
-  position: z.looseObject({ head_sha: z.string().nullish() }).nullish(),
-});
-const DraftsSchema = z.array(z.looseObject({ id: z.number() }));
+
+/** A line opening a ``` fence: exactly three backticks at its start, no backtick after them. */
+const FENCE_OPEN = /^```[^`]*$/;
+/** Any line that can end a fence for a Markdown reader. */
+const FENCE_CLOSE = /^ {0,3}`{3,}[ \t]*$/;
+/** Text that GitLab's regex extractor (GitLab 16.x) may pair across lines into a skipped region. */
+const SHIFTS_REGIONS = /`|^<|^>>>/m;
 
 /**
- * The regions GitLab's quick-action extractor skips: ``` blocks closed by a line of exactly
- * three backticks, inline code, HTML blocks and >>> quotes (lib/gitlab/quick_actions/extractor.rb).
- */
-const SKIPPED_BY_GITLAB =
-  /^```[\s\S]+?\n```$|`[\s\S]+?`|^<[^>]+?>\n[\s\S]+?\n<\/[^>]+?>$|^>>>[\s\S]+?\n>>>$/gm;
-
-/**
- * Whether GitLab would run part of `text` as a quick action (/approve, /merge): a line
- * starting with "/" outside the skipped regions, after GitLab deletes carriage returns.
- * A verdict must be an explicit call, never prose in a review.
+ * Whether GitLab could run part of `text` as a quick action (/approve, /merge): a line
+ * starting with "/" after GitLab deletes carriage returns. GitLab reads commands with
+ * regexes on older releases and with a Markdown parser on newer ones
+ * (lib/gitlab/quick_actions/extractor.rb), so only lines both skip are exempt: inside a
+ * fence of three backticks closed by a line of exactly three, with nothing before it that
+ * the regexes could pair into a region swallowing the fence. Anything else is refused,
+ * which can refuse a harmless path; a verdict must be an explicit call, never prose.
  */
 function runsQuickAction(text: string): boolean {
-  // A skipped region becomes a space, so text after it does not move to a line start.
-  return /^\/\w/m.test(text.replace(/\r/g, '').replace(SKIPPED_BY_GITLAB, ' '));
+  const lines = text.replace(/\r/g, '').split('\n');
+  let since = 0;
+  for (let i = 0; i < lines.length; i++) {
+    if (FENCE_OPEN.test(lines[i]) && !SHIFTS_REGIONS.test(lines.slice(since, i).join('\n'))) {
+      let close = i + 1;
+      while (close < lines.length && !FENCE_CLOSE.test(lines[close])) close++;
+      if (lines[close] === '```') {
+        i = close;
+        since = close + 1;
+        continue;
+      }
+    }
+    if (/^\/\w/.test(lines[i])) return true;
+  }
+  return false;
 }
 
 interface Anchor {
@@ -221,13 +218,9 @@ interface Plan {
 }
 
 /** The form fields that place a comment on its anchor in the reviewed version. */
-function positionedBody(
-  plan: Plan,
-  index: number,
-  textField: 'body' | 'note',
-): Record<string, unknown> {
+function positionedBody(plan: Plan, index: number): Record<string, unknown> {
   const anchor = plan.anchors[index];
-  const body: Record<string, unknown> = { [textField]: plan.bodies[index] };
+  const body: Record<string, unknown> = { body: plan.bodies[index] };
   flattenPositionToFormFields(body, {
     position_type: 'text',
     base_sha: plan.version.base_commit_sha,
@@ -253,7 +246,6 @@ function commentResults(plan: Plan, results: readonly WriteResult[]): CommentRes
 
 function finish(
   plan: Plan,
-  publishedAs: PublishedAs,
   results: readonly WriteResult[],
   summary: WriteResult | null,
 ): ReviewResult {
@@ -263,23 +255,25 @@ function finish(
   const result: ReviewResult = {
     merge_request_iid: plan.input.merge_request_iid,
     head_sha: plan.version.head_commit_sha,
-    published_as: publishedAs,
     complete,
     comments: commentResults(plan, results),
     summary,
   };
   if (!complete) {
     result.note =
-      'Partly published, nothing was rolled back. A draft is still yours to publish or delete with ' +
-      'manage_draft_notes; resend failed or not_attempted ones; for one marked unknown, check the ' +
-      'merge request discussions and drafts first, since it may already be there.';
+      'Partly published, nothing was rolled back. Resend only the writes marked failed or ' +
+      'not_attempted; for one marked unknown, check the merge request discussions first, since ' +
+      'it may already be there.';
   }
   return result;
 }
 
 /**
  * Posts each comment as a diff thread, then the summary, stopping at the first write that
- * does not succeed. Used where drafts take no position, so GitLab notifies per comment.
+ * does not succeed. Each write is its own GitLab answer: a created thread comes back with
+ * its IDs and a refused one as an error, and the reviewer's draft notes are never touched.
+ * (Drafts would give one notification, but publishing them names no drafts, confirms no
+ * note and returns no IDs, so the outcome of each comment could not be reported.)
  */
 async function postThreads(plan: Plan): Promise<ReviewResult> {
   const results: WriteResult[] = plan.input.comments.map(() => ({ status: 'not_attempted' }));
@@ -288,7 +282,7 @@ async function postThreads(plan: Plan): Promise<ReviewResult> {
     try {
       const created = DiscussionSchema.safeParse(
         await gitlab.post(`${mrPath(plan.input)}/discussions`, {
-          body: positionedBody(plan, index, 'body'),
+          body: positionedBody(plan, index),
           contentType: 'form',
         }),
       );
@@ -322,151 +316,15 @@ async function postThreads(plan: Plan): Promise<ReviewResult> {
       }
     }
   }
-  return finish(plan, 'threads', results, summary);
-}
-
-/** Deletes the drafts the review created, returning those that could not be deleted. */
-async function withdrawDrafts(plan: Plan, ids: readonly number[]): Promise<number[]> {
-  const left: number[] = [];
-  for (const id of ids) {
-    try {
-      await gitlab.delete(`${mrPath(plan.input)}/draft_notes/${encodeApiSegment(String(id))}`);
-    } catch {
-      left.push(id);
-    }
-  }
-  return left;
-}
-
-interface Staged {
-  comments: number[];
-  summary: number | null;
-}
-
-/**
- * Creates one draft per comment and one for the summary, none of them visible to others.
- * Null when GitLab dropped a position (an instance older than reported): the drafts are
- * withdrawn and the comments go out as threads instead. A failed write withdraws them too.
- */
-async function stageDrafts(plan: Plan): Promise<Staged | null> {
-  const created: number[] = [];
-  const stage = async (body: Record<string, unknown>, step: string) => {
-    try {
-      const parsed = DraftSchema.safeParse(
-        await gitlab.post(`${mrPath(plan.input)}/draft_notes`, { body, contentType: 'form' }),
-      );
-      if (!parsed.success) throw new Error('GitLab returned an unexpected draft note');
-      created.push(parsed.data.id);
-      return parsed.data;
-    } catch (error: unknown) {
-      const { status, error: message } = failure(error);
-      const left = await withdrawDrafts(plan, created);
-      const notes = [`${step}: ${message}`];
-      if (status === 'unknown') notes.push(`a draft for ${step} may exist; check your drafts`);
-      if (left.length > 0) notes.push(`drafts left unpublished: ${left.join(', ')}`);
-      return refuse(notes);
-    }
-  };
-
-  const comments: number[] = [];
-  for (let index = 0; index < plan.input.comments.length; index++) {
-    const draft = await stage(positionedBody(plan, index, 'note'), `comments[${index}]`);
-    // GitLab ignores a parameter it does not know: a draft without the position would be
-    // published as a general comment, so its absence sends the review out as threads.
-    if (draft.position?.head_sha !== plan.version.head_commit_sha) {
-      const left = await withdrawDrafts(plan, created);
-      if (left.length > 0) {
-        refuse([
-          `GitLab dropped the diff position of a draft; drafts left unpublished: ${left.join(', ')}`,
-        ]);
-      }
-      return null;
-    }
-    comments.push(draft.id);
-  }
-  const summary =
-    plan.input.summary === undefined
-      ? null
-      : (await stage({ note: plan.input.summary }, 'summary')).id;
-  return { comments, summary };
-}
-
-/** The reviewer's pending draft IDs, or null when GitLab did not list them. */
-async function pendingDrafts(plan: Plan): Promise<Set<number> | null> {
-  try {
-    const drafts = DraftsSchema.safeParse(await gitlab.get(`${mrPath(plan.input)}/draft_notes`));
-    return drafts.success ? new Set(drafts.data.map((draft) => draft.id)) : null;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Publishes the staged drafts. Without other pending drafts they go out as one review, a
- * single notification; otherwise one by one, since a submitted review would publish the
- * reviewer's other drafts too. After a failure, the drafts still pending tell which ones
- * were published.
- */
-async function publishDrafts(plan: Plan, staged: Staged): Promise<ReviewResult> {
-  const ours = staged.summary === null ? staged.comments : [...staged.comments, staged.summary];
-  const before = await pendingDrafts(plan);
-  // Unlisted drafts are treated as foreign ones: a review must never publish what is not its own.
-  const alone = before !== null && [...before].every((id) => ours.includes(id));
-
-  // One outcome per draft, in the order of `ours`.
-  let outcomes: WriteResult[] = ours.map(() => ({ status: 'draft' }));
-  let failed = false;
-  if (alone) {
-    try {
-      await gitlab.post(`${mrPath(plan.input)}/draft_notes/bulk_publish`);
-      outcomes = ours.map(() => ({ status: 'published' }));
-    } catch (error: unknown) {
-      outcomes = ours.map(() => ({ status: 'unknown', error: errorText(error) }));
-      failed = true;
-    }
-  } else {
-    for (const [at, id] of ours.entries()) {
-      try {
-        await gitlab.put(
-          `${mrPath(plan.input)}/draft_notes/${encodeApiSegment(String(id))}/publish`,
-        );
-        outcomes[at] = { status: 'published' };
-      } catch (error: unknown) {
-        outcomes[at] = { status: 'unknown', error: errorText(error) };
-        failed = true;
-        break;
-      }
-    }
-  }
-
-  if (failed) {
-    const after = await pendingDrafts(plan);
-    if (after !== null) {
-      outcomes = outcomes.map(({ error }, at): WriteResult => {
-        if (!after.has(ours[at])) return { status: 'published' };
-        return error === undefined ? { status: 'draft' } : { status: 'draft', error };
-      });
-    }
-  }
-  const results = outcomes.map((result, at) =>
-    result.status === 'published' ? result : { ...result, draft_note_id: ours[at] },
-  );
-  return finish(
-    plan,
-    alone ? 'review' : 'separate',
-    results.slice(0, staged.comments.length),
-    staged.summary === null ? null : results[staged.comments.length],
-  );
+  return finish(plan, results, summary);
 }
 
 /**
  * Posts several diff comments and an optional summary note on one merge request. Every
  * comment is checked against the merge request's latest diff version, which must still be
  * at `head_sha`, before anything is written; a push while the review is written is not
- * caught, and its comments stay on the version that was reviewed. Where drafts take a diff
- * position the comments are staged as drafts and published as one review when the reviewer
- * has no other pending drafts, else one by one; older instances get them as threads. The
- * publication is not transactional: the result says what happened to each write.
+ * caught, and its comments stay on the version that was reviewed. The writes are not
+ * transactional: the result says what happened to each one.
  */
 export async function submitReview(input: ReviewInput): Promise<ReviewResult> {
   const bodies = input.comments.map(commentBody);
@@ -494,10 +352,5 @@ export async function submitReview(input: ReviewInput): Promise<ReviewResult> {
   const { errors, anchors } = anchorComments(parseDiffFiles(diffs.data.diffs), input.comments);
   if (errors.length > 0) refuse(errors);
 
-  const plan: Plan = { version, anchors, bodies, input };
-  if (instanceAtLeast(DRAFT_POSITION_MIN_VERSION)) {
-    const staged = await stageDrafts(plan);
-    if (staged !== null) return publishDrafts(plan, staged);
-  }
-  return postThreads(plan);
+  return postThreads({ version, anchors, bodies, input });
 }

@@ -1576,16 +1576,24 @@ describe('🔄 Data Lifecycle - Complete Infrastructure Setup', () => {
           )
           .map((pending) => pending.id);
       const ReviewSchema = z.object({
-        published_as: z.string(),
         complete: z.boolean(),
         head_sha: z.string(),
-        comments: z.array(z.object({ status: z.string(), new_line: z.number() })),
-        summary: z.object({ status: z.string() }).nullable(),
+        comments: z.array(
+          z.object({
+            status: z.string(),
+            discussion_id: z.string(),
+            note_id: z.number(),
+            new_line: z.number(),
+          }),
+        ),
+        summary: z.object({ status: z.string(), note_id: z.number() }),
       });
       const DiscussionsSchema = z.array(
         z.object({
+          id: z.string(),
           notes: z.array(
             z.object({
+              id: z.number(),
               body: z.string(),
               position: z
                 .object({
@@ -1598,7 +1606,7 @@ describe('🔄 Data Lifecycle - Complete Infrastructure Setup', () => {
           ),
         }),
       );
-      const notesOnMr = async () =>
+      const discussionsOnMr = async () =>
         DiscussionsSchema.parse(
           await helper.browseMrDiscussions({
             action: 'list',
@@ -1606,24 +1614,7 @@ describe('🔄 Data Lifecycle - Complete Infrastructure Setup', () => {
             merge_request_iid: iid,
             per_page: 100,
           }),
-        ).flatMap((discussion) => discussion.notes);
-
-      // Without other pending drafts the batch goes out as one submitted review.
-      expect(await pendingDrafts()).toEqual([]);
-      const submitted = ReviewSchema.parse(
-        await helper.manageMrDiscussion({
-          action: 'review',
-          project_id: projectId,
-          merge_request_iid: iid,
-          head_sha: head,
-          comments: [{ path, new_line: 2, body: `Submitted comment ${marker}` }],
-          summary: `Submitted summary ${marker}`,
-        }),
-      );
-      expect(submitted).toEqual(
-        expect.objectContaining({ published_as: 'review', complete: true, head_sha: head }),
-      );
-      expect(await pendingDrafts()).toEqual([]);
+        );
 
       const draft = DraftSchema.parse(
         await helper.executeTool('manage_draft_notes', {
@@ -1635,40 +1626,52 @@ describe('🔄 Data Lifecycle - Complete Infrastructure Setup', () => {
       );
 
       try {
-        // With another pending draft the batch is published one by one, leaving that draft.
-        const separate = ReviewSchema.parse(
+        const result = ReviewSchema.parse(
           await helper.manageMrDiscussion({
             action: 'review',
             project_id: projectId,
             merge_request_iid: iid,
             head_sha: head,
             comments: [
+              { path, new_line: 2, body: `Marker comment ${marker}` },
               {
                 path,
                 new_line: 3,
-                body: `Separate comment ${marker}`,
+                body: `Suggestion comment ${marker}`,
                 suggestion: 'const total = 2;',
               },
             ],
-            summary: `Separate summary ${marker}`,
+            summary: `Batch review summary ${marker}`,
           }),
         );
-        expect(separate).toEqual(
-          expect.objectContaining({ published_as: 'separate', complete: true }),
-        );
-        expect(await pendingDrafts()).toEqual([draft.id]);
+        expect(result).toEqual(expect.objectContaining({ complete: true, head_sha: head }));
+        expect(result.comments.map((comment) => comment.status)).toEqual([
+          'published',
+          'published',
+        ]);
 
-        const notes = await notesOnMr();
-        for (const [text, line] of [
-          [`Submitted comment ${marker}`, 2],
-          [`Separate comment ${marker}`, 3],
-        ] as const) {
-          const posted = notes.find((note) => note.body.startsWith(text));
-          expect(posted?.position).toEqual({ new_path: path, new_line: line, head_sha: head });
+        // Each reported ID names the thread GitLab placed on that line of the reviewed head.
+        const discussions = await discussionsOnMr();
+        for (const comment of result.comments) {
+          const thread = discussions.find((discussion) => discussion.id === comment.discussion_id);
+          expect(thread?.notes[0].id).toBe(comment.note_id);
+          expect(thread?.notes[0].position).toEqual({
+            new_path: path,
+            new_line: comment.new_line,
+            head_sha: head,
+          });
         }
-        for (const text of [`Submitted summary ${marker}`, `Separate summary ${marker}`]) {
-          expect(notes.some((note) => note.body === text && !note.position)).toBe(true);
-        }
+        const suggested = discussions.find(
+          (discussion) => discussion.id === result.comments[1].discussion_id,
+        );
+        expect(suggested?.notes[0].body).toContain('suggestion:-0+0\nconst total = 2;\n');
+        const notes = discussions.flatMap((discussion) => discussion.notes);
+        expect(notes.find((note) => note.id === result.summary.note_id)?.body).toBe(
+          `Batch review summary ${marker}`,
+        );
+
+        // The review publishes nothing else: the unrelated draft is still pending.
+        expect(await pendingDrafts()).toEqual([draft.id]);
 
         // One line outside the diff refuses the whole batch.
         await expect(
@@ -1699,7 +1702,7 @@ describe('🔄 Data Lifecycle - Complete Infrastructure Setup', () => {
         ).rejects.toThrow('the merge request head is now');
 
         // Neither refused batch left a note or a draft behind (pushes add system notes).
-        const after = await notesOnMr();
+        const after = (await discussionsOnMr()).flatMap((discussion) => discussion.notes);
         expect(after.some((note) => note.body.includes(`Must not be posted ${marker}`))).toBe(
           false,
         );

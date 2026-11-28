@@ -593,7 +593,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
     {
       name: 'manage_mr_discussion',
       description:
-        'Post comments, start threads, and suggest code changes on merge requests. Actions: comment (simple note), thread (line-level discussion), reply (to existing thread), update (edit note text), resolve (toggle thread resolution), suggest (code suggestion block), apply_suggestion/apply_suggestions (accept code suggestions), review (up to 20 diff comments plus an optional summary note in one call, checked against the diff at the head you reviewed and submitted as one review; never publishes your other pending drafts and reports what happened to each comment). Related: browse_mr_discussions to read threads, manage_merge_request approve for an approval.',
+        'Post comments, start threads, and suggest code changes on merge requests. Actions: comment (simple note), thread (line-level discussion), reply (to existing thread), update (edit note text), resolve (toggle thread resolution), suggest (code suggestion block), apply_suggestion/apply_suggestions (accept code suggestions), review (up to 20 diff comments plus an optional summary note in one call, checked against the diff at the head you reviewed, then posted one by one as threads; reports the IDs or failure of every comment and leaves your draft notes alone). Related: browse_mr_discussions to read threads, manage_merge_request approve for an approval.',
       inputSchema: z.toJSONSchema(ManageMrDiscussionSchema),
       requirements: {
         default: { tier: 'free' },

@@ -57,8 +57,11 @@ const NoteSchema = z.looseObject({ id: z.number() });
 const FENCE_OPEN = /^```[^`]*$/;
 /** Any line that can end a fence for a Markdown reader. */
 const FENCE_CLOSE = /^ {0,3}`{3,}[ \t]*$/;
-/** Text that GitLab's regex extractor (GitLab 16.x) may pair across lines into a skipped region. */
-const SHIFTS_REGIONS = /`|^<|^>>>/m;
+/**
+ * Text before a fence that can change whether it opens: a backtick, or a line starting with
+ * `~` (a tilde fence), `<` (HTML) or `>` (a quote) that either reader may extend over it.
+ */
+const SHIFTS_REGIONS = /`|^ {0,3}[~<>]/m;
 
 /**
  * Whether GitLab could run part of `text` as a quick action (/approve, /merge): a line
@@ -66,7 +69,7 @@ const SHIFTS_REGIONS = /`|^<|^>>>/m;
  * regexes on older releases and with a Markdown parser on newer ones
  * (lib/gitlab/quick_actions/extractor.rb), so only lines both skip are exempt: inside a
  * fence of three backticks closed by a line of exactly three, with nothing before it that
- * the regexes could pair into a region swallowing the fence. Anything else is refused,
+ * could change whether the fence opens for either reader. Anything else is refused,
  * which can refuse a harmless path; a verdict must be an explicit call, never prose.
  */
 function runsQuickAction(text: string): boolean {

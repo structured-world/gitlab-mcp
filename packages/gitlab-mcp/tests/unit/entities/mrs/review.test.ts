@@ -261,6 +261,10 @@ describe('manage_mr_discussion review: quick actions', () => {
     ['a command in a fence after a stray backtick', 'a `x\n```\n/approve\n```'],
     ['a command in a fence after an HTML line', '<div>\nfoo\n```\n</div>\n/approve\n```'],
     ['a command in a fence after a >>> quote', '>>>\n```\n>>>\n/approve\n```'],
+    // Inside an outer tilde fence the backtick line is content, so /approve is outside code.
+    ['a command in a fence inside a tilde fence', '~~~\n```\n~~~\n/approve\n```'],
+    ['a command in a fence after an indented tilde fence', '  ~~~\n```\n  ~~~\n/approve\n```'],
+    ['a command in a fence after a blockquote', '> quoted\n```\n/approve\n```'],
   ])('refuses %s in a comment and in the summary', async (_case, text) => {
     await expect(review({ comments: [{ path: 'a.ts', new_line: 2, body: text }] })).rejects.toThrow(
       'comments[0]: a line starting with "/" would run as a quick action',

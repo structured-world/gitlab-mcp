@@ -303,7 +303,7 @@ A line starting with `/` is refused too, since GitLab could run it as a quick ac
 an approval is `manage_merge_request` `approve`, not text in a comment. GitLab reads
 commands differently across versions, so the only exemption is a fenced block opened
 by a line starting with exactly three backticks and closed by a line of exactly three,
-with no backtick and no line starting with `<` or `>>>` before it. Carriage returns
+with no backtick and no line starting with `~`, `<` or `>` before it. Carriage returns
 count as removed. A path such as `/usr/bin` in a `~~~` block or after inline code is
 therefore refused; put it in a ```` ``` ```` block or indent it.
 

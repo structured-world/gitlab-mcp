@@ -117,6 +117,21 @@ describe('namespaceInCallScope', () => {
     expect(await namespaceInCallScope('other/secret', 'project')).toBe(false);
   });
 
+  it('refuses a project GitLab does not show or answers without an ID', async () => {
+    allow('71');
+    expect(await namespaceInCallScope('team/gone', 'project')).toBe(false);
+    read.mockResolvedValueOnce({ path_with_namespace: 'team/app' });
+    expect(await namespaceInCallScope('team/app', 'project')).toBe(false);
+  });
+
+  it('fails with the GitLab error when the lookup itself fails', async () => {
+    // A rejected token must reach the reauthorization challenge, not read as a project
+    // outside the operator's list.
+    allow('71');
+    read.mockRejectedValueOnce(new Error('GitLab API error: 401 Unauthorized'));
+    await expect(namespaceInCallScope('team/app', 'project')).rejects.toThrow('401');
+  });
+
   it('refuses a group under an operator list, without a lookup', async () => {
     // The operator lists projects; a group is not one of them.
     allow('team/app');

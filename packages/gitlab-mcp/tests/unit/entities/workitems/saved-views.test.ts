@@ -422,6 +422,30 @@ describe('browse_work_items get_saved_view', () => {
     });
   });
 
+  it.each([
+    ['null types', { types: null }],
+    ['an empty types list', { types: [] }],
+    ['null type ids', { workItemTypeIds: null }],
+  ])("applies the list's default types to a view with %s", async (_name, filters) => {
+    // GitLab accepts a null or empty type filter, which filters nothing; the list's
+    // default types still apply, or the result would hold types the list hides.
+    mockRequest
+      .mockResolvedValueOnce(
+        viewResponse(view({ filters }), [
+          { id: 'gid://gitlab/WorkItems::Type/1', isFilterableListView: true },
+          { id: 'gid://gitlab/WorkItems::Type/9', isFilterableListView: false },
+        ]),
+      )
+      .mockResolvedValueOnce(itemsPage([]));
+
+    await browse().handler({ action: 'get_saved_view', namespace: 'grp', view_id: '42' });
+
+    expect(mockRequest.mock.calls[1][1]).toMatchObject({
+      workItemTypeIds: ['gid://gitlab/WorkItems::Type/1'],
+    });
+    expect(mockRequest.mock.calls[1][1]).not.toHaveProperty('types');
+  });
+
   it('keeps the types the view names and does not look up the default', async () => {
     mockRequest
       .mockResolvedValueOnce(

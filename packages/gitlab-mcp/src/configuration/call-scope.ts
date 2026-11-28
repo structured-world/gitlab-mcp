@@ -6,13 +6,17 @@
  */
 
 import { AsyncLocalStorage } from 'node:async_hooks';
+import { z } from 'zod';
 import { GITLAB_ALLOWED_PROJECT_IDS } from '../config';
 import type { ScopeEnforcer } from '../profiles/scope-enforcer';
 import { canonicalProjectPath } from '../utils/api-path';
+import { parseGitLabApiError } from '../utils/error-handler';
 import { gitlab } from '../utils/gitlab-api';
 import { withTargetPaths } from './scope-ids';
 
 const storage = new AsyncLocalStorage<ScopeEnforcer | undefined>();
+
+const ProjectIdSchema = z.object({ id: z.union([z.number(), z.string()]) });
 
 /**
  * Run `fn` with `workingScope` as the caller's working scope of everything it does. It is
@@ -49,6 +53,8 @@ export async function projectInCallScope(projectId: string): Promise<boolean> {
  * held to the rule for its kind: a subgroup's path looks like that of a project directly
  * in its parent. The operator's list names projects only, so under it a group is never
  * allowed; a project it does not name literally is looked up for the ID it may name.
+ * The working scope needs no such lookup: the caller's numeric scope entries are already
+ * replaced by their paths (withScopePaths) before the call runs.
  */
 export async function namespaceInCallScope(
   path: string,
@@ -65,13 +71,18 @@ export async function namespaceInCallScope(
   if (operator.length === 0) return true;
   if (kind === 'group') return false;
   if (operator.includes(canonicalProjectPath(path).toLowerCase())) return true;
+  let project: unknown;
   try {
-    const project = await gitlab.get<{ id?: unknown }>(`projects/${encodeURIComponent(path)}`);
-    return operator.includes(String(project.id));
-  } catch {
-    // A group, or a project GitLab does not show, is not one the operator listed.
-    return false;
+    project = await gitlab.get(`projects/${encodeURIComponent(path)}`);
+  } catch (error: unknown) {
+    // A project GitLab does not show is not one the operator listed; any other failure,
+    // such as a rejected token, fails the call with GitLab's error.
+    const message = error instanceof Error ? error.message : String(error);
+    if (parseGitLabApiError(message)?.status === 404) return false;
+    throw error;
   }
+  const parsed = ProjectIdSchema.safeParse(project);
+  return parsed.success && operator.includes(String(parsed.data.id));
 }
 
 /**

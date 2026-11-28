@@ -148,10 +148,15 @@ export interface ViewQueryPlan {
 }
 
 /** Adds one stored filter to the plan; an unsendable one of the view is reported. */
+/** Whether a stored filter value restricts anything: null, `[]` and `not: {}` do not. */
+function filtersBy(stored: unknown): boolean {
+  if (stored === null || stored === undefined) return false;
+  if (Array.isArray(stored)) return stored.length > 0;
+  return !(isPlainObject(stored) && Object.keys(stored).length === 0);
+}
+
 function planField(plan: ViewQueryPlan, field: string, stored: unknown, fromView: boolean): void {
-  // An empty input object (`not: {}`) filters nothing.
-  if (stored === null || stored === undefined) return;
-  if (isPlainObject(stored) && Object.keys(stored).length === 0) return;
+  if (!filtersBy(stored)) return;
   const type = SAVED_VIEW_ARG_TYPES[field];
   const value =
     type && graphqlSupports('Namespace', 'workItems', field)
@@ -448,7 +453,7 @@ export async function getSavedView(
   const narrowed = await keepToCallScope(client, plan, input, namespace.__typename === 'Group');
 
   let typesApplied = true;
-  if (filters.types === undefined && filters.workItemTypeIds === undefined) {
+  if (!filtersBy(filters.types) && !filtersBy(filters.workItemTypeIds)) {
     const known =
       sameNamespace && extras.filterableTypes ? { types: namespace.workItemTypes } : undefined;
     const ids = await defaultTypeIds(client, plan.namespacePath, known);

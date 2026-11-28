@@ -856,12 +856,14 @@ describe('saved view edge cases', () => {
     expect(result.views.map((v) => v.isPrivate)).toEqual([false]);
   });
 
-  it('returns an empty list when GitLab returns no saved views connection', async () => {
+  it('reports saved views GitLab did not return instead of an empty list', async () => {
+    // GitLab always answers with a connection, empty when there are no views; a null one
+    // means it could not list them, which must not read as "no views".
     mockRequest.mockResolvedValueOnce({ namespace: { savedViews: null } });
 
-    const result = await browse().handler({ action: 'list_saved_views', namespace: 'grp' });
-
-    expect(result).toEqual({ namespace: 'grp', views: [], hasMore: false, endCursor: null });
+    await expect(
+      browse().handler({ action: 'list_saved_views', namespace: 'grp' }),
+    ).rejects.toThrow('GitLab did not return the saved views of "grp"');
   });
 });
 

@@ -266,11 +266,16 @@ export async function listSavedViews(
     throw new Error(`Namespace "${input.namespace}" was not found or is not accessible`);
   }
   const views = namespace.savedViews;
+  // GitLab answers with a connection, empty when there are no views; without one it could
+  // not list them, which an empty list would hide.
+  if (!views) {
+    throw new Error(`GitLab did not return the saved views of "${input.namespace}"`);
+  }
   return {
     namespace: input.namespace,
-    views: (views?.nodes ?? []).map(presentView),
-    hasMore: views?.pageInfo.hasNextPage ?? false,
-    endCursor: views?.pageInfo.endCursor ?? null,
+    views: views.nodes.map(presentView),
+    hasMore: views.pageInfo.hasNextPage,
+    endCursor: views.pageInfo.endCursor ?? null,
   };
 }
 

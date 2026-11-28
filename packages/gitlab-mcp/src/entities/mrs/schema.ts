@@ -1,6 +1,9 @@
 import { z } from 'zod';
 import { flexibleBoolean, requiredId, numericId } from '../utils';
 
+/** Comments one review call posts at most; each is its own write. */
+export const REVIEW_MAX_COMMENTS = 20;
+
 // ============================================================================
 // Shared position schema for diff notes
 // ============================================================================
@@ -263,6 +266,55 @@ const SuggestCodeChangeSchema = z.object({
   lines_below: z.number().int().min(0).default(0).describe('Lines to include below (default: 0)'),
 });
 
+// --- Action: review ---
+const ReviewCommentSchema = z.object({
+  path: z
+    .string()
+    .min(1)
+    .describe('File in the diff: its new path, or the old path of a renamed or deleted file'),
+  new_line: z
+    .number()
+    .int()
+    .positive()
+    .optional()
+    .describe('Line in the new version: an added or unchanged diff line'),
+  old_line: z
+    .number()
+    .int()
+    .positive()
+    .optional()
+    .describe('Line in the old version: a removed or unchanged diff line'),
+  body: z.string().min(1).describe('Comment text'),
+  suggestion: z
+    .string()
+    .optional()
+    .describe('Replacement for the commented line, posted as a suggestion the author can apply'),
+});
+
+const SubmitReviewSchema = z.object({
+  action: z
+    .literal('review')
+    .describe(
+      'Post several diff comments and an optional summary note on one MR, anchored to the reviewed head',
+    ),
+  project_id: projectIdField,
+  merge_request_iid: mergeRequestIidField,
+  head_sha: z
+    .string()
+    .regex(/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i, 'Expected a full commit SHA')
+    .describe(
+      'Head commit the comments were written against (diff_refs.head_sha of the MR); the review is refused when the MR has moved past it',
+    ),
+  comments: z
+    .array(ReviewCommentSchema)
+    .min(1)
+    .max(REVIEW_MAX_COMMENTS)
+    .describe(
+      `Diff comments, 1-${REVIEW_MAX_COMMENTS}; each names new_line, old_line or both for an unchanged line`,
+    ),
+  summary: z.string().min(1).optional().describe('Summary note posted after all comments'),
+});
+
 // --- Discriminated union combining all actions ---
 export const ManageMrDiscussionSchema = z.discriminatedUnion('action', [
   CommentOnNoteableSchema,
@@ -273,6 +325,7 @@ export const ManageMrDiscussionSchema = z.discriminatedUnion('action', [
   ApplySuggestionsSchema,
   ResolveThreadSchema,
   SuggestCodeChangeSchema,
+  SubmitReviewSchema,
 ]);
 
 // ============================================================================

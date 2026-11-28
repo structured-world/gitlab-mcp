@@ -1509,6 +1509,191 @@ describe('🔄 Data Lifecycle - Complete Infrastructure Setup', () => {
       );
     });
 
+    // A batch review lands each comment on its line at the reviewed head and leaves the
+    // reviewer's unrelated drafts unpublished; a bad line or a newer head posts nothing.
+    it('should post a batch review anchored to the reviewed head', async () => {
+      const testData = getTestData();
+      expect(testData.mergeRequests?.length).toBeGreaterThan(0);
+      const mr = testData.mergeRequests![0];
+      const projectId = testData.project!.id.toString();
+      const iid = mr.iid.toString();
+      const marker = `batch-review-${Date.now()}`;
+      const path = `${marker}.js`;
+
+      const pushFile = async (filePath: string, content: string) => {
+        const response = await fetch(
+          `${GITLAB_API_URL}/api/v4/projects/${testData.project!.id}/repository/files/${encodeURIComponent(filePath)}`,
+          {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${GITLAB_TOKEN}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              branch: mr.source_branch,
+              content,
+              commit_message: `Add ${filePath} for the batch review test`,
+            }),
+          },
+        );
+        expect(response.ok).toBe(true);
+      };
+      // The MR diff follows a push asynchronously: wait until it shows the marker line.
+      const SearchSchema = MergeRequestDiffRefsSchema.extend({
+        changes: z.array(z.object({ new_path: z.string() })),
+      });
+      const waitForDiff = async (pattern: string, filePath: string) => {
+        const deadline = Date.now() + 5 * 60_000;
+        while (Date.now() < deadline) {
+          const search = SearchSchema.parse(
+            await helper.browseMergeRequests({
+              action: 'diffs',
+              project_id: projectId,
+              merge_request_iid: iid,
+              line_patterns: [pattern],
+            }),
+          );
+          const head = search.diff_refs?.head_sha;
+          if (head && search.changes.some((file) => file.new_path === filePath)) return head;
+          await new Promise((resolve) => setTimeout(resolve, 3000));
+        }
+        throw new Error(`${filePath} did not reach the merge request diff in time`);
+      };
+
+      await pushFile(path, `const a = 1;\n// ${marker}\nconst b = 2;\n`);
+      const head = await waitForDiff(marker, path);
+
+      const DraftSchema = z.object({ id: z.number() });
+      const draft = DraftSchema.parse(
+        await helper.executeTool('manage_draft_notes', {
+          action: 'create',
+          project_id: projectId,
+          merge_request_iid: iid,
+          note: `Unrelated pending draft ${marker}`,
+        }),
+      );
+
+      try {
+        const ReviewSchema = z.object({
+          complete: z.boolean(),
+          head_sha: z.string(),
+          comments: z.array(
+            z.object({ status: z.string(), discussion_id: z.string(), new_line: z.number() }),
+          ),
+          summary: z.object({ status: z.string(), note_id: z.number() }),
+        });
+        const result = ReviewSchema.parse(
+          await helper.manageMrDiscussion({
+            action: 'review',
+            project_id: projectId,
+            merge_request_iid: iid,
+            head_sha: head,
+            comments: [
+              { path, new_line: 2, body: `Marker comment ${marker}` },
+              { path, new_line: 3, body: 'Rename b', suggestion: 'const total = 2;' },
+            ],
+            summary: `Batch review summary ${marker}`,
+          }),
+        );
+        expect(result.complete).toBe(true);
+        expect(result.head_sha).toBe(head);
+        expect(result.comments.map((comment) => comment.status)).toEqual(['posted', 'posted']);
+        expect(result.summary.status).toBe('posted');
+
+        const DiscussionsSchema = z.array(
+          z.object({
+            id: z.string(),
+            notes: z.array(
+              z.object({
+                position: z
+                  .object({
+                    new_path: z.string(),
+                    new_line: z.number().nullable(),
+                    head_sha: z.string(),
+                  })
+                  .nullish(),
+              }),
+            ),
+          }),
+        );
+        const discussions = DiscussionsSchema.parse(
+          await helper.browseMrDiscussions({
+            action: 'list',
+            project_id: projectId,
+            merge_request_iid: iid,
+            per_page: 100,
+          }),
+        );
+        for (const comment of result.comments) {
+          const posted = discussions.find((discussion) => discussion.id === comment.discussion_id);
+          expect(posted?.notes[0].position).toEqual({
+            new_path: path,
+            new_line: comment.new_line,
+            head_sha: head,
+          });
+        }
+
+        // The unrelated draft is still pending, not published by the review.
+        const drafts = z.array(DraftSchema).parse(
+          await helper.browseMrDiscussions({
+            action: 'drafts',
+            project_id: projectId,
+            merge_request_iid: iid,
+          }),
+        );
+        expect(drafts.map((pending) => pending.id)).toContain(draft.id);
+
+        // One line outside the diff refuses the whole batch.
+        await expect(
+          helper.manageMrDiscussion({
+            action: 'review',
+            project_id: projectId,
+            merge_request_iid: iid,
+            head_sha: head,
+            comments: [
+              { path, new_line: 1, body: `Must not be posted ${marker}` },
+              { path, new_line: 99, body: 'Outside the diff' },
+            ],
+          }),
+        ).rejects.toThrow('comments[1]: new_line 99');
+
+        // A push after the review was written makes its head stale.
+        const nextPath = `${marker}-next.js`;
+        await pushFile(nextPath, `// ${marker}-next\n`);
+        await waitForDiff(`${marker}-next`, nextPath);
+        await expect(
+          helper.manageMrDiscussion({
+            action: 'review',
+            project_id: projectId,
+            merge_request_iid: iid,
+            head_sha: head,
+            comments: [{ path, new_line: 1, body: `Must not be posted ${marker}` }],
+          }),
+        ).rejects.toThrow('the merge request head is now');
+
+        // Neither refused batch left a note behind (pushes add system notes, so no count).
+        const bodies = z
+          .array(z.object({ notes: z.array(z.object({ body: z.string() })) }))
+          .parse(
+            await helper.browseMrDiscussions({
+              action: 'list',
+              project_id: projectId,
+              merge_request_iid: iid,
+              per_page: 100,
+            }),
+          )
+          .flatMap((discussion) => discussion.notes.map((note) => note.body));
+        expect(bodies.some((body) => body.includes(`Must not be posted ${marker}`))).toBe(false);
+      } finally {
+        await helper.executeTool('manage_draft_notes', {
+          action: 'delete',
+          project_id: projectId,
+          merge_request_iid: iid,
+          draft_note_id: draft.id.toString(),
+        });
+      }
+    });
+
     it('should test draft note with position (validates flattenPositionToFormFields for drafts)', async () => {
       const testData = getTestData();
       expect(testData.mergeRequests?.length).toBeGreaterThan(0);

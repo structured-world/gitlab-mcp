@@ -383,7 +383,8 @@ export class IntegrationTestHelper {
       | 'apply_suggestion'
       | 'apply_suggestions'
       | 'resolve'
-      | 'suggest';
+      | 'suggest'
+      | 'review';
     project_id: string;
     merge_request_iid?: string;
     discussion_id?: string;

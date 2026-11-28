@@ -255,6 +255,48 @@ function unsearchable(file: DiffFile): NotScannedReason | 'empty' | null {
   return null;
 }
 
+/** A line a positioned comment names: the old side, the new side, or both for an unchanged line. */
+export interface DiffLineTarget {
+  old_line?: number;
+  new_line?: number;
+}
+
+/** The diff line each target names, null when the file's hunks show no such line. */
+export type DiffLineLookup =
+  { lines: Array<Omit<DiffLine, 'text'> | null> } | { unavailable: NotScannedReason };
+
+/**
+ * Finds the lines `targets` name in one file's hunks, parsed once for all of them. A target
+ * with one side matches a changed line on that side or an unchanged line; one with both
+ * sides matches only an unchanged line carrying both numbers.
+ */
+export function findDiffLines(file: DiffFile, targets: readonly DiffLineTarget[]): DiffLineLookup {
+  const reason = unsearchable(file);
+  if (reason !== null && reason !== 'empty') return { unavailable: reason };
+  const table = new LineTable();
+  if (reason === null) parseHunks(Buffer.from(file.diff, 'utf8'), table);
+  const lines = targets.map(({ old_line, new_line }) => {
+    for (let i = 0; i < table.size; i++) {
+      const type = table.type[i];
+      const oldMatches = type !== ADDED && table.oldLine[i] === old_line;
+      const newMatches = type !== REMOVED && table.newLine[i] === new_line;
+      const found =
+        old_line !== undefined && new_line !== undefined
+          ? type === UNCHANGED && oldMatches && newMatches
+          : oldMatches || newMatches;
+      if (found) {
+        return {
+          type: TYPE_NAMES[type],
+          old_line: type === ADDED ? null : table.oldLine[i],
+          new_line: type === REMOVED ? null : table.newLine[i],
+        };
+      }
+    }
+    return null;
+  });
+  return { lines };
+}
+
 /**
  * Searches the changed lines of GitLab diff entries. Every match is counted; the first
  * `maxMatches` are returned with their line numbers and context, in file order.

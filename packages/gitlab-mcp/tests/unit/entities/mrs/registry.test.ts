@@ -3,12 +3,12 @@ import {
   getMrsReadOnlyToolNames,
   getMrsToolDefinitions,
   getFilteredMrsTools,
-  flattenPositionToFormFields,
   getMergeStatusHint,
   getSuggestedAction,
   RETRYABLE_MERGE_STATUSES,
   AUTO_MERGE_ELIGIBLE_STATUSES,
 } from '../../../../src/entities/mrs/registry';
+import { flattenPositionToFormFields } from '../../../../src/entities/mrs/position-fields';
 import {
   mrsTools,
   mrsReadOnlyTools,

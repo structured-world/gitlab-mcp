@@ -6,6 +6,7 @@
 
 import {
   assertInstanceAtLeast,
+  graphqlConfirms,
   graphqlSupports,
   instanceAtLeast,
 } from '../../../src/entities/instance-version';
@@ -60,6 +61,23 @@ describe('graphqlSupports', () => {
   it('fails open when the connection is not initialised', () => {
     schema = new Error('not initialised');
     expect(graphqlSupports('Group', 'workItems')).toBe(true);
+  });
+});
+
+// For a field a query may select only when it surely exists: an unknown schema confirms
+// nothing, where graphqlSupports fails open.
+describe('graphqlConfirms', () => {
+  it('answers from the schema for type and field', () => {
+    expect(graphqlConfirms('Namespace', 'workItems')).toBe(true);
+    expect(graphqlConfirms('Namespace', 'workItemTypes')).toBe(false);
+    expect(graphqlConfirms('Group', 'workItems')).toBe(false);
+  });
+
+  it('confirms nothing without a schema', () => {
+    schema = {};
+    expect(graphqlConfirms('Namespace', 'workItems')).toBe(false);
+    schema = new Error('not initialised');
+    expect(graphqlConfirms('Namespace', 'workItems')).toBe(false);
   });
 });
 

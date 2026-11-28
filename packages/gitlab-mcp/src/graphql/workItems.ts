@@ -589,8 +589,9 @@ type WorkItemListVars = WorkItemListFilterValues & {
   after?: string;
 };
 
-// Listing selection shared by the namespace query and its project/group fallbacks.
-const WORK_ITEM_LIST_CONNECTION = `
+// Listing selection shared by the namespace query, its project/group fallbacks and the
+// saved view listing.
+export const WORK_ITEM_LIST_CONNECTION = `
         nodes {
           id
           iid

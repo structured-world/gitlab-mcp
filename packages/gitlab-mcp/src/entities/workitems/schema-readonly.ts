@@ -43,7 +43,7 @@ export const WorkItemStateEventSchema = z
 
 // ============================================================================
 // browse_work_items - CQRS Query Tool (discriminated union schema)
-// Actions: list, get, list_discussions, list_types
+// Actions: list, get, list_discussions, list_types, list_saved_views, get_saved_view
 // Uses z.discriminatedUnion() for type-safe action handling.
 // Schema pipeline flattens to flat JSON Schema for AI clients that don't support oneOf.
 // ============================================================================
@@ -170,6 +170,39 @@ const ListTypesSchema = z.object({
   namespace: z.string().min(1).describe('Namespace path (group or project)'),
 });
 
+const ListSavedViewsSchema = z.object({
+  action: z
+    .literal('list_saved_views')
+    .describe('List the saved work item views of a namespace that you can see'),
+  namespace: z.string().min(1).describe('Namespace path (group or project)'),
+  search: z.string().min(1).optional().describe('Text to find in the view name or description'),
+  subscribed_only: z.boolean().optional().describe('Only views you are subscribed to'),
+  first: z.number().int().min(1).max(100).default(20).describe('Views per page (1-100)'),
+  after: z.string().min(1).optional().describe('Cursor from the previous page (endCursor)'),
+});
+
+const GetSavedViewSchema = z.object({
+  action: z
+    .literal('get_saved_view')
+    .describe("Read a saved view's filters, sort and a page of the work items it shows"),
+  namespace: z.string().min(1).describe('Namespace path the view belongs to (group or project)'),
+  view_id: z
+    .string()
+    .min(1)
+    .describe("Saved view ID from list_saved_views (e.g., '42'); its global ID is also accepted"),
+  first: z.number().int().min(1).max(100).default(20).describe('Work items per page (1-100)'),
+  after: z
+    .string()
+    .min(1)
+    .optional()
+    .describe('Cursor from the previous page of the same view (endCursor)'),
+  simple: z
+    .boolean()
+    .optional()
+    .default(true)
+    .describe('Return simplified work items with essential fields only'),
+});
+
 // --- Discriminated union combining all actions ---
 // Base union for type narrowing
 const BrowseWorkItemsBaseSchema = z.discriminatedUnion('action', [
@@ -177,6 +210,8 @@ const BrowseWorkItemsBaseSchema = z.discriminatedUnion('action', [
   GetWorkItemSchema,
   ListDiscussionsSchema,
   ListTypesSchema,
+  ListSavedViewsSchema,
+  GetSavedViewSchema,
 ]);
 
 // A single work item is identified by (namespace + IID) or a global ID.

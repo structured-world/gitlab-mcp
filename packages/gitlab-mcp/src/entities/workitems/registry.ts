@@ -3,6 +3,7 @@ import { BrowseWorkItemsSchema } from './schema-readonly';
 import { ManageWorkItemSchema } from './schema';
 import { reorderWorkItem } from './reorder';
 import { listWorkItemDiscussions } from './discussions';
+import { getSavedView, listSavedViews } from './saved-views';
 import {
   isLocalListFilter,
   localListMatcher,
@@ -500,7 +501,7 @@ const simplifyWorkItem = (
 /**
  * Work items tools registry - 2 CQRS tools replacing 5 individual tools
  *
- * browse_work_items (Query): list, get, list_discussions, list_types
+ * browse_work_items (Query): list, get, list_discussions, list_types, list_saved_views, get_saved_view
  * manage_work_item (Command): create, update, delete, delete_timelog, add_link, remove_link
  */
 export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinition>([
@@ -514,14 +515,19 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
       name: 'browse_work_items',
       projectableActions: ['list', 'list_discussions'],
       description:
-        'Find and inspect issues, epics, tasks, and other work items. Actions: list (filter by type, state, text, author, assignees, labels, milestones or parent, applied before paging; sort), get (details by ID or namespace+iid), list_discussions (paginated comments, replies, and system notes), list_types (work item types of a namespace and the widgets each supports). Related: manage_work_item to create/update/delete.',
+        "Find and inspect issues, epics, tasks, and other work items. Actions: list (filter by type, state, text, author, assignees, labels, milestones or parent, applied before paging; sort), get (details by ID or namespace+iid), list_discussions (paginated comments, replies, and system notes), list_types (work item types of a namespace and the widgets each supports), list_saved_views (a namespace's saved views you can see), get_saved_view (a saved view's filters and sort with a page of its work items, flagged when not exact). Related: manage_work_item to create/update/delete.",
       inputSchema: z.toJSONSchema(BrowseWorkItemsSchema),
       // Queries adapt to the instance schema (unknown widget fragments dropped,
       // project/group fallbacks for the namespace-level queries). Every list filter
       // works from 16.0: assignee, label, milestone and parent filters missing from
-      // an older workItems field are applied to the listed widgets instead.
+      // an older workItems field are applied to the listed widgets instead. Saved
+      // views exist from 18.9: 18.7 and 18.8 declare the field but always return none.
       requirements: {
         default: { tier: 'free' },
+        actions: {
+          list_saved_views: { tier: 'free', minVersion: '18.9' },
+          get_saved_view: { tier: 'free', minVersion: '18.9' },
+        },
       },
       gate: { envVar: 'USE_WORKITEMS', defaultValue: true },
       handler: async (args: unknown): Promise<unknown> => {
@@ -617,6 +623,25 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
 
           case 'list_types':
             return listWorkItemTypes(input.namespace);
+
+          case 'list_saved_views': {
+            const client = ConnectionManager.getInstance().getClient(getGitLabApiUrlFromContext());
+            return listSavedViews(client, input);
+          }
+
+          case 'get_saved_view': {
+            const client = ConnectionManager.getInstance().getClient(getGitLabApiUrlFromContext());
+            const read = await getSavedView(client, input);
+            return {
+              ...read,
+              items: read.items.map((item) =>
+                simplifyWorkItem(
+                  cleanWorkItemResponse(item as unknown as GitLabWorkItem) as GraphQLWorkItem,
+                  input.simple,
+                ),
+              ),
+            };
+          }
 
           case 'get': {
             // TypeScript knows: input has either (namespace + iid) or (id)

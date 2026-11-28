@@ -126,9 +126,10 @@ describe('SchemaIntrospector', () => {
       expect(introspector.getCachedSchema()).toBe(schema);
     });
 
-    it('indexes fields by their named type and arguments, and input object fields', async () => {
+    it('indexes fields by their named type and arguments, input object fields and enum values', async () => {
       // Documents are adapted to this index, so wrapped types must resolve to the
-      // named type and mutation inputs must list their fields.
+      // named type and mutation inputs must list their fields. Enum values are listed
+      // so a stored value can be checked before it is sent as a variable.
       mockGraphQLClient.request.mockResolvedValueOnce({
         __schema: {
           types: [
@@ -153,6 +154,7 @@ describe('SchemaIntrospector', () => {
               inputFields: [{ name: 'labelsWidget' }],
             },
             { name: 'WorkItemState', kind: 'ENUM', enumValues: [{ name: 'OPEN' }] },
+            { name: 'Time', kind: 'SCALAR' },
           ],
         },
       });
@@ -163,8 +165,9 @@ describe('SchemaIntrospector', () => {
       expect(workItems.type).toBe('WorkItemConnection');
       expect([...workItems.args]).toEqual(['types']);
       expect(index.get('WorkItemCreateInput')!.has('labelsWidget')).toBe(true);
-      // Types without fields still exist in the index.
-      expect(index.get('WorkItemState')!.size).toBe(0);
+      expect([...index.get('WorkItemState')!.keys()]).toEqual(['OPEN']);
+      // Types without fields or values still exist in the index.
+      expect(index.get('Time')!.size).toBe(0);
     });
 
     it('should return cached schema on subsequent calls', async () => {

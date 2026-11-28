@@ -37,6 +37,8 @@ GitLab work items include Issues, Epics, Tasks, Incidents, and more.
 | `get` | Get single work item details |
 | `list_discussions` | Read work item comments, replies, and system notes |
 | `list_types` | List the work item types of a namespace with the widgets each supports |
+| `list_saved_views` | List the saved work item views of a namespace that you can see |
+| `get_saved_view` | Read a saved view's filters, sort and a page of the work items it shows |
 <!-- @autogen:end -->
 
 ::: code-group
@@ -77,6 +79,23 @@ GitLab work items include Issues, Epics, Tasks, Incidents, and more.
 {
   "action": "list_types",
   "namespace": "my-org/api"
+}
+```
+
+```json [Saved views]
+{
+  "action": "list_saved_views",
+  "namespace": "my-org",
+  "subscribed_only": true
+}
+```
+
+```json [Items of a saved view]
+{
+  "action": "get_saved_view",
+  "namespace": "my-org",
+  "view_id": "42",
+  "first": 20
 }
 ```
 
@@ -151,6 +170,29 @@ projects.
 GitLab 16.7 and later, `widgets`: the widgets each type supports in that namespace,
 which reflect the instance's license. A namespace that does not exist or is not
 accessible is reported as an error rather than as an empty list.
+
+`list_saved_views` and `get_saved_view` read GitLab's saved work item views, from
+GitLab 18.9. `list_saved_views` returns the views of a namespace you can see (public
+ones and your own private ones) with their `id`, `name`, `description`, `isPrivate`,
+`subscribed`, `sort` and `shareUrl`; `search` matches the name or description and
+`subscribed_only` keeps the views you are subscribed to. `get_saved_view` returns the
+view with its stored `filters` and `displaySettings`, and a page of its work items
+(`items`, `hasMore`, `endCursor`; pass `endCursor` as `after` for the next page of
+the same view).
+
+GitLab does not compute a view's items on the server, so `get_saved_view` lists them
+with the view's filters and sort the way GitLab's work item list does: descendant
+groups and projects included unless the view filters by group, every state unless the
+view filters by state, and the types the list offers by default (GitLab 18.10+) unless
+the view names types. `exact: false` means the items may differ from the view:
+`unappliedFilters` names filters this instance cannot apply, `filterWarnings` passes
+on GitLab's report of filter values that no longer exist (such as a deleted label),
+and `note` explains each case; a view without a sort of its own is also inexact, as
+GitLab's list would use your sort preference. A view that does not exist and one you
+cannot see are reported the same way. A view that filters on a group or project you
+cannot read, or one outside the working scope or the projects the server may read, is
+an error rather than an empty page. When the working scope does not include a group's
+subgroups, only the group's own work items are listed and the result is inexact.
 
 `list_discussions` reads user comments and system activity from the GitLab notes widget.
 Use `namespace` and `iid`, or the global `id`. Each discussion contains a `notes`

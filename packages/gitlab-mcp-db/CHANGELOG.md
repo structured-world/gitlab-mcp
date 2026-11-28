@@ -1,5 +1,20 @@
 # Changelog
 
+## [13.7.0](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-db-v13.6.0...gitlab-mcp-db-v13.7.0) (2026-11-28)
+
+
+### Features
+
+* **workitems:** filter lists on the server and list types ([#802](https://github.com/structured-world/gitlab-mcp/issues/802)) ([5a7c15d](https://github.com/structured-world/gitlab-mcp/commit/5a7c15dee44394f05bea6949e37ff2df9f9e1bd2)), closes [#783](https://github.com/structured-world/gitlab-mcp/issues/783)
+* **workitems:** read saved work item views ([#804](https://github.com/structured-world/gitlab-mcp/issues/804)) ([fe03489](https://github.com/structured-world/gitlab-mcp/commit/fe03489738d396be56d2065e5e859b4c3d335a72)), closes [#784](https://github.com/structured-world/gitlab-mcp/issues/784)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @structured-world/gitlab-mcp bumped to 13.7.0
+
 ## [13.6.0](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-db-v13.5.0...gitlab-mcp-db-v13.6.0) (2026-11-26)
 
 

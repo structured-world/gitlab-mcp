@@ -204,6 +204,17 @@ describe('flattenPositionToFormFields', () => {
     });
   });
 
+  // An absent nested field must not reach GitLab as an empty or "null" value.
+  it('should skip null and undefined nested fields', () => {
+    const body: Record<string, unknown> = {};
+
+    flattenPositionToFormFields(body, {
+      line_range: { start: null, end: undefined, type: 'new' },
+    });
+
+    expect(body).toEqual({ 'position[line_range][type]': 'new' });
+  });
+
   it('should handle deeply nested objects (3 levels - line_range.start.line_code)', () => {
     const body: Record<string, unknown> = {};
     const position = {

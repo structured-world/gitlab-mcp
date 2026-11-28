@@ -294,23 +294,36 @@ block for the commented line, which must exist in the new version.
 
 Before anything is written, the merge request's latest diff version must still be at
 `head_sha`, and every comment must name a line of that diff; otherwise the call is
-refused with every problem listed and nothing is posted. Lines starting with `/` are
-refused too, since GitLab would run them as quick actions: an approval is
-`manage_merge_request` `approve`, not text in a comment.
+refused with every problem listed and nothing is published. The check reads the diff
+version GitLab shows: a push that GitLab has not turned into a new version yet, or one
+made while the review is written, is not caught, and the comments stay on the version
+that was reviewed. Text GitLab would run as a quick action (a line starting with `/`
+outside code, also after GitLab drops carriage returns) is refused too: an approval
+is `manage_merge_request` `approve`, not text in a comment.
 
-The comments are then posted one by one as diff threads and the summary last. This
-is not a transaction: the writes stop at the first one that does not succeed, and the
-result reports each comment's `status` with its `discussion_id` and `note_id`:
+From GitLab 16.3, whose draft notes take a diff position, the comments and the summary
+are first created as your drafts, visible to nobody else. If one cannot be created,
+the drafts already made are deleted and nothing is published. They are then published
+together, and `published_as` says how:
+
+| `published_as` | Meaning |
+|----------------|---------|
+| `review` | Submitted as one review with a single notification; you had no other pending drafts |
+| `separate` | Published one by one, because submitting a review would also publish your other pending drafts, which stay pending |
+| `threads` | Before GitLab 16.3: each comment posted directly as a diff thread, then the summary |
+
+Publishing is not a transaction. After a failure the tool reads which drafts are still
+pending, and each comment and the summary report a `status`:
 
 | `status` | Meaning |
 |----------|---------|
-| `posted` | GitLab created it |
-| `failed` | GitLab refused it; nothing was created |
-| `unknown` | The request ended without a clear answer (timeout, server error); check the discussions before resending it |
-| `not_attempted` | An earlier write did not succeed |
+| `published` | Visible on the merge request (`threads` also gives `discussion_id` and `note_id`) |
+| `draft` | Still your unpublished draft: publish or delete it by `draft_note_id` with `manage_draft_notes` |
+| `failed` | GitLab refused it; nothing was created (`threads`) |
+| `unknown` | The request ended without a clear answer; check the discussions and drafts before resending it |
+| `not_attempted` | An earlier write did not succeed (`threads`) |
 
-`complete` is true when every comment and the summary were posted. The review never
-touches draft notes: pending drafts of `manage_draft_notes` stay unpublished.
+`complete` is true when every comment and the summary were published.
 
 ### Examples
 

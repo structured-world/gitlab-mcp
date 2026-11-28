@@ -303,7 +303,7 @@ const SubmitReviewSchema = z.object({
     .string()
     .regex(/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i, 'Expected a full commit SHA')
     .describe(
-      'Head commit the comments were written against (diff_refs.head_sha of the MR); the review is refused when the MR has moved past it',
+      "Head commit the comments were written against (diff_refs.head_sha of the MR); the review is refused when the MR's latest diff version is at another head",
     ),
   comments: z
     .array(ReviewCommentSchema)
